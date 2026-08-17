@@ -1627,3 +1627,216 @@ td.editable.arabic-content {
 }
 
 .hw-close-modal:hover { color: #EF4444; }
+
+/* --- NOUVEAUX STYLES ACCUEIL : SUIVI DES PLANS & DEVOIRS --- */
+.home-main-card {
+    max-width: 860px !important;
+    padding: 35px 30px !important;
+}
+
+.home-title {
+    font-size: 1.85rem !important;
+    font-weight: 800 !important;
+    color: #1E1B4B !important;
+    margin-top: 15px !important;
+    margin-bottom: 4px !important;
+    line-height: 1.3 !important;
+}
+
+.home-spaces-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 22px;
+    margin-top: 25px;
+    text-align: left;
+}
+
+.home-space-card {
+    background: #FFFFFF;
+    border-radius: 20px;
+    padding: 24px 22px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    border: 2px solid #E2E8F0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: all 0.3s ease;
+}
+
+.home-space-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1);
+}
+
+.parent-space-theme {
+    border-color: #10B981;
+    background: linear-gradient(180deg, #FFFFFF 0%, #F0FDF4 100%);
+}
+
+.parent-space-theme:hover {
+    border-color: #059669;
+}
+
+.teacher-space-theme {
+    border-color: #3B82F6;
+    background: linear-gradient(180deg, #FFFFFF 0%, #EFF6FF 100%);
+}
+
+.teacher-space-theme:hover {
+    border-color: #2563EB;
+}
+
+.space-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 12px;
+}
+
+.space-icon-wrapper {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.parent-icon {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
+}
+
+.teacher-icon {
+    background: rgba(59, 130, 246, 0.15);
+    color: #2563EB;
+}
+
+.space-card-title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #1E1B4B;
+}
+
+.space-card-ar-title {
+    margin: 2px 0 0 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #6B7280;
+}
+
+.space-card-desc {
+    font-size: 0.9rem;
+    color: #4B5563;
+    line-height: 1.5;
+    margin: 0 0 20px 0;
+    flex-grow: 1;
+}
+
+.space-buttons-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.space-section-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    font-weight: 700;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    text-align: left;
+}
+
+.space-section-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.space-section-btn i {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+
+.space-section-btn.girls-btn {
+    background: linear-gradient(135deg, #EC4899, #DB2777);
+    color: white;
+}
+
+.space-section-btn.boys-btn {
+    background: linear-gradient(135deg, #3B82F6, #1D4ED8);
+    color: white;
+}
+
+.btn-labels {
+    display: flex;
+    flex-direction: column;
+}
+
+.btn-primary-text {
+    font-size: 0.9rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
+.btn-sub-text {
+    font-size: 0.76rem;
+    opacity: 0.92;
+    font-weight: 500;
+    margin-top: 2px;
+}
+
+/* RTL / ARABIC SUPPORT */
+body[dir="rtl"] {
+    text-align: right;
+    font-family: 'Cairo', 'Poppins', sans-serif, Tahoma;
+}
+
+body[dir="rtl"] .home-spaces-grid,
+body[dir="rtl"] .space-section-btn,
+body[dir="rtl"] .home-space-card {
+    text-align: right;
+}
+
+body[dir="rtl"] .space-section-btn {
+    flex-direction: row-reverse;
+}
+
+body[dir="rtl"] .hw-close-modal {
+    right: auto;
+    left: 20px;
+}
+
+/* Move Student Buttons */
+.btn-sm-move {
+    background: #3B82F6;
+    color: white;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.btn-sm-move:hover {
+    background: #1D4ED8;
+}
+
+.move-student-select {
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid #CBD5E1;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-right: 5px;
+}

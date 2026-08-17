@@ -1030,6 +1030,74 @@ app.delete('/api/admin/students', async (req, res) => {
   }
 });
 
+app.post('/api/admin/students/move', async (req, res) => {
+  try {
+    const { studentId, oldClass, newClass, name, section = 'garcons' } = req.body;
+    if (!newClass) {
+      return res.status(400).json({ message: 'La nouvelle classe est obligatoire.' });
+    }
+    const db = await connectToDatabase();
+
+    let student = null;
+    if (studentId) {
+      student = await db.collection('students').findOne({ _id: studentId });
+    }
+    if (!student && name && oldClass) {
+      student = await db.collection('students').findOne({ _id: `${section}_${oldClass}_${name}` });
+    }
+    if (!student && name) {
+      student = await db.collection('students').findOne({ name: name, section: section });
+    }
+
+    if (!student) {
+      return res.status(404).json({ message: "Élève introuvable." });
+    }
+
+    const currentOldClass = student.class || oldClass;
+    const studentName = student.name;
+    const currentSection = student.section || section;
+    const oldId = student._id;
+    const newId = `${currentSection}_${newClass}_${studentName}`;
+
+    // Supprimer l'ancien document si l'ID a changé
+    if (oldId !== newId) {
+      await db.collection('students').deleteOne({ _id: oldId });
+    }
+
+    // Créer / mettre à jour avec la nouvelle classe
+    const updatedStudent = {
+      ...student,
+      _id: newId,
+      class: newClass,
+      updatedAt: new Date()
+    };
+
+    await db.collection('students').updateOne(
+      { _id: newId },
+      { $set: updatedStudent },
+      { upsert: true }
+    );
+
+    // Mettre à jour les évaluations associées à l'élève
+    try {
+      await db.collection('homework_evaluations').updateMany(
+        { studentId: oldId },
+        { $set: { studentId: newId, class: newClass } }
+      );
+    } catch (evalErr) {
+      console.warn('Note mise à jour homework_evaluations:', evalErr.message);
+    }
+
+    res.status(200).json({
+      message: `L'élève ${studentName} a été déplacé avec succès de ${currentOldClass} vers ${newClass}.`,
+      student: updatedStudent
+    });
+  } catch (error) {
+    console.error('Erreur POST /api/admin/students/move:', error);
+    res.status(500).json({ message: 'Erreur lors du déplacement de l\'élève.' });
+  }
+});
+
 // ============================================================================
 // API PORTAIL DEVOIRS ET ÉVALUATIONS (AVEC TRANSFERT AUTOMATIQUE)
 // ============================================================================
@@ -3264,13 +3332,14 @@ function getTeacherLanguage(teacher) {
 
 // Vérifier les enseignants incomplets et envoyer des notifications
 // Cette route sera appelée par un CRON job chaque LUNDI (3 fois par jour)
-app.post('/api/check-incomplete-and-notify', async (req, res) => {
+app.all('/api/check-incomplete-and-notify', async (req, res) => {
   try {
-    const { apiKey } = req.body;
+    const apiKey = (req.body && req.body.apiKey) || req.query.apiKey || req.headers['x-cron-key'] || (req.headers['authorization'] ? req.headers['authorization'].replace(/^Bearer\s+/i, '') : null);
     
-    // Sécurité basique avec clé API
-    if (apiKey !== process.env.CRON_API_KEY) {
-      return res.status(401).json({ message: 'Non autorisé.' });
+    // Sécurité avec clé API (si configurée dans l'environnement)
+    const expectedKey = process.env.CRON_API_KEY || process.env.CRON_SECRET;
+    if (expectedKey && apiKey !== expectedKey) {
+      return res.status(401).json({ message: 'Non autorisé. Clé Cron invalide.' });
     }
 
     // Déterminer la semaine actuelle
@@ -3474,14 +3543,14 @@ app.get('/api/vapid-public-key', (req, res) => {
 
 // ✅ FONCTIONNALITÉ 3: Système d'alertes automatiques hebdomadaires
 // Route pour vérifier et envoyer des alertes TOUTES LES 3 HEURES depuis le LUNDI
-// Cette route doit être appelée par un CRON job externe (GitHub Actions, cron-job.org, etc.)
-app.post('/api/send-weekly-reminders', async (req, res) => {
+// Cette route peut être appelée par Vercel Cron ou un CRON job externe
+app.all('/api/send-weekly-reminders', async (req, res) => {
   try {
-    const { apiKey } = req.body;
+    const apiKey = (req.body && req.body.apiKey) || req.query.apiKey || req.headers['x-cron-key'] || (req.headers['authorization'] ? req.headers['authorization'].replace(/^Bearer\s+/i, '') : null);
     
-    // Sécurité basique avec clé API
-    const CRON_API_KEY = process.env.CRON_API_KEY || 'default-cron-key-change-me';
-    if (apiKey !== CRON_API_KEY) {
+    // Sécurité avec clé API (si configurée dans l'environnement)
+    const expectedKey = process.env.CRON_API_KEY || process.env.CRON_SECRET;
+    if (expectedKey && apiKey !== expectedKey) {
       return res.status(401).json({ message: 'Non autorisé. Clé API invalide.' });
     }
 
@@ -3766,13 +3835,20 @@ app.post('/api/notify-incomplete-teachers', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 
-app.listen(PORT, HOST, () => {
-  console.log(`✅ Server is running and listening on http://${HOST}:${PORT}`);
-  console.log(`🚀 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔑 IA Provider: ${USE_GROQ ? 'GROQ (llama-3.3-70b)' : 'GEMINI'}`);
-  console.log(`📊 MongoDB: ${MONGO_URL ? '✅ Configured' : '❌ Missing'}`);
-  console.log(`📄 Templates: ${LESSON_TEMPLATE_URL && WORD_TEMPLATE_URL ? '✅ Configured' : '❌ Missing'}`);
-});
+// Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel
+if (!process.env.VERCEL) {
+  app.listen(PORT, HOST, () => {
+    console.log(`✅ Server is running and listening on http://${HOST}:${PORT}`);
+    console.log(`🚀 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔑 IA Provider: ${USE_GROQ ? 'GROQ (llama-3.3-70b)' : 'GEMINI'}`);
+    console.log(`📊 MongoDB: ${MONGO_URL ? '✅ Configured' : '❌ Missing'}`);
+    console.log(`📄 Templates: ${LESSON_TEMPLATE_URL && WORD_TEMPLATE_URL ? '✅ Configured' : '❌ Missing'}`);
+  });
+}
 
 // Enregistrer l'instance globale pour éviter les rechargements multiples
 global.appInstance = app;
+
+// Export obligatoire pour Vercel Serverless Functions
+module.exports = app;
+

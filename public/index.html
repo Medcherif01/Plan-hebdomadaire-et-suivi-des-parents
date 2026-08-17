@@ -54,43 +54,77 @@
     </style>
 </head>
 <body dir="ltr">
-    <!-- ECRAN DE SELECTION DE SECTION -->
+    <!-- ECRAN D'ACCUEIL : SUIVI DES PLANS HEBDOMADAIRES ET LES DEVOIRS -->
     <div id="section-selection" class="section-selection-container">
-        <div class="section-selection-card">
+        <div class="section-selection-card home-main-card">
             <img id="logo-select"
                  src="https://lh3.googleusercontent.com/d/1lQ3Babrs3Wgv4rakVmkK0oCWcM0cTKPK"
                  alt="Logo Al-Kawthar">
-            <h1>Plans Hebdomadaires</h1>
-            <p class="section-subtitle">Veuillez choisir votre section pour continuer :</p>
+            <h1 class="home-title">Suivi des plans hebdomadaires et les devoirs</h1>
+            <p class="section-subtitle">متابعة الخطط الأسبوعية والواجبات المدرسية</p>
             
-            <div class="sections-grid">
-                <button type="button" class="section-card-btn boys-theme" onclick="chooseSection('garcons')">
-                    <div class="section-card-icon"><i class="fas fa-mars"></i></div>
-                    <div class="section-card-title">Section Garçons</div>
-                    <div class="section-card-desc">Espace enseignants & cours garçons</div>
-                </button>
-                
-                <button type="button" class="section-card-btn girls-theme" onclick="chooseSection('filles')">
-                    <div class="section-card-icon"><i class="fas fa-venus"></i></div>
-                    <div class="section-card-title">Section Filles</div>
-                    <div class="section-card-desc">Espace enseignants & cours filles</div>
-                </button>
-            </div>
-
-            <!-- ACCÈS DIRECT ESPACE PARENTS SUR LA PREMIÈRE PAGE -->
-            <div style="margin-top:25px; padding-top:20px; border-top:2px dashed #E2E8F0;">
-                <button type="button" onclick="openParentSectionModal()" style="width:100%; padding:16px 22px; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:14px; font-weight:700; font-size:1.1rem; cursor:pointer; box-shadow:0 4px 15px rgba(16,185,129,0.3); display:flex; align-items:center; justify-content:space-between; transition:all 0.25s ease;">
-                    <div style="display:flex; align-items:center; gap:14px;">
-                        <div style="width:44px; height:44px; background:rgba(255,255,255,0.22); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem;">
+            <div class="home-spaces-grid">
+                <!-- 1. ESPACE PARENT -->
+                <div class="home-space-card parent-space-theme">
+                    <div class="space-card-header">
+                        <div class="space-icon-wrapper parent-icon">
                             <i class="fas fa-user-friends"></i>
                         </div>
-                        <div style="text-align:left;">
-                            <div style="font-size:1.15rem; font-weight:800;">Espace Parents 👨‍👩‍👧‍👦</div>
-                            <div style="font-size:0.85rem; opacity:0.95; font-weight:400;">Plan hebdomadaire, devoirs, niveau & contact enseignants</div>
+                        <div>
+                            <h2 class="space-card-title">Espace Parent</h2>
+                            <p class="space-card-ar-title">فضاء أولياء الأمور</p>
                         </div>
                     </div>
-                    <i class="fas fa-arrow-right" style="font-size:1.2rem;"></i>
-                </button>
+                    <p class="space-card-desc">Consultation des plans de cours, devoirs quotidiens, suivi des élèves et contact direct avec les enseignants.</p>
+                    
+                    <div class="space-buttons-row">
+                        <button type="button" class="space-section-btn girls-btn" onclick="enterParentSpaceWithSection('filles')">
+                            <i class="fas fa-venus"></i>
+                            <div class="btn-labels">
+                                <span class="btn-primary-text">Section Filles</span>
+                                <span class="btn-sub-text">قسم البنات 👧</span>
+                            </div>
+                        </button>
+                        <button type="button" class="space-section-btn boys-btn" onclick="enterParentSpaceWithSection('garcons')">
+                            <i class="fas fa-mars"></i>
+                            <div class="btn-labels">
+                                <span class="btn-primary-text">Section Garçons</span>
+                                <span class="btn-sub-text">قسم البنين 👦</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. ESPACE ENSEIGNANT -->
+                <div class="home-space-card teacher-space-theme">
+                    <div class="space-card-header">
+                        <div class="space-icon-wrapper teacher-icon">
+                            <i class="fas fa-chalkboard-teacher"></i>
+                        </div>
+                        <div>
+                            <h2 class="space-card-title">Espace Enseignant</h2>
+                            <p class="space-card-ar-title">فضاء المعلمين</p>
+                        </div>
+                    </div>
+                    <p class="space-card-desc">Saisie et validation des plans hebdomadaires, évaluation des devoirs et réception des messages de parents.</p>
+                    
+                    <div class="space-buttons-row">
+                        <button type="button" class="space-section-btn girls-btn" onclick="chooseSection('filles')">
+                            <i class="fas fa-venus"></i>
+                            <div class="btn-labels">
+                                <span class="btn-primary-text">Section Filles</span>
+                                <span class="btn-sub-text">قسم البنات 👧</span>
+                            </div>
+                        </button>
+                        <button type="button" class="space-section-btn boys-btn" onclick="chooseSection('garcons')">
+                            <i class="fas fa-mars"></i>
+                            <div class="btn-labels">
+                                <span class="btn-primary-text">Section Garçons</span>
+                                <span class="btn-sub-text">قسم البنين 👦</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -198,14 +232,17 @@
 
              <!-- GESTION DES ÉLÈVES ET DES PHOTOS -->
              <div class="admin-subsection user-mgmt-box" style="margin-top:20px;">
-                <h4><i class="fas fa-user-graduate"></i> Gestion des Élèves (Liste, Photos, Classes)</h4>
+                <h4><i class="fas fa-user-graduate"></i> Gestion des Élèves (Liste, Photos, Déplacement de Classes)</h4>
                 <div class="user-mgmt-header" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                     <label for="adminStudentClassFilter">Classe :</label>
                     <select id="adminStudentClassFilter" onchange="loadAdminStudentsList()">
-                        <option value="PEI1">PEI1</option>
-                        <option value="PEI2">PEI2</option>
-                        <option value="PEI3">PEI3</option>
-                        <option value="PEI4">PEI4</option>
+                        <option value="PEI1">السادس (PEI1)</option>
+                        <option value="PEI2">الاول متوسط (PEI2)</option>
+                        <option value="PEI3">الثاني متوسط (PEI3)</option>
+                        <option value="PEI4">الثالث متوسط (PEI4)</option>
+                        <option value="PEI5">الأول ثانوي (PEI5)</option>
+                        <option value="DP1">الثاني ثانوي (DP1)</option>
+                        <option value="DP2">الثالث ثانوي (DP2)</option>
                     </select>
                     <label for="adminStudentSectionFilter">Section :</label>
                     <select id="adminStudentSectionFilter" onchange="loadAdminStudentsList()">
@@ -222,7 +259,40 @@
                         <i class="fas fa-plus-circle"></i> <span class="btn-text">Ajouter / Enregistrer Élève</span>
                     </button>
                 </div>
-                <div id="adminStudentStatus" style="font-size:0.9em; margin-bottom:10px;"></div>
+
+                <!-- OUTIL DÉPLACEMENT D'ÉLÈVE VERS UNE AUTRE CLASSE -->
+                <div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:12px; padding:15px; margin-top:15px;">
+                    <h5 style="margin:0 0 10px 0; color:#1E1B4B; font-weight:700; font-size:0.95rem;">
+                        <i class="fas fa-exchange-alt" style="color:#2563EB;"></i> Déplacer un Élève vers une Autre Classe (ex: Yasser de PEI2 vers PEI3) :
+                    </h5>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <div style="flex:1; min-width:180px;">
+                            <label style="font-size:0.8rem; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Élève à déplacer :</label>
+                            <select id="adminMoveStudentSelector" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                <option value="">-- Choisir un élève --</option>
+                            </select>
+                        </div>
+                        <div style="width:170px;">
+                            <label style="font-size:0.8rem; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Nouvelle Classe :</label>
+                            <select id="adminMoveTargetClass" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                <option value="PEI1">السادس (PEI1)</option>
+                                <option value="PEI2">الاول متوسط (PEI2)</option>
+                                <option value="PEI3">الثاني متوسط (PEI3)</option>
+                                <option value="PEI4">الثالث متوسط (PEI4)</option>
+                                <option value="PEI5">الأول ثانوي (PEI5)</option>
+                                <option value="DP1">الثاني ثانوي (DP1)</option>
+                                <option value="DP2">الثالث ثانوي (DP2)</option>
+                            </select>
+                        </div>
+                        <div style="padding-top:18px;">
+                            <button type="button" class="pro-button primary-button" onclick="adminQuickMoveStudent()" style="padding:9px 16px;">
+                                <i class="fas fa-check-circle"></i> Enregistrer le déplacement
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="adminStudentStatus" style="font-size:0.9em; margin-bottom:10px; margin-top:10px;"></div>
 
                 <div id="studentsTableContainer" class="users-table-wrapper">
                     <p>Chargement des élèves...</p>
@@ -459,20 +529,47 @@
                     </div>
                 </div>
 
-                <!-- 2. VUE SÉLECTION PARENT (CHOIX CLASSE / ÉLÈVE) -->
+                <!-- 2. VUE SÉLECTION PARENT (CHOIX CLASSE / ÉLÈVE & CONTACT ENSEIGNANTS) -->
                 <div id="parent-selection-view" class="homework-view" style="display:none;">
-                    <button class="pro-button" onclick="showHomeworkView('homework-home')" style="margin-bottom:15px;">
-                        <i class="fas fa-arrow-left"></i> Retour
-                    </button>
-                    <h2 id="parent-title"><i class="fas fa-child"></i> Espace Parents - Choisir un élève</h2>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+                        <button class="pro-button" onclick="showHomeworkView('parent-plan')" style="padding:8px 14px;">
+                            <i class="fas fa-arrow-left"></i> <span id="btnBackToPlanText">Plan Hebdomadaire</span>
+                        </button>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <button type="button" class="pro-button" onclick="toggleParentLanguage()" id="parentLangToggleBtn2" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer;">
+                                <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ONGLETS DE NAVIGATION ESPACE PARENT -->
+                    <div class="parent-nav-tabs" style="display:flex; gap:10px; margin-bottom:20px; overflow-x:auto; padding-bottom:5px;">
+                        <button type="button" class="pro-button" onclick="showHomeworkView('parent-plan')">
+                            <i class="fas fa-calendar-alt"></i> <span class="tab-txt-plan">1. Plan Hebdomadaire</span>
+                        </button>
+                        <button type="button" class="pro-button primary-button active" onclick="showHomeworkView('parent-selection')">
+                            <i class="fas fa-user-graduate"></i> <span class="tab-txt-students">2. Suivi Élèves & Devoirs</span>
+                        </button>
+                        <button type="button" class="pro-button" onclick="showTeacherContactSection()">
+                            <i class="fas fa-comments"></i> <span class="tab-txt-teachers">3. Contacter Enseignants</span>
+                        </button>
+                        <button type="button" class="pro-button" onclick="showHomeworkView('homework-home')">
+                            <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
+                        </button>
+                    </div>
+
+                    <h2 id="parent-title" style="color:#1E1B4B;"><i class="fas fa-child" style="color:#10B981;"></i> <span id="parentTitleText">Espace Parents - Suivi des Élèves</span></h2>
 
                     <div class="filter-container" style="margin-bottom:20px;">
-                        <label>Sélectionner la classe :</label>
+                        <label id="lblSelectClass" style="font-weight:700; color:#374151;">Sélectionner la classe :</label>
                         <div id="parent-class-buttons" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
-                            <button class="pro-button" onclick="loadClassStudents('PEI1')">PEI1</button>
-                            <button class="pro-button" onclick="loadClassStudents('PEI2')">PEI2</button>
-                            <button class="pro-button" onclick="loadClassStudents('PEI3')">PEI3</button>
-                            <button class="pro-button" onclick="loadClassStudents('PEI4')">PEI4</button>
+                            <button class="pro-button" onclick="loadClassStudents('PEI1')">السادس (PEI1)</button>
+                            <button class="pro-button" onclick="loadClassStudents('PEI2')">الاول متوسط (PEI2)</button>
+                            <button class="pro-button" onclick="loadClassStudents('PEI3')">الثاني متوسط (PEI3)</button>
+                            <button class="pro-button" onclick="loadClassStudents('PEI4')">الثالث متوسط (PEI4)</button>
+                            <button class="pro-button" onclick="loadClassStudents('PEI5')">الأول ثانوي (PEI5)</button>
+                            <button class="pro-button" onclick="loadClassStudents('DP1')">الثاني ثانوي (DP1)</button>
+                            <button class="pro-button" onclick="loadClassStudents('DP2')">الثالث ثانوي (DP2)</button>
                         </div>
                     </div>
 
@@ -481,13 +578,13 @@
                     </div>
 
                     <!-- CONTACT ENSEIGNANTS ET MESSAGES PARENT -->
-                    <div class="teacher-contact-section">
-                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                            <h3><i class="fas fa-comments"></i> Contacter les Enseignants</h3>
-                            <button class="pro-button primary-button" onclick="openParentAuthModal()"><i class="fas fa-user-lock"></i> Connexion / Inscription Parent</button>
+                    <div id="teacher-contact-section" class="teacher-contact-section" style="background:white; border-radius:18px; padding:24px; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1px solid #E2E8F0; margin-top:30px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+                            <h3 style="margin:0; color:#1E1B4B; font-size:1.25rem;"><i class="fas fa-comments" style="color:#2563EB;"></i> <span id="txtContactTeachersTitle">Contacter les Enseignants</span></h3>
+                            <button class="pro-button primary-button" onclick="openParentAuthModal()"><i class="fas fa-user-lock"></i> <span id="txtParentAuthBtn">Connexion / Inscription Parent</span></button>
                         </div>
-                        <p style="font-size:0.9em; color:#6B7280; margin-top:5px;">Cliquez sur l'enseignant pour lui envoyer un message concernant votre enfant.</p>
-                        <div id="teachers-contact-grid" class="teachers-contact-grid">
+                        <p id="txtContactTeachersDesc" style="font-size:0.92rem; color:#6B7280; margin:0 0 18px 0;">Cliquez sur n'importe quel enseignant ci-dessous pour lui envoyer directement un message concernant votre enfant.</p>
+                        <div id="teachers-contact-grid" class="teachers-contact-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:16px;">
                             <!-- Liste des enseignants à contacter -->
                         </div>
                         <div id="parent-messages-history" style="margin-top:20px;"></div>
@@ -498,7 +595,7 @@
                 <div id="student-dashboard-view" class="homework-view" style="display:none;">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
                         <button class="pro-button" onclick="showHomeworkView('parent-selection')">
-                            <i class="fas fa-arrow-left"></i> Retour aux élèves
+                            <i class="fas fa-arrow-left"></i> <span id="btnBackToStudentsList">Retour aux élèves</span>
                         </button>
                         <div style="display:flex; gap:10px; align-items:center;">
                             <span id="student-stars-count" style="font-size:1.2rem; font-weight:bold; color:#F59E0B;"><i class="fas fa-star"></i> 0</span>
@@ -520,9 +617,9 @@
 
                     <!-- SÉLECTEUR DE DATE ET DEVOIRS -->
                     <div class="filter-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
-                        <button class="pro-button" onclick="changeHomeworkDate(-1)"><i class="fas fa-chevron-left"></i> Jour Précédent</button>
+                        <button class="pro-button" onclick="changeHomeworkDate(-1)"><i class="fas fa-chevron-left"></i> <span id="btnPrevDayText">Jour Précédent</span></button>
                         <h3 id="current-homework-date-display" style="margin:0; color:#1e1b4b;"><i class="fas fa-calendar-day"></i> </h3>
-                        <button class="pro-button" onclick="changeHomeworkDate(1)">Jour Suivant <i class="fas fa-chevron-right"></i></button>
+                        <button class="pro-button" onclick="changeHomeworkDate(1)"><span id="btnNextDayText">Jour Suivant</span> <i class="fas fa-chevron-right"></i></button>
                     </div>
 
                     <!-- GRILLE DES DEVOIRS POUR LA JOURNÉE (TRANSFERT AUTOMATIQUE) -->
@@ -542,10 +639,13 @@
                         <div>
                             <label>Classe :</label>
                             <select id="teacher-hw-class" onchange="loadTeacherHomeworks()">
-                                <option value="PEI1">PEI1</option>
-                                <option value="PEI2">PEI2</option>
-                                <option value="PEI3">PEI3</option>
-                                <option value="PEI4">PEI4</option>
+                                <option value="PEI1">السادس (PEI1)</option>
+                                <option value="PEI2">الاول متوسط (PEI2)</option>
+                                <option value="PEI3">الثاني متوسط (PEI3)</option>
+                                <option value="PEI4">الثالث متوسط (PEI4)</option>
+                                <option value="PEI5">الأول ثانوي (PEI5)</option>
+                                <option value="DP1">الثاني ثانوي (DP1)</option>
+                                <option value="DP2">الثالث ثانوي (DP2)</option>
                             </select>
                         </div>
                         <div>
@@ -561,24 +661,28 @@
                     </div>
                 </div>
 
-                <!-- 5. NOUVEL ESPACE PLAN HEBDOMADAIRE POUR LES PARENTS -->
+                <!-- 5. ESPACE PLAN HEBDOMADAIRE POUR LES PARENTS (BILINGUE FR / AR) -->
                 <div id="parent-plan-view" class="homework-view" style="display:none;">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
                         <div style="display:flex; align-items:center; gap:12px;">
-                            <button class="pro-button" onclick="showHomeworkView('homework-home')" style="padding:8px 14px;">
-                                <i class="fas fa-arrow-left"></i> Accueil
+                            <button class="pro-button" onclick="resetSectionChoice()" style="padding:8px 14px;">
+                                <i class="fas fa-home"></i> <span id="btnHomeText">Accueil</span>
                             </button>
                             <h2 style="color:#1e1b4b; margin:0; font-size:1.4rem; font-weight:700;">
-                                <i class="fas fa-calendar-week" style="color:#10B981;"></i> Plan Hebdomadaire
+                                <i class="fas fa-calendar-week" style="color:#10B981;"></i> <span id="parentPlanViewHeader">Plan Hebdomadaire</span>
                             </h2>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <!-- Bouton Sélecteur de Langue FR / AR -->
+                            <button type="button" class="pro-button" onclick="toggleParentLanguage()" id="parentLangToggleBtn" style="padding:8px 16px; font-weight:700; background:#3B82F6; color:white; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
+                                <i class="fas fa-language"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
+                            </button>
                             <!-- Bouton Changement de Section pour Parent -->
                             <button type="button" class="pro-button" onclick="toggleParentSection()" id="parentSectionToggleBtn" style="padding:8px 16px; font-weight:600; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; box-shadow:0 3px 10px rgba(16,185,129,0.25); cursor:pointer;">
                                 <i class="fas fa-venus-mars"></i> <span id="parentSectionToggleText">Section Garçons 👦</span>
                             </button>
                             <button type="button" class="pro-button primary-button" onclick="showHomeworkView('parent-selection')" style="padding:8px 16px;">
-                                <i class="fas fa-child"></i> Suivi Élève & Contact
+                                <i class="fas fa-child"></i> <span id="btnHeaderStudentFollow">Suivi Élève & Contact</span>
                             </button>
                         </div>
                     </div>
@@ -586,13 +690,16 @@
                     <!-- ONGLETS DE NAVIGATION ESPACE PARENT -->
                     <div class="parent-nav-tabs" style="display:flex; gap:10px; margin-bottom:20px; overflow-x:auto; padding-bottom:5px;">
                         <button type="button" class="pro-button primary-button active" onclick="showHomeworkView('parent-plan')">
-                            <i class="fas fa-calendar-alt"></i> 1. Plan Hebdomadaire
+                            <i class="fas fa-calendar-alt"></i> <span class="tab-txt-plan">1. Plan Hebdomadaire</span>
                         </button>
                         <button type="button" class="pro-button" onclick="showHomeworkView('parent-selection')">
-                            <i class="fas fa-user-graduate"></i> 2. Suivi Élèves & Devoirs
+                            <i class="fas fa-user-graduate"></i> <span class="tab-txt-students">2. Suivi Élèves & Devoirs</span>
+                        </button>
+                        <button type="button" class="pro-button" onclick="showTeacherContactSection()">
+                            <i class="fas fa-comments"></i> <span class="tab-txt-teachers">3. Contacter Enseignants</span>
                         </button>
                         <button type="button" class="pro-button" onclick="showHomeworkView('homework-home')">
-                            <i class="fas fa-camera"></i> 3. Célébrations & Photos
+                            <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
                         </button>
                     </div>
 
@@ -602,7 +709,7 @@
                             
                             <!-- Sélecteur de Semaine -->
                             <div>
-                                <label style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
+                                <label id="lblFilterWeek" style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
                                     <i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Semaine :
                                 </label>
                                 <select id="parentWeekSelector" class="pro-select" onchange="loadParentWeeklyPlan()" style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid #CBD5E1; font-weight:600; font-size:0.95rem;">
@@ -612,7 +719,7 @@
 
                             <!-- Sélecteur de Classe -->
                             <div>
-                                <label style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
+                                <label id="lblFilterClass" style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
                                     <i class="fas fa-users" style="color:#10B981;"></i> Classe :
                                 </label>
                                 <select id="parentClassSelector" class="pro-select" onchange="loadParentWeeklyPlan()" style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid #CBD5E1; font-weight:600; font-size:0.95rem;">
@@ -628,7 +735,7 @@
 
                             <!-- Sélecteur de Jour -->
                             <div>
-                                <label style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
+                                <label id="lblFilterDay" style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
                                     <i class="fas fa-clock" style="color:#F59E0B;"></i> Jour :
                                 </label>
                                 <select id="parentDaySelector" class="pro-select" onchange="filterParentPlanByDay()" style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid #CBD5E1; font-weight:600; font-size:0.95rem;">
@@ -684,13 +791,37 @@
             </div>
         </div>
 
-        <!-- MODAL CONTACT ENSEIGNANT -->
+        <!-- MODAL CONTACT ENSEIGNANT (BILINGUE FR / AR) -->
         <div id="contact-teacher-modal" class="hw-modal" style="display:none;">
-            <div class="hw-modal-content">
+            <div class="hw-modal-content" style="max-width:540px; border-radius:20px; padding:28px;">
                 <span class="hw-close-modal" onclick="closeContactTeacherModal()">&times;</span>
-                <h3 id="contact-modal-title"><i class="fas fa-envelope"></i> Envoyer un message</h3>
-                <textarea id="parentMessageText" rows="4" placeholder="Écrivez votre message ici..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; margin:15px 0;"></textarea>
-                <button class="pro-button success-button" onclick="submitParentMessage()" style="width:100%;">Envoyer</button>
+                <h3 id="contact-modal-title" style="margin-top:0; color:#1E1B4B; display:flex; align-items:center; gap:10px; font-size:1.3rem;">
+                    <i class="fas fa-envelope-open-text" style="color:#2563EB;"></i> <span id="contactModalTeacherHeading">Contacter l'enseignant</span>
+                </h3>
+                
+                <div style="margin-top:16px;">
+                    <label id="lblContactParentName" style="font-size:0.9rem; font-weight:700; color:#374151; display:block; margin-bottom:6px;">Votre nom (Parent) :</label>
+                    <input type="text" id="parentMsgSenderName" placeholder="Ex: Mohammed Al-Ghamdi" style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid #CBD5E1; font-size:0.95rem; margin-bottom:14px; box-sizing:border-box;">
+                </div>
+
+                <div>
+                    <label id="lblContactParentPhone" style="font-size:0.9rem; font-weight:700; color:#374151; display:block; margin-bottom:6px;">Numéro de téléphone (optionnel) :</label>
+                    <input type="tel" id="parentMsgSenderPhone" placeholder="Ex: 05xxxxxxxx" style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid #CBD5E1; font-size:0.95rem; margin-bottom:14px; box-sizing:border-box;">
+                </div>
+
+                <div>
+                    <label id="lblContactParentMsg" style="font-size:0.9rem; font-weight:700; color:#374151; display:block; margin-bottom:6px;">Votre message :</label>
+                    <textarea id="parentMessageText" rows="4" placeholder="Écrivez votre message concernant le suivi de votre enfant..." style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid #CBD5E1; font-size:0.95rem; margin-bottom:18px; box-sizing:border-box;"></textarea>
+                </div>
+
+                <div style="display:flex; gap:12px;">
+                    <button class="pro-button success-button" onclick="submitParentMessage()" id="btnSubmitParentMsg" style="flex:1; padding:12px; font-weight:700; font-size:1rem;">
+                        <i class="fas fa-paper-plane"></i> <span id="btnSendParentMsgText">Envoyer le message</span>
+                    </button>
+                    <button class="pro-button secondary-button" onclick="closeContactTeacherModal()" style="padding:12px 18px;">
+                        <span id="btnCancelParentMsgText">Fermer</span>
+                    </button>
+                </div>
             </div>
         </div>
 

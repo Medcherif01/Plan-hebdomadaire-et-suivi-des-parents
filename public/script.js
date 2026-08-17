@@ -1106,10 +1106,12 @@ function enterParentSpaceWithSection(section) {
     if (mainContent) mainContent.style.display = 'block';
     
     updateSectionBadges();
+    applyParentLanguageUI();
     
     // Basculer vers le portail devoirs/parents
     switchMainTab('devoirs');
     showHomeworkView('parent-plan');
+    loadTeachersContactGrid();
 }
 
 function toggleParentSection() {
@@ -1209,13 +1211,14 @@ async function loadParentWeeklyPlan() {
         });
         
         const isComplete = (classRows.length > 0 && emptyCount === 0);
+        const t = parentI18n[currentUserLanguage] || parentI18n.fr;
         
         if (statusBanner) {
             if (classRows.length === 0) {
                 statusBanner.innerHTML = `
                     <div style="background:#F3F4F6; border:1px solid #D1D5DB; border-radius:14px; padding:16px 20px; color:#4B5563; font-weight:600; display:flex; align-items:center; gap:12px;">
                         <i class="fas fa-info-circle" style="font-size:1.5rem; color:#6B7280;"></i>
-                        <span>Aucun plan publié pour la classe ${selectedClass} en Semaine ${selectedWeek}.</span>
+                        <span>${t.noPlanPublished} (${selectedClass} - Semaine ${selectedWeek})</span>
                     </div>
                 `;
             } else if (isComplete) {
@@ -1223,8 +1226,8 @@ async function loadParentWeeklyPlan() {
                     <div style="background:#ECFDF5; border:2px solid #10B981; border-radius:14px; padding:16px 22px; color:#065F46; font-weight:700; box-shadow:0 4px 12px rgba(16,185,129,0.15); display:flex; align-items:center; gap:14px;">
                         <i class="fas fa-check-circle" style="font-size:1.8rem; color:#10B981;"></i>
                         <div>
-                            <div style="font-size:1.1rem; color:#065F46;">Plan Hebdomadaire Officiel - Saisie terminée ✅</div>
-                            <div style="font-size:0.88rem; font-weight:500; color:#047857; margin-top:2px;">Tous les enseignants ont finalisé la préparation des cours pour la classe ${selectedClass} (Semaine ${selectedWeek}).</div>
+                            <div style="font-size:1.1rem; color:#065F46;">${t.planCompletedTitle}</div>
+                            <div style="font-size:0.88rem; font-weight:500; color:#047857; margin-top:2px;">${t.planCompletedDesc} (${selectedClass} - Semaine ${selectedWeek})</div>
                         </div>
                     </div>
                 `;
@@ -1233,8 +1236,8 @@ async function loadParentWeeklyPlan() {
                     <div style="background:#FFFBEB; border:2px solid #F59E0B; border-radius:14px; padding:16px 22px; color:#92400E; font-weight:700; box-shadow:0 4px 12px rgba(245,158,11,0.15); display:flex; align-items:center; gap:14px;">
                         <i class="fas fa-hourglass-half" style="font-size:1.8rem; color:#F59E0B;"></i>
                         <div>
-                            <div style="font-size:1.1rem; color:#92400E;">Plan Hebdomadaire en cours de finalisation ⏳</div>
-                            <div style="font-size:0.88rem; font-weight:500; color:#B45309; margin-top:2px;">L'équipe pédagogique finalise actuellement la saisie. Les cours déjà préparés pour la classe ${selectedClass} sont affichés ci-dessous.</div>
+                            <div style="font-size:1.1rem; color:#92400E;">${t.planInProgressTitle}</div>
+                            <div style="font-size:0.88rem; font-weight:500; color:#B45309; margin-top:2px;">${t.planInProgressDesc} (${selectedClass} - Semaine ${selectedWeek})</div>
                         </div>
                     </div>
                 `;
@@ -1249,7 +1252,7 @@ async function loadParentWeeklyPlan() {
                 notesBox.innerHTML = `
                     <div style="background:#FEF3C7; border-left:6px solid #D97706; padding:16px 20px; border-radius:12px; color:#78350F; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
                         <div style="font-size:1.05rem; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
-                            <i class="fas fa-sticky-note" style="color:#D97706;"></i> Remarques Générales de la Classe (${selectedClass}) :
+                            <i class="fas fa-sticky-note" style="color:#D97706;"></i> ${currentUserLanguage === 'ar' ? 'ملاحظات عامة للصف' : 'Remarques Générales de la Classe'} (${selectedClass}) :
                         </div>
                         <p style="margin:0; font-weight:400; font-size:0.95rem; white-space:pre-wrap;">${classNote}</p>
                     </div>
@@ -1269,6 +1272,7 @@ async function loadParentWeeklyPlan() {
 function renderParentPlanCards(rows) {
     const container = document.getElementById('parentPlanDisplayContainer');
     const dayFilter = document.getElementById('parentDaySelector')?.value || 'all';
+    const t = parentI18n[currentUserLanguage] || parentI18n.fr;
     
     if (!container) return;
     
@@ -1276,7 +1280,7 @@ function renderParentPlanCards(rows) {
         container.innerHTML = `
             <div style="text-align:center; padding:40px; background:white; border-radius:16px; border:1px dashed #CBD5E1;">
                 <i class="fas fa-calendar-times fa-3x" style="color:#9CA3AF; margin-bottom:12px;"></i>
-                <p style="color:#6B7280; font-size:1.05rem; font-weight:600; margin:0;">Aucun cours enregistré pour cette sélection.</p>
+                <p style="color:#6B7280; font-size:1.05rem; font-weight:600; margin:0;">${t.noCoursesFound}</p>
             </div>
         `;
         return;
@@ -1314,7 +1318,11 @@ function renderParentPlanCards(rows) {
         dayRows.sort((a, b) => (parseInt(a[periodeKey], 10) || 0) - (parseInt(b[periodeKey], 10) || 0));
         
         const weekStartDateNode = getDateForDayName(dayName);
-        const formattedDayDate = weekStartDateNode ? formatDateForDisplay(weekStartDateNode) : dayName;
+        let formattedDayDate = weekStartDateNode ? formatDateForDisplay(weekStartDateNode) : dayName;
+        if (currentUserLanguage === 'ar') {
+            const arDay = t.daysMap[dayName] || dayName;
+            formattedDayDate = `${arDay} ${weekStartDateNode ? `(${weekStartDateNode.getUTCDate()}/${weekStartDateNode.getUTCMonth() + 1})` : ''}`;
+        }
         
         html += `
             <div class="parent-day-card" style="background:white; border-radius:18px; box-shadow:0 4px 20px rgba(0,0,0,0.06); border:1px solid #E2E8F0; overflow:hidden;">
@@ -1324,7 +1332,7 @@ function renderParentPlanCards(rows) {
                         <span>${formattedDayDate}</span>
                     </div>
                     <span style="background:rgba(255,255,255,0.15); padding:4px 12px; border-radius:20px; font-size:0.85rem; font-weight:600;">
-                        ${dayRows.length} Séance(s)
+                        ${dayRows.length} ${t.sessionsCount}
                     </span>
                 </div>
                 
@@ -1348,31 +1356,37 @@ function renderParentPlanCards(rows) {
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #E5E7EB;">
                         <div style="display:flex; align-items:center; gap:10px;">
                             <span style="background:#EEF2FF; color:#4F46E5; font-weight:800; padding:6px 12px; border-radius:8px; font-size:0.9rem;">
-                                Période ${period}
+                                ${t.periodLabel} ${period}
                             </span>
                             <h4 style="margin:0; color:#1E1B4B; font-size:1.15rem; font-weight:700;">${matiere}</h4>
                         </div>
-                        ${enseignant ? `<span style="color:#6B7280; font-size:0.9rem; font-weight:600;"><i class="fas fa-chalkboard-teacher" style="color:#818CF8; margin-right:5px;"></i> ${enseignant}</span>` : ''}
+                        ${enseignant ? `
+                            <button type="button" onclick="openContactTeacherModal('${enseignant.replace(/'/g, "\\'")}')" class="teacher-direct-msg-btn" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:6px 12px; border-radius:10px; font-size:0.88rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.2s ease;">
+                                <i class="fas fa-chalkboard-teacher" style="color:#6366F1;"></i>
+                                <span>${enseignant}</span>
+                                <span style="font-size:0.75rem; background:#4338CA; color:white; padding:2px 6px; border-radius:6px; margin-left:4px;">✉️ ${currentUserLanguage === 'ar' ? 'تواصل' : 'Message'}</span>
+                            </button>
+                        ` : ''}
                     </div>
                     
                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
                         <!-- Leçon / Sujet du cours -->
                         <div style="background:white; padding:12px 16px; border-radius:10px; border:1px solid #E2E8F0;">
-                            <div style="font-size:0.82rem; font-weight:700; color:#6B7280; margin-bottom:4px; text-transform:uppercase;">
-                                <i class="fas fa-book-reader" style="color:#3B82F6;"></i> Leçon / Sujet :
+                            <div style="font-size:0.82rem; font-weight:700; color:#6B7280; margin-bottom:4px;">
+                                <i class="fas fa-book-reader" style="color:#3B82F6;"></i> ${t.lessonTopic}
                             </div>
                             <div style="font-size:0.98rem; font-weight:600; color:${isLessonEmpty ? '#9CA3AF' : '#1F2937'};">
-                                ${isLessonEmpty ? '<i>Non renseigné</i>' : lecon}
+                                ${isLessonEmpty ? `<i>${currentUserLanguage === 'ar' ? 'غير مسجل' : 'Non renseigné'}</i>` : lecon}
                             </div>
                         </div>
                         
                         <!-- Travail de classe -->
                         <div style="background:white; padding:12px 16px; border-radius:10px; border:1px solid #E2E8F0;">
-                            <div style="font-size:0.82rem; font-weight:700; color:#6B7280; margin-bottom:4px; text-transform:uppercase;">
-                                <i class="fas fa-tasks" style="color:#8B5CF6;"></i> Travail de classe :
+                            <div style="font-size:0.82rem; font-weight:700; color:#6B7280; margin-bottom:4px;">
+                                <i class="fas fa-tasks" style="color:#8B5CF6;"></i> ${t.classWork}
                             </div>
                             <div style="font-size:0.95rem; color:#374151;">
-                                ${travaux && travaux.trim() !== '' ? travaux : '<i>Exercices et activités en classe</i>'}
+                                ${travaux && travaux.trim() !== '' ? travaux : `<i>${currentUserLanguage === 'ar' ? 'تمارين وأنشطة صفية' : 'Exercices et activités en classe'}</i>`}
                             </div>
                         </div>
                     </div>
@@ -1380,16 +1394,16 @@ function renderParentPlanCards(rows) {
                     <!-- Devoirs à la maison (Design vert pro) -->
                     <div style="margin-top:12px; background:${isHomeworkEmpty ? '#F9FAFB' : '#ECFDF5'}; border:1px solid ${isHomeworkEmpty ? '#E5E7EB' : '#A7F3D0'}; padding:12px 16px; border-radius:10px; color:${isHomeworkEmpty ? '#6B7280' : '#065F46'}; font-weight:600;">
                         <div style="font-size:0.85rem; font-weight:800; color:${isHomeworkEmpty ? '#9CA3AF' : '#059669'}; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-                            <i class="fas fa-pen-fancy"></i> Devoirs à la maison :
+                            <i class="fas fa-pen-fancy"></i> ${t.homeWork}
                         </div>
                         <div style="font-size:0.98rem; color:${isHomeworkEmpty ? '#9CA3AF' : '#064E3B'}; font-weight:${isHomeworkEmpty ? '400' : '700'};">
-                            ${isHomeworkEmpty ? 'Aucun devoir à la maison pour ce cours' : devoirs}
+                            ${isHomeworkEmpty ? t.noHomework : devoirs}
                         </div>
                     </div>
                     
                     ${support && support.trim() !== '' ? `
                         <div style="margin-top:10px; font-size:0.88rem; color:#2563EB; font-weight:600;">
-                            <i class="fas fa-link" style="margin-right:5px;"></i> Support : <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="color:#2563EB; text-decoration:underline;">${support}</a>
+                            <i class="fas fa-link" style="margin-right:5px;"></i> ${t.supportLinks} <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="color:#2563EB; text-decoration:underline;">${support}</a>
                         </div>
                     ` : ''}
                 </div>
@@ -1406,7 +1420,7 @@ function renderParentPlanCards(rows) {
         container.innerHTML = `
             <div style="text-align:center; padding:40px; background:white; border-radius:16px; border:1px dashed #CBD5E1;">
                 <i class="fas fa-calendar-day fa-3x" style="color:#9CA3AF; margin-bottom:12px;"></i>
-                <p style="color:#6B7280; font-size:1.05rem; font-weight:600; margin:0;">Aucun cours pour le jour sélectionné (${dayFilter}).</p>
+                <p style="color:#6B7280; font-size:1.05rem; font-weight:600; margin:0;">${t.noCoursesFound}</p>
             </div>
         `;
     } else {
@@ -1706,7 +1720,7 @@ async function loadGeneralEvaluations(studentName, className) {
 }
 
 // ============================================================================
-// GESTION DES ÉLÈVES PAR L'ADMIN (ADMINISTRATION DEVOIRS)
+// GESTION DES ÉLÈVES PAR L'ADMIN (ADMINISTRATION DEVOIRS & DÉPLACEMENT)
 // ============================================================================
 
 async function loadAdminStudentsList() {
@@ -1714,6 +1728,7 @@ async function loadAdminStudentsList() {
         const className = document.getElementById('adminStudentClassFilter')?.value || 'PEI1';
         const section = document.getElementById('adminStudentSectionFilter')?.value || 'garcons';
         const container = document.getElementById('studentsTableContainer');
+        const quickSelector = document.getElementById('adminMoveStudentSelector');
         if (!container) return;
 
         container.innerHTML = '<p>Chargement des élèves...</p>';
@@ -1721,42 +1736,189 @@ async function loadAdminStudentsList() {
         const res = await fetch(`/api/admin/students?class=${className}&section=${section}`);
         if (res.ok) {
             const students = await res.json();
+            
+            // Mettre à jour le sélecteur rapide de déplacement
+            if (quickSelector) {
+                if (students && students.length > 0) {
+                    quickSelector.innerHTML = '<option value="">-- Choisir un élève à déplacer --</option>' +
+                        students.map(s => `<option value="${s._id || s.name}" data-name="${s.name}" data-class="${s.class}">${s.name} (${s.class})</option>`).join('');
+                } else {
+                    quickSelector.innerHTML = '<option value="">-- Aucun élève dans cette classe --</option>';
+                }
+            }
+
             if (!students || students.length === 0) {
-                container.innerHTML = '<p>Aucun élève trouvé.</p>';
+                container.innerHTML = `<p style="color:#64748B; padding:15px;">Aucun élève trouvé pour la classe <strong>${className}</strong> (${section === 'garcons' ? 'Garçons' : 'Filles'}).</p>`;
                 return;
             }
+
+            const allClasses = [
+                { id: 'PEI1', label: 'السادس (PEI1)' },
+                { id: 'PEI2', label: 'الاول متوسط (PEI2)' },
+                { id: 'PEI3', label: 'الثاني متوسط (PEI3)' },
+                { id: 'PEI4', label: 'الثالث متوسط (PEI4)' },
+                { id: 'PEI5', label: 'الأول ثانوي (PEI5)' },
+                { id: 'DP1', label: 'الثاني ثانوي (DP1)' },
+                { id: 'DP2', label: 'الثالث ثانوي (DP2)' }
+            ];
 
             container.innerHTML = `
                 <table class="users-table">
                     <thead>
                         <tr>
                             <th>Photo</th>
-                            <th>Nom</th>
-                            <th>Classe</th>
-                            <th>Anniversaire</th>
+                            <th>Nom de l'élève</th>
+                            <th>Classe actuelle</th>
+                            <th>Date anniversaire</th>
+                            <th>Déplacer vers une autre classe</th>
                             <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${students.map(s => `
+                        ${students.map(s => {
+                            const safeId = (s._id || s.name).replace(/[^a-zA-Z0-9_-]/g, '_');
+                            return `
                             <tr>
                                 <td><img src="${s.photo || 'https://via.placeholder.com/40'}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'"></td>
                                 <td><strong>${s.name}</strong></td>
-                                <td>${s.class}</td>
+                                <td><span style="background:#E0E7FF; color:#3730A3; padding:4px 8px; border-radius:6px; font-weight:700; font-size:0.85rem;">${s.class}</span></td>
                                 <td>${s.birthday || '-'}</td>
                                 <td>
-                                    <button class="btn-sm-delete" onclick="adminDeleteStudent('${s._id}', '${s.name}', '${s.class}')">
-                                        <i class="fas fa-trash-alt"></i> Supprimer
+                                    <div style="display:flex; gap:6px; align-items:center;">
+                                        <select id="moveClass_${safeId}" class="move-student-select">
+                                            ${allClasses.map(c => `<option value="${c.id}" ${c.id === s.class ? 'selected' : ''}>${c.label}</option>`).join('')}
+                                        </select>
+                                        <button type="button" class="btn-sm-move" onclick="adminMoveStudent('${s._id || ''}', '${s.name.replace(/'/g, "\\'")}', '${s.class}', 'moveClass_${safeId}')">
+                                            <i class="fas fa-exchange-alt"></i> Déplacer
+                                        </button>
+                                    </div>
+                                </td>
+                                <td>
+                                    <button class="btn-sm-delete" onclick="adminDeleteStudent('${s._id}', '${s.name.replace(/'/g, "\\'")}', '${s.class}')">
+                                        <i class="fas fa-trash-alt"></i>
                                     </button>
                                 </td>
                             </tr>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </tbody>
                 </table>
             `;
         }
     } catch (e) {
         console.error('Erreur loadAdminStudentsList:', e);
+    }
+}
+
+async function adminMoveStudent(studentId, studentName, oldClass, selectElementId) {
+    try {
+        const selectEl = document.getElementById(selectElementId);
+        const newClass = selectEl ? selectEl.value : null;
+        const section = document.getElementById('adminStudentSectionFilter')?.value || 'garcons';
+        const statusEl = document.getElementById('adminStudentStatus');
+
+        if (!newClass) {
+            alert("Veuillez choisir une nouvelle classe.");
+            return;
+        }
+
+        if (newClass === oldClass) {
+            alert(`L'élève ${studentName} est déjà dans la classe ${oldClass}.`);
+            return;
+        }
+
+        if (!confirm(`Confirmer le déplacement de l'élève '${studentName}' de ${oldClass} vers ${newClass} ?`)) {
+            return;
+        }
+
+        if (statusEl) statusEl.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Déplacement en cours de ${studentName}...</span>`;
+
+        const res = await fetch('/api/admin/students/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                studentId,
+                studentName,
+                oldClass,
+                newClass,
+                section
+            })
+        });
+
+        const result = await res.json();
+        if (res.ok && result.success) {
+            if (statusEl) statusEl.innerHTML = `<span style="color:green; font-weight:700;"><i class="fas fa-check-circle"></i> Élève '${studentName}' déplacé avec succès de ${oldClass} vers ${newClass} !</span>`;
+            displayAlert(`Élève '${studentName}' déplacé avec succès vers ${newClass} !`, false);
+            loadAdminStudentsList();
+        } else {
+            const err = result.error || 'Erreur lors du déplacement de l\'élève.';
+            if (statusEl) statusEl.innerHTML = `<span style="color:red;"><i class="fas fa-exclamation-triangle"></i> ${err}</span>`;
+            alert(`Erreur: ${err}`);
+        }
+    } catch (e) {
+        console.error('Erreur adminMoveStudent:', e);
+        alert('Erreur réseau lors du déplacement de l\'élève.');
+    }
+}
+
+async function adminQuickMoveStudent() {
+    try {
+        const quickSelector = document.getElementById('adminMoveStudentSelector');
+        const targetClassSelect = document.getElementById('adminMoveTargetClass');
+        const section = document.getElementById('adminStudentSectionFilter')?.value || 'garcons';
+        const statusEl = document.getElementById('adminStudentStatus');
+
+        if (!quickSelector || !quickSelector.value) {
+            alert("Veuillez sélectionner un élève à déplacer.");
+            return;
+        }
+
+        const selectedOption = quickSelector.options[quickSelector.selectedIndex];
+        const studentId = quickSelector.value;
+        const studentName = selectedOption.getAttribute('data-name') || studentId;
+        const oldClass = selectedOption.getAttribute('data-class') || document.getElementById('adminStudentClassFilter')?.value || 'PEI1';
+        const newClass = targetClassSelect ? targetClassSelect.value : null;
+
+        if (!newClass) {
+            alert("Veuillez sélectionner une classe de destination.");
+            return;
+        }
+
+        if (newClass === oldClass) {
+            alert(`L'élève ${studentName} est déjà dans la classe ${oldClass}.`);
+            return;
+        }
+
+        if (!confirm(`Confirmer le déplacement de l'élève '${studentName}' de ${oldClass} vers ${newClass} ?`)) {
+            return;
+        }
+
+        if (statusEl) statusEl.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Déplacement en cours de ${studentName}...</span>`;
+
+        const res = await fetch('/api/admin/students/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                studentId,
+                studentName,
+                oldClass,
+                newClass,
+                section
+            })
+        });
+
+        const result = await res.json();
+        if (res.ok && result.success) {
+            if (statusEl) statusEl.innerHTML = `<span style="color:green; font-weight:700;"><i class="fas fa-check-circle"></i> ${studentName} déplacé avec succès vers ${newClass} !</span>`;
+            displayAlert(`${studentName} a été déplacé vers ${newClass} avec succès !`, false);
+            loadAdminStudentsList();
+        } else {
+            const err = result.error || 'Erreur lors du déplacement de l\'élève.';
+            if (statusEl) statusEl.innerHTML = `<span style="color:red;"><i class="fas fa-exclamation-triangle"></i> ${err}</span>`;
+            alert(`Erreur: ${err}`);
+        }
+    } catch (e) {
+        console.error('Erreur adminQuickMoveStudent:', e);
     }
 }
 
@@ -1841,8 +2003,185 @@ async function adminSavePhoto(photoNum) {
 }
 
 // ============================================================================
-// PARENT & TEACHER MESSAGING UTILS
+// BILINGUAL PARENT SPACE ENGINE & TEACHER CONTACT UTILS
 // ============================================================================
+
+currentUserLanguage = localStorage.getItem('parentLanguage') || 'fr';
+
+const parentI18n = {
+    fr: {
+        langBtn: 'العربية 🇸🇦',
+        homeBtn: 'Accueil',
+        parentPlanTitle: 'Plan Hebdomadaire',
+        studentFollowBtn: 'Suivi Élève & Contact',
+        tabPlan: '1. Plan Hebdomadaire',
+        tabStudents: '2. Suivi Élèves & Devoirs',
+        tabTeachers: '3. Contacter Enseignants',
+        tabPhotos: '4. Célébrations & Photos',
+        filterWeek: 'Semaine :',
+        filterClass: 'Classe :',
+        filterDay: 'Jour :',
+        allDays: 'Tous les jours de la semaine',
+        contactTeachersTitle: 'Contacter les Enseignants',
+        parentAuthBtn: 'Connexion / Inscription Parent',
+        contactTeachersDesc: 'Cliquez sur n\'importe quel enseignant ci-dessous pour lui envoyer directement un message concernant votre enfant.',
+        sendMessageBtn: 'Envoyer message',
+        backToPlan: 'Plan Hebdomadaire',
+        parentTitle: 'Espace Parents - Suivi des Élèves',
+        selectClass: 'Sélectionner la classe :',
+        backToStudents: 'Retour aux élèves',
+        prevDay: 'Jour Précédent',
+        nextDay: 'Jour Suivant',
+        contactModalHeading: 'Contacter l\'enseignant',
+        parentNameLabel: 'Votre nom (Parent) :',
+        parentPhoneLabel: 'Numéro de téléphone (optionnel) :',
+        messageLabel: 'Votre message :',
+        sendMsgBtn: 'Envoyer le message',
+        cancelBtn: 'Fermer',
+        msgSentSuccess: 'Votre message a été envoyé avec succès à l\'enseignant !',
+        msgEmptyErr: 'Veuillez saisir votre message avant d\'envoyer.',
+        lessonTopic: 'Leçon / Sujet :',
+        classWork: 'Travail de classe :',
+        homeWork: 'Devoirs à la maison :',
+        noHomework: 'Aucun devoir à la maison pour ce cours',
+        supportLinks: 'Support :',
+        periodLabel: 'Période',
+        sessionsCount: 'Séance(s)',
+        loadingPlan: 'Chargement du plan hebdomadaire...',
+        noCoursesFound: 'Aucun cours enregistré pour cette sélection.',
+        planCompletedTitle: 'Plan Hebdomadaire Officiel - Saisie terminée ✅',
+        planCompletedDesc: 'Tous les enseignants ont finalisé la préparation des cours pour cette classe.',
+        planInProgressTitle: 'Plan Hebdomadaire en cours de finalisation ⏳',
+        planInProgressDesc: 'L\'équipe pédagogique finalise actuellement la saisie. Les cours préparés sont affichés ci-dessous.',
+        noPlanPublished: 'Aucun plan publié pour cette classe.',
+        daysMap: {
+            "Dimanche": "Dimanche",
+            "Lundi": "Lundi",
+            "Mardi": "Mardi",
+            "Mercredi": "Mercredi",
+            "Jeudi": "Jeudi"
+        }
+    },
+    ar: {
+        langBtn: 'Français 🇫🇷',
+        homeBtn: 'الرئيسية',
+        parentPlanTitle: 'الخطة الأسبوعية',
+        studentFollowBtn: 'متابعة الطالب والتواصل',
+        tabPlan: '١. الخطة الأسبوعية',
+        tabStudents: '٢. متابعة الطلاب والواجبات',
+        tabTeachers: '٣. تواصل مع المعلمين',
+        tabPhotos: '٤. لوحة الشرف والأنشطة',
+        filterWeek: 'الأسبوع :',
+        filterClass: 'الصف :',
+        filterDay: 'اليوم :',
+        allDays: 'جميع أيام الأسبوع',
+        contactTeachersTitle: 'التواصل المباشر مع المعلمين والمعلمات',
+        parentAuthBtn: 'تسجيل دخول / حساب ولي الأمر',
+        contactTeachersDesc: 'اضغط على اسم المعلم أدناه لإرسال رسالة مباشرة بخصوص متابعة مستوى ابنكم الدراسي.',
+        sendMessageBtn: 'مراسلة المعلم ✉️',
+        backToPlan: 'الخطة الأسبوعية',
+        parentTitle: 'فضاء أولياء الأمور - متابعة الطلاب',
+        selectClass: 'اختر الصف الدراسي :',
+        backToStudents: 'العودة لقائمة الطلاب',
+        prevDay: 'اليوم السابق',
+        nextDay: 'اليوم التالي',
+        contactModalHeading: 'مراسلة المعلم',
+        parentNameLabel: 'اسم ولي الأمر :',
+        parentPhoneLabel: 'رقم الهاتف (اختياري) :',
+        messageLabel: 'نص الرسالة والاستفسار :',
+        sendMsgBtn: 'إرسال الرسالة الآن',
+        cancelBtn: 'إلغاء',
+        msgSentSuccess: 'تم إرسال رسالتكم بنجاح إلى المعلم !',
+        msgEmptyErr: 'يرجى كتابة نص الرسالة قبل الإرسال.',
+        lessonTopic: 'الدرس / موضوع الحصة :',
+        classWork: 'العمل والأنشطة الصفية :',
+        homeWork: 'الواجب المنزلي :',
+        noHomework: 'لا يوجد واجب منزلي لهذه الحصة',
+        supportLinks: 'المراجع والروابط :',
+        periodLabel: 'الحصة',
+        sessionsCount: 'حصص',
+        loadingPlan: 'جاري تحميل الخطة الأسبوعية...',
+        noCoursesFound: 'لا توجد حصص مسجلة لهذا الاختيار.',
+        planCompletedTitle: 'الخطة الأسبوعية الرسمية - مكتملة الإعداد ✅',
+        planCompletedDesc: 'أنهى جميع المعلمين إعداد وتوثيق حصص هذا الأسبوع.',
+        planInProgressTitle: 'الخطة الأسبوعية قيد الاستكمال ⏳',
+        planInProgressDesc: 'يقوم الكادر التعليمي حالياً باستكمال إدخال الدروس. الحصص الجاهزة معروضة أدناه.',
+        noPlanPublished: 'لا توجد خطة منشورة لهذا الصف حالياً.',
+        daysMap: {
+            "Dimanche": "الأحد",
+            "Lundi": "الاثنين",
+            "Mardi": "الثلاثاء",
+            "Mercredi": "الأربعاء",
+            "Jeudi": "الخميس"
+        }
+    }
+};
+
+function toggleParentLanguage() {
+    currentUserLanguage = (currentUserLanguage === 'fr') ? 'ar' : 'fr';
+    localStorage.setItem('parentLanguage', currentUserLanguage);
+    applyParentLanguageUI();
+    loadParentWeeklyPlan();
+    loadTeachersContactGrid();
+}
+
+function applyParentLanguageUI() {
+    const lang = currentUserLanguage;
+    const t = parentI18n[lang] || parentI18n.fr;
+
+    // Définir la direction du texte (RTL pour l'arabe, LTR pour le français)
+    document.body.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+
+    // Mettre à jour les boutons de basculement de langue
+    document.querySelectorAll('.parentLangToggleLabel').forEach(el => {
+        el.textContent = t.langBtn;
+    });
+
+    const setTxt = (id, txt) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = txt;
+    };
+
+    setTxt('btnHomeText', t.homeBtn);
+    setTxt('parentPlanViewHeader', t.parentPlanTitle);
+    setTxt('btnHeaderStudentFollow', t.studentFollowBtn);
+    setTxt('btnBackToPlanText', t.backToPlan);
+    setTxt('parentTitleText', t.parentTitle);
+    setTxt('lblSelectClass', t.selectClass);
+    setTxt('btnBackToStudentsList', t.backToStudents);
+    setTxt('btnPrevDayText', t.prevDay);
+    setTxt('btnNextDayText', t.nextDay);
+
+    setTxt('lblFilterWeek', t.filterWeek);
+    setTxt('lblFilterClass', t.filterClass);
+    setTxt('lblFilterDay', t.filterDay);
+
+    setTxt('txtContactTeachersTitle', t.contactTeachersTitle);
+    setTxt('txtParentAuthBtn', t.parentAuthBtn);
+    setTxt('txtContactTeachersDesc', t.contactTeachersDesc);
+
+    setTxt('contactModalTeacherHeading', t.contactModalHeading);
+    setTxt('lblContactParentName', t.parentNameLabel);
+    setTxt('lblContactParentPhone', t.parentPhoneLabel);
+    setTxt('lblContactParentMsg', t.messageLabel);
+    setTxt('btnSendParentMsgText', t.sendMsgBtn);
+    setTxt('btnCancelParentMsgText', t.cancelBtn);
+
+    document.querySelectorAll('.tab-txt-plan').forEach(el => el.textContent = t.tabPlan);
+    document.querySelectorAll('.tab-txt-students').forEach(el => el.textContent = t.tabStudents);
+    document.querySelectorAll('.tab-txt-teachers').forEach(el => el.textContent = t.tabTeachers);
+    document.querySelectorAll('.tab-txt-photos').forEach(el => el.textContent = t.tabPhotos);
+}
+
+function showTeacherContactSection() {
+    showHomeworkView('parent-selection');
+    setTimeout(() => {
+        const el = document.getElementById('teacher-contact-section');
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, 100);
+}
 
 function openParentAuthModal() {
     const m = document.getElementById('parent-auth-modal');
@@ -1918,11 +2257,17 @@ async function loadTeachersContactGrid() {
         const grid = document.getElementById('teachers-contact-grid');
         if (!grid) return;
         const teachers = teachersSectionMap[currentSection] || teachersList;
-        grid.innerHTML = teachers.map(t => `
-            <div class="teacher-contact-card" onclick="openContactTeacherModal('${t}')">
-                <i class="fas fa-user-tie" style="font-size:2rem; color:#667eea; margin-bottom:8px;"></i>
-                <h4 style="margin:0; color:#1e1b4b;">${t}</h4>
-                <p style="margin:5px 0; font-size:0.8em; color:#10B981;"><i class="fas fa-paper-plane"></i> Envoyer message</p>
+        const t = parentI18n[currentUserLanguage] || parentI18n.fr;
+
+        grid.innerHTML = teachers.map(teacher => `
+            <div class="teacher-contact-card" onclick="openContactTeacherModal('${teacher.replace(/'/g, "\\'")}')" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:14px; padding:16px; text-align:center; cursor:pointer; transition:all 0.25s ease; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+                <div style="width:48px; height:48px; background:linear-gradient(135deg, #6366F1, #4F46E5); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; margin:0 auto 10px auto;">
+                    <i class="fas fa-chalkboard-teacher"></i>
+                </div>
+                <h4 style="margin:0 0 6px 0; color:#1E1B4B; font-size:1rem; font-weight:700;">${teacher}</h4>
+                <div style="display:inline-flex; align-items:center; gap:5px; background:#ECFDF5; color:#065F46; padding:4px 10px; border-radius:8px; font-size:0.8rem; font-weight:700;">
+                    <i class="fas fa-paper-plane"></i> <span>${t.sendMessageBtn}</span>
+                </div>
             </div>
         `).join('');
     } catch (e) {
@@ -1931,9 +2276,36 @@ async function loadTeachersContactGrid() {
 }
 
 let targetTeacherForMessage = null;
+
 function openContactTeacherModal(teacherName) {
     targetTeacherForMessage = teacherName;
-    document.getElementById('contact-modal-title').innerText = `Contacter ${teacherName}`;
+    const t = parentI18n[currentUserLanguage] || parentI18n.fr;
+    
+    const titleHeading = document.getElementById('contactModalTeacherHeading');
+    if (titleHeading) {
+        titleHeading.innerText = currentUserLanguage === 'ar' ? `مراسلة الأستاذ(ة) ${teacherName}` : `Contacter ${teacherName}`;
+    }
+
+    // Pré-remplir les données du parent si connectées ou enregistrées
+    const nameInput = document.getElementById('parentMsgSenderName');
+    const phoneInput = document.getElementById('parentMsgSenderPhone');
+    
+    if (nameInput) {
+        if (activeParentAccount && activeParentAccount.firstName) {
+            nameInput.value = `${activeParentAccount.firstName} ${activeParentAccount.lastName}`;
+        } else {
+            nameInput.value = localStorage.getItem('parentSenderName') || '';
+        }
+    }
+    
+    if (phoneInput) {
+        if (activeParentAccount && activeParentAccount.phone) {
+            phoneInput.value = activeParentAccount.phone;
+        } else {
+            phoneInput.value = localStorage.getItem('parentSenderPhone') || '';
+        }
+    }
+
     const m = document.getElementById('contact-teacher-modal');
     if (m) m.style.display = 'flex';
 }
@@ -1944,27 +2316,48 @@ function closeContactTeacherModal() {
 }
 
 async function submitParentMessage() {
-    const text = document.getElementById('parentMessageText').value;
-    if (!text) return;
-    const pName = activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : 'Parent anonyme';
-    const pPhone = activeParentAccount ? activeParentAccount.phone : '';
+    const text = document.getElementById('parentMessageText')?.value;
+    const senderName = document.getElementById('parentMsgSenderName')?.value;
+    const senderPhone = document.getElementById('parentMsgSenderPhone')?.value;
+    const t = parentI18n[currentUserLanguage] || parentI18n.fr;
 
-    const res = await fetch('/api/send-message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            teacherName: targetTeacherForMessage,
-            parentName: pName,
-            parentPhone: pPhone,
-            message: text,
-            section: currentSection
-        })
-    });
+    if (!text || text.trim() === '') {
+        alert(t.msgEmptyErr);
+        return;
+    }
 
-    if (res.ok) {
-        alert('Message envoyé avec succès à l\'enseignant !');
-        document.getElementById('parentMessageText').value = '';
-        closeContactTeacherModal();
+    const pName = senderName && senderName.trim() !== '' ? senderName.trim() : (activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : (currentUserLanguage === 'ar' ? 'ولي أمر' : 'Parent d\'élève'));
+    const pPhone = senderPhone && senderPhone.trim() !== '' ? senderPhone.trim() : (activeParentAccount ? activeParentAccount.phone : '');
+
+    // Sauvegarder localement pour les futurs messages
+    if (senderName) localStorage.setItem('parentSenderName', senderName.trim());
+    if (senderPhone) localStorage.setItem('parentSenderPhone', senderPhone.trim());
+
+    try {
+        const res = await fetch('/api/send-message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                teacherName: targetTeacherForMessage,
+                parentName: pName,
+                parentPhone: pPhone,
+                message: text,
+                section: currentSection
+            })
+        });
+
+        if (res.ok) {
+            alert(t.msgSentSuccess);
+            if (document.getElementById('parentMessageText')) {
+                document.getElementById('parentMessageText').value = '';
+            }
+            closeContactTeacherModal();
+        } else {
+            alert(currentUserLanguage === 'ar' ? 'حدث خطأ أثناء إرسال الرسالة، يرجى المحاولة لاحقاً.' : 'Erreur lors de l\'envoi du message.');
+        }
+    } catch (e) {
+        console.error('Erreur submitParentMessage:', e);
+        alert(currentUserLanguage === 'ar' ? 'تعذر الاتصال بالخادم.' : 'Erreur réseau.');
     }
 }
 

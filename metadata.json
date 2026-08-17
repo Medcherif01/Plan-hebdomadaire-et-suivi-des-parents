@@ -1,6 +1,6 @@
 {
-  "name": "Plans Hebdomadaires",
-  "description": "Application de gestion des plans de leçons hebdomadaires pour enseignants",
+  "name": "Plans Hebdomadaires & Devoirs",
+  "description": "Suivi des plans hebdomadaires, devoirs, espace parent bilingue (arabe/français), messagerie enseignants et gestion des élèves",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
