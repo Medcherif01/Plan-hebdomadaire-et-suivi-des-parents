@@ -3,7 +3,7 @@
         // Variables globales
         let loggedInUser = null;
         let currentUserLanguage = 'fr';
-        let currentSection = localStorage.getItem('selectedSection') || 'garcons';
+        let currentSection = localStorage.getItem('selectedSection') || localStorage.getItem('currentSection') || 'garcons';
         let planData = [];
         let filteredAndSortedData = [];
         let uploadedPlanData = null;
@@ -14,10 +14,27 @@
         let alertTimeoutId = null;
         let incompleteTeachersInfo = {};
 
+        // Listes strictes des enseignants par section
+        const maleTeachersList = [
+            'Mohamed', 'Abas', 'Jaber', 'Imad', 'Kamel', 'Majed', 'Mohamed Ali', 'Morched', 
+            'Saeed', 'Sami', 'Sylvano', 'Tonga', 'Oumarou', 'Zine', 'Youssouf'
+        ];
+
+        const femaleTeachersList = [
+            'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
+            'Leila', 'Sarah', 'Zohra'
+        ];
+
+        const teachersSectionMap = {
+            garcons: maleTeachersList,
+            filles: femaleTeachersList
+        };
+
         // --- Fonctions de Gestion de Section ---
         function chooseSection(section) {
             currentSection = section;
             localStorage.setItem('selectedSection', section);
+            localStorage.setItem('currentSection', section);
             applyParentUIMode(false);
             updateSectionBadges();
             
@@ -60,9 +77,24 @@
                 mainBadge.className = badgeClass;
             }
 
+            const parentSectionBadge = document.getElementById('parentSectionBadgeDisplay');
+            if (parentSectionBadge) {
+                parentSectionBadge.className = badgeClass;
+            }
+
+            const parentSectionToggle = document.getElementById('parentSectionToggleText');
+            if (parentSectionToggle) {
+                parentSectionToggle.textContent = isBoys ? 'Section Garçons 👦 (بنين)' : 'Section Filles 👧 (بنات)';
+            }
+
             const adminFilter = document.getElementById('adminSectionFilter');
             if (adminFilter) {
                 adminFilter.value = currentSection;
+            }
+
+            const adminStudFilter = document.getElementById('adminStudentSectionFilter');
+            if (adminStudFilter) {
+                adminStudFilter.value = currentSection;
             }
         }
         
@@ -156,10 +188,21 @@
                 const startDate = new Date(dates.start + 'T00:00:00Z');
                 const endDate = new Date(dates.end + 'T23:59:59Z');
                 if (today >= startDate && today <= endDate) {
-                    return parseInt(weekNum);
+                    return parseInt(weekNum, 10);
                 }
             }
-            return null;
+            // Si la date du jour est en dehors de la plage, trouver la semaine la plus proche
+            let closestWeek = 1;
+            let minDiff = Infinity;
+            for (const [weekNum, dates] of Object.entries(specificWeekDateRanges)) {
+                const startDate = new Date(dates.start + 'T00:00:00Z');
+                const diff = Math.abs(today.getTime() - startDate.getTime());
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestWeek = parseInt(weekNum, 10);
+                }
+            }
+            return closestWeek;
         }
 
         // Fonction pour envoyer des notifications push aux enseignants incomplets
@@ -623,14 +666,12 @@
             
             displayAlert('welcome_user', false, { user: loggedInUser });
             
-            // Charger automatiquement la semaine SUIVANTE (N+1) par défaut
+            // Charger automatiquement la semaine COURANTE par défaut
             const currentWeekNum = getCurrentWeekNumber();
             if (currentWeekNum) {
-                const nextWeekNum = currentWeekNum + 1;
-                const weekExists = specificWeekDateRanges[nextWeekNum];
-                const weekToLoad = weekExists ? nextWeekNum : currentWeekNum;
+                const weekToLoad = currentWeekNum;
                 
-                console.log(`📅 Semaine actuelle: ${currentWeekNum}, Chargement automatique: Semaine ${weekToLoad}`);
+                console.log(`📅 Semaine courante: ${currentWeekNum}, Chargement automatique: Semaine ${weekToLoad}`);
                 document.getElementById('weekSelector').value = weekToLoad;
                 setTimeout(async () => {
                     await loadPlanForWeek();
@@ -1071,6 +1112,12 @@ function showHomeworkView(viewName) {
     if (viewName === 'parent-plan') {
         populateParentWeekSelector();
         loadParentWeeklyPlan();
+    } else if (viewName === 'homework-teacher') {
+        const dateInput = document.getElementById('teacher-hw-date');
+        if (dateInput) {
+            dateInput.value = new Date().toISOString().split('T')[0];
+        }
+        loadTeacherHomeworks();
     }
 }
 
@@ -1090,8 +1137,15 @@ function closeParentSectionModal() {
 
 function enterParentSpaceWithSection(section) {
     currentSection = section;
+    localStorage.setItem('selectedSection', section);
     localStorage.setItem('currentSection', section);
     closeParentSectionModal();
+    
+    // Réinitialiser le cache pour éviter tout mélange entre filles et garçons
+    parentRawPlanData = [];
+    parentRawClassNotes = {};
+    const studentsGrid = document.getElementById('students-grid');
+    if (studentsGrid) studentsGrid.innerHTML = '';
     
     // Activer le mode restriction Parent
     applyParentUIMode(true);
@@ -1112,15 +1166,23 @@ function enterParentSpaceWithSection(section) {
     switchMainTab('devoirs');
     showHomeworkView('parent-plan');
     loadTeachersContactGrid();
+    loadHomeworkShowcase();
 }
 
 function toggleParentSection() {
     const newSection = (currentSection === 'garcons') ? 'filles' : 'garcons';
     currentSection = newSection;
+    localStorage.setItem('selectedSection', newSection);
     localStorage.setItem('currentSection', newSection);
     updateSectionBadges();
     
-    // Recharger les données du plan parent, des contacts et des vitrines
+    // Réinitialiser le cache pour la nouvelle section
+    parentRawPlanData = [];
+    parentRawClassNotes = {};
+    const studentsGrid = document.getElementById('students-grid');
+    if (studentsGrid) studentsGrid.innerHTML = '';
+    
+    // Recharger les données du plan parent, des contacts et des vitrines strictement pour la nouvelle section
     loadParentWeeklyPlan();
     loadTeachersContactGrid();
     loadHomeworkShowcase();
@@ -1128,10 +1190,10 @@ function toggleParentSection() {
 
 function populateParentWeekSelector() {
     const select = document.getElementById('parentWeekSelector');
-    if (!select || select.options.length > 0) return;
+    if (!select) return;
     
     select.innerHTML = '';
-    const activeWeek = getCurrentWeekNumber() || 17;
+    const activeWeek = getCurrentWeekNumber() || 1;
     
     for (const [weekNum, dates] of Object.entries(specificWeekDateRanges)) {
         const option = document.createElement('option');
@@ -1151,6 +1213,7 @@ function populateParentWeekSelector() {
         }
         select.appendChild(option);
     }
+    select.value = activeWeek;
 }
 
 let parentRawPlanData = [];
@@ -1167,7 +1230,7 @@ async function loadParentWeeklyPlan() {
         
         if (!weekSelect || !classSelect || !container) return;
         
-        const selectedWeek = weekSelect.value || (getCurrentWeekNumber() || 17);
+        const selectedWeek = weekSelect.value || (getCurrentWeekNumber() || 1);
         const selectedClass = classSelect.value || 'PEI1';
         const section = currentSection || 'garcons';
         
@@ -1581,7 +1644,8 @@ async function openStudentDashboard(studentName, className) {
         // Évaluations 8 semaines
         loadGeneralEvaluations(studentName, className);
 
-        // Devoirs du jour
+        // Devoirs du jour (Date du jour par défaut)
+        currentHomeworkDate = new Date().toISOString().split('T')[0];
         loadStudentHomeworksForDate(studentName, className, currentHomeworkDate);
     } catch (e) {
         console.error('Erreur openStudentDashboard:', e);
@@ -2256,12 +2320,29 @@ async function loadTeachersContactGrid() {
     try {
         const grid = document.getElementById('teachers-contact-grid');
         if (!grid) return;
-        const teachers = teachersSectionMap[currentSection] || teachersList;
+        
+        let teachers = (teachersSectionMap && teachersSectionMap[currentSection]) 
+            ? [...teachersSectionMap[currentSection]] 
+            : (currentSection === 'filles' ? [...femaleTeachersList] : [...maleTeachersList]);
+        
+        // Tentative de récupération des enseignants réels de la section dans la base de données
+        try {
+            const res = await fetch(`/api/admin/users?section=${currentSection}`);
+            if (res.ok) {
+                const userDocs = await res.json();
+                if (userDocs && Array.isArray(userDocs) && userDocs.length > 0) {
+                    teachers = userDocs.map(u => u.username).filter(name => name && name.toLowerCase() !== 'admin');
+                }
+            }
+        } catch (fetchErr) {
+            console.warn('Utilisation de la liste prédéfinie pour la section:', currentSection);
+        }
+
         const t = parentI18n[currentUserLanguage] || parentI18n.fr;
 
         grid.innerHTML = teachers.map(teacher => `
             <div class="teacher-contact-card" onclick="openContactTeacherModal('${teacher.replace(/'/g, "\\'")}')" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:14px; padding:16px; text-align:center; cursor:pointer; transition:all 0.25s ease; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
-                <div style="width:48px; height:48px; background:linear-gradient(135deg, #6366F1, #4F46E5); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; margin:0 auto 10px auto;">
+                <div style="width:48px; height:48px; background:${currentSection === 'filles' ? 'linear-gradient(135deg, #EC4899, #DB2777)' : 'linear-gradient(135deg, #6366F1, #4F46E5)'}; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; margin:0 auto 10px auto;">
                     <i class="fas fa-chalkboard-teacher"></i>
                 </div>
                 <h4 style="margin:0 0 6px 0; color:#1E1B4B; font-size:1rem; font-weight:700;">${teacher}</h4>
