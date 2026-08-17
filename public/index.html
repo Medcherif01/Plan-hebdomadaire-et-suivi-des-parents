@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plans Hebdomadaires</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+        integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .table-actions-container {
+            display: flex;
+            justify-content: flex-start;
+            gap: 15px;
+            padding-bottom: 15px;
+            padding-left: 15px;
+        }
+        td.editable {
+            white-space: pre-wrap;
+        }
+        
+        /* Optimisation pour affichage 100% */
+        #main-content {
+            max-width: 100%;
+            padding: 10px;
+        }
+        
+        .table-responsive-wrapper {
+            margin: 0 auto;
+            max-width: 100%;
+        }
+        
+        /* R\u00e9duire la largeur des colonnes fixes */
+        #planTable th:nth-child(1),
+        #planTable td:nth-child(1) { width: 100px; } /* Enseignant */
+        
+        #planTable th:nth-child(2),
+        #planTable td:nth-child(2) { width: 80px; } /* Classe */
+        
+        #planTable th:nth-child(3),
+        #planTable td:nth-child(3) { width: 120px; } /* Mati\u00e8re */
+        
+        #planTable th:nth-child(4),
+        #planTable td:nth-child(4) { width: 60px; } /* P\u00e9riode */
+        
+        #planTable th:nth-child(5),
+        #planTable td:nth-child(5) { width: 100px; } /* Jour */
+    </style>
+</head>
+<body dir="ltr">
+    <!-- ECRAN DE SELECTION DE SECTION -->
+    <div id="section-selection" class="section-selection-container">
+        <div class="section-selection-card">
+            <img id="logo-select"
+                 src="https://lh3.googleusercontent.com/d/1lQ3Babrs3Wgv4rakVmkK0oCWcM0cTKPK"
+                 alt="Logo Al-Kawthar">
+            <h1>Plans Hebdomadaires</h1>
+            <p class="section-subtitle">Veuillez choisir votre section pour continuer :</p>
+            
+            <div class="sections-grid">
+                <button type="button" class="section-card-btn boys-theme" onclick="chooseSection('garcons')">
+                    <div class="section-card-icon"><i class="fas fa-mars"></i></div>
+                    <div class="section-card-title">Section Garçons</div>
+                    <div class="section-card-desc">Espace enseignants & cours garçons</div>
+                </button>
+                
+                <button type="button" class="section-card-btn girls-theme" onclick="chooseSection('filles')">
+                    <div class="section-card-icon"><i class="fas fa-venus"></i></div>
+                    <div class="section-card-title">Section Filles</div>
+                    <div class="section-card-desc">Espace enseignants & cours filles</div>
+                </button>
+            </div>
+
+            <!-- ACCÈS DIRECT ESPACE PARENTS SUR LA PREMIÈRE PAGE -->
+            <div style="margin-top:25px; padding-top:20px; border-top:2px dashed #E2E8F0;">
+                <button type="button" onclick="openParentSectionModal()" style="width:100%; padding:16px 22px; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:14px; font-weight:700; font-size:1.1rem; cursor:pointer; box-shadow:0 4px 15px rgba(16,185,129,0.3); display:flex; align-items:center; justify-content:space-between; transition:all 0.25s ease;">
+                    <div style="display:flex; align-items:center; gap:14px;">
+                        <div style="width:44px; height:44px; background:rgba(255,255,255,0.22); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem;">
+                            <i class="fas fa-user-friends"></i>
+                        </div>
+                        <div style="text-align:left;">
+                            <div style="font-size:1.15rem; font-weight:800;">Espace Parents 👨‍👩‍👧‍👦</div>
+                            <div style="font-size:0.85rem; opacity:0.95; font-weight:400;">Plan hebdomadaire, devoirs, niveau & contact enseignants</div>
+                        </div>
+                    </div>
+                    <i class="fas fa-arrow-right" style="font-size:1.2rem;"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FORMULAIRE DE CONNEXION -->
+    <div id="login-form" style="display: none;">
+        <div class="login-card">
+            <img id="logo"
+                 src="https://lh3.googleusercontent.com/d/1lQ3Babrs3Wgv4rakVmkK0oCWcM0cTKPK"
+                 alt="Logo Al-Kawthar">
+            <h1>Connexion</h1>
+            <div id="sectionBadgeContainer" class="section-badge-container">
+                <span id="loginSectionBadge" class="section-badge badge-garcons">Section Garçons</span>
+                <button type="button" class="change-section-link" onclick="resetSectionChoice()"><i class="fas fa-exchange-alt"></i> Changer de section</button>
+            </div>
+            <div>
+                <label for="username">Nom d'utilisateur (Enseignant) :</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="password-container">
+                <label for="password">Mot de passe (idem Nom) :</label>
+                <input type="password" id="password" name="password" required>
+                <i class="fas fa-eye password-toggle-icon" id="togglePassword"></i>
+            </div>
+            <button id="login-button" class="pro-button"><i class="fas fa-sign-in-alt"></i> <span class="btn-text">Se connecter</span></button>
+            <p id="login-error"></p>
+        </div>
+    </div>
+    <div id="main-content" style="display: none;">
+        <div class="main-header-container">
+            <img id="logo-main"
+                 src="https://lh3.googleusercontent.com/d/1lQ3Babrs3Wgv4rakVmkK0oCWcM0cTKPK"
+                 alt="Logo Al-Kawthar">
+            <div class="title-user-info">
+                 <div class="header-title-flex">
+                    <h1 id="main-title">Plans Hebdomadaires</h1>
+                    <span id="mainSectionBadge" class="section-badge badge-garcons">Section Garçons</span>
+                    <button type="button" class="switch-section-btn" onclick="resetSectionChoice()"><i class="fas fa-exchange-alt"></i> Changer</button>
+                 </div>
+                 <h2 id="weekDateRange"></h2>
+                 <div class="user-actions-container">
+                    <span id="loggedInUserInfo" style="font-style: italic;"></span>
+                    <button id="logout-button" class="pro-button danger-button">
+                        <i class="fas fa-sign-out-alt"></i> <span class="btn-text">Déconnecter</span>
+                    </button>
+                 </div>
+            </div>
+        </div>
+
+        <!-- NAVIGATION DE L'APPLICATION -->
+        <div class="app-nav-bar">
+            <button type="button" class="app-nav-tab active" id="tab-plans-btn" onclick="switchMainTab('plans')">
+                <i class="fas fa-calendar-alt"></i> Plans Hebdomadaires
+            </button>
+            <button type="button" class="app-nav-tab" id="tab-devoirs-btn" onclick="switchMainTab('devoirs')">
+                <i class="fas fa-book-reader"></i> Portail Suivi des Devoirs
+            </button>
+        </div>
+
+        <!-- ONGLET 1: PLANS HEBDOMADAIRES -->
+        <div id="plans-tab-content">
+         <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn">
+             <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
+        </button>
+        <div id="incompleteTeachersDisplay" style="display: none;">
+            <h4>Enseignants Incomplets</h4>
+            <ul id="incompleteList">
+                <li>Chargement...</li>
+            </ul>
+        </div>
+        <div class="filter-container week-selector-container">
+            <label for="weekSelector"><i class="fas fa-calendar-week"></i> Semaine:</label>
+            <select id="weekSelector" onchange="loadPlanForWeek()">
+                 <option value="">-- Sélectionnez une semaine --</option>
+                 <option value="1">Semaine 1</option><option value="2">Semaine 2</option><option value="3">Semaine 3</option><option value="4">Semaine 4</option><option value="5">Semaine 5</option><option value="6">Semaine 6</option><option value="7">Semaine 7</option><option value="8">Semaine 8</option><option value="9">Semaine 9</option><option value="10">Semaine 10</option><option value="11">Semaine 11</option><option value="12">Semaine 12</option><option value="13">Semaine 13</option><option value="14">Semaine 14</option><option value="15">Semaine 15</option><option value="16">Semaine 16</option><option value="17">Semaine 17</option><option value="18">Semaine 18</option><option value="19">Semaine 19</option><option value="20">Semaine 20</option><option value="21">Semaine 21</option><option value="22">Semaine 22</option><option value="23">Semaine 23</option><option value="24">Semaine 24</option><option value="25">Semaine 25</option><option value="26">Semaine 26</option><option value="27">Semaine 27</option><option value="28">Semaine 28</option><option value="29">Semaine 29</option><option value="30">Semaine 30</option><option value="31">Semaine 31</option><option value="32">Semaine 32</option><option value="33">Semaine 33</option><option value="34">Semaine 34</option><option value="35">Semaine 35</option><option value="36">Semaine 36</option><option value="37">Semaine 37</option><option value="38">Semaine 38</option><option value="39">Semaine 39</option><option value="40">Semaine 40</option><option value="41">Semaine 41</option><option value="42">Semaine 42</option><option value="43">Semaine 43</option><option value="44">Semaine 44</option><option value="45">Semaine 45</option><option value="46">Semaine 46</option><option value="47">Semaine 47</option><option value="48">Semaine 48</option>
+            </select>
+        </div>
+        <div id="admin-actions" class="filter-container admin-section" style="display: none;">
+             <h3 id="admin-title"><i class="fas fa-user-shield"></i> Actions Administrateur</h3>
+             
+             <!-- GESTION DES COMPTES D'ENSEIGNANTS -->
+             <div class="admin-subsection user-mgmt-box">
+                <h4><i class="fas fa-users-cog"></i> Gestion des Enseignants & Mots de passe</h4>
+                <div class="user-mgmt-header">
+                    <label for="adminSectionFilter">Section à gérer :</label>
+                    <select id="adminSectionFilter" onchange="loadAdminUsersList()">
+                        <option value="garcons">Section Garçons 👦</option>
+                        <option value="filles">Section Filles 👧</option>
+                    </select>
+                </div>
+                
+                <div class="add-user-form">
+                    <input type="text" id="adminNewUsername" placeholder="Nom d'utilisateur / Enseignant">
+                    <input type="text" id="adminNewPassword" placeholder="Mot de passe">
+                    <button class="pro-button success-button" onclick="adminAddOrUpdateUser()">
+                        <i class="fas fa-plus-circle"></i> <span class="btn-text">Ajouter / Modifier</span>
+                    </button>
+                </div>
+                <div id="adminUsersStatus" style="font-size:0.9em; margin-bottom:10px;"></div>
+                
+                <div id="usersTableContainer" class="users-table-wrapper">
+                    <p>Chargement des enseignants...</p>
+                </div>
+             </div>
+
+             <!-- GESTION DES ÉLÈVES ET DES PHOTOS -->
+             <div class="admin-subsection user-mgmt-box" style="margin-top:20px;">
+                <h4><i class="fas fa-user-graduate"></i> Gestion des Élèves (Liste, Photos, Classes)</h4>
+                <div class="user-mgmt-header" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <label for="adminStudentClassFilter">Classe :</label>
+                    <select id="adminStudentClassFilter" onchange="loadAdminStudentsList()">
+                        <option value="PEI1">PEI1</option>
+                        <option value="PEI2">PEI2</option>
+                        <option value="PEI3">PEI3</option>
+                        <option value="PEI4">PEI4</option>
+                    </select>
+                    <label for="adminStudentSectionFilter">Section :</label>
+                    <select id="adminStudentSectionFilter" onchange="loadAdminStudentsList()">
+                        <option value="garcons">Section Garçons 👦</option>
+                        <option value="filles">Section Filles 👧</option>
+                    </select>
+                </div>
+
+                <div class="add-user-form" style="margin-top:10px;">
+                    <input type="text" id="adminStudentName" placeholder="Nom de l'élève">
+                    <input type="text" id="adminStudentPhoto" placeholder="Lien photo Google Drive / Web">
+                    <input type="text" id="adminStudentBirthday" placeholder="Date d'anniversaire (ex: 4/2014)">
+                    <button class="pro-button success-button" onclick="adminAddOrUpdateStudent()">
+                        <i class="fas fa-plus-circle"></i> <span class="btn-text">Ajouter / Enregistrer Élève</span>
+                    </button>
+                </div>
+                <div id="adminStudentStatus" style="font-size:0.9em; margin-bottom:10px;"></div>
+
+                <div id="studentsTableContainer" class="users-table-wrapper">
+                    <p>Chargement des élèves...</p>
+                </div>
+
+                <hr style="margin:20px 0; border:0; border-top:1px solid #ddd;">
+                <h4><i class="fas fa-camera"></i> Photos Célébration / Félicitations de la Journée</h4>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:15px; margin-top:10px;">
+                    <div>
+                        <label style="font-size:0.85em; font-weight:bold;">Photo 1 (Félicitations) :</label>
+                        <input type="text" id="adminPhoto1Url" placeholder="URL Image 1" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                        <input type="text" id="adminPhoto1Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                        <button class="pro-button primary-button" onclick="adminSavePhoto(1)" style="margin-top:6px; width:100%;">Enregistrer Photo 1</button>
+                    </div>
+                    <div>
+                        <label style="font-size:0.85em; font-weight:bold;">Photo 2 :</label>
+                        <input type="text" id="adminPhoto2Url" placeholder="URL Image 2" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                        <input type="text" id="adminPhoto2Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                        <button class="pro-button primary-button" onclick="adminSavePhoto(2)" style="margin-top:6px; width:100%;">Enregistrer Photo 2</button>
+                    </div>
+                    <div>
+                        <label style="font-size:0.85em; font-weight:bold;">Photo 3 :</label>
+                        <input type="text" id="adminPhoto3Url" placeholder="URL Image 3" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                        <input type="text" id="adminPhoto3Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                        <button class="pro-button primary-button" onclick="adminSavePhoto(3)" style="margin-top:6px; width:100%;">Enregistrer Photo 3</button>
+                    </div>
+                </div>
+             </div>
+
+             <div style="margin-top:20px;">
+                <label for="excelFileInput" id="admin-excel-label"><i class="fas fa-file-excel"></i> Fichier Excel :</label>
+                <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleFileUpload(event)">
+             </div>
+             <button id="saveUploadedDataBtn" onclick="saveUploadedData()" disabled class="pro-button accent-button">
+                 <i class="fas fa-database"></i> <span class="btn-text">Charger et Enregistrer dans la DB</span>
+             </button>
+             <span id="file-upload-status" style="font-size: 0.9em;"></span>
+             <div class="admin-subsection">
+                <label for="adminReportClassSelector" id="admin-report-class-label"><i class="fas fa-school"></i> Choisir une Classe :</label>
+                <select id="adminReportClassSelector">
+                    <option value="">-- D'abord charger les classes --</option>
+                </select>
+                <button id="generateFullReportBtn" onclick="generateFullReportByClass()" class="pro-button success-button">
+                    <i class="fas fa-file-invoice"></i> <span class="btn-text">Générer Rapport Complet par Classe</span>
+                </button>
+             </div>
+             <div style="width: 100%; margin-top: 10px; font-size: 0.85em; color: var(--muted-text-color); border-top: 1px dashed var(--border-color); padding-top: 10px;">
+                 <i class="fas fa-info-circle"></i> **Note:** La fonction d'upload et d'extraction automatique depuis des fichiers Word ou PDF n'est pas implémentée dans cette version. Veuillez utiliser le format Excel pour charger les données via le bouton ci-dessus.
+             </div>
+        </div>
+        <div class="filter-container main-actions-container">
+            <button id="generateWordBtn" onclick="generateWordByClasse()" class="action-button pro-button" disabled>
+                 <i class="fas fa-file-word"></i> <span class="btn-text">Générer Word par Classe</span>
+            </button>
+            <button id="generateExcelBtn" onclick="generateExcelWorkbook()" class="action-button pro-button" disabled>
+                 <i class="fas fa-file-excel"></i> <span class="btn-text">Générer Excel (1 Fichier)</span>
+            </button>
+            <a id="downloadLink" style="display:none;"></a>
+        </div>
+        <div class="filter-container data-filters-container">
+             <label for="filterEnseignant" id="filter-enseignant-label"><i class="fas fa-user-tie"></i> Enseignant:</label>
+             <select id="filterEnseignant" onchange="sortAndDisplay()"> <option value="">Tous</option> </select>
+             <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
+             <select id="filterClasse" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
+             <label for="filterMatiere" id="filter-matiere-label"><i class="fas fa-book"></i> Matière:</label>
+             <select id="filterMatiere" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
+             <label for="filterPeriode" id="filter-periode-label"><i class="fas fa-clock"></i> Période:</label>
+             <select id="filterPeriode" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
+             <label for="filterJour" id="filter-jour-label"><i class="fas fa-calendar-day"></i> Jour:</label>
+             <select id="filterJour" onchange="sortAndDisplay()">
+                 <option value="">Tous</option>
+                 <option value="Dimanche">Dimanche</option>
+                 <option value="Lundi">Lundi</option>
+                 <option value="Mardi">Mardi</option>
+                 <option value="Mercredi">Mercredi</option>
+                 <option value="Jeudi">Jeudi</option>
+            </select>
+        </div>
+        <div id="message-alerte" style="display: none;"></div>
+        <div id="progress-bar-container" style="display: none;">
+            <div id="progress-bar">0%</div>
+        </div>
+         <div class="notes-container">
+            <label for="notesClassSelector" id="notes-class-label" style="font-weight: bold;"><i class="fas fa-sticky-note"></i> Notes pour la classe :</label>
+            <select id="notesClassSelector" onchange="displayClassNotes()">
+                <option value="">-- Sélectionnez une classe --</option>
+            </select>
+            <textarea id="notesInput" rows="4" placeholder="Sélectionnez une classe pour voir ou ajouter des notes..." spellcheck="true" disabled dir="auto"></textarea>
+            <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                <button id="saveNotesBtn" onclick="saveNotes()" class="action-button pro-button success-button" disabled>
+                    <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Notes</span>
+                </button>
+                <span id="notes-save-status" style="font-size: 0.9em;"></span>
+            </div>
+        </div>
+
+        <!-- Modal avec checkboxes pour sélection classes/matières -->
+        <div id="lessonPlanModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; overflow: auto;">
+            <div style="background: white; margin: 50px auto; max-width: 800px; padding: 30px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;"><i class="fas fa-robot"></i> Sélection pour Plans de Leçon IA</h2>
+                    <button onclick="closeLessonPlanModal()" style="background: transparent; border: none; font-size: 28px; cursor: pointer; color: #999;">×</button>
+                </div>
+                
+                <div style="background: #f0f9ff; border-left: 4px solid #0066CC; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
+                    <p style="margin: 0; font-size: 14px; color: #1F2937;">
+                        <i class="fas fa-info-circle" style="color: #0066CC;"></i>
+                        Sélectionnez les classes et matières pour lesquelles vous voulez générer des plans de leçon IA.
+                    </p>
+                </div>
+                
+                <!-- Section Classes -->
+                <div style="margin-bottom: 25px; border: 1px solid #ddd; padding: 20px; border-radius: 8px; background: #f9fafb;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0; color: #1F2937;"><i class="fas fa-users"></i> Classes</h3>
+                        <div>
+                            <button onclick="selectAllClasses()" style="padding: 6px 12px; margin-right: 8px; font-size: 13px; cursor: pointer; border: 1px solid #ddd; background: white; border-radius: 4px;">
+                                <i class="fas fa-check-square"></i> Tout sélectionner
+                            </button>
+                            <button onclick="deselectAllClasses()" style="padding: 6px 12px; font-size: 13px; cursor: pointer; border: 1px solid #ddd; background: white; border-radius: 4px;">
+                                <i class="fas fa-square"></i> Tout désélectionner
+                            </button>
+                        </div>
+                    </div>
+                    <div id="lessonPlanClassesList" style="max-height: 200px; overflow-y: auto; padding: 10px; background: white; border: 1px solid #ddd; border-radius: 6px;">
+                        <p style="color: #999;">Chargement...</p>
+                    </div>
+                </div>
+                
+                <!-- Section Matières -->
+                <div style="margin-bottom: 25px; border: 1px solid #ddd; padding: 20px; border-radius: 8px; background: #f9fafb;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="margin: 0; color: #1F2937;"><i class="fas fa-book"></i> Matières</h3>
+                        <div>
+                            <button onclick="selectAllSubjects()" style="padding: 6px 12px; margin-right: 8px; font-size: 13px; cursor: pointer; border: 1px solid #ddd; background: white; border-radius: 4px;">
+                                <i class="fas fa-check-square"></i> Tout sélectionner
+                            </button>
+                            <button onclick="deselectAllSubjects()" style="padding: 6px 12px; font-size: 13px; cursor: pointer; border: 1px solid #ddd; background: white; border-radius: 4px;">
+                                <i class="fas fa-square"></i> Tout désélectionner
+                            </button>
+                        </div>
+                    </div>
+                    <div id="lessonPlanSubjectsList" style="max-height: 200px; overflow-y: auto; padding: 10px; background: white; border: 1px solid #ddd; border-radius: 6px;">
+                        <p style="color: #999;">Sélectionnez d'abord une ou plusieurs classes</p>
+                    </div>
+                </div>
+                
+                <!-- Info sélection et boutons -->
+                <div style="text-align: center; margin-top: 20px;">
+                    <div id="lessonPlanSelectionInfo" style="font-size: 14px; margin-bottom: 15px; padding: 10px; background: #fff; border: 1px solid #ddd; border-radius: 6px; color: #999;">
+                        Sélectionnez au moins une classe et une matière
+                    </div>
+                    <button id="generateAllLessonPlansBtn" onclick="startGenerateAllLessonPlans()" class="action-button pro-button success-button" disabled style="padding: 12px 30px; font-size: 16px;">
+                        <i class="fas fa-robot"></i> Générer Plans de Leçon IA
+                    </button>
+                    <button onclick="closeLessonPlanModal()" style="margin-left: 10px; padding: 12px 30px; font-size: 16px; cursor: pointer;">
+                        <i class="fas fa-times"></i> Annuler
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="table-actions-container">
+            <button id="saveAllDisplayedBtn" onclick="saveAllDisplayedRows()" class="action-button save-all-button pro-button success-button" disabled>
+                <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Lignes Affichées</span>
+            </button>
+            <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans()" class="action-button pro-button" disabled style="margin-left: 10px; background: #7C3AED;">
+                <i class="fas fa-file-word"></i> <span class="btn-text">Générer Plans de Leçon (Affichés)</span>
+            </button>
+        </div>
+        <div class="table-responsive-wrapper">
+            <table id="planTable">
+                <thead>
+                    <tr></tr>
+                </thead>
+                <tbody>
+                     <tr id="initial-table-row">
+                         <td colspan="10" style="text-align:center; padding: 20px; color: grey;" id="initial-table-message">
+                             Veuillez sélectionner une semaine pour afficher les données.
+                         </td>
+                     </tr>
+                </tbody>
+            </table>
+        </div>
+        </div> <!-- Fin de #plans-tab-content -->
+
+        <!-- ONGLET 2: PORTAIL SUIVI DES DEVOIRS -->
+        <div id="devoirs-tab-content" style="display: none;">
+            <div id="homework-portal-container">
+                
+                <!-- 1. VUE ACCUEIL PORTAIL DEVOIRS -->
+                <div id="homework-home-view" class="homework-view">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+                        <h2 style="color:#1e1b4b; margin:0;"><i class="fas fa-graduation-cap"></i> Bienvenue sur le Portail Suivi des Devoirs</h2>
+                        <div>
+                            <button class="pro-button" onclick="setHomeworkLanguage('fr')" style="padding:6px 12px; font-size:0.85em;"><i class="fas fa-globe"></i> Français</button>
+                            <button class="pro-button" onclick="setHomeworkLanguage('ar')" style="padding:6px 12px; font-size:0.85em;"><i class="fas fa-globe"></i> العربية</button>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:15px; justify-content:center; flex-wrap:wrap; margin-bottom:25px;">
+                        <button type="button" class="pro-button primary-button" id="go-to-parent" onclick="showHomeworkView('parent-plan')" style="padding:15px 30px; font-size:1.1rem;">
+                            <i class="fas fa-user-friends"></i> Espace Parents
+                        </button>
+                        <button type="button" class="pro-button success-button" id="go-to-teacher" onclick="showHomeworkView('homework-teacher')" style="padding:15px 30px; font-size:1.1rem;">
+                            <i class="fas fa-chalkboard-teacher"></i> Espace Enseignants
+                        </button>
+                    </div>
+
+                    <!-- SHOWCASE DE LA SEMAINE ET PHOTOS DE CÉLÉBRATION -->
+                    <div class="home-showcase-container">
+                        <div id="sotw-showcase" class="student-of-the-week-showcase">
+                            <h3><i class="fas fa-star" style="color:#F59E0B;"></i> Élève de la Semaine</h3>
+                            <div id="sotw-content" style="margin-top:15px;"><p>Chargement...</p></div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:30px;">
+                        <h3 style="text-align:center; color:#1e1b4b; margin-bottom:15px;"><i class="fas fa-camera-retro"></i> Célébrations & Activités de la Journée</h3>
+                        <div class="photos-row">
+                            <div id="potd-showcase" class="photo-of-the-day-showcase">
+                                <h4>Félicitations du Jour</h4>
+                                <div id="potd-content" style="margin-top:10px;"><p>Chargement photo 1...</p></div>
+                            </div>
+                            <div id="photo2-showcase" class="photo-of-the-day-showcase">
+                                <h4>Célébration #2</h4>
+                                <div id="photo2-content" style="margin-top:10px;"><p>Chargement photo 2...</p></div>
+                            </div>
+                            <div id="photo3-showcase" class="photo-of-the-day-showcase">
+                                <h4>Célébration #3</h4>
+                                <div id="photo3-content" style="margin-top:10px;"><p>Chargement photo 3...</p></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. VUE SÉLECTION PARENT (CHOIX CLASSE / ÉLÈVE) -->
+                <div id="parent-selection-view" class="homework-view" style="display:none;">
+                    <button class="pro-button" onclick="showHomeworkView('homework-home')" style="margin-bottom:15px;">
+                        <i class="fas fa-arrow-left"></i> Retour
+                    </button>
+                    <h2 id="parent-title"><i class="fas fa-child"></i> Espace Parents - Choisir un élève</h2>
+
+                    <div class="filter-container" style="margin-bottom:20px;">
+                        <label>Sélectionner la classe :</label>
+                        <div id="parent-class-buttons" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+                            <button class="pro-button" onclick="loadClassStudents('PEI1')">PEI1</button>
+                            <button class="pro-button" onclick="loadClassStudents('PEI2')">PEI2</button>
+                            <button class="pro-button" onclick="loadClassStudents('PEI3')">PEI3</button>
+                            <button class="pro-button" onclick="loadClassStudents('PEI4')">PEI4</button>
+                        </div>
+                    </div>
+
+                    <div id="students-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:20px; margin-bottom:30px;">
+                        <!-- Cartes d'élèves générées dynamiquement -->
+                    </div>
+
+                    <!-- CONTACT ENSEIGNANTS ET MESSAGES PARENT -->
+                    <div class="teacher-contact-section">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                            <h3><i class="fas fa-comments"></i> Contacter les Enseignants</h3>
+                            <button class="pro-button primary-button" onclick="openParentAuthModal()"><i class="fas fa-user-lock"></i> Connexion / Inscription Parent</button>
+                        </div>
+                        <p style="font-size:0.9em; color:#6B7280; margin-top:5px;">Cliquez sur l'enseignant pour lui envoyer un message concernant votre enfant.</p>
+                        <div id="teachers-contact-grid" class="teachers-contact-grid">
+                            <!-- Liste des enseignants à contacter -->
+                        </div>
+                        <div id="parent-messages-history" style="margin-top:20px;"></div>
+                    </div>
+                </div>
+
+                <!-- 3. TABLEAU DE BORD ÉLÈVE (PORTAIL DEVOIRS) -->
+                <div id="student-dashboard-view" class="homework-view" style="display:none;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
+                        <button class="pro-button" onclick="showHomeworkView('parent-selection')">
+                            <i class="fas fa-arrow-left"></i> Retour aux élèves
+                        </button>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <span id="student-stars-count" style="font-size:1.2rem; font-weight:bold; color:#F59E0B;"><i class="fas fa-star"></i> 0</span>
+                        </div>
+                    </div>
+
+                    <!-- EN-TÊTE ÉLÈVE -->
+                    <div style="background:white; border-radius:16px; padding:20px; display:flex; gap:20px; align-items:center; flex-wrap:wrap; box-shadow:0 4px 15px rgba(0,0,0,0.05); margin-bottom:20px;">
+                        <img id="student-profile-photo" src="" alt="Élève" style="width:100px; height:100px; border-radius:50%; object-fit:cover; border:4px solid #667eea;">
+                        <div>
+                            <h2 id="student-profile-name" style="margin:0; color:#1e1b4b;"></h2>
+                            <p id="student-profile-details" style="color:#6B7280; margin:5px 0;"></p>
+                            <span id="student-progress-badge" class="status-text" style="font-size:0.9rem;"></span>
+                        </div>
+                    </div>
+
+                    <!-- SECTION ÉVALUATION GÉNÉRALE ET ÉVOLUTION (8 SEMAINES) -->
+                    <div id="general-evaluations-container"></div>
+
+                    <!-- SÉLECTEUR DE DATE ET DEVOIRS -->
+                    <div class="filter-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
+                        <button class="pro-button" onclick="changeHomeworkDate(-1)"><i class="fas fa-chevron-left"></i> Jour Précédent</button>
+                        <h3 id="current-homework-date-display" style="margin:0; color:#1e1b4b;"><i class="fas fa-calendar-day"></i> </h3>
+                        <button class="pro-button" onclick="changeHomeworkDate(1)">Jour Suivant <i class="fas fa-chevron-right"></i></button>
+                    </div>
+
+                    <!-- GRILLE DES DEVOIRS POUR LA JOURNÉE (TRANSFERT AUTOMATIQUE) -->
+                    <div id="homework-items-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:20px;">
+                        <!-- Devoirs et évaluations générés ici -->
+                    </div>
+                </div>
+
+                <!-- 4. VUE ENSEIGNANT (PORTAIL DEVOIRS & ÉVALUATION) -->
+                <div id="homework-teacher-view" class="homework-view" style="display:none;">
+                    <button class="pro-button" onclick="showHomeworkView('homework-home')" style="margin-bottom:15px;">
+                        <i class="fas fa-arrow-left"></i> Retour
+                    </button>
+                    <h2><i class="fas fa-chalkboard-teacher"></i> Espace Évaluation des Devoirs par l'Enseignant</h2>
+
+                    <div class="filter-container" style="margin-bottom:20px; display:flex; gap:15px; flex-wrap:wrap; align-items:center;">
+                        <div>
+                            <label>Classe :</label>
+                            <select id="teacher-hw-class" onchange="loadTeacherHomeworks()">
+                                <option value="PEI1">PEI1</option>
+                                <option value="PEI2">PEI2</option>
+                                <option value="PEI3">PEI3</option>
+                                <option value="PEI4">PEI4</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Date :</label>
+                            <input type="date" id="teacher-hw-date" onchange="loadTeacherHomeworks()">
+                        </div>
+                        <button class="pro-button primary-button" onclick="loadTeacherHomeworks()"><i class="fas fa-sync"></i> Charger</button>
+                        <button class="pro-button info-button" onclick="openTeacherMessagesModal()"><i class="fas fa-envelope"></i> Messages Parents <span id="teacher-unread-badge" style="background:red; color:white; padding:2px 6px; border-radius:10px; font-size:0.8em; display:none;">0</span></button>
+                    </div>
+
+                    <div id="teacher-evaluations-wrapper">
+                        <!-- Formulaire d'évaluation des devoirs par élève -->
+                    </div>
+                </div>
+
+                <!-- 5. NOUVEL ESPACE PLAN HEBDOMADAIRE POUR LES PARENTS -->
+                <div id="parent-plan-view" class="homework-view" style="display:none;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <button class="pro-button" onclick="showHomeworkView('homework-home')" style="padding:8px 14px;">
+                                <i class="fas fa-arrow-left"></i> Accueil
+                            </button>
+                            <h2 style="color:#1e1b4b; margin:0; font-size:1.4rem; font-weight:700;">
+                                <i class="fas fa-calendar-week" style="color:#10B981;"></i> Plan Hebdomadaire
+                            </h2>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <!-- Bouton Changement de Section pour Parent -->
+                            <button type="button" class="pro-button" onclick="toggleParentSection()" id="parentSectionToggleBtn" style="padding:8px 16px; font-weight:600; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; box-shadow:0 3px 10px rgba(16,185,129,0.25); cursor:pointer;">
+                                <i class="fas fa-venus-mars"></i> <span id="parentSectionToggleText">Section Garçons 👦</span>
+                            </button>
+                            <button type="button" class="pro-button primary-button" onclick="showHomeworkView('parent-selection')" style="padding:8px 16px;">
+                                <i class="fas fa-child"></i> Suivi Élève & Contact
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ONGLETS DE NAVIGATION ESPACE PARENT -->
+                    <div class="parent-nav-tabs" style="display:flex; gap:10px; margin-bottom:20px; overflow-x:auto; padding-bottom:5px;">
+                        <button type="button" class="pro-button primary-button active" onclick="showHomeworkView('parent-plan')">
+                            <i class="fas fa-calendar-alt"></i> 1. Plan Hebdomadaire
+                        </button>
+                        <button type="button" class="pro-button" onclick="showHomeworkView('parent-selection')">
+                            <i class="fas fa-user-graduate"></i> 2. Suivi Élèves & Devoirs
+                        </button>
+                        <button type="button" class="pro-button" onclick="showHomeworkView('homework-home')">
+                            <i class="fas fa-camera"></i> 3. Célébrations & Photos
+                        </button>
+                    </div>
+
+                    <!-- CARTE DES FILTRES (SEMAINE, CLASSE, JOUR) -->
+                    <div style="background:white; border-radius:16px; padding:20px; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1px solid #E2E8F0; margin-bottom:25px;">
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:18px; align-items:end;">
+                            
+                            <!-- Sélecteur de Semaine -->
+                            <div>
+                                <label style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
+                                    <i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Semaine :
+                                </label>
+                                <select id="parentWeekSelector" class="pro-select" onchange="loadParentWeeklyPlan()" style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid #CBD5E1; font-weight:600; font-size:0.95rem;">
+                                    <!-- Rempli dynamiquement -->
+                                </select>
+                            </div>
+
+                            <!-- Sélecteur de Classe -->
+                            <div>
+                                <label style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
+                                    <i class="fas fa-users" style="color:#10B981;"></i> Classe :
+                                </label>
+                                <select id="parentClassSelector" class="pro-select" onchange="loadParentWeeklyPlan()" style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid #CBD5E1; font-weight:600; font-size:0.95rem;">
+                                    <option value="PEI1">السادس (PEI1)</option>
+                                    <option value="PEI2">الاول متوسط (PEI2)</option>
+                                    <option value="PEI3">الثاني متوسط (PEI3)</option>
+                                    <option value="PEI4">الثالث متوسط (PEI4)</option>
+                                    <option value="PEI5">الأول ثانوي (PEI5)</option>
+                                    <option value="DP1">الثاني ثانوي (DP1)</option>
+                                    <option value="DP2">الثالث ثانوي (DP2)</option>
+                                </select>
+                            </div>
+
+                            <!-- Sélecteur de Jour -->
+                            <div>
+                                <label style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
+                                    <i class="fas fa-clock" style="color:#F59E0B;"></i> Jour :
+                                </label>
+                                <select id="parentDaySelector" class="pro-select" onchange="filterParentPlanByDay()" style="width:100%; padding:10px 14px; border-radius:10px; border:1px solid #CBD5E1; font-weight:600; font-size:0.95rem;">
+                                    <option value="all">Tous les jours de la semaine</option>
+                                    <option value="Dimanche">Dimanche / الأحد</option>
+                                    <option value="Lundi">Lundi / الاثنين</option>
+                                    <option value="Mardi">Mardi / الثلاثاء</option>
+                                    <option value="Mercredi">Mercredi / الأربعاء</option>
+                                    <option value="Jeudi">Jeudi / الخميس</option>
+                                </select>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- BANIÈRE D'ÉTAT DU PLAN (COMPLET / EN COURS) -->
+                    <div id="parentPlanStatusBanner" style="margin-bottom:20px;"></div>
+
+                    <!-- NOTES DE CLASSE -->
+                    <div id="parentClassNotesBox" style="margin-bottom:20px; display:none;"></div>
+
+                    <!-- AFFICHAGE DES COURS DU PLAN HEBDOMADAIRE -->
+                    <div id="parentPlanDisplayContainer" style="display:flex; flex-direction:column; gap:20px;">
+                        <!-- Rempli dynamiquement -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- MODAL AUTHENTIFICATION PARENT -->
+        <div id="parent-auth-modal" class="hw-modal" style="display:none;">
+            <div class="hw-modal-content">
+                <span class="hw-close-modal" onclick="closeParentAuthModal()">&times;</span>
+                <h3><i class="fas fa-user-lock"></i> Connexion / Inscription Parent</h3>
+                <div style="display:flex; gap:10px; margin:15px 0;">
+                    <button id="tab-login-btn" class="pro-button active" onclick="switchParentAuthTab('login')">Connexion</button>
+                    <button id="tab-register-btn" class="pro-button" onclick="switchParentAuthTab('register')">Inscription</button>
+                </div>
+                <div id="parent-login-form">
+                    <input type="tel" id="parentLoginPhone" placeholder="Numéro de téléphone" style="width:100%; padding:10px; margin-bottom:10px; border-radius:8px; border:1px solid #ccc;">
+                    <input type="password" id="parentLoginPassword" placeholder="Mot de passe" style="width:100%; padding:10px; margin-bottom:10px; border-radius:8px; border:1px solid #ccc;">
+                    <button class="pro-button success-button" onclick="submitParentLogin()" style="width:100%;">Se connecter</button>
+                </div>
+                <div id="parent-register-form" style="display:none;">
+                    <input type="text" id="parentRegFirstName" placeholder="Prénom" style="width:100%; padding:10px; margin-bottom:10px; border-radius:8px; border:1px solid #ccc;">
+                    <input type="text" id="parentRegLastName" placeholder="Nom" style="width:100%; padding:10px; margin-bottom:10px; border-radius:8px; border:1px solid #ccc;">
+                    <input type="tel" id="parentRegPhone" placeholder="Numéro de téléphone" style="width:100%; padding:10px; margin-bottom:10px; border-radius:8px; border:1px solid #ccc;">
+                    <input type="password" id="parentRegPassword" placeholder="Créer un mot de passe" style="width:100%; padding:10px; margin-bottom:10px; border-radius:8px; border:1px solid #ccc;">
+                    <button class="pro-button primary-button" onclick="submitParentRegister()" style="width:100%;">S'inscrire</button>
+                </div>
+                <div id="parent-auth-status" style="margin-top:10px; font-size:0.9em;"></div>
+            </div>
+        </div>
+
+        <!-- MODAL CONTACT ENSEIGNANT -->
+        <div id="contact-teacher-modal" class="hw-modal" style="display:none;">
+            <div class="hw-modal-content">
+                <span class="hw-close-modal" onclick="closeContactTeacherModal()">&times;</span>
+                <h3 id="contact-modal-title"><i class="fas fa-envelope"></i> Envoyer un message</h3>
+                <textarea id="parentMessageText" rows="4" placeholder="Écrivez votre message ici..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; margin:15px 0;"></textarea>
+                <button class="pro-button success-button" onclick="submitParentMessage()" style="width:100%;">Envoyer</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- MODAL SELECTION SECTION ESPACE PARENTS -->
+    <div id="parent-section-modal" class="hw-modal" style="display:none; z-index:99999;">
+        <div class="hw-modal-content" style="max-width:480px; text-align:center; border-radius:20px; padding:30px 25px;">
+            <div style="font-size:2.8rem; margin-bottom:10px;">👨‍👩‍👧‍👦</div>
+            <h2 style="color:#1E1B4B; margin-bottom:8px; font-weight:800; font-size:1.4rem;">Espace Parents & Élèves</h2>
+            <p style="color:#6B7280; font-size:0.95rem; margin-bottom:25px;">Veuillez choisir la section de votre enfant pour consulter son plan hebdomadaire, ses devoirs et contacter les enseignants :</p>
+            
+            <div style="display:flex; flex-direction:column; gap:14px;">
+                <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('garcons')" style="padding:16px 20px; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; border-radius:14px; font-weight:700; font-size:1.05rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(37,99,235,0.3);">
+                    <span><i class="fas fa-mars" style="margin-right:10px; font-size:1.2rem;"></i> Section Garçons 👦</span>
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+                <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('filles')" style="padding:16px 20px; background:linear-gradient(135deg, #EC4899, #DB2777); color:white; border-radius:14px; font-weight:700; font-size:1.05rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(236,72,153,0.3);">
+                    <span><i class="fas fa-venus" style="margin-right:10px; font-size:1.2rem;"></i> Section Filles 👧</span>
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            <button type="button" class="pro-button secondary-button" onclick="closeParentSectionModal()" style="margin-top:20px; width:100%; padding:10px;">
+                Annuler
+            </button>
+        </div>
+    </div>
+    <script src="notifications.js"></script>
+    <script src="lesson_functions_new.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

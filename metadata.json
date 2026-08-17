@@ -1,0 +1,8 @@
+{
+  "name": "Plans Hebdomadaires",
+  "description": "Application de gestion des plans de leçons hebdomadaires pour enseignants",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
