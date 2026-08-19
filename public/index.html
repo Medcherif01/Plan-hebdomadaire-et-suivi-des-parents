@@ -203,201 +203,315 @@
             </select>
         </div>
         <div id="admin-actions" class="filter-container admin-section" style="display: none;">
-             <h3 id="admin-title"><i class="fas fa-user-shield"></i> Actions Administrateur</h3>
+             <div class="admin-header-bar">
+                 <h3 id="admin-title"><i class="fas fa-user-shield"></i> Espace Administrateur - Gestion Complète</h3>
+                 <span class="admin-badge"><i class="fas fa-crown"></i> Compte Admin : Med01 / Mohamed</span>
+             </div>
              
-             <!-- GESTION DES COMPTES D'ENSEIGNANTS -->
-             <div class="admin-subsection user-mgmt-box">
-                <h4><i class="fas fa-users-cog"></i> Gestion des Enseignants & Mots de passe</h4>
-                <div class="user-mgmt-header">
-                    <label for="adminSectionFilter">Section à gérer :</label>
-                    <select id="adminSectionFilter" onchange="loadAdminUsersList()">
-                        <option value="garcons">Section Garçons 👦</option>
-                        <option value="filles">Section Filles 👧</option>
-                    </select>
-                </div>
-                
-                <div class="add-user-form">
-                    <input type="text" id="adminNewUsername" placeholder="Nom d'utilisateur / Enseignant">
-                    <input type="text" id="adminNewPassword" placeholder="Mot de passe">
-                    <button class="pro-button success-button" onclick="adminAddOrUpdateUser()">
-                        <i class="fas fa-plus-circle"></i> <span class="btn-text">Ajouter / Modifier</span>
-                    </button>
-                </div>
-                <div id="adminUsersStatus" style="font-size:0.9em; margin-bottom:10px;"></div>
-                
-                <div id="usersTableContainer" class="users-table-wrapper">
-                    <p>Chargement des enseignants...</p>
-                </div>
+             <!-- NAVIGATION PAR ONGLETS PRO -->
+             <div class="admin-tabs-nav" id="adminTabsNav">
+                 <button type="button" class="admin-tab-btn active" onclick="switchAdminTab('upload')" id="tabBtn_upload">
+                     <i class="fas fa-cloud-upload-alt"></i> <span>1. Import Plans Hebdo</span>
+                 </button>
+                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('teachers')" id="tabBtn_teachers">
+                     <i class="fas fa-users-cog"></i> <span>2. Enseignants & Mots de passe</span>
+                 </button>
+                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('calendar')" id="tabBtn_calendar">
+                     <i class="fas fa-calendar-alt"></i> <span>3. Calendrier (38 Semaines)</span>
+                 </button>
+                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('students')" id="tabBtn_students">
+                     <i class="fas fa-user-graduate"></i> <span>4. Élèves & Célébrations</span>
+                 </button>
+                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('reports')" id="tabBtn_reports">
+                     <i class="fas fa-file-invoice"></i> <span>5. Rapports de Direction</span>
+                 </button>
              </div>
 
-             <!-- GESTION DES ÉLÈVES ET DES PHOTOS -->
-             <div class="admin-subsection user-mgmt-box" style="margin-top:20px;">
-                <h4><i class="fas fa-user-graduate"></i> Gestion des Élèves (Liste, Photos, Déplacement de Classes)</h4>
-                <div class="user-mgmt-header" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                    <label for="adminStudentClassFilter">Classe :</label>
-                    <select id="adminStudentClassFilter" onchange="loadAdminStudentsList()">
-                        <option value="PEI1">السادس (PEI1)</option>
-                        <option value="PEI2">الاول متوسط (PEI2)</option>
-                        <option value="PEI3">الثاني متوسط (PEI3)</option>
-                        <option value="PEI4">الثالث متوسط (PEI4)</option>
-                        <option value="PEI5">الأول ثانوي (PEI5)</option>
-                        <option value="DP1">الثاني ثانوي (DP1)</option>
-                        <option value="DP2">الثالث ثانوي (DP2)</option>
-                    </select>
-                    <label for="adminStudentSectionFilter">Section :</label>
-                    <select id="adminStudentSectionFilter" onchange="loadAdminStudentsList()">
-                        <option value="garcons">Section Garçons 👦</option>
-                        <option value="filles">Section Filles 👧</option>
-                    </select>
-                </div>
+             <!-- ONGLET 1 : IMPORT EXCEL DES PLANS HEBDOMADAIRES -->
+             <div id="adminTab_upload" class="admin-tab-content" style="display:block; width:100%;">
+                 <div class="admin-card-inner">
+                     <h4><i class="fas fa-file-excel" style="color:#10B981;"></i> Chargement & Import des Plans Hebdomadaires (Excel)</h4>
+                     <p class="admin-subtext">L'administrateur peut importer et enregistrer les plans pour la <strong>Section Garçons</strong> ou la <strong>Section Filles</strong> séparément sans changer sa propre section de travail.</p>
+                     
+                     <div class="admin-grid-2col" style="margin-top:15px; margin-bottom:15px;">
+                         <div>
+                             <label for="adminUploadSectionSelect" style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                                 <i class="fas fa-venus-mars" style="color:#2563EB;"></i> Section Cible d'Enregistrement :
+                             </label>
+                             <select id="adminUploadSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:2px solid #3B82F6; font-weight:700; background:#EFF6FF;">
+                                 <option value="garcons">👦 Section Garçons</option>
+                                 <option value="filles">👧 Section Filles</option>
+                                 <option value="current">🔄 Section Active en cours</option>
+                             </select>
+                         </div>
+                         <div>
+                             <label for="adminUploadWeekSelect" style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                                 <i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine Cible :
+                             </label>
+                             <select id="adminUploadWeekSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;">
+                                 <!-- Rempli dynamiquement avec les 38 semaines -->
+                             </select>
+                         </div>
+                     </div>
 
-                <div class="add-user-form" style="margin-top:10px;">
-                    <input type="text" id="adminStudentName" placeholder="Nom de l'élève">
-                    <input type="text" id="adminStudentPhoto" placeholder="Lien photo Google Drive / Web">
-                    <input type="text" id="adminStudentBirthday" placeholder="Date d'anniversaire (ex: 4/2014)">
-                    <button class="pro-button success-button" onclick="adminAddOrUpdateStudent()">
-                        <i class="fas fa-plus-circle"></i> <span class="btn-text">Ajouter / Enregistrer Élève</span>
-                    </button>
-                </div>
+                     <div class="upload-dropzone-box">
+                         <label for="excelFileInput" id="admin-excel-label" style="display:block; font-weight:700; margin-bottom:8px; cursor:pointer;">
+                             <i class="fas fa-file-excel" style="font-size:2rem; color:#10B981;"></i><br>
+                             <span style="font-size:1.05rem; color:#1E293B;">Sélectionnez votre fichier Excel (.xlsx, .xls)</span>
+                         </label>
+                         <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleFileUpload(event)" style="margin:10px auto; display:block;">
+                         <div id="file-upload-status" style="font-size:0.95rem; font-weight:600; color:#1E293B; margin-top:8px;"></div>
+                     </div>
 
-                <!-- OUTIL DÉPLACEMENT D'ÉLÈVE VERS UNE AUTRE CLASSE -->
-                <div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:12px; padding:15px; margin-top:15px;">
-                    <h5 style="margin:0 0 10px 0; color:#1E1B4B; font-weight:700; font-size:0.95rem;">
-                        <i class="fas fa-exchange-alt" style="color:#2563EB;"></i> Déplacer un Élève vers une Autre Classe (ex: Yasser de PEI2 vers PEI3) :
-                    </h5>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                        <div style="flex:1; min-width:180px;">
-                            <label style="font-size:0.8rem; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Élève à déplacer :</label>
-                            <select id="adminMoveStudentSelector" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
-                                <option value="">-- Choisir un élève --</option>
-                            </select>
-                        </div>
-                        <div style="width:170px;">
-                            <label style="font-size:0.8rem; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Nouvelle Classe :</label>
-                            <select id="adminMoveTargetClass" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
-                                <option value="PEI1">السادس (PEI1)</option>
-                                <option value="PEI2">الاول متوسط (PEI2)</option>
-                                <option value="PEI3">الثاني متوسط (PEI3)</option>
-                                <option value="PEI4">الثالث متوسط (PEI4)</option>
-                                <option value="PEI5">الأول ثانوي (PEI5)</option>
-                                <option value="DP1">الثاني ثانوي (DP1)</option>
-                                <option value="DP2">الثالث ثانوي (DP2)</option>
-                            </select>
-                        </div>
-                        <div style="padding-top:18px;">
-                            <button type="button" class="pro-button primary-button" onclick="adminQuickMoveStudent()" style="padding:9px 16px;">
-                                <i class="fas fa-check-circle"></i> Enregistrer le déplacement
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="adminStudentStatus" style="font-size:0.9em; margin-bottom:10px; margin-top:10px;"></div>
-
-                <div id="studentsTableContainer" class="users-table-wrapper">
-                    <p>Chargement des élèves...</p>
-                </div>
-
-                <hr style="margin:20px 0; border:0; border-top:1px solid #ddd;">
-                <h4><i class="fas fa-camera"></i> Photos Célébration / Félicitations de la Journée</h4>
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:15px; margin-top:10px;">
-                    <div>
-                        <label style="font-size:0.85em; font-weight:bold;">Photo 1 (Félicitations) :</label>
-                        <input type="text" id="adminPhoto1Url" placeholder="URL Image 1" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
-                        <input type="text" id="adminPhoto1Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
-                        <button class="pro-button primary-button" onclick="adminSavePhoto(1)" style="margin-top:6px; width:100%;">Enregistrer Photo 1</button>
-                    </div>
-                    <div>
-                        <label style="font-size:0.85em; font-weight:bold;">Photo 2 :</label>
-                        <input type="text" id="adminPhoto2Url" placeholder="URL Image 2" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
-                        <input type="text" id="adminPhoto2Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
-                        <button class="pro-button primary-button" onclick="adminSavePhoto(2)" style="margin-top:6px; width:100%;">Enregistrer Photo 2</button>
-                    </div>
-                    <div>
-                        <label style="font-size:0.85em; font-weight:bold;">Photo 3 :</label>
-                        <input type="text" id="adminPhoto3Url" placeholder="URL Image 3" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
-                        <input type="text" id="adminPhoto3Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
-                        <button class="pro-button primary-button" onclick="adminSavePhoto(3)" style="margin-top:6px; width:100%;">Enregistrer Photo 3</button>
-                    </div>
-                </div>
+                     <div style="margin-top:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                         <button id="saveUploadedDataBtn" onclick="saveUploadedData()" disabled class="pro-button accent-button" style="padding:11px 22px; font-size:0.95rem;">
+                             <i class="fas fa-database"></i> <span class="btn-text">Charger et Enregistrer dans la DB</span>
+                         </button>
+                     </div>
+                 </div>
              </div>
 
-             <!-- GESTION DU CALENDRIER SCOLAIRE ET DES SEMAINES (1 à 38) -->
-             <div class="admin-subsection user-mgmt-box" style="margin-top:20px;">
-                <h4 style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-                    <span><i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Configuration des Semaines & Dates Scolaires (Semaines 1 à 38)</span>
-                    <button type="button" class="pro-button danger-button" onclick="adminResetWeeksToDefault()" style="padding:4px 10px; font-size:0.8rem; background:#EF4444;">
-                        <i class="fas fa-undo"></i> Rétablir Calendrier Officiel 2026/2027
-                    </button>
-                </h4>
-                <p style="font-size:0.88rem; color:#64748B; margin-bottom:12px;">
-                    Personnalisez le titre (Français et Arabe) ainsi que la plage de dates (du ... au ...) pour chaque semaine scolaire. Les modifications sont synchronisées pour les enseignants, parents et rapports.
-                </p>
-
-                <!-- Formulaire de modification rapide -->
-                <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:16px; margin-bottom:16px;">
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; align-items:end;">
-                        <div>
-                            <label for="adminWeekSelectToEdit" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Semaine :</label>
-                            <select id="adminWeekSelectToEdit" onchange="onAdminSelectWeekToEdit()" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;">
-                                <!-- Options 1 à 38 générées dynamiquement -->
-                            </select>
-                        </div>
-                        <div>
-                            <label for="adminWeekTitleInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Titre (Français) :</label>
-                            <input type="text" id="adminWeekTitleInput" placeholder="Ex: Semaine 1" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
-                        </div>
-                        <div>
-                            <label for="adminWeekTitleArInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Titre (Arabe) :</label>
-                            <input type="text" id="adminWeekTitleArInput" placeholder="Ex: الأسبوع 1" dir="rtl" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
-                        </div>
-                        <div>
-                            <label for="adminWeekStartDateInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Date de Début (Du) :</label>
-                            <input type="date" id="adminWeekStartDateInput" style="width:100%; padding:8px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
-                        </div>
-                        <div>
-                            <label for="adminWeekEndDateInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Date de Fin (Au / À) :</label>
-                            <input type="date" id="adminWeekEndDateInput" style="width:100%; padding:8px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
-                        </div>
-                        <div>
-                            <button type="button" class="pro-button success-button" onclick="adminSaveSingleWeekConfig()" style="width:100%; padding:9px 12px; height:42px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
-                                <i class="fas fa-save"></i> <span>Enregistrer</span>
-                            </button>
-                        </div>
-                    </div>
-                    <div id="adminWeekConfigStatus" style="font-size:0.9rem; margin-top:10px; font-weight:600;"></div>
-                </div>
-
-                <!-- Tableau récapitulatif des 38 semaines -->
-                <div style="margin-top:10px;">
-                    <div style="font-weight:700; font-size:0.9rem; color:#1E293B; margin-bottom:8px;">
-                        <i class="fas fa-table" style="color:#6366F1;"></i> Calendrier complet de l'année scolaire :
-                    </div>
-                    <div id="weeksTableContainer" class="users-table-wrapper" style="max-height:280px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:10px;">
-                        <p style="text-align:center; padding:15px; color:#64748B;"><i class="fas fa-spinner fa-spin"></i> Chargement des semaines...</p>
-                    </div>
-                </div>
+             <!-- ONGLET 2 : GESTION DES ENSEIGNANTS, MOTS DE PASSE & LANGUE -->
+             <div id="adminTab_teachers" class="admin-tab-content" style="display:none; width:100%;">
+                 <div class="admin-card-inner">
+                     <h4><i class="fas fa-users-cog" style="color:#3B82F6;"></i> Gestion des Enseignants, Mots de Passe & Langue de Connexion</h4>
+                     <p class="admin-subtext">Configurez les mots de passe et la langue par défaut (Français 🇫🇷, العربية 🇸🇦, English 🇬🇧) pour chaque enseignant. Seuls les comptes configurés pourront se connecter.</p>
+                     
+                     <div class="user-mgmt-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:15px;">
+                         <div style="display:flex; align-items:center; gap:8px;">
+                             <label for="adminSectionFilter" style="font-weight:700;">Section des Enseignants :</label>
+                             <select id="adminSectionFilter" onchange="loadAdminUsersList()" style="padding:8px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700;">
+                                 <option value="garcons">Section Garçons 👦</option>
+                                 <option value="filles">Section Filles 👧</option>
+                             </select>
+                         </div>
+                         <div style="flex:1; max-width:280px;">
+                             <input type="text" id="adminTeacherSearchInput" placeholder="🔍 Filtrer enseignant..." oninput="filterAdminTeachersTable()" style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid #CBD5E1;">
+                         </div>
+                     </div>
+                     
+                     <!-- Formulaire d'ajout / modification d'enseignant avec sélection de la langue -->
+                     <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:16px; margin-bottom:16px;">
+                         <div style="font-weight:700; color:#1E293B; margin-bottom:10px; font-size:0.95rem;">
+                             <i class="fas fa-user-edit" style="color:#2563EB;"></i> Ajouter ou Modifier un Enseignant :
+                         </div>
+                         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; align-items:end;">
+                             <div>
+                                 <label for="adminNewUsername" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Nom de l'Enseignant :</label>
+                                 <input type="text" id="adminNewUsername" placeholder="Ex: Jean, Sarah, Mohamed..." style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                             </div>
+                             <div>
+                                 <label for="adminNewPassword" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Mot de passe :</label>
+                                 <input type="text" id="adminNewPassword" placeholder="Nouveau mot de passe" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                             </div>
+                             <div>
+                                 <label for="adminNewUserLanguage" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Langue par défaut :</label>
+                                 <select id="adminNewUserLanguage" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white; font-weight:600;">
+                                     <option value="fr">🇫🇷 Français (Français)</option>
+                                     <option value="ar">🇸🇦 العربية (Arabe)</option>
+                                     <option value="en">🇬🇧 English (Anglais)</option>
+                                 </select>
+                             </div>
+                             <div>
+                                 <button class="pro-button success-button" onclick="adminAddOrUpdateUser()" style="width:100%; padding:9px 12px; height:42px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                                     <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Compte</span>
+                                 </button>
+                             </div>
+                         </div>
+                         <div id="adminUsersStatus" style="font-size:0.9rem; margin-top:10px; font-weight:600;"></div>
+                     </div>
+                     
+                     <div id="usersTableContainer" class="users-table-wrapper">
+                         <p>Chargement des enseignants...</p>
+                     </div>
+                 </div>
              </div>
 
-             <div style="margin-top:20px;">
-                <label for="excelFileInput" id="admin-excel-label"><i class="fas fa-file-excel"></i> Fichier Excel :</label>
-                <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleFileUpload(event)">
+             <!-- ONGLET 3 : CALENDRIER SCOLAIRE ET 38 SEMAINES -->
+             <div id="adminTab_calendar" class="admin-tab-content" style="display:none; width:100%;">
+                 <div class="admin-card-inner">
+                     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+                         <h4 style="margin:0;"><i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Configuration des Semaines & Dates Scolaires (1 à 38)</h4>
+                         <button type="button" class="pro-button danger-button" onclick="adminResetWeeksToDefault()" style="padding:6px 12px; font-size:0.82rem; background:#EF4444;">
+                             <i class="fas fa-undo"></i> Rétablir Calendrier Officiel 2026/2027
+                         </button>
+                     </div>
+                     <p class="admin-subtext">
+                         Personnalisez le titre (Français et Arabe) ainsi que la plage de dates (du ... au ...) pour chaque semaine scolaire.
+                     </p>
+
+                     <!-- Formulaire de modification rapide -->
+                     <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:16px; margin-bottom:16px;">
+                         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:12px; align-items:end;">
+                             <div>
+                                 <label for="adminWeekSelectToEdit" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Semaine :</label>
+                                 <select id="adminWeekSelectToEdit" onchange="onAdminSelectWeekToEdit()" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;">
+                                     <!-- Options 1 à 38 générées dynamiquement -->
+                                 </select>
+                             </div>
+                             <div>
+                                 <label for="adminWeekTitleInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Titre (Français) :</label>
+                                 <input type="text" id="adminWeekTitleInput" placeholder="Ex: Semaine 1" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                             </div>
+                             <div>
+                                 <label for="adminWeekTitleArInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Titre (Arabe) :</label>
+                                 <input type="text" id="adminWeekTitleArInput" placeholder="Ex: الأسبوع 1" dir="rtl" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                             </div>
+                             <div>
+                                 <label for="adminWeekStartDateInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Date de Début (Du) :</label>
+                                 <input type="date" id="adminWeekStartDateInput" style="width:100%; padding:8px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                             </div>
+                             <div>
+                                 <label for="adminWeekEndDateInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Date de Fin (Au) :</label>
+                                 <input type="date" id="adminWeekEndDateInput" style="width:100%; padding:8px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                             </div>
+                             <div>
+                                 <button type="button" class="pro-button success-button" onclick="adminSaveSingleWeekConfig()" style="width:100%; padding:9px 12px; height:42px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                                     <i class="fas fa-save"></i> <span>Enregistrer Semaine</span>
+                                 </button>
+                             </div>
+                         </div>
+                         <div id="adminWeekConfigStatus" style="font-size:0.9rem; margin-top:10px; font-weight:600;"></div>
+                     </div>
+
+                     <!-- Tableau récapitulatif des 38 semaines -->
+                     <div style="margin-top:10px;">
+                         <div style="font-weight:700; font-size:0.9rem; color:#1E293B; margin-bottom:8px;">
+                             <i class="fas fa-table" style="color:#6366F1;"></i> Calendrier complet de l'année scolaire :
+                         </div>
+                         <div id="weeksTableContainer" class="users-table-wrapper" style="max-height:300px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:10px;">
+                             <p style="text-align:center; padding:15px; color:#64748B;"><i class="fas fa-spinner fa-spin"></i> Chargement des semaines...</p>
+                         </div>
+                     </div>
+                 </div>
              </div>
-             <button id="saveUploadedDataBtn" onclick="saveUploadedData()" disabled class="pro-button accent-button">
-                 <i class="fas fa-database"></i> <span class="btn-text">Charger et Enregistrer dans la DB</span>
-             </button>
-             <span id="file-upload-status" style="font-size: 0.9em;"></span>
-             <div class="admin-subsection">
-                <label for="adminReportClassSelector" id="admin-report-class-label"><i class="fas fa-school"></i> Choisir une Classe :</label>
-                <select id="adminReportClassSelector">
-                    <option value="">-- D'abord charger les classes --</option>
-                </select>
-                <button id="generateFullReportBtn" onclick="generateFullReportByClass()" class="pro-button success-button">
-                    <i class="fas fa-file-invoice"></i> <span class="btn-text">Générer Rapport Complet par Classe</span>
-                </button>
+
+             <!-- ONGLET 4 : GESTION DES ÉLÈVES, PHOTOS & CÉLÉBRATIONS -->
+             <div id="adminTab_students" class="admin-tab-content" style="display:none; width:100%;">
+                 <div class="admin-card-inner">
+                     <h4><i class="fas fa-user-graduate" style="color:#8B5CF6;"></i> Gestion des Élèves (Liste, Photos, Déplacement de Classes)</h4>
+                     <p class="admin-subtext">Ajoutez ou modifiez les fiches élèves, leurs liens photos Google Drive, et déplacez un élève facilement d'une classe à une autre.</p>
+                     
+                     <div class="user-mgmt-header" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+                         <label for="adminStudentClassFilter" style="font-weight:700;">Classe :</label>
+                         <select id="adminStudentClassFilter" onchange="loadAdminStudentsList()" style="padding:7px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                             <option value="PEI1">السادس (PEI1)</option>
+                             <option value="PEI2">الاول متوسط (PEI2)</option>
+                             <option value="PEI3">الثاني متوسط (PEI3)</option>
+                             <option value="PEI4">الثالث متوسط (PEI4)</option>
+                             <option value="PEI5">الأول ثانوي (PEI5)</option>
+                             <option value="DP1">الثاني ثانوي (DP1)</option>
+                             <option value="DP2">الثالث ثانوي (DP2)</option>
+                         </select>
+                         <label for="adminStudentSectionFilter" style="font-weight:700;">Section :</label>
+                         <select id="adminStudentSectionFilter" onchange="loadAdminStudentsList()" style="padding:7px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                             <option value="garcons">Section Garçons 👦</option>
+                             <option value="filles">Section Filles 👧</option>
+                         </select>
+                     </div>
+
+                     <div class="add-user-form" style="margin-top:10px;">
+                         <input type="text" id="adminStudentName" placeholder="Nom de l'élève">
+                         <input type="text" id="adminStudentPhoto" placeholder="Lien photo Google Drive / Web">
+                         <input type="text" id="adminStudentBirthday" placeholder="Date d'anniversaire (ex: 4/2014)">
+                         <button class="pro-button success-button" onclick="adminAddOrUpdateStudent()">
+                             <i class="fas fa-plus-circle"></i> <span class="btn-text">Ajouter / Enregistrer Élève</span>
+                         </button>
+                     </div>
+
+                     <!-- OUTIL DÉPLACEMENT D'ÉLÈVE VERS UNE AUTRE CLASSE -->
+                     <div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:12px; padding:15px; margin-top:15px;">
+                         <h5 style="margin:0 0 10px 0; color:#1E1B4B; font-weight:700; font-size:0.95rem;">
+                             <i class="fas fa-exchange-alt" style="color:#2563EB;"></i> Déplacer un Élève vers une Autre Classe (ex: Yasser de PEI2 vers PEI3) :
+                         </h5>
+                         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                             <div style="flex:1; min-width:180px;">
+                                 <label style="font-size:0.8rem; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Élève à déplacer :</label>
+                                 <select id="adminMoveStudentSelector" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                     <option value="">-- Choisir un élève --</option>
+                                 </select>
+                             </div>
+                             <div style="width:170px;">
+                                 <label style="font-size:0.8rem; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Nouvelle Classe :</label>
+                                 <select id="adminMoveTargetClass" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                     <option value="PEI1">السادس (PEI1)</option>
+                                     <option value="PEI2">الاول متوسط (PEI2)</option>
+                                     <option value="PEI3">الثاني متوسط (PEI3)</option>
+                                     <option value="PEI4">الثالث متوسط (PEI4)</option>
+                                     <option value="PEI5">الأول ثانوي (PEI5)</option>
+                                     <option value="DP1">الثاني ثانوي (DP1)</option>
+                                     <option value="DP2">الثالث ثانوي (DP2)</option>
+                                 </select>
+                             </div>
+                             <div style="padding-top:18px;">
+                                 <button type="button" class="pro-button primary-button" onclick="adminQuickMoveStudent()" style="padding:9px 16px;">
+                                     <i class="fas fa-check-circle"></i> Enregistrer le déplacement
+                                 </button>
+                             </div>
+                         </div>
+                     </div>
+
+                     <div id="adminStudentStatus" style="font-size:0.9em; margin-bottom:10px; margin-top:10px;"></div>
+
+                     <div id="studentsTableContainer" class="users-table-wrapper">
+                         <p>Chargement des élèves...</p>
+                     </div>
+
+                     <hr style="margin:20px 0; border:0; border-top:1px solid #CBD5E1;">
+                     <h4><i class="fas fa-camera"></i> Photos Célébration / Félicitations de la Journée</h4>
+                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:15px; margin-top:10px;">
+                         <div>
+                             <label style="font-size:0.85em; font-weight:bold;">Photo 1 (Félicitations) :</label>
+                             <input type="text" id="adminPhoto1Url" placeholder="URL Image 1" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                             <input type="text" id="adminPhoto1Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                             <button class="pro-button primary-button" onclick="adminSavePhoto(1)" style="margin-top:6px; width:100%;">Enregistrer Photo 1</button>
+                         </div>
+                         <div>
+                             <label style="font-size:0.85em; font-weight:bold;">Photo 2 :</label>
+                             <input type="text" id="adminPhoto2Url" placeholder="URL Image 2" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                             <input type="text" id="adminPhoto2Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                             <button class="pro-button primary-button" onclick="adminSavePhoto(2)" style="margin-top:6px; width:100%;">Enregistrer Photo 2</button>
+                         </div>
+                         <div>
+                             <label style="font-size:0.85em; font-weight:bold;">Photo 3 :</label>
+                             <input type="text" id="adminPhoto3Url" placeholder="URL Image 3" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                             <input type="text" id="adminPhoto3Comment" placeholder="Commentaire" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ccc; margin-top:4px;">
+                             <button class="pro-button primary-button" onclick="adminSavePhoto(3)" style="margin-top:6px; width:100%;">Enregistrer Photo 3</button>
+                         </div>
+                     </div>
+                 </div>
              </div>
-             <div style="width: 100%; margin-top: 10px; font-size: 0.85em; color: var(--muted-text-color); border-top: 1px dashed var(--border-color); padding-top: 10px;">
-                 <i class="fas fa-info-circle"></i> **Note:** La fonction d'upload et d'extraction automatique depuis des fichiers Word ou PDF n'est pas implémentée dans cette version. Veuillez utiliser le format Excel pour charger les données via le bouton ci-dessus.
+
+             <!-- ONGLET 5 : RAPPORTS DE DIRECTION & PLANS DE LEÇON -->
+             <div id="adminTab_reports" class="admin-tab-content" style="display:none; width:100%;">
+                 <div class="admin-card-inner">
+                     <h4><i class="fas fa-file-invoice" style="color:#059669;"></i> Rapports de Direction & Modèles Officiels</h4>
+                     <p class="admin-subtext">Générez des synthèses complètes au format Word et téléchargez les modèles officiels configurés.</p>
+                     
+                     <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:18px; margin-top:12px;">
+                         <label for="adminReportClassSelector" id="admin-report-class-label" style="font-weight:700; color:#1E293B; display:block; margin-bottom:8px;">
+                             <i class="fas fa-school" style="color:#2563EB;"></i> Choisir une Classe pour le Rapport Complet :
+                         </label>
+                         <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                             <select id="adminReportClassSelector" style="flex:1; min-width:200px; padding:10px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                 <option value="">-- D'abord charger les classes --</option>
+                             </select>
+                             <button id="generateFullReportBtn" onclick="generateFullReportByClass()" class="pro-button success-button" style="padding:10px 20px;">
+                                 <i class="fas fa-file-invoice"></i> <span class="btn-text">Générer Rapport Complet par Classe</span>
+                             </button>
+                         </div>
+                     </div>
+                     
+                     <div style="margin-top:20px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px; padding:15px;">
+                         <div style="font-weight:700; color:#1E40AF; margin-bottom:6px;">
+                             <i class="fas fa-info-circle"></i> Modèles de Documents Configurés dans l'Environnement (Vercel / Serveur)
+                         </div>
+                         <div style="font-size:0.88rem; color:#1E3A8A;">
+                             • <strong>Modèle Plan Hebdomadaire Word :</strong> Actif via variable <code>WORD_TEMPLATE_URL</code><br>
+                             • <strong>Modèle Fiche de Leçon IA :</strong> Actif via variable <code>LESSON_TEMPLATE_URL</code>
+                         </div>
+                     </div>
+                 </div>
              </div>
         </div>
         <div class="filter-container main-actions-container">

@@ -712,10 +712,14 @@ app.post('/api/login', async (req, res) => {
     const trimmedUsername = username.trim();
     const db = await connectToDatabase();
 
-    // Compte administrateur global
-    if (trimmedUsername.toLowerCase() === 'admin' && password === 'admin') {
-      console.log('[LOGIN] Authentification Administrateur réussie');
-      return res.status(200).json({ success: true, username: 'Admin', role: 'admin', section });
+    // Compte Administrateur Principal (Med01 avec mot de passe Med120786, Mohamed, Admin)
+    if (
+      (trimmedUsername.toLowerCase() === 'med01' && password === 'Med120786') ||
+      (trimmedUsername.toLowerCase() === 'admin' && (password === 'Med120786' || password === 'admin')) ||
+      (trimmedUsername === 'Mohamed' && (password === 'Med120786' || password === 'Med01'))
+    ) {
+      console.log('[LOGIN] Authentification Administrateur réussie pour:', trimmedUsername);
+      return res.status(200).json({ success: true, username: trimmedUsername, role: 'admin', section, language: 'fr' });
     }
 
     const userId = `${section}_${trimmedUsername}`;
@@ -734,35 +738,34 @@ app.post('/api/login', async (req, res) => {
       return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant '${trimmedUsername}' appartient à la Section Garçons et ne peut pas se connecter à la Section Filles.` });
     }
 
-    // 3. Recherche de l'utilisateur dans la base de données pour la section donnée
+    // 3. Recherche stricte de l'utilisateur dans la base de données (seuls les mots de passe configurés par l'admin sont acceptés)
     const userDoc = await db.collection('users').findOne({ 
       username: trimmedUsername, 
       section: section 
     });
 
-    if (userDoc) {
+    if (userDoc && userDoc.password) {
       if (userDoc.password === password) {
         console.log('[LOGIN] Authentification réussie pour (DB):', trimmedUsername);
-        return res.status(200).json({ success: true, username: userDoc.username, role: userDoc.role || 'teacher', section });
+        let userLang = userDoc.language;
+        if (!userLang) {
+          userLang = arabicTeachers.includes(trimmedUsername) ? 'ar' : (englishTeachers.includes(trimmedUsername) ? 'en' : 'fr');
+        }
+        return res.status(200).json({ 
+          success: true, 
+          username: userDoc.username, 
+          role: userDoc.role || 'teacher', 
+          section, 
+          language: userLang 
+        });
       } else {
         console.log('[LOGIN] Mot de passe incorrect pour:', trimmedUsername);
-        return res.status(401).json({ success: false, message: 'Mot de passe incorrect' });
+        return res.status(401).json({ success: false, message: 'Mot de passe incorrect.' });
       }
     }
 
-    // 4. Authentification de secours via validUsers (seme l'utilisateur dans la DB)
-    if (validUsers[trimmedUsername] && validUsers[trimmedUsername] === password) {
-      console.log('[LOGIN] Authentification réussie pour (Fallback):', trimmedUsername);
-      await db.collection('users').updateOne(
-        { _id: userId },
-        { $set: { username: trimmedUsername, password: password, section: section, role: 'teacher', createdAt: new Date() } },
-        { upsert: true }
-      );
-      return res.status(200).json({ success: true, username: trimmedUsername, role: 'teacher', section });
-    }
-
-    console.log('[LOGIN] Échec authentification pour:', trimmedUsername);
-    res.status(401).json({ success: false, message: 'Identifiants invalides pour la section sélectionnée' });
+    console.log('[LOGIN] Compte non configuré pour:', trimmedUsername);
+    res.status(401).json({ success: false, message: 'Compte ou mot de passe non configuré par l\'administrateur.' });
   } catch (error) {
     console.error('[LOGIN] CRASH in /api/login:', error);
     res.status(500).json({ success: false, message: 'Erreur interne du serveur.' });
@@ -781,36 +784,43 @@ app.get('/api/admin/users', async (req, res) => {
 
     let users = await db.collection('users').find({ section: section }).toArray();
 
-    const settings = await db.collection('settings').findOne({ _id: `users_seeded_${section}` });
+    // Assurer que la liste par défaut des enseignants est visible dans le panel pour configuration facile
+    const defaultList = section === 'filles' ? femaleTeachers : maleTeachers;
+    const existingUserMap = new Map();
+    users.forEach(u => existingUserMap.set(u.username, u));
 
-    if ((!users || users.length === 0) && !settings) {
-      const defaultList = section === 'filles' ? femaleTeachers : maleTeachers;
-      const defaultUsers = defaultList.map(u => ({
-        _id: `${section}_${u}`,
-        username: u,
-        password: validUsers[u] || u,
-        section: section,
-        role: 'teacher'
-      })).filter(u => !deletedUserIds.has(u._id));
-
-      for (const user of defaultUsers) {
-        await db.collection('users').updateOne(
-          { _id: user._id },
-          { $set: user },
-          { upsert: true }
-        );
+    const completeList = [];
+    for (const teacherName of defaultList) {
+      const uId = `${section}_${teacherName}`;
+      if (deletedUserIds.has(uId)) continue;
+      
+      if (existingUserMap.has(teacherName)) {
+        completeList.push(existingUserMap.get(teacherName));
+      } else {
+        let defLang = 'fr';
+        if (arabicTeachers.includes(teacherName)) defLang = 'ar';
+        if (englishTeachers.includes(teacherName)) defLang = 'en';
+        
+        completeList.push({
+          _id: uId,
+          username: teacherName,
+          password: '',
+          section: section,
+          role: 'teacher',
+          language: defLang,
+          isConfigured: false
+        });
       }
-      await db.collection('settings').updateOne(
-        { _id: `users_seeded_${section}` },
-        { $set: { seeded: true, date: new Date() } },
-        { upsert: true }
-      );
-      users = defaultUsers;
-    } else {
-      users = users.filter(u => !deletedUserIds.has(u._id));
     }
 
-    res.status(200).json(users);
+    // Ajouter les utilisateurs personnalisés ajoutés par l'admin qui ne sont pas dans defaultList
+    for (const u of users) {
+      if (!deletedUserIds.has(u._id) && !defaultList.includes(u.username)) {
+        completeList.push(u);
+      }
+    }
+
+    res.status(200).json(completeList);
   } catch (error) {
     console.error('Erreur GET /api/admin/users:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -819,7 +829,7 @@ app.get('/api/admin/users', async (req, res) => {
 
 app.post('/api/admin/users', async (req, res) => {
   try {
-    const { username, password, section = 'garcons', role = 'teacher' } = req.body;
+    const { username, password, section = 'garcons', role = 'teacher', language = 'fr' } = req.body;
     if (!username || !password) {
       return res.status(400).json({ message: 'Nom d\'utilisateur et mot de passe requis.' });
     }
@@ -833,11 +843,20 @@ app.post('/api/admin/users', async (req, res) => {
 
     await db.collection('users').updateOne(
       { _id: userId },
-      { $set: { username: trimmedUser, password: password, section: section, role: role, updatedAt: new Date() } },
+      { 
+        $set: { 
+          username: trimmedUser, 
+          password: password, 
+          section: section, 
+          role: role, 
+          language: language || 'fr',
+          updatedAt: new Date() 
+        } 
+      },
       { upsert: true }
     );
 
-    res.status(200).json({ message: `Compte '${trimmedUser}' enregistré pour la section ${section}.` });
+    res.status(200).json({ message: `Compte '${trimmedUser}' enregistré (Langue: ${language}) pour la section ${section}.` });
   } catch (error) {
     console.error('Erreur POST /api/admin/users:', error);
     res.status(500).json({ message: 'Erreur serveur.' });

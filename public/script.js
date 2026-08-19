@@ -220,8 +220,27 @@
           }
           populateMainWeekSelector();
           populateParentWeekSelector();
+          populateAdminUploadWeekSelector();
           populateAdminWeekSelectToEdit();
           renderAdminWeeksTable();
+        }
+
+        function populateAdminUploadWeekSelector() {
+          const sel = document.getElementById('adminUploadWeekSelect');
+          if (!sel) return;
+          const currentVal = sel.value;
+          let html = '';
+          const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+          sortedWeekNums.forEach(wNum => {
+            const label = formatWeekDateRangeText(wNum);
+            html += `<option value="${wNum}">${label}</option>`;
+          });
+          sel.innerHTML = html;
+          if (currentVal && weeksConfig[currentVal]) {
+            sel.value = currentVal;
+          } else if (currentWeek && weeksConfig[currentWeek]) {
+            sel.value = currentWeek;
+          }
         }
 
         function populateMainWeekSelector() {
@@ -449,7 +468,63 @@
 
         // --- Fonctions Admin ---
         function handleFileUpload(event) { const file = event.target.files[0]; const statusSpan = document.getElementById('file-upload-status'); const saveBtn = document.getElementById('saveUploadedDataBtn'); uploadedPlanData = null; saveBtn.disabled = true; statusSpan.textContent = ''; if (!file) { statusSpan.textContent = t('no_file_selected'); return; } console.log(`[Admin Upload] Fichier: ${file.name}`); statusSpan.textContent = t('reading_file', { fileName: file.name }); if (!/\.(xlsx|xls)$/i.test(file.name)) { displayAlert("invalid_file_type", true); statusSpan.textContent = "Type invalide."; event.target.value = ''; return; } const reader = new FileReader(); reader.onload = function(e) { try { const data = e.target.result; const workbook = XLSX.read(data, { type: 'array' }); const firstSheetName = workbook.SheetNames[0]; const worksheet = workbook.Sheets[firstSheetName]; const jsonDataRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false }); if (!jsonDataRaw || jsonDataRaw.length < 1) throw new Error("Feuille Excel vide."); const headersRaw = jsonDataRaw[0]; if (!headersRaw || !Array.isArray(headersRaw) || headersRaw.length === 0) throw new Error("En-têtes non trouvés."); const extractedHeaders = headersRaw.map(h => h ? String(h).trim().replace(/\s+/g, ' ') : null).filter(Boolean); if (extractedHeaders.length === 0) throw new Error("Aucun en-tête valide."); const dataRows = jsonDataRaw.slice(1); uploadedPlanData = dataRows.map((row) => { if (!Array.isArray(row)) return null; const obj = {}; extractedHeaders.forEach((header, index) => { obj[header] = (row && index < row.length) ? row[index] : null; }); return Object.values(obj).some(val => val != null && String(val).trim() !== '') ? obj : null; }).filter(Boolean); console.log(`[Admin Upload] ${uploadedPlanData.length} lignes extraites.`); statusSpan.textContent = t('file_read_success', { count: uploadedPlanData.length }).replace(file.name, ''); displayAlert('file_read_success', false, { fileName: file.name, count: uploadedPlanData.length }); saveBtn.disabled = false; } catch (error) { console.error("Erreur lecture Excel:", error); displayAlert('file_error', true, { error: error.message }); statusSpan.textContent = t('file_error', { error: '' }).replace(': {error}', '.'); uploadedPlanData = null; saveBtn.disabled = true; event.target.value = ''; } }; reader.onerror = function(e) { console.error("Erreur FileReader:", e); displayAlert('file_error', true, { error: "Erreur FileReader" }); statusSpan.textContent = t('file_error', { error: '' }).replace(': {error}', '.'); uploadedPlanData = null; saveBtn.disabled = true; event.target.value = ''; }; reader.readAsArrayBuffer(file); }
-        async function saveUploadedData() { const weekSelect = document.getElementById('weekSelector'); const selectedWeek = weekSelect.value; const statusSpan = document.getElementById('file-upload-status'); if (!selectedWeek) { displayAlert("please_select_week", true); return; } if (!uploadedPlanData || uploadedPlanData.length === 0) { displayAlert("no_data_to_save", true); return; } console.log(`[Admin Save] Enregistrement ${uploadedPlanData.length} lignes S${selectedWeek} (${currentSection}).`); displayAlert('saving_uploaded_data', false, { week: selectedWeek }); setButtonLoading('saveUploadedDataBtn', true, 'fas fa-database'); showProgressBar(); updateProgressBar(10); try { const response = await fetch('/api/save-plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ week: selectedWeek, data: uploadedPlanData, section: currentSection }) }); updateProgressBar(80); const result = await response.json(); if (!response.ok) throw new Error(result.message || `Erreur serveur ${response.status}`); updateProgressBar(100); displayAlert('uploaded_data_saved', false, { week: selectedWeek }); statusSpan.textContent = t('saved'); uploadedPlanData = null; document.getElementById('excelFileInput').value = ''; document.getElementById('saveUploadedDataBtn').disabled = true; if (selectedWeek === currentWeek) { console.log("[Admin Save] Rechargement..."); await loadPlanForWeek(); } else { displayAlert(`Données S${selectedWeek} OK. ${t('select_week_to_display').replace('les données', `S${selectedWeek}`)}`, false); } } catch (error) { console.error("Erreur enregistrement upload:", error); displayAlert('uploaded_data_error', true, { error: error.message }); statusSpan.textContent = t('error_saving_notes', { error: '' }).replace(': {error}', '.'); updateProgressBar(0); } finally { hideProgressBar(); setButtonLoading('saveUploadedDataBtn', false, 'fas fa-database'); } }
+        async function saveUploadedData() {
+            const adminWeekSelect = document.getElementById('adminUploadWeekSelect');
+            const mainWeekSelect = document.getElementById('weekSelector');
+            const selectedWeek = (adminWeekSelect && adminWeekSelect.value) ? adminWeekSelect.value : (mainWeekSelect ? mainWeekSelect.value : null);
+            
+            const adminSectionSelect = document.getElementById('adminUploadSectionSelect');
+            const targetSection = (adminSectionSelect && adminSectionSelect.value) ? adminSectionSelect.value : currentSection;
+
+            const statusSpan = document.getElementById('file-upload-status');
+            if (!selectedWeek) {
+                displayAlert("please_select_week", true);
+                if (statusSpan) statusSpan.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Veuillez sélectionner une semaine.</span>';
+                return;
+            }
+            if (!uploadedPlanData || uploadedPlanData.length === 0) {
+                displayAlert("no_data_to_save", true);
+                if (statusSpan) statusSpan.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Aucun fichier Excel chargé ou fichier vide.</span>';
+                return;
+            }
+            console.log(`[Admin Save] Enregistrement ${uploadedPlanData.length} lignes S${selectedWeek} (${targetSection}).`);
+            displayAlert('saving_uploaded_data', false, { week: selectedWeek });
+            setButtonLoading('saveUploadedDataBtn', true, 'fas fa-database');
+            showProgressBar();
+            updateProgressBar(10);
+            try {
+                const response = await fetch('/api/save-plan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ week: selectedWeek, data: uploadedPlanData, section: targetSection })
+                });
+                updateProgressBar(80);
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || `Erreur serveur ${response.status}`);
+                updateProgressBar(100);
+                const secLabel = targetSection === 'garcons' ? 'Garçons 👦' : 'Filles 👧';
+                displayAlert(`Données de la semaine S${selectedWeek} pour la section ${secLabel} enregistrées avec succès !`, false);
+                if (statusSpan) statusSpan.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Données S${selectedWeek} (${secLabel}) enregistrées avec succès !</span>`;
+                uploadedPlanData = null;
+                const fileInputEl = document.getElementById('excelFileInput');
+                if (fileInputEl) fileInputEl.value = '';
+                const saveBtn = document.getElementById('saveUploadedDataBtn');
+                if (saveBtn) saveBtn.disabled = true;
+                
+                if (targetSection === currentSection && String(selectedWeek) === String(currentWeek)) {
+                    console.log("[Admin Save] Rechargement automatique de la semaine courante...");
+                    await fetchPlanData(selectedWeek);
+                }
+            } catch (error) {
+                console.error("Erreur enregistrement upload:", error);
+                displayAlert('uploaded_data_error', true, { error: error.message });
+                if (statusSpan) statusSpan.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${error.message}</span>`;
+                updateProgressBar(0);
+            } finally {
+                hideProgressBar();
+                setButtonLoading('saveUploadedDataBtn', false, 'fas fa-database');
+            }
+        }
         async function populateAdminReportClassSelector() { const select = document.getElementById('adminReportClassSelector'); if (!select) return; select.innerHTML = `<option value="">${t('loading_classes')}</option>`; select.disabled = true; try { const response = await fetch(`/api/all-classes?section=${currentSection}`); if (!response.ok) throw new Error(`Erreur serveur ${response.status}`); const classes = await response.json(); if (classes && classes.length > 0) { select.innerHTML = `<option value="">${t('select_report_class')}</option>`; classes.sort(compareClasses).forEach(cls => { const opt = document.createElement('option'); opt.value = cls; const ar = classTranslations[cls]; opt.textContent = ar ? `${ar} (${cls})` : cls; select.appendChild(opt); }); select.disabled = false; } else { select.innerHTML = `<option value="">${t('no_classes_found')}</option>`; } } catch (error) { console.error("Erreur chargement des classes pour le rapport:", error); select.innerHTML = `<option value="">Erreur chargement</option>`; displayAlert('error', true, { error: 'Erreur chargement des classes.' }); } }
         async function generateFullReportByClass() { const classSelector = document.getElementById('adminReportClassSelector'); const selectedClass = classSelector.value; if (!selectedClass) { displayAlert('please_select_class_for_report', true); return; } console.log(`Demande de rapport complet pour la classe : ${selectedClass}`); displayAlert('generating_full_report', false, { classe: selectedClass }); setButtonLoading('generateFullReportBtn', true, 'fas fa-file-invoice'); showProgressBar(); updateProgressBar(10); try { const response = await fetch('/api/full-report-by-class', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ classe: selectedClass }) }); updateProgressBar(80); if (response.ok) { const blob = await response.blob(); const contentDisposition = response.headers.get('content-disposition'); let filename = `Rapport_Complet_${selectedClass}.xlsx`; if (contentDisposition) { const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i); if (filenameMatch && filenameMatch[1]) { filename = filenameMatch[1]; } } saveAs(blob, filename); updateProgressBar(100); displayAlert('generating_full_report_success', false, { classe: selectedClass }); } else { const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." })); throw new Error(errorResult.message || `Erreur serveur ${response.status}`); } } catch (error) { console.error('Erreur lors de la génération du rapport complet:', error); displayAlert('generating_full_report_error', true, { classe: selectedClass, error: error.message }); updateProgressBar(0); } finally { hideProgressBar(); setButtonLoading('generateFullReportBtn', false, 'fas fa-file-invoice'); } }
         
@@ -892,12 +967,45 @@
         function updateLoginUIElements() { const loginH1 = document.querySelector('#login-form h1'); if(loginH1) loginH1.textContent = t('login_title'); const userLabel = document.querySelector('label[for="username"]'); if(userLabel) userLabel.textContent = t('login_username_label'); const passLabel = document.querySelector('label[for="password"]'); if(passLabel) passLabel.textContent = t('login_password_label'); const rememberLabel = document.getElementById('remember-me-label'); if(rememberLabel) rememberLabel.textContent = t('remember_me'); const loginBtnText = document.querySelector('#login-button .btn-text'); if(loginBtnText) loginBtnText.textContent = t('login_button_text'); if (document.getElementById('login-form').style.display !== 'none') { document.title = t('login_title'); } }
         function updateDynamicUIElements() { console.log("Updating dynamic UI for lang:", currentUserLanguage); const dateRangeEl=document.getElementById('weekDateRange'); const weekNum = parseInt(currentWeek, 10); const dates = specificWeekDateRanges[weekNum]; if(weekStartDate && dates?.end){ const s = weekStartDate; const e = new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ dateRangeEl.textContent = `${t('week_label')} ${currentWeek} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'From' : 'Du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`; } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (Err dates)`; } } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (${t('no_data')}: dates non définies)`; } createTableHeader(); displayPlanTable(filteredAndSortedData); const notesInput = document.getElementById('notesInput'); const notesClassSel = document.getElementById('notesClassSelector'); if (notesInput && notesClassSel) { if (notesClassSel.value) { const selText = notesClassSel.options[notesClassSel.selectedIndex].text; notesInput.placeholder = t('notes_placeholder', { classText: selText }); } else { notesInput.placeholder = t('select_class_placeholder'); } } }
 
-        function initializeApp(username) {
+        function switchAdminTab(tabName) {
+            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports'];
+            tabs.forEach(t => {
+                const contentEl = document.getElementById(`adminTab_${t}`);
+                const btnEl = document.getElementById(`tabBtn_${t}`);
+                if (contentEl) contentEl.style.display = (t === tabName) ? 'block' : 'none';
+                if (btnEl) btnEl.classList.toggle('active', t === tabName);
+            });
+            if (tabName === 'teachers') {
+                loadAdminUsersList();
+            } else if (tabName === 'calendar') {
+                populateAdminWeekSelectToEdit();
+                renderAdminWeeksTable();
+            } else if (tabName === 'students') {
+                if (typeof loadAdminStudentsList === 'function') loadAdminStudentsList();
+            } else if (tabName === 'reports') {
+                populateAdminReportClassSelector();
+            } else if (tabName === 'upload') {
+                populateAdminUploadWeekSelector();
+            }
+        }
+
+        function initializeApp(username, customLang) {
             loggedInUser = username;
             
-            if (arabicTeachers.includes(loggedInUser)) { currentUserLanguage = 'ar'; } 
-            else if (englishTeachers.includes(loggedInUser)) { currentUserLanguage = 'en'; } 
-            else { currentUserLanguage = 'fr'; } 
+            if (customLang && ['fr', 'ar', 'en'].includes(customLang)) {
+                currentUserLanguage = customLang;
+            } else {
+                const storedLang = localStorage.getItem('userLanguage');
+                if (storedLang && ['fr', 'ar', 'en'].includes(storedLang)) {
+                    currentUserLanguage = storedLang;
+                } else if (arabicTeachers.includes(loggedInUser)) {
+                    currentUserLanguage = 'ar';
+                } else if (englishTeachers.includes(loggedInUser)) {
+                    currentUserLanguage = 'en';
+                } else {
+                    currentUserLanguage = 'fr';
+                }
+            }
             
             console.log(`Initialisation pour ${loggedInUser} (Section: ${currentSection}, Lang: ${currentUserLanguage})`);
             
@@ -911,17 +1019,17 @@
             
             document.getElementById('loggedInUserInfo').textContent = t('connected_as', { user: loggedInUser });
             
-            const isAdminUser = (loggedInUser === 'Mohamed' || loggedInUser === 'Admin' || loggedInUser === 'Zohra' || loggedInUser === 'Imad');
+            const isAdminUser = (loggedInUser === 'Mohamed' || loggedInUser === 'Med01' || loggedInUser === 'Admin' || loggedInUser === 'Zohra' || loggedInUser === 'Imad');
             if (isAdminUser) { 
-                document.getElementById('admin-actions').style.display = 'flex';
-                populateAdminReportClassSelector();
-                loadAdminUsersList();
-                populateAdminWeekSelectToEdit();
-                renderAdminWeeksTable();
+                const adminActionsEl = document.getElementById('admin-actions');
+                if (adminActionsEl) adminActionsEl.style.display = 'block';
+                populateAdminUploadWeekSelector();
+                switchAdminTab('upload');
                 const lessonPlanGen = document.getElementById('lesson-plan-generator');
                 if (lessonPlanGen) lessonPlanGen.style.display = 'flex';
             } else {
-                document.getElementById('admin-actions').style.display = 'none';
+                const adminActionsEl = document.getElementById('admin-actions');
+                if (adminActionsEl) adminActionsEl.style.display = 'none';
                 const lessonPlanGen = document.getElementById('lesson-plan-generator');
                 if (lessonPlanGen) lessonPlanGen.style.display = 'none';
             }
@@ -1013,11 +1121,14 @@
                 if (response.ok && result.success) {
                     localStorage.setItem('loggedInUser', result.username);
                     localStorage.setItem('authVersion', AUTH_VERSION.toString());
+                    if (result.language) {
+                        localStorage.setItem('userLanguage', result.language);
+                    }
                     if (result.section) {
                         currentSection = result.section;
                         localStorage.setItem('selectedSection', result.section);
                     }
-                    initializeApp(result.username);
+                    initializeApp(result.username, result.language);
                 } else {
                     errorDiv.textContent = result.message || "Échec connexion.";
                     errorDiv.style.display = 'block';
@@ -1043,6 +1154,7 @@
             console.log("Déconnexion par:", loggedInUser);
             localStorage.removeItem('loggedInUser');
             localStorage.removeItem('authVersion');
+            localStorage.removeItem('userLanguage');
             
             loggedInUser = null;
             currentWeek = null;
@@ -1072,92 +1184,158 @@
         }
 
         // --- Fonctions Admin de Gestion des Utilisateurs ---
+        let allAdminUsersCache = [];
+
         async function loadAdminUsersList() {
             const filterEl = document.getElementById('adminSectionFilter');
             const targetSection = filterEl ? filterEl.value : currentSection;
             const container = document.getElementById('usersTableContainer');
             if (!container) return;
             
-            container.innerHTML = '<p style="text-align:center; padding:15px;"><i class="fas fa-spinner fa-spin"></i> Chargement de la liste des utilisateurs...</p>';
+            container.innerHTML = '<p style="text-align:center; padding:15px;"><i class="fas fa-spinner fa-spin"></i> Chargement de la liste des enseignants...</p>';
             
             try {
                 const response = await fetch(`/api/admin/users?section=${targetSection}`);
                 if (!response.ok) throw new Error(`Erreur ${response.status}`);
                 const users = await response.json();
-                
-                if (!users || users.length === 0) {
-                    container.innerHTML = '<p class="table-message" style="text-align:center; padding:15px;">Aucun utilisateur trouvé pour cette section.</p>';
-                    return;
-                }
-                
-                let html = `
-                    <table class="users-table">
-                        <thead>
-                            <tr>
-                                <th>Nom d'utilisateur</th>
-                                <th>Mot de passe</th>
-                                <th>Section</th>
-                                <th>Rôle</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-                
-                users.forEach(u => {
-                    const secLabel = u.section === 'garcons' ? '👦 Garçons' : '👧 Filles';
-                    html += `
-                        <tr>
-                            <td><strong>${u.username}</strong></td>
-                            <td><code>${u.password}</code></td>
-                            <td>${secLabel}</td>
-                            <td>${u.role || 'enseignant'}</td>
-                            <td>
-                                <button class="btn-sm-delete" onclick="adminDeleteUser('${u.username}', '${u.section}')">
-                                    <i class="fas fa-trash-alt"></i> Supprimer
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                });
-                
-                html += `</tbody></table>`;
-                container.innerHTML = html;
+                allAdminUsersCache = users || [];
+                renderAdminUsersTable(allAdminUsersCache);
             } catch (err) {
                 console.error("Erreur chargement utilisateurs:", err);
                 container.innerHTML = `<p style="color:red; padding:15px; text-align:center;">Erreur: ${err.message}</p>`;
             }
         }
 
+        function renderAdminUsersTable(users) {
+            const container = document.getElementById('usersTableContainer');
+            if (!container) return;
+
+            if (!users || users.length === 0) {
+                container.innerHTML = '<p class="table-message" style="text-align:center; padding:15px;">Aucun enseignant trouvé pour cette section.</p>';
+                return;
+            }
+            
+            const langLabels = {
+                fr: { flag: '🇫🇷', label: 'Français', cls: 'lang-badge-fr' },
+                ar: { flag: '🇸🇦', label: 'العربية', cls: 'lang-badge-ar' },
+                en: { flag: '🇬🇧', label: 'English', cls: 'lang-badge-en' }
+            };
+
+            let html = `
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Nom d'enseignant</th>
+                            <th>Mot de passe</th>
+                            <th>Section</th>
+                            <th>Langue par défaut</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            users.forEach(u => {
+                const secLabel = u.section === 'garcons' ? '👦 Garçons' : '👧 Filles';
+                const userLang = u.language || (arabicTeachers.includes(u.username) ? 'ar' : (englishTeachers.includes(u.username) ? 'en' : 'fr'));
+                const langInfo = langLabels[userLang] || langLabels.fr;
+                const safeUsername = u.username.replace(/'/g, "\\'");
+                const safePassword = (u.password || '').replace(/'/g, "\\'");
+                
+                html += `
+                    <tr>
+                        <td><strong><i class="fas fa-chalkboard-teacher" style="color:#4F46E5; margin-right:6px;"></i>${u.username}</strong></td>
+                        <td><code style="background:#F1F5F9; padding:3px 8px; border-radius:6px; font-weight:700; color:#0F172A;">${u.password || 'Non défini'}</code></td>
+                        <td><span style="font-weight:600;">${secLabel}</span></td>
+                        <td>
+                            <span class="lang-badge ${langInfo.cls}">
+                                ${langInfo.flag} ${langInfo.label}
+                            </span>
+                        </td>
+                        <td>
+                            <button type="button" class="pro-button primary-button" onclick="adminEditUserPrefill('${safeUsername}', '${safePassword}', '${u.section}', '${userLang}')" style="padding:4px 9px; font-size:0.8rem; margin-right:5px;">
+                                <i class="fas fa-edit"></i> Modifier
+                            </button>
+                            <button type="button" class="btn-sm-delete" onclick="adminDeleteUser('${safeUsername}', '${u.section}')" style="padding:4px 9px; font-size:0.8rem;">
+                                <i class="fas fa-trash-alt"></i> Supprimer
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+        }
+
+        function filterAdminTeachersTable() {
+            const searchInput = document.getElementById('adminTeacherSearchInput');
+            const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            if (!query) {
+                renderAdminUsersTable(allAdminUsersCache);
+                return;
+            }
+            const filtered = allAdminUsersCache.filter(u => 
+                (u.username && u.username.toLowerCase().includes(query)) ||
+                (u.language && u.language.toLowerCase().includes(query)) ||
+                (u.password && u.password.toLowerCase().includes(query))
+            );
+            renderAdminUsersTable(filtered);
+        }
+
+        function adminEditUserPrefill(username, password, section, language) {
+            const userInput = document.getElementById('adminNewUsername');
+            const passInput = document.getElementById('adminNewPassword');
+            const langSelect = document.getElementById('adminNewUserLanguage');
+            const filterEl = document.getElementById('adminSectionFilter');
+            
+            if (userInput) userInput.value = username;
+            if (passInput) passInput.value = password;
+            if (langSelect) langSelect.value = language || 'fr';
+            if (filterEl && section) filterEl.value = section;
+            
+            if (userInput) {
+                userInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (passInput) passInput.focus();
+            }
+            const statusDiv = document.getElementById('adminUsersStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-info-circle"></i> Modification du compte pour <strong>${username}</strong>. Changez le mot de passe ou la langue puis cliquez sur 'Enregistrer Compte'.</span>`;
+            }
+        }
+
         async function adminAddOrUpdateUser() {
             const userInput = document.getElementById('adminNewUsername');
             const passInput = document.getElementById('adminNewPassword');
+            const langSelect = document.getElementById('adminNewUserLanguage');
             const filterEl = document.getElementById('adminSectionFilter');
             const statusDiv = document.getElementById('adminUsersStatus');
             
             const username = userInput ? userInput.value.trim() : '';
             const password = passInput ? passInput.value.trim() : '';
+            const language = langSelect ? langSelect.value : 'fr';
             const section = filterEl ? filterEl.value : currentSection;
             
             if (!username || !password) {
                 if (statusDiv) {
-                    statusDiv.textContent = '⚠️ Entrez le nom d\'utilisateur et le mot de passe.';
-                    statusDiv.style.color = '#c0392b';
+                    statusDiv.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Entrez le nom d\'utilisateur et le mot de passe.</span>';
                 }
                 return;
             }
+            
+            if (statusDiv) statusDiv.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement en cours...</span>';
             
             try {
                 const response = await fetch('/api/admin/users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, section })
+                    body: JSON.stringify({ username, password, section, language })
                 });
                 const res = await response.json();
                 if (response.ok) {
                     if (statusDiv) {
-                        statusDiv.textContent = `✅ ${res.message}`;
-                        statusDiv.style.color = '#27ae60';
+                        statusDiv.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> ${res.message}</span>`;
+                        setTimeout(() => { if (statusDiv) statusDiv.innerHTML = ''; }, 4000);
                     }
                     if (userInput) userInput.value = '';
                     if (passInput) passInput.value = '';
@@ -1167,8 +1345,7 @@
                 }
             } catch (err) {
                 if (statusDiv) {
-                    statusDiv.textContent = `❌ Erreur: ${err.message}`;
-                    statusDiv.style.color = '#c0392b';
+                    statusDiv.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${err.message}</span>`;
                 }
             }
         }

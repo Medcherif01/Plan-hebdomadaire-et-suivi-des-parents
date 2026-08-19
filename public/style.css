@@ -1840,3 +1840,170 @@ body[dir="rtl"] .hw-close-modal {
     font-weight: 600;
     margin-right: 5px;
 }
+
+/* ======================================================== */
+/* --- ESPACE ADMIN REORGANISÉ : ONGLETS & DASHBOARD PRO --- */
+/* ======================================================== */
+
+.admin-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #E2E8F0;
+}
+
+.admin-badge {
+    background: linear-gradient(135deg, #1E293B, #0F172A);
+    color: #38BDF8;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.admin-tabs-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+    background: #F1F5F9;
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid #CBD5E1;
+}
+
+.admin-tab-btn {
+    flex: 1 1 auto;
+    min-width: 140px;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.88rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+}
+
+.admin-tab-btn:hover {
+    background: rgba(255, 255, 255, 0.6);
+    color: #1E293B;
+}
+
+.admin-tab-btn.active {
+    background: #FFFFFF;
+    color: #2563EB;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+    border: 1px solid #DBEAFE;
+}
+
+.admin-tab-content {
+    animation: fadeInAdminTab 0.3s ease;
+}
+
+@keyframes fadeInAdminTab {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.admin-card-inner {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.admin-card-inner h4 {
+    color: #1E293B;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.admin-subtext {
+    font-size: 0.88rem;
+    color: #64748B;
+    margin-bottom: 15px;
+}
+
+.admin-grid-2col {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+.upload-dropzone-box {
+    border: 2px dashed #93C5FD;
+    background: #F8FAFC;
+    border-radius: 12px;
+    padding: 24px 16px;
+    text-align: center;
+    transition: all 0.25s ease;
+}
+
+.upload-dropzone-box:hover {
+    border-color: #2563EB;
+    background: #EFF6FF;
+}
+
+.lang-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.lang-badge-fr {
+    background: #EFF6FF;
+    color: #1E40AF;
+    border: 1px solid #BFDBFE;
+}
+
+.lang-badge-ar {
+    background: #ECFDF5;
+    color: #065F46;
+    border: 1px solid #A7F3D0;
+}
+
+.lang-badge-en {
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #FDE68A;
+}
+
+.btn-sm-edit {
+    background: #F59E0B;
+    color: white;
+    border: none;
+    padding: 5px 9px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-right: 4px;
+    transition: background 0.2s ease;
+}
+
+.btn-sm-edit:hover {
+    background: #D97706;
+}
+
