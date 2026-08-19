@@ -255,12 +255,51 @@ const femaleTeachers = [
   'Leila', 'Sarah', 'Zohra'
 ];
 
-const specificWeekDateRangesNode = {
-  1:{start:'2025-08-31',end:'2025-09-04'}, 2:{start:'2025-09-07',end:'2025-09-11'}, 3:{start:'2025-09-14',end:'2025-09-18'}, 4:{start:'2025-09-21',end:'2025-09-25'}, 5:{start:'2025-09-28',end:'2025-10-02'}, 6:{start:'2025-10-05',end:'2025-10-09'}, 7:{start:'2025-10-12',end:'2025-10-16'}, 8:{start:'2025-10-19',end:'2025-10-23'}, 9:{start:'2025-10-26',end:'2025-10-30'},10:{start:'2025-11-02',end:'2025-11-06'},
-  11:{start:'2025-11-09',end:'2025-11-13'},12:{start:'2025-11-16',end:'2025-11-20'}, 13:{start:'2025-11-23',end:'2025-11-27'},14:{start:'2025-11-30',end:'2025-12-04'}, 15:{start:'2025-12-07',end:'2025-12-11'},16:{start:'2025-12-14',end:'2025-12-18'}, 17:{start:'2025-12-21',end:'2025-12-25'},18:{start:'2026-01-18',end:'2026-01-22'}, 19:{start:'2026-01-25',end:'2026-01-29'},20:{start:'2026-02-01',end:'2026-02-05'},
-  21:{start:'2026-02-08',end:'2026-02-12'},22:{start:'2026-02-15',end:'2026-02-19'}, 23:{start:'2026-02-22',end:'2026-02-26'},24:{start:'2026-03-01',end:'2026-03-05'}, 25:{start:'2026-03-29',end:'2026-04-02'},26:{start:'2026-04-05',end:'2026-04-09'}, 27:{start:'2026-04-12',end:'2026-04-16'},28:{start:'2026-04-19',end:'2026-04-23'}, 29:{start:'2026-04-26',end:'2026-04-30'},30:{start:'2026-05-03',end:'2026-05-07'},
-  31:{start:'2026-05-10',end:'2026-05-14'}
+const defaultWeeksConfig = {
+  1: { title: "Semaine 1", titleAr: "الأسبوع 1", start: "2026-08-30", end: "2026-09-03" },
+  2: { title: "Semaine 2", titleAr: "الأسبوع 2", start: "2026-09-06", end: "2026-09-10" },
+  3: { title: "Semaine 3", titleAr: "الأسبوع 3", start: "2026-09-13", end: "2026-09-17" },
+  4: { title: "Semaine 4", titleAr: "الأسبوع 4", start: "2026-09-20", end: "2026-09-24" },
+  5: { title: "Semaine 5", titleAr: "الأسبوع 5", start: "2026-09-27", end: "2026-10-01" },
+  6: { title: "Semaine 6", titleAr: "الأسبوع 6", start: "2026-10-04", end: "2026-10-08" },
+  7: { title: "Semaine 7", titleAr: "الأسبوع 7", start: "2026-10-11", end: "2026-10-15" },
+  8: { title: "Semaine 8", titleAr: "الأسبوع 8", start: "2026-10-18", end: "2026-10-22" },
+  9: { title: "Semaine 9", titleAr: "الأسبوع 9", start: "2026-10-25", end: "2026-10-29" },
+  10: { title: "Semaine 10", titleAr: "الأسبوع 10", start: "2026-11-01", end: "2026-11-05" },
+  11: { title: "Semaine 11", titleAr: "الأسبوع 11", start: "2026-11-08", end: "2026-11-12" },
+  12: { title: "Semaine 12", titleAr: "الأسبوع 12", start: "2026-11-15", end: "2026-11-19" },
+  13: { title: "Semaine 13", titleAr: "الأسبوع 13", start: "2026-11-29", end: "2026-12-03" },
+  14: { title: "Semaine 14", titleAr: "الأسبوع 14", start: "2026-12-06", end: "2026-12-10" },
+  15: { title: "Semaine 15", titleAr: "الأسبوع 15", start: "2026-12-13", end: "2026-12-17" },
+  16: { title: "Semaine 16", titleAr: "الأسبوع 16", start: "2026-12-20", end: "2026-12-24" },
+  17: { title: "Semaine 17", titleAr: "الأسبوع 17", start: "2026-12-27", end: "2026-12-31" },
+  18: { title: "Semaine 18", titleAr: "الأسبوع 18", start: "2027-01-03", end: "2027-01-07" },
+  19: { title: "Semaine 19", titleAr: "الأسبوع 19", start: "2027-01-17", end: "2027-01-21" },
+  20: { title: "Semaine 20", titleAr: "الأسبوع 20", start: "2027-01-24", end: "2027-01-28" },
+  21: { title: "Semaine 21", titleAr: "الأسبوع 21", start: "2027-01-31", end: "2027-02-04" },
+  22: { title: "Semaine 22", titleAr: "الأسبوع 22", start: "2027-02-07", end: "2027-02-11" },
+  23: { title: "Semaine 23", titleAr: "الأسبوع 23", start: "2027-02-14", end: "2027-02-18" },
+  24: { title: "Semaine 24", titleAr: "الأسبوع 24", start: "2027-02-21", end: "2027-02-25" },
+  25: { title: "Semaine 25", titleAr: "الأسبوع 25", start: "2027-03-14", end: "2027-03-18" },
+  26: { title: "Semaine 26", titleAr: "الأسبوع 26", start: "2027-03-21", end: "2027-03-25" },
+  27: { title: "Semaine 27", titleAr: "الأسبوع 27", start: "2027-03-28", end: "2027-04-01" },
+  28: { title: "Semaine 28", titleAr: "الأسبوع 28", start: "2027-04-04", end: "2027-04-08" },
+  29: { title: "Semaine 29", titleAr: "الأسبوع 29", start: "2027-04-11", end: "2027-04-15" },
+  30: { title: "Semaine 30", titleAr: "الأسبوع 30", start: "2027-04-18", end: "2027-04-22" },
+  31: { title: "Semaine 31", titleAr: "الأسبوع 31", start: "2027-04-25", end: "2027-04-29" },
+  32: { title: "Semaine 32", titleAr: "الأسبوع 32", start: "2027-05-02", end: "2027-05-06" },
+  33: { title: "Semaine 33", titleAr: "الأسبوع 33", start: "2027-05-23", end: "2027-05-27" },
+  34: { title: "Semaine 34", titleAr: "الأسبوع 34", start: "2027-05-30", end: "2027-06-03" },
+  35: { title: "Semaine 35", titleAr: "الأسبوع 35", start: "2027-06-06", end: "2027-06-10" },
+  36: { title: "Semaine 36", titleAr: "الأسبوع 36", start: "2027-06-13", end: "2027-06-17" },
+  37: { title: "Semaine 37", titleAr: "الأسبوع 37", start: "2027-06-20", end: "2027-06-24" },
+  38: { title: "Semaine 38", titleAr: "الأسبوع 38", start: "2027-06-27", end: "2027-06-30" }
 };
+
+const specificWeekDateRangesNode = {};
+for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
+  specificWeekDateRangesNode[wNum] = { start: wData.start, end: wData.end };
+}
 
 const validUsers = {
   // Garçons
@@ -826,6 +865,136 @@ app.delete('/api/admin/users', async (req, res) => {
   } catch (error) {
     console.error('Erreur DELETE /api/admin/users:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
+  }
+});
+
+// ============================================================================
+// GESTION ET CONFIGURATION DES SEMAINES ET DATES DU CALENDRIER SCOLAIRE
+// ============================================================================
+
+async function loadWeeksConfigurationFromDb(db) {
+  try {
+    const configDoc = await db.collection('settings').findOne({ _id: 'weeks_configuration' });
+    const mergedConfig = {};
+    for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
+      mergedConfig[wNum] = { ...wData };
+    }
+    if (configDoc && configDoc.weeks) {
+      for (const [wNum, wData] of Object.entries(configDoc.weeks)) {
+        if (wData) {
+          mergedConfig[wNum] = {
+            title: wData.title || defaultWeeksConfig[wNum]?.title || `Semaine ${wNum}`,
+            titleAr: wData.titleAr || defaultWeeksConfig[wNum]?.titleAr || `الأسبوع ${wNum}`,
+            start: wData.start || defaultWeeksConfig[wNum]?.start || '',
+            end: wData.end || defaultWeeksConfig[wNum]?.end || ''
+          };
+        }
+      }
+    }
+    // Synchroniser en mémoire specificWeekDateRangesNode
+    for (const [wNum, wData] of Object.entries(mergedConfig)) {
+      specificWeekDateRangesNode[wNum] = { start: wData.start, end: wData.end };
+    }
+    return mergedConfig;
+  } catch (err) {
+    console.error('Erreur chargement weeks_configuration:', err);
+    return defaultWeeksConfig;
+  }
+}
+
+app.get(['/api/weeks-config', '/api/admin/weeks-config'], async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const weeksConfig = await loadWeeksConfigurationFromDb(db);
+    res.status(200).json({ success: true, weeks: weeksConfig, defaultWeeks: defaultWeeksConfig });
+  } catch (error) {
+    console.error('Erreur GET /api/weeks-config:', error);
+    res.status(200).json({ success: true, weeks: defaultWeeksConfig, defaultWeeks: defaultWeeksConfig });
+  }
+});
+
+app.post(['/api/admin/weeks-config', '/api/weeks-config'], async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { week, title, titleAr, start, end, weeks, resetToDefault } = req.body;
+
+    if (resetToDefault) {
+      await db.collection('settings').updateOne(
+        { _id: 'weeks_configuration' },
+        { $set: { _id: 'weeks_configuration', weeks: defaultWeeksConfig, updatedAt: new Date() } },
+        { upsert: true }
+      );
+      for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
+        specificWeekDateRangesNode[wNum] = { start: wData.start, end: wData.end };
+      }
+      return res.status(200).json({
+        success: true,
+        message: 'Calendrier scolaire réinitialisé aux dates officielles 2026/2027.',
+        weeks: defaultWeeksConfig
+      });
+    }
+
+    const currentConfig = await loadWeeksConfigurationFromDb(db);
+
+    if (weeks && typeof weeks === 'object') {
+      // Mise à jour multiple
+      for (const [wNum, wData] of Object.entries(weeks)) {
+        if (currentConfig[wNum]) {
+          currentConfig[wNum] = {
+            title: wData.title !== undefined ? String(wData.title).trim() : currentConfig[wNum].title,
+            titleAr: wData.titleAr !== undefined ? String(wData.titleAr).trim() : currentConfig[wNum].titleAr,
+            start: wData.start !== undefined ? String(wData.start).trim() : currentConfig[wNum].start,
+            end: wData.end !== undefined ? String(wData.end).trim() : currentConfig[wNum].end
+          };
+          specificWeekDateRangesNode[wNum] = { start: currentConfig[wNum].start, end: currentConfig[wNum].end };
+        }
+      }
+      await db.collection('settings').updateOne(
+        { _id: 'weeks_configuration' },
+        { $set: { _id: 'weeks_configuration', weeks: currentConfig, updatedAt: new Date() } },
+        { upsert: true }
+      );
+      return res.status(200).json({
+        success: true,
+        message: 'Toutes les semaines ont été mises à jour avec succès.',
+        weeks: currentConfig
+      });
+    }
+
+    if (week) {
+      const wNum = parseInt(week, 10);
+      if (isNaN(wNum) || wNum < 1 || wNum > 52) {
+        return res.status(400).json({ message: 'Numéro de semaine invalide.' });
+      }
+
+      currentConfig[wNum] = {
+        title: title !== undefined ? String(title).trim() : (currentConfig[wNum]?.title || `Semaine ${wNum}`),
+        titleAr: titleAr !== undefined ? String(titleAr).trim() : (currentConfig[wNum]?.titleAr || `الأسبوع ${wNum}`),
+        start: start !== undefined ? String(start).trim() : (currentConfig[wNum]?.start || ''),
+        end: end !== undefined ? String(end).trim() : (currentConfig[wNum]?.end || '')
+      };
+
+      specificWeekDateRangesNode[wNum] = { start: currentConfig[wNum].start, end: currentConfig[wNum].end };
+
+      await db.collection('settings').updateOne(
+        { _id: 'weeks_configuration' },
+        { $set: { _id: 'weeks_configuration', weeks: currentConfig, updatedAt: new Date() } },
+        { upsert: true }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: `Configuration de la semaine ${wNum} mise à jour avec succès.`,
+        week: wNum,
+        weekData: currentConfig[wNum],
+        weeks: currentConfig
+      });
+    }
+
+    return res.status(400).json({ message: 'Données de semaine manquantes.' });
+  } catch (error) {
+    console.error('Erreur POST /api/admin/weeks-config:', error);
+    res.status(500).json({ message: 'Erreur serveur lors de la mise à jour des semaines.' });
   }
 });
 

@@ -322,6 +322,63 @@
                 </div>
              </div>
 
+             <!-- GESTION DU CALENDRIER SCOLAIRE ET DES SEMAINES (1 à 38) -->
+             <div class="admin-subsection user-mgmt-box" style="margin-top:20px;">
+                <h4 style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                    <span><i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Configuration des Semaines & Dates Scolaires (Semaines 1 à 38)</span>
+                    <button type="button" class="pro-button danger-button" onclick="adminResetWeeksToDefault()" style="padding:4px 10px; font-size:0.8rem; background:#EF4444;">
+                        <i class="fas fa-undo"></i> Rétablir Calendrier Officiel 2026/2027
+                    </button>
+                </h4>
+                <p style="font-size:0.88rem; color:#64748B; margin-bottom:12px;">
+                    Personnalisez le titre (Français et Arabe) ainsi que la plage de dates (du ... au ...) pour chaque semaine scolaire. Les modifications sont synchronisées pour les enseignants, parents et rapports.
+                </p>
+
+                <!-- Formulaire de modification rapide -->
+                <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:16px; margin-bottom:16px;">
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; align-items:end;">
+                        <div>
+                            <label for="adminWeekSelectToEdit" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Semaine :</label>
+                            <select id="adminWeekSelectToEdit" onchange="onAdminSelectWeekToEdit()" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;">
+                                <!-- Options 1 à 38 générées dynamiquement -->
+                            </select>
+                        </div>
+                        <div>
+                            <label for="adminWeekTitleInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Titre (Français) :</label>
+                            <input type="text" id="adminWeekTitleInput" placeholder="Ex: Semaine 1" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                        </div>
+                        <div>
+                            <label for="adminWeekTitleArInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Titre (Arabe) :</label>
+                            <input type="text" id="adminWeekTitleArInput" placeholder="Ex: الأسبوع 1" dir="rtl" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                        </div>
+                        <div>
+                            <label for="adminWeekStartDateInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Date de Début (Du) :</label>
+                            <input type="date" id="adminWeekStartDateInput" style="width:100%; padding:8px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                        </div>
+                        <div>
+                            <label for="adminWeekEndDateInput" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">Date de Fin (Au / À) :</label>
+                            <input type="date" id="adminWeekEndDateInput" style="width:100%; padding:8px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                        </div>
+                        <div>
+                            <button type="button" class="pro-button success-button" onclick="adminSaveSingleWeekConfig()" style="width:100%; padding:9px 12px; height:42px; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                                <i class="fas fa-save"></i> <span>Enregistrer</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="adminWeekConfigStatus" style="font-size:0.9rem; margin-top:10px; font-weight:600;"></div>
+                </div>
+
+                <!-- Tableau récapitulatif des 38 semaines -->
+                <div style="margin-top:10px;">
+                    <div style="font-weight:700; font-size:0.9rem; color:#1E293B; margin-bottom:8px;">
+                        <i class="fas fa-table" style="color:#6366F1;"></i> Calendrier complet de l'année scolaire :
+                    </div>
+                    <div id="weeksTableContainer" class="users-table-wrapper" style="max-height:280px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:10px;">
+                        <p style="text-align:center; padding:15px; color:#64748B;"><i class="fas fa-spinner fa-spin"></i> Chargement des semaines...</p>
+                    </div>
+                </div>
+             </div>
+
              <div style="margin-top:20px;">
                 <label for="excelFileInput" id="admin-excel-label"><i class="fas fa-file-excel"></i> Fichier Excel :</label>
                 <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleFileUpload(event)">

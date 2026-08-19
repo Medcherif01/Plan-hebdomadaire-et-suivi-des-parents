@@ -138,25 +138,299 @@
         const classTranslations = { 'PEI1':'السادس', 'PEI2':'الاول متوسط', 'PEI3':'الثاني متوسط', 'PEI4':'الثالث متوسط', 'PEI5':'الأول ثانوي', 'DP1':'الثاني ثانوي', 'DP2':'الثالث ثانوي' };
         function compareClasses(a, b) { const indexA = classOrder.indexOf(a); const indexB = classOrder.indexOf(b); if (indexA !== -1 && indexB !== -1) return indexA - indexB; if (indexA !== -1) return -1; if (indexB !== -1) return 1; return String(a).localeCompare(String(b)); }
 
-        // Dates des semaines
-        const specificWeekDateRanges = {
-          1:{start:'2025-08-31',end:'2025-09-04'}, 2:{start:'2025-09-07',end:'2025-09-11'},
-          3:{start:'2025-09-14',end:'2025-09-18'}, 4:{start:'2025-09-21',end:'2025-09-25'},
-          5:{start:'2025-09-28',end:'2025-10-02'}, 6:{start:'2025-10-05',end:'2025-10-09'},
-          7:{start:'2025-10-12',end:'2025-10-16'}, 8:{start:'2025-10-19',end:'2025-10-23'},
-          9:{start:'2025-10-26',end:'2025-10-30'},10:{start:'2025-11-02',end:'2025-11-06'},
-         11:{start:'2025-11-09',end:'2025-11-13'},12:{start:'2025-11-16',end:'2025-11-20'},
-         13:{start:'2025-11-23',end:'2025-11-27'},14:{start:'2025-11-30',end:'2025-12-04'},
-         15:{start:'2025-12-07',end:'2025-12-11'},16:{start:'2025-12-14',end:'2025-12-18'},
-         17:{start:'2025-12-21',end:'2025-12-25'},18:{start:'2026-01-18',end:'2026-01-22'},
-         19:{start:'2026-01-25',end:'2026-01-29'},20:{start:'2026-02-01',end:'2026-02-05'},
-         21:{start:'2026-02-08',end:'2026-02-12'},22:{start:'2026-02-15',end:'2026-02-19'},
-         23:{start:'2026-02-22',end:'2026-02-26'},24:{start:'2026-03-01',end:'2026-03-05'},
-         25:{start:'2026-03-29',end:'2026-04-02'},26:{start:'2026-04-05',end:'2026-04-09'},
-         27:{start:'2026-04-12',end:'2026-04-16'},28:{start:'2026-04-19',end:'2026-04-23'},
-         29:{start:'2026-04-26',end:'2026-04-30'},30:{start:'2026-05-03',end:'2026-05-07'},
-         31:{start:'2026-05-10',end:'2026-05-14'}
+        // Dates et Configuration des 38 semaines de l'année scolaire 2026/2027
+        let weeksConfig = {
+          1: { title: "Semaine 1", titleAr: "الأسبوع 1", start: "2026-08-30", end: "2026-09-03" },
+          2: { title: "Semaine 2", titleAr: "الأسبوع 2", start: "2026-09-06", end: "2026-09-10" },
+          3: { title: "Semaine 3", titleAr: "الأسبوع 3", start: "2026-09-13", end: "2026-09-17" },
+          4: { title: "Semaine 4", titleAr: "الأسبوع 4", start: "2026-09-20", end: "2026-09-24" },
+          5: { title: "Semaine 5", titleAr: "الأسبوع 5", start: "2026-09-27", end: "2026-10-01" },
+          6: { title: "Semaine 6", titleAr: "الأسبوع 6", start: "2026-10-04", end: "2026-10-08" },
+          7: { title: "Semaine 7", titleAr: "الأسبوع 7", start: "2026-10-11", end: "2026-10-15" },
+          8: { title: "Semaine 8", titleAr: "الأسبوع 8", start: "2026-10-18", end: "2026-10-22" },
+          9: { title: "Semaine 9", titleAr: "الأسبوع 9", start: "2026-10-25", end: "2026-10-29" },
+          10: { title: "Semaine 10", titleAr: "الأسبوع 10", start: "2026-11-01", end: "2026-11-05" },
+          11: { title: "Semaine 11", titleAr: "الأسبوع 11", start: "2026-11-08", end: "2026-11-12" },
+          12: { title: "Semaine 12", titleAr: "الأسبوع 12", start: "2026-11-15", end: "2026-11-19" },
+          13: { title: "Semaine 13", titleAr: "الأسبوع 13", start: "2026-11-29", end: "2026-12-03" },
+          14: { title: "Semaine 14", titleAr: "الأسبوع 14", start: "2026-12-06", end: "2026-12-10" },
+          15: { title: "Semaine 15", titleAr: "الأسبوع 15", start: "2026-12-13", end: "2026-12-17" },
+          16: { title: "Semaine 16", titleAr: "الأسبوع 16", start: "2026-12-20", end: "2026-12-24" },
+          17: { title: "Semaine 17", titleAr: "الأسبوع 17", start: "2026-12-27", end: "2026-12-31" },
+          18: { title: "Semaine 18", titleAr: "الأسبوع 18", start: "2027-01-03", end: "2027-01-07" },
+          19: { title: "Semaine 19", titleAr: "الأسبوع 19", start: "2027-01-17", end: "2027-01-21" },
+          20: { title: "Semaine 20", titleAr: "الأسبوع 20", start: "2027-01-24", end: "2027-01-28" },
+          21: { title: "Semaine 21", titleAr: "الأسبوع 21", start: "2027-01-31", end: "2027-02-04" },
+          22: { title: "Semaine 22", titleAr: "الأسبوع 22", start: "2027-02-07", end: "2027-02-11" },
+          23: { title: "Semaine 23", titleAr: "الأسبوع 23", start: "2027-02-14", end: "2027-02-18" },
+          24: { title: "Semaine 24", titleAr: "الأسبوع 24", start: "2027-02-21", end: "2027-02-25" },
+          25: { title: "Semaine 25", titleAr: "الأسبوع 25", start: "2027-03-14", end: "2027-03-18" },
+          26: { title: "Semaine 26", titleAr: "الأسبوع 26", start: "2027-03-21", end: "2027-03-25" },
+          27: { title: "Semaine 27", titleAr: "الأسبوع 27", start: "2027-03-28", end: "2027-04-01" },
+          28: { title: "Semaine 28", titleAr: "الأسبوع 28", start: "2027-04-04", end: "2027-04-08" },
+          29: { title: "Semaine 29", titleAr: "الأسبوع 29", start: "2027-04-11", end: "2027-04-15" },
+          30: { title: "Semaine 30", titleAr: "الأسبوع 30", start: "2027-04-18", end: "2027-04-22" },
+          31: { title: "Semaine 31", titleAr: "الأسبوع 31", start: "2027-04-25", end: "2027-04-29" },
+          32: { title: "Semaine 32", titleAr: "الأسبوع 32", start: "2027-05-02", end: "2027-05-06" },
+          33: { title: "Semaine 33", titleAr: "الأسبوع 33", start: "2027-05-23", end: "2027-05-27" },
+          34: { title: "Semaine 34", titleAr: "الأسبوع 34", start: "2027-05-30", end: "2027-06-03" },
+          35: { title: "Semaine 35", titleAr: "الأسبوع 35", start: "2027-06-06", end: "2027-06-10" },
+          36: { title: "Semaine 36", titleAr: "الأسبوع 36", start: "2027-06-13", end: "2027-06-17" },
+          37: { title: "Semaine 37", titleAr: "الأسبوع 37", start: "2027-06-20", end: "2027-06-24" },
+          38: { title: "Semaine 38", titleAr: "الأسبوع 38", start: "2027-06-27", end: "2027-06-30" }
         };
+
+        const specificWeekDateRanges = {};
+        for (const [wNum, wData] of Object.entries(weeksConfig)) {
+          specificWeekDateRanges[wNum] = { start: wData.start, end: wData.end };
+        }
+
+        function formatWeekDateRangeText(weekNum) {
+          const w = weeksConfig[weekNum] || { title: `Semaine ${weekNum}`, titleAr: `الأسبوع ${weekNum}`, start: '', end: '' };
+          const title = (isArabicUser() ? (w.titleAr || `الأسبوع ${weekNum}`) : (w.title || `Semaine ${weekNum}`));
+          if (!w.start || !w.end) return title;
+          try {
+            const s = new Date(w.start + 'T00:00:00Z');
+            const e = new Date(w.end + 'T00:00:00Z');
+            const monthsFr = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."];
+            const monthsAr = ["جانفي", "فيفري", "مارس", "أفريل", "ماي", "جوان", "جويلية", "أوت", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+            if (isArabicUser()) {
+              return `${title} (${s.getUTCDate()} ${monthsAr[s.getUTCMonth()]} - ${e.getUTCDate()} ${monthsAr[e.getUTCMonth()]})`;
+            }
+            return `${title} (${s.getUTCDate()} ${monthsFr[s.getUTCMonth()]} - ${e.getUTCDate()} ${monthsFr[e.getUTCMonth()]})`;
+          } catch(err) {
+            return `${title} (${w.start} - ${w.end})`;
+          }
+        }
+
+        async function fetchWeeksConfiguration() {
+          try {
+            const res = await fetch('/api/weeks-config');
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.weeks) {
+                weeksConfig = { ...weeksConfig, ...data.weeks };
+                for (const [wNum, wData] of Object.entries(weeksConfig)) {
+                  specificWeekDateRanges[wNum] = { start: wData.start, end: wData.end };
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('Erreur chargement weeks-config depuis le serveur, utilisation de la config locale:', e);
+          }
+          populateMainWeekSelector();
+          populateParentWeekSelector();
+          populateAdminWeekSelectToEdit();
+          renderAdminWeeksTable();
+        }
+
+        function populateMainWeekSelector() {
+          const sel = document.getElementById('weekSelector');
+          if (!sel) return;
+          const currentVal = sel.value;
+          const defaultText = t('select_week') || '-- Sélectionnez une semaine --';
+          
+          let html = `<option value="">${defaultText}</option>`;
+          const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+          
+          sortedWeekNums.forEach(wNum => {
+            const label = formatWeekDateRangeText(wNum);
+            html += `<option value="${wNum}">${label}</option>`;
+          });
+          
+          sel.innerHTML = html;
+          if (currentVal && weeksConfig[currentVal]) {
+            sel.value = currentVal;
+          }
+        }
+
+        function populateAdminWeekSelectToEdit() {
+          const sel = document.getElementById('adminWeekSelectToEdit');
+          if (!sel) return;
+          const currentVal = sel.value || "1";
+          let html = '';
+          const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+          sortedWeekNums.forEach(wNum => {
+            const w = weeksConfig[wNum];
+            html += `<option value="${wNum}">Semaine ${wNum} : ${w?.title || ''} (${w?.start || ''} au ${w?.end || ''})</option>`;
+          });
+          sel.innerHTML = html;
+          sel.value = weeksConfig[currentVal] ? currentVal : (sortedWeekNums[0] || "1");
+          onAdminSelectWeekToEdit();
+        }
+
+        function onAdminSelectWeekToEdit() {
+          const sel = document.getElementById('adminWeekSelectToEdit');
+          if (!sel) return;
+          const wNum = sel.value;
+          const w = weeksConfig[wNum];
+          if (w) {
+            const titleInput = document.getElementById('adminWeekTitleInput');
+            const titleArInput = document.getElementById('adminWeekTitleArInput');
+            const startInput = document.getElementById('adminWeekStartDateInput');
+            const endInput = document.getElementById('adminWeekEndDateInput');
+            if (titleInput) titleInput.value = w.title || `Semaine ${wNum}`;
+            if (titleArInput) titleArInput.value = w.titleAr || `الأسبوع ${wNum}`;
+            if (startInput) startInput.value = w.start || '';
+            if (endInput) endInput.value = w.end || '';
+          }
+        }
+
+        async function adminSaveSingleWeekConfig() {
+          const sel = document.getElementById('adminWeekSelectToEdit');
+          const statusDiv = document.getElementById('adminWeekConfigStatus');
+          const wNum = sel?.value;
+          if (!wNum) return;
+
+          const title = document.getElementById('adminWeekTitleInput')?.value?.trim();
+          const titleAr = document.getElementById('adminWeekTitleArInput')?.value?.trim();
+          const start = document.getElementById('adminWeekStartDateInput')?.value?.trim();
+          const end = document.getElementById('adminWeekEndDateInput')?.value?.trim();
+
+          if (!title || !start || !end) {
+            if (statusDiv) statusDiv.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Veuillez renseigner le titre et les deux dates (du ... au ...).</span>';
+            return;
+          }
+
+          if (statusDiv) statusDiv.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement en cours...</span>';
+
+          try {
+            const res = await fetch('/api/admin/weeks-config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ week: wNum, title, titleAr, start, end })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              weeksConfig[wNum] = {
+                title: title,
+                titleAr: titleAr || `الأسبوع ${wNum}`,
+                start: start,
+                end: end
+              };
+              specificWeekDateRanges[wNum] = { start, end };
+              
+              if (statusDiv) {
+                statusDiv.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Semaine ${wNum} mise à jour avec succès ! (${start} au ${end})</span>`;
+                setTimeout(() => { if (statusDiv) statusDiv.innerHTML = ''; }, 4000);
+              }
+              
+              populateMainWeekSelector();
+              populateParentWeekSelector();
+              populateAdminWeekSelectToEdit();
+              renderAdminWeeksTable();
+              if (currentWeek && String(currentWeek) === String(wNum)) {
+                updateDynamicUIElements();
+              }
+              displayAlert(`Semaine ${wNum} mise à jour avec succès !`, false);
+            } else {
+              throw new Error(data.message || 'Erreur enregistrement');
+            }
+          } catch (err) {
+            console.error('Erreur adminSaveSingleWeekConfig:', err);
+            if (statusDiv) statusDiv.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${err.message}</span>`;
+          }
+        }
+
+        async function adminResetWeeksToDefault() {
+          const confirmReset = confirm('Êtes-vous sûr de vouloir réinitialiser toutes les 38 semaines aux dates officielles du calendrier scolaire 2026/2027 ?');
+          if (!confirmReset) return;
+
+          const statusDiv = document.getElementById('adminWeekConfigStatus');
+          if (statusDiv) statusDiv.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Réinitialisation du calendrier...</span>';
+
+          try {
+            const res = await fetch('/api/admin/weeks-config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ resetToDefault: true })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              if (data.weeks) {
+                weeksConfig = { ...data.weeks };
+                for (const [wNum, wData] of Object.entries(weeksConfig)) {
+                  specificWeekDateRanges[wNum] = { start: wData.start, end: wData.end };
+                }
+              }
+              if (statusDiv) {
+                statusDiv.innerHTML = '<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Calendrier scolaire 2026/2027 réinitialisé avec succès !</span>';
+                setTimeout(() => { if (statusDiv) statusDiv.innerHTML = ''; }, 4000);
+              }
+              populateMainWeekSelector();
+              populateParentWeekSelector();
+              populateAdminWeekSelectToEdit();
+              renderAdminWeeksTable();
+              if (currentWeek) updateDynamicUIElements();
+              displayAlert('Calendrier réinitialisé avec succès !', false);
+            } else {
+              throw new Error(data.message || 'Erreur réinitialisation');
+            }
+          } catch (err) {
+            console.error('Erreur adminResetWeeksToDefault:', err);
+            if (statusDiv) statusDiv.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${err.message}</span>`;
+          }
+        }
+
+        function renderAdminWeeksTable() {
+          const container = document.getElementById('weeksTableContainer');
+          if (!container) return;
+
+          const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+          if (sortedWeekNums.length === 0) {
+            container.innerHTML = '<p style="text-align:center; padding:15px; color:#64748B;">Aucune semaine configurée.</p>';
+            return;
+          }
+
+          let html = `
+            <table class="users-table" style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+              <thead>
+                <tr style="background:#F1F5F9; color:#1E293B; border-bottom:2px solid #CBD5E1; text-align:left;">
+                  <th style="padding:8px 12px; width:60px;">#</th>
+                  <th style="padding:8px 12px;">Titre (Français)</th>
+                  <th style="padding:8px 12px;">Titre (Arabe)</th>
+                  <th style="padding:8px 12px;">Date Début (Du)</th>
+                  <th style="padding:8px 12px;">Date Fin (Au)</th>
+                  <th style="padding:8px 12px; text-align:center; width:90px;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+          `;
+
+          sortedWeekNums.forEach(wNum => {
+            const w = weeksConfig[wNum];
+            html += `
+              <tr style="border-bottom:1px solid #E2E8F0; hover:background:#F8FAFC;">
+                <td style="padding:8px 12px; font-weight:700; color:#2563EB;">S${wNum}</td>
+                <td style="padding:8px 12px; font-weight:600; color:#1E1B4B;">${w.title || `Semaine ${wNum}`}</td>
+                <td style="padding:8px 12px; font-weight:600; color:#4338CA;" dir="rtl">${w.titleAr || `الأسبوع ${wNum}`}</td>
+                <td style="padding:8px 12px; color:#0F766E;"><i class="far fa-calendar-alt"></i> ${w.start || '-'}</td>
+                <td style="padding:8px 12px; color:#0F766E;"><i class="far fa-calendar-check"></i> ${w.end || '-'}</td>
+                <td style="padding:8px 12px; text-align:center;">
+                  <button type="button" class="pro-button primary-button" onclick="selectWeekForEditing(${wNum})" style="padding:4px 8px; font-size:0.8rem;">
+                    <i class="fas fa-edit"></i> Modifier
+                  </button>
+                </td>
+              </tr>
+            `;
+          });
+
+          html += `
+              </tbody>
+            </table>
+          `;
+          container.innerHTML = html;
+        }
+
+        function selectWeekForEditing(wNum) {
+          const sel = document.getElementById('adminWeekSelectToEdit');
+          if (sel) {
+            sel.value = String(wNum);
+            onAdminSelectWeekToEdit();
+            sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            sel.focus();
+          }
+        }
 
         // --- Utilitaires ---
         function showProgressBar() { document.getElementById('progress-bar-container').style.display='block'; document.getElementById('progress-bar').style.width='0%'; document.getElementById('progress-bar').textContent='0%'; }
@@ -642,6 +916,8 @@
                 document.getElementById('admin-actions').style.display = 'flex';
                 populateAdminReportClassSelector();
                 loadAdminUsersList();
+                populateAdminWeekSelectToEdit();
+                renderAdminWeeksTable();
                 const lessonPlanGen = document.getElementById('lesson-plan-generator');
                 if (lessonPlanGen) lessonPlanGen.style.display = 'flex';
             } else {
@@ -922,6 +1198,7 @@
         // --- Initialisation ---
         document.addEventListener('DOMContentLoaded', () => {
             console.log("DOM chargé.");
+            fetchWeeksConfiguration();
             updateSectionBadges();
 
             const loginButton = document.getElementById('login-button');
@@ -1192,28 +1469,22 @@ function populateParentWeekSelector() {
     const select = document.getElementById('parentWeekSelector');
     if (!select) return;
     
+    const currentVal = select.value;
+    const activeWeek = currentVal ? parseInt(currentVal, 10) : (getCurrentWeekNumber() || 1);
     select.innerHTML = '';
-    const activeWeek = getCurrentWeekNumber() || 1;
     
-    for (const [weekNum, dates] of Object.entries(specificWeekDateRanges)) {
+    const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+    sortedWeekNums.forEach(wNum => {
         const option = document.createElement('option');
-        option.value = weekNum;
-        
-        let dateText = `Semaine ${weekNum}`;
-        if (dates.start && dates.end) {
-            const startD = new Date(dates.start + 'T00:00:00Z');
-            const endD = new Date(dates.end + 'T00:00:00Z');
-            const monthsFr = ["Janv.", "Févr.", "Mars", "Avril", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."];
-            dateText = `Semaine ${weekNum} (${startD.getUTCDate()} ${monthsFr[startD.getUTCMonth()]} - ${endD.getUTCDate()} ${monthsFr[endD.getUTCMonth()]})`;
-        }
-        
-        option.textContent = dateText;
-        if (parseInt(weekNum, 10) === activeWeek) {
+        option.value = String(wNum);
+        option.textContent = formatWeekDateRangeText(wNum);
+        if (wNum === activeWeek) {
             option.selected = true;
         }
         select.appendChild(option);
-    }
-    select.value = activeWeek;
+    });
+    
+    select.value = String(activeWeek);
 }
 
 let parentRawPlanData = [];
