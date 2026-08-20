@@ -415,6 +415,7 @@
                      <div class="user-mgmt-header" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
                          <label for="adminStudentClassFilter" style="font-weight:700;">Classe :</label>
                          <select id="adminStudentClassFilter" onchange="loadAdminStudentsList()" style="padding:7px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                             <option value="all">-- Toutes les classes --</option>
                              <option value="PEI1">السادس (PEI1)</option>
                              <option value="PEI2">الاول متوسط (PEI2)</option>
                              <option value="PEI3">الثاني متوسط (PEI3)</option>
@@ -821,34 +822,164 @@
 
                 <!-- 4. VUE ENSEIGNANT (PORTAIL DEVOIRS & ÉVALUATION) -->
                 <div id="homework-teacher-view" class="homework-view" style="display:none;">
-                    <button class="pro-button" onclick="showHomeworkView('homework-home')" style="margin-bottom:15px;">
-                        <i class="fas fa-arrow-left"></i> Retour
-                    </button>
-                    <h2><i class="fas fa-chalkboard-teacher"></i> Espace Évaluation des Devoirs par l'Enseignant</h2>
-
-                    <div class="filter-container" style="margin-bottom:20px; display:flex; gap:15px; flex-wrap:wrap; align-items:center;">
-                        <div>
-                            <label>Classe :</label>
-                            <select id="teacher-hw-class" onchange="loadTeacherHomeworks()">
-                                <option value="PEI1">السادس (PEI1)</option>
-                                <option value="PEI2">الاول متوسط (PEI2)</option>
-                                <option value="PEI3">الثاني متوسط (PEI3)</option>
-                                <option value="PEI4">الثالث متوسط (PEI4)</option>
-                                <option value="PEI5">الأول ثانوي (PEI5)</option>
-                                <option value="DP1">الثاني ثانوي (DP1)</option>
-                                <option value="DP2">الثالث ثانوي (DP2)</option>
-                            </select>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+                        <button class="pro-button" onclick="showHomeworkView('homework-home')" style="padding:8px 16px;">
+                            <i class="fas fa-arrow-left"></i> <span id="btnBackToHomeFromTeacher">Retour au Portail</span>
+                        </button>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <button class="pro-button info-button" onclick="openTeacherMessagesModal()" style="padding:8px 16px;">
+                                <i class="fas fa-envelope"></i> Messages Parents <span id="teacher-unread-badge" style="background:#EF4444; color:white; padding:2px 8px; border-radius:12px; font-size:0.8rem; font-weight:700; margin-left:4px; display:none;">0</span>
+                            </button>
                         </div>
-                        <div>
-                            <label>Date :</label>
-                            <input type="date" id="teacher-hw-date" onchange="loadTeacherHomeworks()">
-                        </div>
-                        <button class="pro-button primary-button" onclick="loadTeacherHomeworks()"><i class="fas fa-sync"></i> Charger</button>
-                        <button class="pro-button info-button" onclick="openTeacherMessagesModal()"><i class="fas fa-envelope"></i> Messages Parents <span id="teacher-unread-badge" style="background:red; color:white; padding:2px 6px; border-radius:10px; font-size:0.8em; display:none;">0</span></button>
                     </div>
 
-                    <div id="teacher-evaluations-wrapper">
-                        <!-- Formulaire d'évaluation des devoirs par élève -->
+                    <!-- En-tête Espace Évaluation Enseignant -->
+                    <div class="teacher-dashboard-header" style="background:linear-gradient(135deg, #1E1B4B 0%, #312E81 100%); color:white; border-radius:16px; padding:24px; margin-bottom:25px; box-shadow:0 8px 25px rgba(30, 27, 75, 0.15);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+                            <div>
+                                <h2 style="color:white; margin:0 0 6px 0; font-size:1.45rem;">
+                                    <i class="fas fa-chalkboard-teacher" style="color:#60A5FA;"></i> Espace Évaluation des Devoirs par l'Enseignant
+                                </h2>
+                                <p style="margin:0; color:#CBD5E1; font-size:0.95rem;">
+                                    Enseignant connecté : <strong id="teacherEvalActiveName" style="color:#93C5FD;">--</strong> | Section : <strong id="teacherEvalActiveSection" style="color:#A7F3D0;">--</strong>
+                                </p>
+                            </div>
+                            <div id="teacherEvaluationStats" style="display:flex; gap:12px; flex-wrap:wrap;">
+                                <div style="background:rgba(255,255,255,0.12); padding:8px 16px; border-radius:10px; text-align:center;">
+                                    <div style="font-size:1.3rem; font-weight:800; color:#60A5FA;" id="statTotalHw">0</div>
+                                    <div style="font-size:0.75rem; color:#E2E8F0; text-transform:uppercase;">Total Devoirs</div>
+                                </div>
+                                <div style="background:rgba(16,185,129,0.25); border:1px solid #10B981; padding:8px 16px; border-radius:10px; text-align:center;">
+                                    <div style="font-size:1.3rem; font-weight:800; color:#34D399;" id="statEvaluatedHw">0</div>
+                                    <div style="font-size:0.75rem; color:#D1FAE5; text-transform:uppercase;">Évalués (Vert)</div>
+                                </div>
+                                <div style="background:rgba(245,158,11,0.25); border:1px solid #F59E0B; padding:8px 16px; border-radius:10px; text-align:center;">
+                                    <div style="font-size:1.3rem; font-weight:800; color:#FBBF24;" id="statPendingHw">0</div>
+                                    <div style="font-size:0.75rem; color:#FEF3C7; text-transform:uppercase;">À Évaluer</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Barre de filtres pour l'enseignant -->
+                    <div style="background:white; border-radius:14px; padding:18px; box-shadow:0 4px 15px rgba(0,0,0,0.05); border:1px solid #E2E8F0; margin-bottom:25px;">
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; align-items:end;">
+                            <div>
+                                <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:6px;">
+                                    <i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Filtrer par Semaine :
+                                </label>
+                                <select id="teacherFilterWeek" onchange="renderTeacherHomeworksDashboard()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                    <option value="all">Toutes les semaines</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:6px;">
+                                    <i class="fas fa-users" style="color:#10B981;"></i> Filtrer par Classe :
+                                </label>
+                                <select id="teacherFilterClass" onchange="renderTeacherHomeworksDashboard()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                    <option value="all">Toutes les classes</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:6px;">
+                                    <i class="fas fa-filter" style="color:#F59E0B;"></i> État d'Évaluation :
+                                </label>
+                                <select id="teacherFilterStatus" onchange="renderTeacherHomeworksDashboard()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                    <option value="all">Tous (Évalués et En attente)</option>
+                                    <option value="evaluated">✅ Devoirs Évalués uniquement (Vert)</option>
+                                    <option value="pending">⏳ Devoirs À Évaluer uniquement</option>
+                                </select>
+                            </div>
+                            <div>
+                                <button type="button" class="pro-button primary-button" onclick="loadTeacherHomeworksDashboard()" style="width:100%; padding:9px 12px; height:42px; display:inline-flex; align-items:center; justify-content:center; gap:8px;">
+                                    <i class="fas fa-sync"></i> <span>Actualiser</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Légende visuelle -->
+                    <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap; margin-bottom:15px; font-size:0.88rem; color:#475569;">
+                        <span style="display:inline-flex; align-items:center; gap:6px;">
+                            <span style="display:inline-block; width:14px; height:14px; background:#10B981; border-radius:4px;"></span>
+                            <strong style="color:#065F46;">Vert = Devoir Évalué</strong>
+                        </span>
+                        <span style="display:inline-flex; align-items:center; gap:6px;">
+                            <span style="display:inline-block; width:14px; height:14px; background:#CBD5E1; border:1px solid #94A3B8; border-radius:4px;"></span>
+                            <strong style="color:#475569;">Gris / Blanc = Devoir À Évaluer</strong>
+                        </span>
+                    </div>
+
+                    <!-- Conteneur principal des devoirs classés par semaine puis classe -->
+                    <div id="teacher-homeworks-tree-container">
+                        <p style="text-align:center; padding:30px; color:#64748B;"><i class="fas fa-spinner fa-spin"></i> Chargement des devoirs...</p>
+                    </div>
+
+                    <!-- Modal / Feuille d'évaluation d'un devoir spécifique -->
+                    <div id="teacherEvalSheetModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.75); backdrop-filter:blur(4px); z-index:99999; overflow-y:auto; padding:20px;">
+                        <div style="background:white; max-width:900px; margin:30px auto; border-radius:18px; box-shadow:0 20px 45px rgba(0,0,0,0.3); overflow:hidden; border:1px solid #E2E8F0;">
+                            
+                            <!-- Header de l'évaluation avec Énoncé du devoir en évidence -->
+                            <div style="background:#1E1B4B; color:white; padding:22px 26px; position:relative;">
+                                <button type="button" onclick="closeTeacherEvalSheetModal()" style="position:absolute; top:18px; right:20px; background:transparent; border:none; color:#CBD5E1; font-size:1.5rem; cursor:pointer;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                                    <span id="evalModalBadgeWeek" style="background:#3B82F6; color:white; font-size:0.8rem; font-weight:700; padding:3px 10px; border-radius:8px;">Semaine --</span>
+                                    <span id="evalModalBadgeClass" style="background:#10B981; color:white; font-size:0.8rem; font-weight:700; padding:3px 10px; border-radius:8px;">Classe --</span>
+                                    <span id="evalModalBadgeSubject" style="background:#8B5CF6; color:white; font-size:0.8rem; font-weight:700; padding:3px 10px; border-radius:8px;">Matière --</span>
+                                    <span id="evalModalBadgeDate" style="background:#475569; color:white; font-size:0.8rem; font-weight:700; padding:3px 10px; border-radius:8px;">Date --</span>
+                                </div>
+                                <h3 style="margin:0 0 10px 0; color:white; font-size:1.25rem;">
+                                    <i class="fas fa-edit" style="color:#60A5FA;"></i> <span id="evalModalTitle">Saisie de l'Évaluation des Élèves</span>
+                                </h3>
+
+                                <!-- Boîte d'énoncé du devoir -->
+                                <div style="background:rgba(255,255,255,0.12); border-left:4px solid #F59E0B; padding:12px 16px; border-radius:8px; margin-top:10px;">
+                                    <div style="font-size:0.82rem; font-weight:700; color:#FDE68A; text-transform:uppercase; margin-bottom:4px;">
+                                        <i class="fas fa-book-open"></i> Énoncé du Devoir :
+                                    </div>
+                                    <div id="evalModalHomeworkStatement" style="font-size:1rem; font-weight:600; color:#FFFFFF; line-height:1.4;">
+                                        --
+                                    </div>
+                                    <div id="evalModalLessonInfo" style="font-size:0.85rem; color:#E2E8F0; margin-top:4px;">
+                                        Leçon : --
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Outils rapides de notation -->
+                            <div style="background:#F8FAFC; padding:12px 24px; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                <div style="font-size:0.9rem; font-weight:700; color:#334155;">
+                                    <i class="fas fa-user-graduate" style="color:#2563EB;"></i> Liste des élèves de la classe
+                                </div>
+                                <div style="display:flex; gap:8px;">
+                                    <button type="button" class="pro-button" onclick="setAllStudentsStatus('Fait', 10, 10)" style="padding:6px 12px; font-size:0.82rem; background:#ECFDF5; border:1px solid #10B981; color:#065F46;">
+                                        <i class="fas fa-check-double"></i> Tout marquer "Fait" (10/10)
+                                    </button>
+                                    <button type="button" class="pro-button" onclick="setAllStudentsStatus('Non Fait', 5, 8)" style="padding:6px 12px; font-size:0.82rem; background:#FEF2F2; border:1px solid #EF4444; color:#991B1B;">
+                                        <i class="fas fa-times-circle"></i> Tout marquer "Non Fait"
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Table des élèves -->
+                            <div style="padding:20px; max-height:480px; overflow-y:auto;">
+                                <div id="evalModalStudentsTableWrapper">
+                                    <p style="text-align:center; padding:20px; color:#64748B;">Chargement des élèves...</p>
+                                </div>
+                            </div>
+
+                            <!-- Pied de modal avec enregistrement -->
+                            <div style="background:#F1F5F9; padding:16px 24px; border-top:1px solid #CBD5E1; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                                <button type="button" class="pro-button" onclick="closeTeacherEvalSheetModal()" style="padding:10px 20px;">
+                                    <i class="fas fa-times"></i> Fermer
+                                </button>
+                                <button type="button" id="btnSaveEvalModal" class="pro-button success-button" onclick="submitCurrentHomeworkEvaluation()" style="padding:10px 24px; font-weight:700; font-size:0.95rem;">
+                                    <i class="fas fa-save"></i> Enregistrer l'Évaluation
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

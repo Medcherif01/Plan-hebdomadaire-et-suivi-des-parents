@@ -539,7 +539,35 @@
         async function populateAdminReportClassSelector() { const select = document.getElementById('adminReportClassSelector'); if (!select) return; select.innerHTML = `<option value="">${t('loading_classes')}</option>`; select.disabled = true; try { const response = await fetch(`/api/all-classes?section=${currentSection}`); if (!response.ok) throw new Error(`Erreur serveur ${response.status}`); const classes = await response.json(); if (classes && classes.length > 0) { select.innerHTML = `<option value="">${t('select_report_class')}</option>`; classes.sort(compareClasses).forEach(cls => { const opt = document.createElement('option'); opt.value = cls; const ar = classTranslations[cls]; opt.textContent = ar ? `${ar} (${cls})` : cls; select.appendChild(opt); }); select.disabled = false; } else { select.innerHTML = `<option value="">${t('no_classes_found')}</option>`; } } catch (error) { console.error("Erreur chargement des classes pour le rapport:", error); select.innerHTML = `<option value="">Erreur chargement</option>`; displayAlert('error', true, { error: 'Erreur chargement des classes.' }); } }
         async function generateFullReportByClass() { const classSelector = document.getElementById('adminReportClassSelector'); const selectedClass = classSelector.value; if (!selectedClass) { displayAlert('please_select_class_for_report', true); return; } console.log(`Demande de rapport complet pour la classe : ${selectedClass}`); displayAlert('generating_full_report', false, { classe: selectedClass }); setButtonLoading('generateFullReportBtn', true, 'fas fa-file-invoice'); showProgressBar(); updateProgressBar(10); try { const response = await fetch('/api/full-report-by-class', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ classe: selectedClass }) }); updateProgressBar(80); if (response.ok) { const blob = await response.blob(); const contentDisposition = response.headers.get('content-disposition'); let filename = `Rapport_Complet_${selectedClass}.xlsx`; if (contentDisposition) { const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i); if (filenameMatch && filenameMatch[1]) { filename = filenameMatch[1]; } } saveAs(blob, filename); updateProgressBar(100); displayAlert('generating_full_report_success', false, { classe: selectedClass }); } else { const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." })); throw new Error(errorResult.message || `Erreur serveur ${response.status}`); } } catch (error) { console.error('Erreur lors de la génération du rapport complet:', error); displayAlert('generating_full_report_error', true, { classe: selectedClass, error: error.message }); updateProgressBar(0); } finally { hideProgressBar(); setButtonLoading('generateFullReportBtn', false, 'fas fa-file-invoice'); } }
         
-        function populateNotesClassSelector() { const sel = document.getElementById('notesClassSelector'); const txt = document.getElementById('notesInput'); const btn = document.getElementById('saveNotesBtn'); sel.innerHTML = `<option value="">${t('select_class')}</option>`; const clsK = findHKey('Classe'); if (!clsK || !planData || planData.length === 0) { txt.disabled = true; btn.disabled = true; txt.placeholder = t('no_data'); return; } const uniqueCls = [...new Set(planData.map(i => i[clsK]).filter(Boolean))].sort(compareClasses); uniqueCls.forEach(cls => { const opt = document.createElement('option'); opt.value = cls; const ar = classTranslations[cls]; opt.textContent = ar ? `${ar} (${cls})` : cls; sel.appendChild(opt); }); txt.value = ''; txt.disabled = true; btn.disabled = true; txt.placeholder = t('select_class_placeholder'); }
+        function populateNotesClassSelector() {
+            const sel = document.getElementById('notesClassSelector');
+            const txt = document.getElementById('notesInput');
+            const btn = document.getElementById('saveNotesBtn');
+            if (!sel) return;
+            sel.innerHTML = `<option value="">${t('select_class')}</option>`;
+            const clsK = findHKey('Classe');
+            const ensK = findHKey('Enseignant');
+            if (!clsK || !planData || planData.length === 0) {
+                if (txt) { txt.disabled = true; txt.placeholder = t('no_data'); }
+                if (btn) btn.disabled = true;
+                return;
+            }
+            let teacherData = planData;
+            if (loggedInUser && loggedInUser !== 'Med01' && ensK) {
+                const uE = String(loggedInUser).trim().toLowerCase();
+                teacherData = planData.filter(i => i && i[ensK] && String(i[ensK]).trim().toLowerCase() === uE);
+            }
+            const uniqueCls = [...new Set(teacherData.map(i => i[clsK]).filter(Boolean))].sort(compareClasses);
+            uniqueCls.forEach(cls => {
+                const opt = document.createElement('option');
+                opt.value = cls;
+                const ar = classTranslations[cls];
+                opt.textContent = ar ? `${ar} (${cls})` : cls;
+                sel.appendChild(opt);
+            });
+            if (txt) { txt.value = ''; txt.disabled = true; txt.placeholder = t('select_class_placeholder'); }
+            if (btn) btn.disabled = true;
+        }
         function displayClassNotes() { const sel=document.getElementById('notesClassSelector'); const txt=document.getElementById('notesInput'); const btn=document.getElementById('saveNotesBtn'); const selCls=sel.value; if(selCls && weeklyClassNotes) { const note=weeklyClassNotes[selCls]; txt.value=note||''; txt.disabled=false; btn.disabled=false; applyRTLToElement(txt, note||""); const selText = sel.options[sel.selectedIndex].text; txt.placeholder = t('notes_placeholder', { classText: selText }); } else { txt.value=''; txt.disabled=true; btn.disabled=true; txt.placeholder=selCls ? t('no_data') : t('select_class_placeholder'); } document.getElementById('notes-save-status').textContent=''; }
         async function saveNotes() { const statusEl=document.getElementById('notes-save-status'); const classSel=document.getElementById('notesClassSelector'); const selCls=classSel.value; if(!selCls){displayAlert("select_class",true); return;} if(!currentWeek){displayAlert("please_select_week",true); return;} statusEl.textContent = t('saving'); displayAlert(''); setButtonLoading('saveNotesBtn',true,'fas fa-save'); const notesVal=document.getElementById('notesInput').value; console.log(t('saving_notes_for', { class: selCls, week: currentWeek })); try{ const response=await fetch('/api/save-notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({week:currentWeek,classe:selCls,notes:notesVal,section:currentSection})}); const result=await response.json(); if(!response.ok){throw new Error(result.message||`Erreur ${response.status}`);} weeklyClassNotes[selCls]=notesVal; displayAlert('notes_saved_success', false, { class: selCls, week: currentWeek }); statusEl.textContent = t('saved'); setTimeout(()=>{statusEl.textContent='';},3000); } catch(error){ console.error('Err saveNotes:',error); displayAlert('error_saving_notes', true, { error: error.message }); statusEl.textContent=`${t('error_saving_notes',{error:''}).replace(': {error}','')}: ${error.message}`; } finally{setButtonLoading('saveNotesBtn',false,'fas fa-save');} }
         function getCurrentWeekNumber() {
@@ -688,12 +716,27 @@
         function updateFilterOptionDefaultTexts() { const filters = [ { selId: 'filterEnseignant', defaultKey: 'all' }, { selId: 'filterClasse', defaultKey: 'all_f' }, { selId: 'filterMatiere', defaultKey: 'all_f' }, { selId: 'filterPeriode', defaultKey: 'all_f' }, { selId: 'filterJour', defaultKey: 'all' }, { selId: 'weekSelector', defaultKey: 'select_week' }, { selId: 'notesClassSelector', defaultKey: 'select_class' } ]; filters.forEach(f => { const select = document.getElementById(f.selId); if (select) { const defaultOption = select.querySelector('option[value=""]'); if (defaultOption) { defaultOption.textContent = t(f.defaultKey); } } }); const jSel = document.getElementById('filterJour'); if (jSel) { const dayOptions = jSel.querySelectorAll('option'); const dayValues = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]; const dayTransKeys = ["day_sun", "day_mon", "day_tue", "day_wed", "day_thu"]; dayOptions.forEach(opt => { if (opt.value !== "") { const idx = dayValues.indexOf(opt.value); if (idx !== -1) opt.textContent = t(dayTransKeys[idx]); } }); } const weekSel = document.getElementById('weekSelector'); if (weekSel) { const weekOptions = weekSel.querySelectorAll('option'); weekOptions.forEach(opt => { if (opt.value && opt.value.match(/^\d+$/)) { const weekLabel = t('week_label'); opt.textContent = `${weekLabel.replace(':', '')} ${opt.value}`; } }); } }
         
         function populateFilterOptions() { 
-            const data = planData || []; 
+            const allData = planData || []; 
+            let data = allData;
+            const ensK = findHKey('Enseignant'); 
+            const clsK = findHKey('Classe'); 
+            const perK = findHKey('Période'); 
+            const matK = findHKey('Matière'); 
+
+            // Si l'utilisateur est un enseignant connecté (non Med01), n'extraire les options (matières, classes, etc.) QUE de ses propres séances
+            if (loggedInUser && loggedInUser !== 'Med01' && ensK) { 
+                const uE = String(loggedInUser).trim().toLowerCase(); 
+                data = allData.filter(i => { 
+                    const iE = i && i[ensK] ? String(i[ensK]).trim().toLowerCase() : ''; 
+                    return iE === uE; 
+                }); 
+            } 
+
             const getUniq = (k) => { 
                 const uniq = new Set(); 
                 data.forEach(i => { 
-                    if (i && i[k] != null && i[k] !== '') { 
-                        uniq.add(i[k]); 
+                    if (i && i[k] != null && String(i[k]).trim() !== '') { 
+                        uniq.add(String(i[k]).trim()); 
                     } 
                 }); 
                 if (k?.trim().toLowerCase() === 'classe') { 
@@ -702,16 +745,14 @@
                     return [...uniq].sort((a, b) => String(a).localeCompare(String(b))); 
                 } 
             }; 
-            const ensK = findHKey('Enseignant'); 
-            const clsK = findHKey('Classe'); 
-            const perK = findHKey('Période'); 
-            const matK = findHKey('Matière'); 
+
             const ens = ensK ? getUniq(ensK) : []; 
             const cls = clsK ? getUniq(clsK) : []; 
             const per = perK ? getUniq(perK) : []; 
             const mat = matK ? getUniq(matK) : []; 
             const updateSel = (id, opts, isCls = false) => { 
                 const sel = document.getElementById(id); 
+                if (!sel) return;
                 const curV = sel.value; 
                 const defaultOptHTML = sel.querySelector('option[value=""]')?.outerHTML || `<option value="">${t(isCls ? 'all_f' : 'all')}</option>`; 
                 sel.innerHTML = defaultOptHTML; 
@@ -738,27 +779,31 @@
             updateSel('filterMatiere', mat); 
             updateFilterOptionDefaultTexts(); 
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
-            if (loggedInUser && loggedInUser !== 'Med01') { 
-                filterEnsSelect.value = loggedInUser; 
-                filterEnsSelect.disabled = true; 
-            } else { 
-                filterEnsSelect.disabled = false; 
-            } 
+            if (filterEnsSelect) {
+                if (loggedInUser && loggedInUser !== 'Med01') { 
+                    filterEnsSelect.value = loggedInUser; 
+                    filterEnsSelect.disabled = true; 
+                } else { 
+                    filterEnsSelect.disabled = false; 
+                } 
+            }
         }
 
         function sortAndDisplay() { 
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
-            if (loggedInUser && loggedInUser !== 'Med01') { 
-                filterEnsSelect.value = loggedInUser; 
-                filterEnsSelect.disabled = true; 
-            } else { 
-                filterEnsSelect.disabled = false; 
-            } 
-            const ensF = filterEnsSelect.value; 
-            const clsF = document.getElementById('filterClasse').value; 
-            const matF = document.getElementById('filterMatiere').value; 
-            const perF = document.getElementById('filterPeriode').value; 
-            const jF = document.getElementById('filterJour').value; 
+            if (filterEnsSelect) {
+                if (loggedInUser && loggedInUser !== 'Med01') { 
+                    filterEnsSelect.value = loggedInUser; 
+                    filterEnsSelect.disabled = true; 
+                } else { 
+                    filterEnsSelect.disabled = false; 
+                } 
+            }
+            const ensF = filterEnsSelect ? filterEnsSelect.value : ''; 
+            const clsF = document.getElementById('filterClasse')?.value || ''; 
+            const matF = document.getElementById('filterMatiere')?.value || ''; 
+            const perF = document.getElementById('filterPeriode')?.value || ''; 
+            const jF = document.getElementById('filterJour')?.value || ''; 
             const ensK = findHKey('Enseignant'); 
             const clsK = findHKey('Classe'); 
             const matK = findHKey('Matière'); 
@@ -774,8 +819,12 @@
                 const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]) : null; 
                 
                 // Si l'utilisateur est un enseignant (non Med01), n'afficher STRICTEMENT que ses matières et séances
-                if (loggedInUser && loggedInUser !== 'Med01' && iE !== loggedInUser) {
-                    return false;
+                if (loggedInUser && loggedInUser !== 'Med01') {
+                    const uE = String(loggedInUser).trim().toLowerCase();
+                    const iETight = iE ? String(iE).trim().toLowerCase() : '';
+                    if (iETight !== uE) {
+                        return false;
+                    }
                 }
                 
                 const pE = !ensF || iE === ensF; 
@@ -1733,11 +1782,7 @@ function showHomeworkView(viewName) {
         populateParentWeekSelector();
         loadParentWeeklyPlan();
     } else if (viewName === 'homework-teacher') {
-        const dateInput = document.getElementById('teacher-hw-date');
-        if (dateInput) {
-            dateInput.value = new Date().toISOString().split('T')[0];
-        }
-        loadTeacherHomeworks();
+        loadTeacherHomeworksDashboard();
     }
 }
 
@@ -2403,86 +2448,109 @@ async function loadGeneralEvaluations(studentName, className) {
 
 async function loadAdminStudentsList() {
     try {
-        const className = document.getElementById('adminStudentClassFilter')?.value || 'PEI1';
+        const classFilterEl = document.getElementById('adminStudentClassFilter');
+        const className = classFilterEl ? classFilterEl.value : 'all';
         const section = document.getElementById('adminStudentSectionFilter')?.value || 'garcons';
         const container = document.getElementById('studentsTableContainer');
         const quickSelector = document.getElementById('adminMoveStudentSelector');
         if (!container) return;
 
-        container.innerHTML = '<p>Chargement des élèves...</p>';
+        container.innerHTML = '<p style="color:#64748B; padding:12px;"><i class="fas fa-spinner fa-spin"></i> Chargement des élèves...</p>';
 
-        const res = await fetch(`/api/admin/students?class=${className}&section=${section}`);
-        if (res.ok) {
-            const students = await res.json();
-            
-            // Mettre à jour le sélecteur rapide de déplacement
-            if (quickSelector) {
-                if (students && students.length > 0) {
-                    quickSelector.innerHTML = '<option value="">-- Choisir un élève à déplacer --</option>' +
-                        students.map(s => `<option value="${s._id || s.name}" data-name="${s.name}" data-class="${s.class}">${s.name} (${s.class})</option>`).join('');
-                } else {
-                    quickSelector.innerHTML = '<option value="">-- Aucun élève dans cette classe --</option>';
-                }
-            }
-
-            if (!students || students.length === 0) {
-                container.innerHTML = `<p style="color:#64748B; padding:15px;">Aucun élève trouvé pour la classe <strong>${className}</strong> (${section === 'garcons' ? 'Garçons' : 'Filles'}).</p>`;
-                return;
-            }
-
-            const allClasses = [
-                { id: 'PEI1', label: 'السادس (PEI1)' },
-                { id: 'PEI2', label: 'الاول متوسط (PEI2)' },
-                { id: 'PEI3', label: 'الثاني متوسط (PEI3)' },
-                { id: 'PEI4', label: 'الثالث متوسط (PEI4)' },
-                { id: 'PEI5', label: 'الأول ثانوي (PEI5)' },
-                { id: 'DP1', label: 'الثاني ثانوي (DP1)' },
-                { id: 'DP2', label: 'الثالث ثانوي (DP2)' }
-            ];
-
-            container.innerHTML = `
-                <table class="users-table">
-                    <thead>
-                        <tr>
-                            <th>Photo</th>
-                            <th>Nom de l'élève</th>
-                            <th>Classe actuelle</th>
-                            <th>Date anniversaire</th>
-                            <th>Déplacer vers une autre classe</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${students.map(s => {
-                            const safeId = (s._id || s.name).replace(/[^a-zA-Z0-9_-]/g, '_');
-                            return `
-                            <tr>
-                                <td><img src="${s.photo || 'https://via.placeholder.com/40'}" style="width:40px; height:40px; border-radius:50%; object-fit:cover;" onerror="this.src='https://via.placeholder.com/40'"></td>
-                                <td><strong>${s.name}</strong></td>
-                                <td><span style="background:#E0E7FF; color:#3730A3; padding:4px 8px; border-radius:6px; font-weight:700; font-size:0.85rem;">${s.class}</span></td>
-                                <td>${s.birthday || '-'}</td>
-                                <td>
-                                    <div style="display:flex; gap:6px; align-items:center;">
-                                        <select id="moveClass_${safeId}" class="move-student-select">
-                                            ${allClasses.map(c => `<option value="${c.id}" ${c.id === s.class ? 'selected' : ''}>${c.label}</option>`).join('')}
-                                        </select>
-                                        <button type="button" class="btn-sm-move" onclick="adminMoveStudent('${s._id || ''}', '${s.name.replace(/'/g, "\\'")}', '${s.class}', 'moveClass_${safeId}')">
-                                            <i class="fas fa-exchange-alt"></i> Déplacer
-                                        </button>
-                                    </div>
-                                </td>
-                                <td>
-                                    <button class="btn-sm-delete" onclick="adminDeleteStudent('${s._id}', '${s.name.replace(/'/g, "\\'")}', '${s.class}')">
-                                        <i class="fas fa-trash-alt"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                            `;
-                        }).join('')}
-                    </tbody>
-                </table>
-            `;
+        // 1. Récupérer la liste complète des élèves pour la section (pour alimenter le sélecteur rapide de déplacement)
+        const allRes = await fetch(`/api/admin/students?section=${section}`);
+        let allStudents = [];
+        if (allRes.ok) {
+            allStudents = await allRes.json();
         }
+
+        if (quickSelector) {
+            if (allStudents && allStudents.length > 0) {
+                quickSelector.innerHTML = '<option value="">-- Choisir un élève à déplacer --</option>' +
+                    allStudents.map(s => `<option value="${s._id || s.name}" data-name="${s.name}" data-class="${s.class}">${s.name} (${s.class})</option>`).join('');
+            } else {
+                quickSelector.innerHTML = '<option value="">-- Aucun élève enregistré --</option>';
+            }
+        }
+
+        // 2. Filtrer les élèves selon la classe sélectionnée
+        let studentsToDisplay = allStudents;
+        if (className && className !== 'all') {
+            studentsToDisplay = allStudents.filter(s => s.class === className);
+        }
+
+        if (!studentsToDisplay || studentsToDisplay.length === 0) {
+            const classLabel = className === 'all' ? 'Toutes les classes' : className;
+            container.innerHTML = `<p style="color:#64748B; padding:15px; background:#F8FAFC; border-radius:8px; border:1px solid #E2E8F0;">
+                <i class="fas fa-info-circle"></i> Aucun élève trouvé pour <strong>${classLabel}</strong> (${section === 'garcons' ? 'Section Garçons 👦' : 'Section Filles 👧'}).
+            </p>`;
+            return;
+        }
+
+        const allClasses = [
+            { id: 'PEI1', label: 'السادس (PEI1)' },
+            { id: 'PEI2', label: 'الاول متوسط (PEI2)' },
+            { id: 'PEI3', label: 'الثاني متوسط (PEI3)' },
+            { id: 'PEI4', label: 'الثالث متوسط (PEI4)' },
+            { id: 'PEI5', label: 'الأول ثانوي (PEI5)' },
+            { id: 'DP1', label: 'الثاني ثانوي (DP1)' },
+            { id: 'DP2', label: 'الثالث ثانوي (DP2)' }
+        ];
+
+        container.innerHTML = `
+            <div style="margin-bottom:8px; font-size:0.85rem; color:#475569;">
+                Total affiché : <strong>${studentsToDisplay.length}</strong> élève(s)
+            </div>
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th style="width:60px;">Photo</th>
+                        <th>Nom de l'élève</th>
+                        <th>Classe actuelle</th>
+                        <th>Anniversaire</th>
+                        <th>Déplacer vers une autre classe</th>
+                        <th style="width:60px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${studentsToDisplay.map((s, idx) => {
+                        const safeId = `row_${idx}_` + (s._id || s.name).replace(/[^a-zA-Z0-9_-]/g, '_');
+                        const escapedName = (s.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        return `
+                        <tr>
+                            <td>
+                                <img src="${s.photo || 'https://via.placeholder.com/40'}" 
+                                     style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:1px solid #CBD5E1;" 
+                                     onerror="this.src='https://via.placeholder.com/40'">
+                            </td>
+                            <td><strong>${s.name}</strong></td>
+                            <td>
+                                <span style="background:#E0E7FF; color:#3730A3; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.85rem; display:inline-block;">
+                                    ${s.class}
+                                </span>
+                            </td>
+                            <td>${s.birthday || '-'}</td>
+                            <td>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                    <select id="moveClass_${safeId}" class="move-student-select" style="padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1; font-weight:600;">
+                                        ${allClasses.map(c => `<option value="${c.id}" ${c.id === s.class ? 'selected' : ''}>${c.label}</option>`).join('')}
+                                    </select>
+                                    <button type="button" class="btn-sm-move" style="background:#2563EB; color:white; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; font-weight:600; display:inline-flex; align-items:center; gap:5px;" onclick="adminMoveStudent('${s._id || ''}', '${escapedName}', '${s.class}', 'moveClass_${safeId}')">
+                                        <i class="fas fa-exchange-alt"></i> Déplacer
+                                    </button>
+                                </div>
+                            </td>
+                            <td>
+                                <button class="btn-sm-delete" style="background:#EF4444; color:white; border:none; border-radius:6px; padding:6px 10px; cursor:pointer;" onclick="adminDeleteStudent('${s._id || ''}', '${escapedName}', '${s.class}')" title="Supprimer l'élève">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
     } catch (e) {
         console.error('Erreur loadAdminStudentsList:', e);
     }
@@ -2501,7 +2569,7 @@ async function adminMoveStudent(studentId, studentName, oldClass, selectElementI
         }
 
         if (newClass === oldClass) {
-            alert(`L'élève ${studentName} est déjà dans la classe ${oldClass}.`);
+            alert(`L'élève '${studentName}' est déjà dans la classe ${oldClass}.`);
             return;
         }
 
@@ -2509,7 +2577,7 @@ async function adminMoveStudent(studentId, studentName, oldClass, selectElementI
             return;
         }
 
-        if (statusEl) statusEl.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Déplacement en cours de ${studentName}...</span>`;
+        if (statusEl) statusEl.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Déplacement en cours de ${studentName} vers ${newClass}...</span>`;
 
         const res = await fetch('/api/admin/students/move', {
             method: 'POST',
@@ -2517,20 +2585,22 @@ async function adminMoveStudent(studentId, studentName, oldClass, selectElementI
             body: JSON.stringify({
                 studentId,
                 studentName,
+                name: studentName,
                 oldClass,
                 newClass,
                 section
             })
         });
 
-        const result = await res.json();
-        if (res.ok && result.success) {
-            if (statusEl) statusEl.innerHTML = `<span style="color:green; font-weight:700;"><i class="fas fa-check-circle"></i> Élève '${studentName}' déplacé avec succès de ${oldClass} vers ${newClass} !</span>`;
-            displayAlert(`Élève '${studentName}' déplacé avec succès vers ${newClass} !`, false);
-            loadAdminStudentsList();
+        const result = await res.json().catch(() => ({}));
+        if (res.ok && (result.success || result.student || !result.error)) {
+            const successMsg = result.message || `Élève '${studentName}' déplacé avec succès de ${oldClass} vers ${newClass} !`;
+            if (statusEl) statusEl.innerHTML = `<span style="color:#16A34A; font-weight:700;"><i class="fas fa-check-circle"></i> ${successMsg}</span>`;
+            displayAlert(successMsg, false);
+            await loadAdminStudentsList();
         } else {
-            const err = result.error || 'Erreur lors du déplacement de l\'élève.';
-            if (statusEl) statusEl.innerHTML = `<span style="color:red;"><i class="fas fa-exclamation-triangle"></i> ${err}</span>`;
+            const err = result.error || result.message || 'Erreur lors du déplacement de l\'élève.';
+            if (statusEl) statusEl.innerHTML = `<span style="color:#DC2626; font-weight:700;"><i class="fas fa-exclamation-triangle"></i> ${err}</span>`;
             alert(`Erreur: ${err}`);
         }
     } catch (e) {
@@ -2554,7 +2624,7 @@ async function adminQuickMoveStudent() {
         const selectedOption = quickSelector.options[quickSelector.selectedIndex];
         const studentId = quickSelector.value;
         const studentName = selectedOption.getAttribute('data-name') || studentId;
-        const oldClass = selectedOption.getAttribute('data-class') || document.getElementById('adminStudentClassFilter')?.value || 'PEI1';
+        const oldClass = selectedOption.getAttribute('data-class') || '';
         const newClass = targetClassSelect ? targetClassSelect.value : null;
 
         if (!newClass) {
@@ -2562,16 +2632,16 @@ async function adminQuickMoveStudent() {
             return;
         }
 
-        if (newClass === oldClass) {
-            alert(`L'élève ${studentName} est déjà dans la classe ${oldClass}.`);
+        if (oldClass && newClass === oldClass) {
+            alert(`L'élève '${studentName}' est déjà dans la classe ${oldClass}.`);
             return;
         }
 
-        if (!confirm(`Confirmer le déplacement de l'élève '${studentName}' de ${oldClass} vers ${newClass} ?`)) {
+        if (!confirm(`Confirmer le déplacement de l'élève '${studentName}' ${oldClass ? 'de ' + oldClass + ' ' : ''}vers ${newClass} ?`)) {
             return;
         }
 
-        if (statusEl) statusEl.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Déplacement en cours de ${studentName}...</span>`;
+        if (statusEl) statusEl.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Déplacement en cours de ${studentName} vers ${newClass}...</span>`;
 
         const res = await fetch('/api/admin/students/move', {
             method: 'POST',
@@ -2579,24 +2649,27 @@ async function adminQuickMoveStudent() {
             body: JSON.stringify({
                 studentId,
                 studentName,
+                name: studentName,
                 oldClass,
                 newClass,
                 section
             })
         });
 
-        const result = await res.json();
-        if (res.ok && result.success) {
-            if (statusEl) statusEl.innerHTML = `<span style="color:green; font-weight:700;"><i class="fas fa-check-circle"></i> ${studentName} déplacé avec succès vers ${newClass} !</span>`;
-            displayAlert(`${studentName} a été déplacé vers ${newClass} avec succès !`, false);
-            loadAdminStudentsList();
+        const result = await res.json().catch(() => ({}));
+        if (res.ok && (result.success || result.student || !result.error)) {
+            const successMsg = result.message || `Élève '${studentName}' déplacé avec succès vers ${newClass} !`;
+            if (statusEl) statusEl.innerHTML = `<span style="color:#16A34A; font-weight:700;"><i class="fas fa-check-circle"></i> ${successMsg}</span>`;
+            displayAlert(successMsg, false);
+            await loadAdminStudentsList();
         } else {
-            const err = result.error || 'Erreur lors du déplacement de l\'élève.';
-            if (statusEl) statusEl.innerHTML = `<span style="color:red;"><i class="fas fa-exclamation-triangle"></i> ${err}</span>`;
+            const err = result.error || result.message || 'Erreur lors du déplacement de l\'élève.';
+            if (statusEl) statusEl.innerHTML = `<span style="color:#DC2626; font-weight:700;"><i class="fas fa-exclamation-triangle"></i> ${err}</span>`;
             alert(`Erreur: ${err}`);
         }
     } catch (e) {
         console.error('Erreur adminQuickMoveStudent:', e);
+        alert('Erreur réseau lors du déplacement de l\'élève.');
     }
 }
 
@@ -3065,106 +3138,496 @@ async function openTeacherMessagesModal() {
     }
 }
 
-async function loadTeacherHomeworks() {
+let allTeacherHomeworks = [];
+let activeEvalHomework = null;
+let activeEvalStudents = [];
+
+async function loadTeacherHomeworksDashboard() {
+    const container = document.getElementById('teacher-homeworks-tree-container');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="text-align:center; padding:40px; color:#475569;">
+            <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:12px;"></i>
+            <p style="font-weight:600; font-size:1.05rem;">Chargement des devoirs donnés...</p>
+        </div>
+    `;
+
     try {
-        const className = document.getElementById('teacher-hw-class')?.value || 'PEI1';
-        const dateStr = document.getElementById('teacher-hw-date')?.value || new Date().toISOString().split('T')[0];
+        const teacherName = (loggedInUser && loggedInUser !== 'Med01') ? loggedInUser : (currentUser || 'all');
         const section = currentSection || 'garcons';
-        const wrapper = document.getElementById('teacher-evaluations-wrapper');
-        if (!wrapper) return;
 
-        wrapper.innerHTML = '<p>Chargement des élèves et devoirs...</p>';
+        const nameEl = document.getElementById('teacherEvalActiveName');
+        if (nameEl) nameEl.textContent = loggedInUser || 'Enseignant';
 
-        const [stRes, evRes] = await Promise.all([
-            fetch(`/api/admin/students?class=${className}&section=${section}`),
-            fetch(`/api/evaluations?class=${className}&date=${dateStr}&section=${section}`)
-        ]);
-
-        if (stRes.ok && evRes.ok) {
-            const students = await stRes.json();
-            const { homeworks = [], evaluations = [] } = await evRes.json();
-
-            if (students.length === 0) {
-                wrapper.innerHTML = '<p>Aucun élève trouvé pour cette classe.</p>';
-                return;
-            }
-
-            wrapper.innerHTML = `
-                <div style="background:white; padding:20px; border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
-                    <h3 style="margin-bottom:15px; color:#1e1b4b;">Évaluation des Devoirs pour le ${dateStr} (${className})</h3>
-                    <table class="users-table">
-                        <thead>
-                            <tr>
-                                <th>Élève</th>
-                                <th>Matière</th>
-                                <th>Statut</th>
-                                <th>Participation (/10)</th>
-                                <th>Comportement (/10)</th>
-                                <th>Commentaire</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${students.flatMap(s => {
-                                const subjs = homeworks.length > 0 ? homeworks.map(h => h.subject) : ['Comportement / Devoirs'];
-                                return subjs.map(subj => {
-                                    const ev = evaluations.find(e => e.studentName === s.name && e.subject === subj) || {};
-                                    return `
-                                        <tr>
-                                            <td><strong>${s.name}</strong></td>
-                                            <td>${subj}</td>
-                                            <td>
-                                                <select class="teacher-eval-status" data-student="${s.name}" data-subject="${subj}">
-                                                    <option value="Fait" ${ev.status === 'Fait' ? 'selected' : ''}>Fait</option>
-                                                    <option value="Partiellement Fait" ${ev.status === 'Partiellement Fait' ? 'selected' : ''}>Partiellement Fait</option>
-                                                    <option value="Non Fait" ${ev.status === 'Non Fait' ? 'selected' : ''}>Non Fait</option>
-                                                    <option value="Absent" ${ev.status === 'Absent' ? 'selected' : ''}>Absent</option>
-                                                </select>
-                                            </td>
-                                            <td><input type="number" min="0" max="10" value="${ev.participation || 8}" class="teacher-eval-part" data-student="${s.name}" data-subject="${subj}" style="width:60px;"></td>
-                                            <td><input type="number" min="0" max="10" value="${ev.behavior || 8}" class="teacher-eval-beh" data-student="${s.name}" data-subject="${subj}" style="width:60px;"></td>
-                                            <td><input type="text" value="${ev.comment || ''}" class="teacher-eval-comm" data-student="${s.name}" data-subject="${subj}" placeholder="Remarque"></td>
-                                        </tr>
-                                    `;
-                                }).join('');
-                            }).join('')}
-                        </tbody>
-                    </table>
-                    <button class="pro-button success-button" onclick="saveTeacherEvaluations('${className}', '${dateStr}')" style="margin-top:20px; padding:12px 25px;">
-                        <i class="fas fa-save"></i> Enregistrer toutes les évaluations
-                    </button>
-                </div>
-            `;
+        const secEl = document.getElementById('teacherEvalActiveSection');
+        if (secEl) {
+            secEl.textContent = section === 'garcons' ? 'Section Garçons (بنين)' : 'Section Filles (بنات)';
         }
+
+        const res = await fetch(`/api/teacher-homeworks?teacher=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+
+        const data = await res.json();
+        allTeacherHomeworks = data.homeworks || [];
+
+        // Remplir les sélecteurs de filtre
+        populateTeacherDashboardFilterOptions();
+
+        // Rendre les devoirs groupés par semaine puis classe
+        renderTeacherHomeworksDashboard();
     } catch (e) {
-        console.error('Erreur loadTeacherHomeworks:', e);
+        console.error('Erreur loadTeacherHomeworksDashboard:', e);
+        container.innerHTML = `
+            <div style="background:#FEF2F2; border:1px solid #F87171; border-radius:12px; padding:20px; text-align:center; color:#991B1B;">
+                <i class="fas fa-exclamation-triangle fa-2x" style="margin-bottom:8px;"></i>
+                <p style="font-weight:700;">Impossible de charger les devoirs pour le moment.</p>
+                <button class="pro-button" onclick="loadTeacherHomeworksDashboard()" style="margin-top:10px;">
+                    <i class="fas fa-sync"></i> Réessayer
+                </button>
+            </div>
+        `;
     }
 }
 
-async function saveTeacherEvaluations(className, dateStr) {
+function populateTeacherDashboardFilterOptions() {
+    const weekSel = document.getElementById('teacherFilterWeek');
+    const classSel = document.getElementById('teacherFilterClass');
+
+    if (weekSel) {
+        const curWeek = weekSel.value;
+        const weeks = [...new Set(allTeacherHomeworks.map(h => h.week))].filter(Boolean).sort((a, b) => {
+            return (parseInt(a) || 0) - (parseInt(b) || 0);
+        });
+
+        let opts = `<option value="all">Toutes les semaines (${weeks.length})</option>`;
+        weeks.forEach(w => {
+            const hwSample = allTeacherHomeworks.find(h => String(h.week) === String(w));
+            const rangeText = hwSample?.weekRangeText ? ` (${hwSample.weekRangeText})` : '';
+            opts += `<option value="${w}">Semaine ${w}${rangeText}</option>`;
+        });
+        weekSel.innerHTML = opts;
+        if (weeks.map(String).includes(curWeek)) {
+            weekSel.value = curWeek;
+        }
+    }
+
+    if (classSel) {
+        const curCls = classSel.value;
+        const classes = [...new Set(allTeacherHomeworks.map(h => h.classe))].filter(Boolean).sort(compareClasses);
+
+        let opts = `<option value="all">Toutes les classes (${classes.length})</option>`;
+        classes.forEach(c => {
+            const ar = classTranslations[c];
+            const label = ar ? `${ar} (${c})` : c;
+            opts += `<option value="${c}">${label}</option>`;
+        });
+        classSel.innerHTML = opts;
+        if (classes.includes(curCls)) {
+            classSel.value = curCls;
+        }
+    }
+}
+
+function renderTeacherHomeworksDashboard() {
+    const container = document.getElementById('teacher-homeworks-tree-container');
+    if (!container) return;
+
+    const filterWeek = document.getElementById('teacherFilterWeek')?.value || 'all';
+    const filterClass = document.getElementById('teacherFilterClass')?.value || 'all';
+    const filterStatus = document.getElementById('teacherFilterStatus')?.value || 'all';
+
+    // Filtrer la liste des devoirs
+    const filtered = allTeacherHomeworks.filter(hw => {
+        if (filterWeek !== 'all' && String(hw.week) !== String(filterWeek)) return false;
+        if (filterClass !== 'all' && hw.classe !== filterClass) return false;
+        if (filterStatus === 'evaluated' && !hw.isEvaluated) return false;
+        if (filterStatus === 'pending' && hw.isEvaluated) return false;
+        return true;
+    });
+
+    // Mettre à jour les statistiques
+    const totalCount = allTeacherHomeworks.length;
+    const evaluatedCount = allTeacherHomeworks.filter(h => h.isEvaluated).length;
+    const pendingCount = totalCount - evaluatedCount;
+
+    const statTotal = document.getElementById('statTotalHw');
+    if (statTotal) statTotal.textContent = totalCount;
+
+    const statEval = document.getElementById('statEvaluatedHw');
+    if (statEval) statEval.textContent = evaluatedCount;
+
+    const statPending = document.getElementById('statPendingHw');
+    if (statPending) statPending.textContent = pendingCount;
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div style="background:white; border-radius:14px; padding:40px 20px; text-align:center; border:1px dashed #CBD5E1; color:#64748B;">
+                <i class="fas fa-clipboard-check fa-3x" style="color:#94A3B8; margin-bottom:12px;"></i>
+                <h4 style="font-size:1.15rem; color:#334155; margin:0 0 6px 0;">Aucun devoir trouvé avec ces filtres</h4>
+                <p style="font-size:0.9rem; margin:0;">Veuillez ajuster les filtres ou enregistrer de nouveaux devoirs dans le plan hebdomadaire.</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Grouper par Semaine puis par Classe
+    const weeksMap = new Map();
+    filtered.forEach(hw => {
+        const wKey = String(hw.week || 'Sans Semaine');
+        if (!weeksMap.has(wKey)) {
+            weeksMap.set(wKey, {
+                week: hw.week,
+                weekRangeText: hw.weekRangeText || '',
+                classesMap: new Map()
+            });
+        }
+        const wObj = weeksMap.get(wKey);
+        const cKey = hw.classe || 'Général';
+        if (!wObj.classesMap.has(cKey)) {
+            wObj.classesMap.set(cKey, []);
+        }
+        wObj.classesMap.get(cKey).push(hw);
+    });
+
+    // Tri des semaines
+    const sortedWeeks = Array.from(weeksMap.entries()).sort((a, b) => {
+        return (parseInt(a[0]) || 0) - (parseInt(b[0]) || 0);
+    });
+
+    let html = '';
+
+    sortedWeeks.forEach(([wKey, wData]) => {
+        let totalInWeek = 0;
+        let evaluatedInWeek = 0;
+        wData.classesMap.forEach(hwList => {
+            totalInWeek += hwList.length;
+            evaluatedInWeek += hwList.filter(h => h.isEvaluated).length;
+        });
+
+        const weekPercent = totalInWeek > 0 ? Math.round((evaluatedInWeek / totalInWeek) * 100) : 0;
+
+        html += `
+            <div class="week-evaluation-card" style="background:white; border-radius:16px; margin-bottom:28px; box-shadow:0 6px 20px rgba(0,0,0,0.06); border:1px solid #E2E8F0; overflow:hidden;">
+                <!-- En-tête de la Semaine -->
+                <div style="background:linear-gradient(135deg, #1E293B 0%, #334155 100%); color:white; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="background:#3B82F6; color:white; padding:6px 14px; border-radius:10px; font-weight:800; font-size:1.05rem; letter-spacing:0.5px;">
+                            <i class="fas fa-calendar-week"></i> SEMAINE ${wKey}
+                        </span>
+                        ${wData.weekRangeText ? `<span style="color:#CBD5E1; font-weight:600; font-size:0.92rem;"><i class="far fa-clock"></i> ${wData.weekRangeText}</span>` : ''}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <div style="text-align:right;">
+                            <div style="font-size:0.85rem; color:#94A3B8;">Progression Évaluations</div>
+                            <div style="font-weight:700; font-size:0.95rem; color:${evaluatedInWeek === totalInWeek ? '#34D399' : '#FBBF24'};">
+                                ${evaluatedInWeek} / ${totalInWeek} Évalués (${weekPercent}%)
+                            </div>
+                        </div>
+                        <div style="width:70px; height:8px; background:rgba(255,255,255,0.2); border-radius:10px; overflow:hidden;">
+                            <div style="width:${weekPercent}%; height:100%; background:${evaluatedInWeek === totalInWeek ? '#10B981' : '#F59E0B'}; border-radius:10px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenu des classes de la Semaine -->
+                <div style="padding:20px 24px;">
+        `;
+
+        // Trier les classes dans la semaine
+        const sortedClasses = Array.from(wData.classesMap.entries()).sort((a, b) => compareClasses(a[0], b[0]));
+
+        sortedClasses.forEach(([cKey, homeworksList]) => {
+            const arCls = classTranslations[cKey];
+            const classTitle = arCls ? `${arCls} (${cKey})` : cKey;
+
+            html += `
+                <div style="margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid #F1F5F9;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+                        <h4 style="margin:0; font-size:1.1rem; color:#1E1B4B; display:flex; align-items:center; gap:8px;">
+                            <span style="display:inline-block; width:10px; height:10px; background:#4F46E5; border-radius:50%;"></span>
+                            <i class="fas fa-users" style="color:#6366F1;"></i> Classe : <strong>${classTitle}</strong>
+                        </h4>
+                        <span style="font-size:0.82rem; font-weight:700; color:#64748B; background:#F8FAFC; padding:4px 10px; border-radius:8px; border:1px solid #E2E8F0;">
+                            ${homeworksList.length} Devoir(s)
+                        </span>
+                    </div>
+
+                    <!-- Grille des devoirs donnés pour cette classe -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:18px;">
+            `;
+
+            homeworksList.forEach(hw => {
+                const globalIndex = allTeacherHomeworks.indexOf(hw);
+                const isEvaluated = !!hw.isEvaluated;
+
+                // DESIGN CONDITIONNEL : VERT SI ÉVALUÉ, BLANC/GRIS SI EN ATTENTE
+                const cardBg = isEvaluated ? '#F0FDF4' : '#FFFFFF';
+                const cardBorder = isEvaluated ? '2px solid #10B981' : '1px solid #CBD5E1';
+                const shadow = isEvaluated ? '0 4px 15px rgba(16, 185, 129, 0.12)' : '0 3px 10px rgba(0,0,0,0.04)';
+
+                html += `
+                    <div style="background:${cardBg}; border:${cardBorder}; border-radius:14px; padding:18px; box-shadow:${shadow}; display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s, box-shadow 0.2s; position:relative;">
+                        
+                        <!-- Ruban / Badge d'état -->
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; gap:8px;">
+                            <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                                <span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.78rem;">
+                                    <i class="fas fa-book"></i> ${escapeHtml(hw.matiere || 'Matière')}
+                                </span>
+                                ${hw.jour ? `<span style="background:#F1F5F9; color:#334155; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem;"><i class="far fa-calendar"></i> ${escapeHtml(hw.jour)}</span>` : ''}
+                                ${hw.periode ? `<span style="background:#FEF3C7; color:#92400E; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem;">Période ${escapeHtml(hw.periode)}</span>` : ''}
+                            </div>
+
+                            ${isEvaluated ? `
+                                <span style="background:#10B981; color:white; padding:4px 10px; border-radius:8px; font-weight:800; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(16,185,129,0.3);">
+                                    <i class="fas fa-check-circle"></i> Évalué (Vert)
+                                </span>
+                            ` : `
+                                <span style="background:#F59E0B; color:white; padding:4px 10px; border-radius:8px; font-weight:800; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px;">
+                                    <i class="fas fa-clock"></i> À Évaluer
+                                </span>
+                            `}
+                        </div>
+
+                        <!-- Info leçon -->
+                        ${hw.lecon ? `
+                            <div style="font-size:0.85rem; color:#475569; margin-bottom:10px; line-height:1.35;">
+                                <strong style="color:#1E293B;"><i class="fas fa-graduation-cap" style="color:#6366F1;"></i> Leçon :</strong> ${escapeHtml(hw.lecon)}
+                            </div>
+                        ` : ''}
+
+                        <!-- ÉNONCÉ DU DEVOIR MIS EN ÉVIDENCE -->
+                        <div style="background:${isEvaluated ? '#DCFCE7' : '#F8FAFC'}; border:1px solid ${isEvaluated ? '#86EFAC' : '#E2E8F0'}; border-left:4px solid ${isEvaluated ? '#10B981' : '#3B82F6'}; border-radius:10px; padding:12px; margin:10px 0 16px 0;">
+                            <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:${isEvaluated ? '#047857' : '#2563EB'}; margin-bottom:4px; display:flex; align-items:center; gap:5px;">
+                                <i class="fas fa-book-open"></i> Énoncé du Devoir :
+                            </div>
+                            <div style="font-size:0.95rem; font-weight:600; color:#0F172A; line-height:1.45; word-break:break-word;">
+                                ${escapeHtml(hw.devoir || 'Aucun énoncé')}
+                            </div>
+                        </div>
+
+                        <!-- Date et bouton d'action -->
+                        <div style="margin-top:auto;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:#64748B; margin-bottom:12px;">
+                                <span><i class="far fa-calendar-alt"></i> Date : <strong>${hw.formattedDateFr || hw.date}</strong></span>
+                                <span><i class="fas fa-user-tie"></i> ${escapeHtml(hw.enseignant || 'Enseignant')}</span>
+                            </div>
+
+                            <button type="button" class="pro-button ${isEvaluated ? 'success-button' : 'primary-button'}" onclick="openTeacherEvalModal(${globalIndex})" style="width:100%; padding:10px 14px; font-weight:700; font-size:0.9rem; justify-content:center; gap:8px;">
+                                <i class="fas ${isEvaluated ? 'fa-check-double' : 'fa-edit'}"></i>
+                                <span>${isEvaluated ? 'Modifier / Revoir l\'Évaluation' : 'Saisir l\'Évaluation des Élèves'}</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+async function openTeacherEvalModal(hwIndex) {
+    const hw = allTeacherHomeworks[hwIndex];
+    if (!hw) {
+        displayAlert("Devoir introuvable.", true);
+        return;
+    }
+
+    activeEvalHomework = hw;
+    const modal = document.getElementById('teacherEvalSheetModal');
+    if (!modal) return;
+
+    // Remplir les informations d'en-tête
+    const bWeek = document.getElementById('evalModalBadgeWeek');
+    const bClass = document.getElementById('evalModalBadgeClass');
+    const bSubj = document.getElementById('evalModalBadgeSubject');
+    const bDate = document.getElementById('evalModalBadgeDate');
+    const stEl = document.getElementById('evalModalHomeworkStatement');
+    const lEl = document.getElementById('evalModalLessonInfo');
+    const titleEl = document.getElementById('evalModalTitle');
+
+    const arCls = classTranslations[hw.classe];
+    const classDisplay = arCls ? `${arCls} (${hw.classe})` : hw.classe;
+
+    if (bWeek) bWeek.textContent = `Semaine ${hw.week}`;
+    if (bClass) bClass.textContent = `Classe : ${classDisplay}`;
+    if (bSubj) bSubj.textContent = `Matière : ${hw.matiere || 'Devoir'}`;
+    if (bDate) bDate.textContent = `Date : ${hw.formattedDateFr || hw.date}`;
+    if (stEl) stEl.textContent = hw.devoir || 'Aucun énoncé spécifié';
+    if (lEl) lEl.textContent = hw.lecon ? `Leçon : ${hw.lecon}` : '';
+    if (titleEl) titleEl.textContent = `Évaluation : ${hw.matiere || 'Devoir'} - ${classDisplay}`;
+
+    // Afficher le modal
+    modal.style.display = 'block';
+
+    // Charger les élèves et les évaluations existantes
+    const tableWrapper = document.getElementById('evalModalStudentsTableWrapper');
+    if (tableWrapper) {
+        tableWrapper.innerHTML = `
+            <div style="text-align:center; padding:30px; color:#475569;">
+                <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:8px;"></i>
+                <p>Chargement de la liste des élèves de la classe...</p>
+            </div>
+        `;
+    }
+
     try {
         const section = currentSection || 'garcons';
-        const statuses = document.querySelectorAll('.teacher-eval-status');
+        const [stRes, evRes] = await Promise.all([
+            fetch(`/api/admin/students?class=${encodeURIComponent(hw.classe)}&section=${encodeURIComponent(section)}`),
+            fetch(`/api/evaluations?class=${encodeURIComponent(hw.classe)}&date=${encodeURIComponent(hw.date)}&section=${encodeURIComponent(section)}`)
+        ]);
+
+        if (!stRes.ok) throw new Error("Erreur chargement élèves");
+        const students = await stRes.json();
+        activeEvalStudents = students || [];
+
+        let existingEvaluations = [];
+        if (evRes.ok) {
+            const evData = await evRes.json();
+            existingEvaluations = evData.evaluations || [];
+        }
+
+        if (activeEvalStudents.length === 0) {
+            tableWrapper.innerHTML = `
+                <div style="background:#FEF2F2; padding:20px; border-radius:10px; text-align:center; color:#991B1B;">
+                    <i class="fas fa-user-slash fa-2x" style="margin-bottom:6px;"></i>
+                    <p>Aucun élève trouvé enregistré pour la classe <strong>${classDisplay}</strong>.</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Construire la table de saisie
+        let tableHtml = `
+            <table class="users-table" style="width:100%; border-collapse:collapse; background:white;">
+                <thead>
+                    <tr style="background:#F1F5F9; color:#1E293B;">
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">#</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">Nom de l'Élève</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; min-width:140px;">Statut du Devoir</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:110px;">Participation (/10)</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:110px;">Comportement (/10)</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">Remarque</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        activeEvalStudents.forEach((st, idx) => {
+            const ev = existingEvaluations.find(e => e.studentName === st.name && (e.subject === hw.matiere || !e.subject)) || {};
+            const curStatus = ev.status || 'Fait';
+            const curPart = (ev.participation !== undefined && ev.participation !== null) ? ev.participation : 10;
+            const curBeh = (ev.behavior !== undefined && ev.behavior !== null) ? ev.behavior : 10;
+            const curComm = ev.comment || '';
+
+            tableHtml += `
+                <tr style="border-bottom:1px solid #E2E8F0;">
+                    <td style="padding:10px; border:1px solid #E2E8F0; font-weight:700; color:#64748B;">${idx + 1}</td>
+                    <td style="padding:10px; border:1px solid #E2E8F0;">
+                        <div style="font-weight:700; color:#0F172A; font-size:0.95rem;">${escapeHtml(st.name)}</div>
+                    </td>
+                    <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
+                        <select class="modal-eval-status" data-student="${escapeHtml(st.name)}" style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                            <option value="Fait" ${curStatus === 'Fait' ? 'selected' : ''}>✅ Fait</option>
+                            <option value="Partiellement Fait" ${curStatus === 'Partiellement Fait' ? 'selected' : ''}>⚠️ Partiellement Fait</option>
+                            <option value="Non Fait" ${curStatus === 'Non Fait' ? 'selected' : ''}>❌ Non Fait</option>
+                            <option value="Absent" ${curStatus === 'Absent' ? 'selected' : ''}>⚪ Absent</option>
+                        </select>
+                    </td>
+                    <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
+                        <input type="number" min="0" max="10" value="${curPart}" class="modal-eval-part" data-student="${escapeHtml(st.name)}" style="width:80px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                    </td>
+                    <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
+                        <input type="number" min="0" max="10" value="${curBeh}" class="modal-eval-beh" data-student="${escapeHtml(st.name)}" style="width:80px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                    </td>
+                    <td style="padding:10px; border:1px solid #E2E8F0;">
+                        <input type="text" value="${escapeHtml(curComm)}" class="modal-eval-comm" data-student="${escapeHtml(st.name)}" placeholder="Observation / Remarque" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1;">
+                    </td>
+                </tr>
+            `;
+        });
+
+        tableHtml += `
+                </tbody>
+            </table>
+        `;
+
+        tableWrapper.innerHTML = tableHtml;
+    } catch (e) {
+        console.error('Erreur chargement formulaire evaluation:', e);
+        tableWrapper.innerHTML = `
+            <div style="background:#FEF2F2; padding:15px; border-radius:8px; color:#991B1B;">
+                Erreur lors du chargement des élèves : ${e.message}
+            </div>
+        `;
+    }
+}
+
+function closeTeacherEvalSheetModal() {
+    const modal = document.getElementById('teacherEvalSheetModal');
+    if (modal) modal.style.display = 'none';
+    activeEvalHomework = null;
+}
+
+function setAllStudentsStatus(statusVal, partVal, behVal) {
+    const statuses = document.querySelectorAll('.modal-eval-status');
+    const parts = document.querySelectorAll('.modal-eval-part');
+    const behs = document.querySelectorAll('.modal-eval-beh');
+
+    statuses.forEach(s => { s.value = statusVal; });
+    if (partVal !== undefined) parts.forEach(p => { p.value = partVal; });
+    if (behVal !== undefined) behs.forEach(b => { b.value = behVal; });
+}
+
+async function submitCurrentHomeworkEvaluation() {
+    if (!activeEvalHomework) {
+        displayAlert("Aucun devoir actif sélectionné.", true);
+        return;
+    }
+
+    const btn = document.getElementById('btnSaveEvalModal');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enregistrement en cours...';
+    }
+
+    try {
+        const hw = activeEvalHomework;
+        const section = currentSection || 'garcons';
+        const statusEls = document.querySelectorAll('.modal-eval-status');
         const evaluations = [];
 
-        statuses.forEach(stEl => {
+        statusEls.forEach(stEl => {
             const studentName = stEl.getAttribute('data-student');
-            const subject = stEl.getAttribute('data-subject');
             const status = stEl.value;
-
-            const partEl = document.querySelector(`.teacher-eval-part[data-student="${studentName}"][data-subject="${subject}"]`);
-            const behEl = document.querySelector(`.teacher-eval-beh[data-student="${studentName}"][data-subject="${subject}"]`);
-            const commEl = document.querySelector(`.teacher-eval-comm[data-student="${studentName}"][data-subject="${subject}"]`);
+            const partEl = document.querySelector(`.modal-eval-part[data-student="${studentName}"]`);
+            const behEl = document.querySelector(`.modal-eval-beh[data-student="${studentName}"]`);
+            const commEl = document.querySelector(`.modal-eval-comm[data-student="${studentName}"]`);
 
             evaluations.push({
                 studentName,
-                class: className,
-                date: dateStr,
-                subject,
+                class: hw.classe,
+                date: hw.date,
+                subject: hw.matiere,
                 status,
-                participation: parseInt(partEl?.value || 8),
-                behavior: parseInt(behEl?.value || 8),
+                participation: parseInt(partEl?.value || 10),
+                behavior: parseInt(behEl?.value || 10),
                 comment: commEl?.value || '',
-                section
+                section,
+                evaluatedBy: loggedInUser || 'Enseignant'
             });
         });
 
@@ -3174,17 +3637,38 @@ async function saveTeacherEvaluations(className, dateStr) {
             body: JSON.stringify({ evaluations, section })
         });
 
-        if (res.ok) {
-            // Recalculer les étoiles du jour
-            await fetch('/api/daily-stars', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date: dateStr, section })
-            });
+        if (!res.ok) throw new Error("Échec de l'enregistrement de l'évaluation.");
 
-            displayAlert('Évaluations enregistrées et étoiles recalculées !', false);
-        }
+        // Recalculer les étoiles journalières
+        await fetch('/api/daily-stars', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: hw.date, section })
+        }).catch(err => console.warn('Erreur recalcul daily-stars:', err));
+
+        // Marquer le devoir comme évalué dans l'état local (Devient VERT immédiatement !)
+        hw.isEvaluated = true;
+
+        closeTeacherEvalSheetModal();
+        renderTeacherHomeworksDashboard();
+
+        displayAlert("Évaluation enregistrée avec succès ! Le devoir est désormais marqué comme Évalué (Vert).", false);
     } catch (e) {
-        console.error('Erreur saveTeacherEvaluations:', e);
+        console.error('Erreur submitCurrentHomeworkEvaluation:', e);
+        displayAlert(`Erreur : ${e.message}`, true);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save"></i> Enregistrer l\'Évaluation';
+        }
     }
+}
+
+// Fonctions de compatibilité
+async function loadTeacherHomeworks() {
+    loadTeacherHomeworksDashboard();
+}
+
+async function saveTeacherEvaluations(className, dateStr) {
+    submitCurrentHomeworkEvaluation();
 }

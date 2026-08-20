@@ -425,12 +425,28 @@ class InMemoryCollection {
     if (!query || Object.keys(query).length === 0) return true;
     for (const key of Object.keys(query)) {
       const qVal = query[key];
-      const iVal = item[key];
-      if (typeof qVal === 'object' && qVal !== null) {
-        if (qVal.$in && Array.isArray(qVal.$in)) {
+      const iVal = item ? item[key] : undefined;
+
+      if (qVal instanceof RegExp) {
+        if (!qVal.test(String(iVal || ''))) return false;
+      } else if (typeof qVal === 'object' && qVal !== null) {
+        if (qVal.$regex !== undefined) {
+          const reg = qVal.$regex instanceof RegExp ? qVal.$regex : new RegExp(qVal.$regex, qVal.$options || 'i');
+          if (!reg.test(String(iVal || ''))) return false;
+        } else if (qVal.$in && Array.isArray(qVal.$in)) {
           if (!qVal.$in.includes(iVal)) return false;
+        } else if (qVal.$nin && Array.isArray(qVal.$nin)) {
+          if (qVal.$nin.includes(iVal)) return false;
         } else if (qVal.$ne !== undefined) {
           if (iVal === qVal.$ne) return false;
+        } else if (qVal.$gt !== undefined) {
+          if (!(iVal > qVal.$gt)) return false;
+        } else if (qVal.$gte !== undefined) {
+          if (!(iVal >= qVal.$gte)) return false;
+        } else if (qVal.$lt !== undefined) {
+          if (!(iVal < qVal.$lt)) return false;
+        } else if (qVal.$lte !== undefined) {
+          if (!(iVal <= qVal.$lte)) return false;
         }
       } else {
         if (iVal !== qVal) return false;
@@ -1166,37 +1182,35 @@ app.get('/api/admin/students', async (req, res) => {
     const targetClass = req.query.class;
     const db = await connectToDatabase();
 
-    let query = { section: section };
-    if (targetClass) query.class = targetClass;
-
-    let students = await db.collection('students').find(query).toArray();
-
-    if (!students || students.length === 0) {
-      // Auto-seeding
-      const seeded = [];
+    // Auto-seeding si la section n'a encore aucun élève enregistré
+    const totalInSection = await db.collection('students').countDocuments({ section: section });
+    if (totalInSection === 0) {
       for (const [cls, list] of Object.entries(defaultStudents)) {
-        if (!targetClass || targetClass === cls) {
-          for (const s of list) {
-            const studentObj = {
-              _id: `${section}_${cls}_${s.name}`,
-              name: s.name,
-              photo: s.photo,
-              birthday: s.birthday,
-              class: cls,
-              section: section,
-              createdAt: new Date()
-            };
-            await db.collection('students').updateOne(
-              { _id: studentObj._id },
-              { $set: studentObj },
-              { upsert: true }
-            );
-            seeded.push(studentObj);
-          }
+        for (const s of list) {
+          const studentObj = {
+            _id: `${section}_${cls}_${s.name}`,
+            name: s.name,
+            photo: s.photo,
+            birthday: s.birthday,
+            class: cls,
+            section: section,
+            createdAt: new Date()
+          };
+          await db.collection('students').updateOne(
+            { _id: studentObj._id },
+            { $set: studentObj },
+            { upsert: true }
+          );
         }
       }
-      students = seeded;
     }
+
+    let query = { section: section };
+    if (targetClass && targetClass !== 'all') {
+      query.class = targetClass;
+    }
+
+    let students = await db.collection('students').find(query).sort({ name: 1 }).toArray();
 
     res.status(200).json(students);
   } catch (error) {
@@ -1212,12 +1226,13 @@ app.post('/api/admin/students', async (req, res) => {
       return res.status(400).json({ message: 'Nom et classe requis.' });
     }
     const db = await connectToDatabase();
-    const studentId = `${section}_${className}_${name.trim()}`;
+    const cleanName = name.trim();
+    const studentId = `${section}_${className}_${cleanName}`;
     const formattedPhoto = convertGoogleDriveUrl(photo || '');
 
     const studentData = {
       _id: studentId,
-      name: name.trim(),
+      name: cleanName,
       photo: formattedPhoto,
       birthday: birthday || '',
       class: className,
@@ -1231,7 +1246,7 @@ app.post('/api/admin/students', async (req, res) => {
       { upsert: true }
     );
 
-    res.status(200).json({ message: `Élève '${name}' enregistré avec succès.`, student: studentData });
+    res.status(200).json({ success: true, message: `Élève '${cleanName}' enregistré avec succès.`, student: studentData });
   } catch (error) {
     console.error('Erreur POST /api/admin/students:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -1245,7 +1260,10 @@ app.delete('/api/admin/students', async (req, res) => {
     const studentId = id || `${section}_${className}_${name}`;
 
     await db.collection('students').deleteOne({ _id: studentId });
-    res.status(200).json({ message: 'Élève supprimé avec succès.' });
+    if (name) {
+      await db.collection('students').deleteMany({ name: name.trim(), section: section });
+    }
+    res.status(200).json({ success: true, message: 'Élève supprimé avec succès.' });
   } catch (error) {
     console.error('Erreur DELETE /api/admin/students:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -1254,43 +1272,90 @@ app.delete('/api/admin/students', async (req, res) => {
 
 app.post('/api/admin/students/move', async (req, res) => {
   try {
-    const { studentId, oldClass, newClass, name, section = 'garcons' } = req.body;
+    const { studentId, oldClass, newClass, name, studentName, section = 'garcons' } = req.body;
     if (!newClass) {
-      return res.status(400).json({ message: 'La nouvelle classe est obligatoire.' });
+      return res.status(400).json({ success: false, error: 'La nouvelle classe est obligatoire.' });
     }
     const db = await connectToDatabase();
+    const targetName = (name || studentName || '').trim();
 
     let student = null;
     if (studentId) {
       student = await db.collection('students').findOne({ _id: studentId });
+      if (!student) {
+        try {
+          const { ObjectId } = require('mongodb');
+          if (ObjectId.isValid(studentId)) {
+            student = await db.collection('students').findOne({ _id: new ObjectId(studentId) });
+          }
+        } catch (e) {}
+      }
     }
-    if (!student && name && oldClass) {
-      student = await db.collection('students').findOne({ _id: `${section}_${oldClass}_${name}` });
+    if (!student && targetName && oldClass) {
+      student = await db.collection('students').findOne({
+        name: { $regex: new RegExp(`^${targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        class: oldClass,
+        section: section
+      });
     }
-    if (!student && name) {
-      student = await db.collection('students').findOne({ name: name, section: section });
+    if (!student && targetName) {
+      student = await db.collection('students').findOne({
+        name: { $regex: new RegExp(`^${targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        section: section
+      });
+    }
+
+    // Si l'élève n'était pas encore persisté dans la BD mais fait partie des données initiales
+    if (!student && targetName) {
+      for (const [cls, list] of Object.entries(defaultStudents)) {
+        const match = list.find(s => s.name.trim().toLowerCase() === targetName.toLowerCase());
+        if (match) {
+          student = {
+            _id: `${section}_${cls}_${match.name}`,
+            name: match.name,
+            photo: match.photo,
+            birthday: match.birthday,
+            class: cls,
+            section: section,
+            createdAt: new Date()
+          };
+          break;
+        }
+      }
     }
 
     if (!student) {
-      return res.status(404).json({ message: "Élève introuvable." });
+      return res.status(404).json({ success: false, error: "Élève introuvable." });
     }
 
     const currentOldClass = student.class || oldClass;
-    const studentName = student.name;
+    const finalStudentName = (student.name || targetName).trim();
     const currentSection = student.section || section;
     const oldId = student._id;
-    const newId = `${currentSection}_${newClass}_${studentName}`;
+    const newId = `${currentSection}_${newClass}_${finalStudentName}`;
 
     // Supprimer l'ancien document si l'ID a changé
-    if (oldId !== newId) {
+    if (oldId && String(oldId) !== String(newId)) {
       await db.collection('students').deleteOne({ _id: oldId });
+    }
+
+    // Supprimer tout éventuel doublon avec l'ancien nom et classe
+    if (currentOldClass && currentOldClass !== newClass) {
+      await db.collection('students').deleteMany({
+        _id: { $ne: newId },
+        name: { $regex: new RegExp(`^${finalStudentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        section: currentSection,
+        class: currentOldClass
+      });
     }
 
     // Créer / mettre à jour avec la nouvelle classe
     const updatedStudent = {
       ...student,
       _id: newId,
+      name: finalStudentName,
       class: newClass,
+      section: currentSection,
       updatedAt: new Date()
     };
 
@@ -1302,27 +1367,154 @@ app.post('/api/admin/students/move', async (req, res) => {
 
     // Mettre à jour les évaluations associées à l'élève
     try {
-      await db.collection('homework_evaluations').updateMany(
-        { studentId: oldId },
-        { $set: { studentId: newId, class: newClass } }
+      await db.collection('evaluations').updateMany(
+        { studentName: finalStudentName, section: currentSection },
+        { $set: { class: newClass } }
       );
     } catch (evalErr) {
-      console.warn('Note mise à jour homework_evaluations:', evalErr.message);
+      console.warn('Note mise à jour evaluations:', evalErr.message);
+    }
+
+    // Mettre à jour les étoiles journalières si présentes
+    try {
+      await db.collection('daily_stars').updateMany(
+        { studentName: finalStudentName, section: currentSection },
+        { $set: { class: newClass } }
+      );
+    } catch (starErr) {
+      console.warn('Note mise à jour daily_stars:', starErr.message);
     }
 
     res.status(200).json({
-      message: `L'élève ${studentName} a été déplacé avec succès de ${currentOldClass} vers ${newClass}.`,
+      success: true,
+      message: `L'élève '${finalStudentName}' a été déplacé avec succès de ${currentOldClass} vers ${newClass}.`,
       student: updatedStudent
     });
   } catch (error) {
     console.error('Erreur POST /api/admin/students/move:', error);
-    res.status(500).json({ message: 'Erreur lors du déplacement de l\'élève.' });
+    res.status(500).json({ success: false, error: 'Erreur serveur lors du déplacement de l\'élève.' });
   }
 });
 
 // ============================================================================
 // API PORTAIL DEVOIRS ET ÉVALUATIONS (AVEC TRANSFERT AUTOMATIQUE)
 // ============================================================================
+
+app.get('/api/teacher-homeworks', async (req, res) => {
+  try {
+    const { teacher, section = 'garcons', week } = req.query;
+    const db = await connectToDatabase();
+
+    // 1. Charger les plans de la section
+    let query = { section };
+    if (week && !isNaN(parseInt(week, 10))) {
+      query.week = parseInt(week, 10);
+    }
+    let planDocs = await db.collection('plans').find(query).toArray();
+    if ((!planDocs || planDocs.length === 0) && section === 'garcons') {
+      const fallbackDocs = await db.collection('plans').find(week ? { week: parseInt(week, 10) } : {}).toArray();
+      if (fallbackDocs) planDocs.push(...fallbackDocs);
+    }
+
+    // Charger les semaines et dates officielles
+    const weeksConfigDoc = await db.collection('school_weeks_config').find({}).toArray();
+    const weeksMap = {};
+    if (weeksConfigDoc && weeksConfigDoc.length > 0) {
+      weeksConfigDoc.forEach(w => {
+        weeksMap[w.week] = {
+          title: w.title || `Semaine ${w.week}`,
+          titleAr: w.titleAr || `الأسبوع ${w.week}`,
+          start: w.start,
+          end: w.end
+        };
+      });
+    }
+
+    // Charger toutes les évaluations existantes pour vérifier le statut évalué/non évalué
+    const allEvaluations = await db.collection('evaluations').find({ section }).toArray();
+    const evalMap = new Set();
+    allEvaluations.forEach(ev => {
+      if (ev.class && ev.date && ev.subject) {
+        evalMap.add(`${String(ev.class).trim().toLowerCase()}_${String(ev.date).trim()}_${String(ev.subject).trim().toLowerCase()}`);
+      }
+    });
+
+    const teacherHws = [];
+    const targetTeacher = (teacher || '').trim().toLowerCase();
+
+    planDocs.forEach(doc => {
+      const wNum = doc.week;
+      const wDates = weeksMap[wNum] || specificWeekDateRangesNode[wNum] || { start: '', end: '', title: `Semaine ${wNum}`, titleAr: `الأسبوع ${wNum}` };
+      const weekStartDate = wDates.start ? new Date(wDates.start + 'T00:00:00Z') : null;
+
+      if (Array.isArray(doc.data)) {
+        doc.data.forEach(row => {
+          const rowEns = row[findKey(row, 'Enseignant')] || '';
+          const rowDevoirs = row[findKey(row, 'Devoirs')] || '';
+          const rowClasse = row[findKey(row, 'Classe')] || '';
+          const rowMatiere = row[findKey(row, 'Matière')] || '';
+          const rowJour = row[findKey(row, 'Jour')] || '';
+          const rowPeriode = row[findKey(row, 'Période')] || '';
+          const rowLecon = row[findKey(row, 'Leçon')] || '';
+          const rowTravaux = row[findKey(row, 'Travaux de classe')] || '';
+
+          if (rowDevoirs && String(rowDevoirs).trim() !== '') {
+            const isMatch = (!targetTeacher || targetTeacher === 'all' || targetTeacher === 'med01' || String(rowEns).trim().toLowerCase() === targetTeacher);
+            if (isMatch) {
+              let exactDate = '';
+              let formattedDateFr = '';
+              const dayName = extractDayNameFromString(rowJour) || rowJour;
+              if (weekStartDate && dayName) {
+                const dObj = getDateForDayNameNode(weekStartDate, dayName);
+                if (dObj && !isNaN(dObj.getTime())) {
+                  exactDate = dObj.toISOString().split('T')[0];
+                  formattedDateFr = formatDateFrenchNode(dObj);
+                }
+              }
+              if (!exactDate && wDates.start) {
+                exactDate = wDates.start;
+              }
+
+              const evalKey = `${String(rowClasse).trim().toLowerCase()}_${exactDate}_${String(rowMatiere).trim().toLowerCase()}`;
+              const isEvaluated = evalMap.has(evalKey);
+
+              teacherHws.push({
+                week: wNum,
+                weekTitle: wDates.title || `Semaine ${wNum}`,
+                weekTitleAr: wDates.titleAr || `الأسبوع ${wNum}`,
+                weekStartDate: wDates.start,
+                weekEndDate: wDates.end,
+                classe: rowClasse,
+                matiere: rowMatiere,
+                jour: rowJour,
+                periode: rowPeriode,
+                lecon: rowLecon,
+                travaux: rowTravaux,
+                devoir: rowDevoirs,
+                enseignant: rowEns,
+                date: exactDate,
+                formattedDateFr: formattedDateFr || `${rowJour} (S${wNum})`,
+                isEvaluated: isEvaluated
+              });
+            }
+          }
+        });
+      }
+    });
+
+    teacherHws.sort((a, b) => {
+      if (a.week !== b.week) return a.week - b.week;
+      const cComp = String(a.classe).localeCompare(String(b.classe));
+      if (cComp !== 0) return cComp;
+      return String(a.date || '').localeCompare(String(b.date || ''));
+    });
+
+    res.status(200).json({ homeworks: teacherHws });
+  } catch (error) {
+    console.error('Erreur GET /api/teacher-homeworks:', error);
+    res.status(500).json({ error: error.message, homeworks: [] });
+  }
+});
 
 app.get('/api/evaluations', async (req, res) => {
   try {
