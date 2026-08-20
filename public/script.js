@@ -2258,9 +2258,6 @@ function filterParentPlanByDay() {
     
     renderParentPlanCards(classRows);
 }
-    
-    renderParentPlanCards(classRows);
-}
 
 function setHomeworkLanguage(lang) {
     homeworkLang = lang;
