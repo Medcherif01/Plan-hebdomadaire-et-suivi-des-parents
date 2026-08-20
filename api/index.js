@@ -334,6 +334,22 @@ class InMemoryCollection {
     return cursor;
   }
 
+  async insertOne(doc) {
+    const newItem = { _id: doc._id || String(Date.now()) + Math.random().toString(36).substr(2, 5), ...doc };
+    this.items.push(newItem);
+    return { acknowledged: true, insertedId: newItem._id };
+  }
+
+  async insertMany(docs) {
+    const insertedIds = {};
+    docs.forEach((doc, idx) => {
+      const newItem = { _id: doc._id || String(Date.now()) + idx, ...doc };
+      this.items.push(newItem);
+      insertedIds[idx] = newItem._id;
+    });
+    return { acknowledged: true, insertedIds };
+  }
+
   async updateOne(filter, update, options = {}) {
     let index = this.items.findIndex(item => this._matches(item, filter));
     if (index >= 0) {
@@ -351,6 +367,17 @@ class InMemoryCollection {
     return { modifiedCount: 0, matchedCount: 0 };
   }
 
+  async updateMany(filter, update) {
+    let count = 0;
+    this.items.forEach(item => {
+      if (this._matches(item, filter)) {
+        if (update.$set) Object.assign(item, update.$set);
+        count++;
+      }
+    });
+    return { modifiedCount: count, matchedCount: count };
+  }
+
   async deleteOne(filter) {
     const index = this.items.findIndex(item => this._matches(item, filter));
     if (index >= 0) {
@@ -358,6 +385,16 @@ class InMemoryCollection {
       return { deletedCount: 1 };
     }
     return { deletedCount: 0 };
+  }
+
+  async deleteMany(filter) {
+    const initialLen = this.items.length;
+    this.items = this.items.filter(item => !this._matches(item, filter));
+    return { deletedCount: initialLen - this.items.length };
+  }
+
+  async countDocuments(query = {}) {
+    return this.items.filter(item => this._matches(item, query)).length;
   }
 
   async distinct(field, query = {}) {
@@ -387,14 +424,16 @@ class InMemoryCollection {
   _matches(item, query) {
     if (!query || Object.keys(query).length === 0) return true;
     for (const key of Object.keys(query)) {
-      if (key === '_id') {
-        if (item._id !== query._id) return false;
-      } else if (key === 'week') {
-        if (item.week !== query.week) return false;
-      } else if (key === 'username') {
-        if (typeof query.username === 'object' && query.username.$in) {
-          if (!query.username.$in.includes(item.username)) return false;
-        } else if (item.username !== query.username) return false;
+      const qVal = query[key];
+      const iVal = item[key];
+      if (typeof qVal === 'object' && qVal !== null) {
+        if (qVal.$in && Array.isArray(qVal.$in)) {
+          if (!qVal.$in.includes(iVal)) return false;
+        } else if (qVal.$ne !== undefined) {
+          if (iVal === qVal.$ne) return false;
+        }
+      } else {
+        if (iVal !== qVal) return false;
       }
     }
     return true;
@@ -416,19 +455,18 @@ class InMemoryDb {
 
 async function connectToDatabase() {
   if (cachedDb) return cachedDb;
-  if (!MONGO_URL) {
-    console.warn('⚠️ [AI Studio] MONGO_URL not provided - using in-memory database fallback');
+  const mongoUrl = (process.env.MONGO_URL || MONGO_URL || '').trim();
+  if (!mongoUrl || (!mongoUrl.startsWith('mongodb://') && !mongoUrl.startsWith('mongodb+srv://'))) {
     cachedDb = new InMemoryDb();
     return cachedDb;
   }
   try {
-    const client = new MongoClient(MONGO_URL, { connectTimeoutMS: 5000, serverSelectionTimeoutMS: 5000 });
+    const client = new MongoClient(mongoUrl, { connectTimeoutMS: 5000, serverSelectionTimeoutMS: 5000 });
     await client.connect();
     const db = client.db();
     cachedDb = db;
     return db;
   } catch (err) {
-    console.warn('⚠️ [AI Studio] MongoDB connection failed — using in-memory database fallback:', err.message);
     cachedDb = new InMemoryDb();
     return cachedDb;
   }
@@ -712,14 +750,10 @@ app.post('/api/login', async (req, res) => {
     const trimmedUsername = username.trim();
     const db = await connectToDatabase();
 
-    // Compte Administrateur Principal (Med01 avec mot de passe Med120786, Mohamed, Admin)
-    if (
-      (trimmedUsername.toLowerCase() === 'med01' && password === 'Med120786') ||
-      (trimmedUsername.toLowerCase() === 'admin' && (password === 'Med120786' || password === 'admin')) ||
-      (trimmedUsername === 'Mohamed' && (password === 'Med120786' || password === 'Med01'))
-    ) {
-      console.log('[LOGIN] Authentification Administrateur réussie pour:', trimmedUsername);
-      return res.status(200).json({ success: true, username: trimmedUsername, role: 'admin', section, language: 'fr' });
+    // Compte Administrateur Principal (Med01 avec mot de passe Med120786)
+    if (trimmedUsername === 'Med01' && password === 'Med120786') {
+      console.log('[LOGIN] Authentification Administrateur Med01 réussie');
+      return res.status(200).json({ success: true, username: 'Med01', role: 'admin', section, language: 'fr' });
     }
 
     const userId = `${section}_${trimmedUsername}`;
@@ -738,7 +772,7 @@ app.post('/api/login', async (req, res) => {
       return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant '${trimmedUsername}' appartient à la Section Garçons et ne peut pas se connecter à la Section Filles.` });
     }
 
-    // 3. Recherche stricte de l'utilisateur dans la base de données (seuls les mots de passe configurés par l'admin sont acceptés)
+    // 3. Recherche stricte de l'utilisateur dans la base de données (seuls les comptes configurés par l'admin sont acceptés)
     const userDoc = await db.collection('users').findOne({ 
       username: trimmedUsername, 
       section: section 

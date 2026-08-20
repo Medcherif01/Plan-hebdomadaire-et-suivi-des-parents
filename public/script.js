@@ -30,7 +30,17 @@
             filles: femaleTeachersList
         };
 
-        // --- Fonctions de Gestion de Section ---
+        // --- Fonctions de Gestion de Section et Accueil ---
+        function showHomeStep(step) {
+            const mainStep = document.getElementById('home-step-main');
+            const parentStep = document.getElementById('home-step-parent');
+            const teacherStep = document.getElementById('home-step-teacher');
+            
+            if (mainStep) mainStep.style.display = (step === 'main' || !step) ? 'block' : 'none';
+            if (parentStep) parentStep.style.display = (step === 'parent') ? 'block' : 'none';
+            if (teacherStep) teacherStep.style.display = (step === 'teacher') ? 'block' : 'none';
+        }
+
         function chooseSection(section) {
             currentSection = section;
             localStorage.setItem('selectedSection', section);
@@ -58,6 +68,7 @@
             if (sectionSelectionEl) sectionSelectionEl.style.display = 'flex';
             document.getElementById('login-form').style.display = 'none';
             document.getElementById('main-content').style.display = 'none';
+            showHomeStep('main');
         }
 
         function updateSectionBadges() {
@@ -593,6 +604,48 @@
         function toggleIncompleteList() { const listDiv=document.getElementById('incompleteTeachersDisplay'); const btn=document.getElementById('toggleIncompleteBtn'); const btnTextSpan = btn.querySelector('.btn-text'); if(listDiv.style.display==='none'||listDiv.style.display===''){ listDiv.style.display='block'; btn.querySelector('i').className = 'fas fa-xmark'; if(btnTextSpan) btnTextSpan.textContent = t('hide_incomplete'); } else { listDiv.style.display='none'; btn.querySelector('i').className = 'fas fa-list-check'; if(btnTextSpan) btnTextSpan.textContent = t('display_incomplete'); } }
         async function fetchPlanData(week) { if (!week || isNaN(parseInt(week, 10))) { console.warn("fetchPlanData sans semaine valide."); displayPlanTable([]); document.getElementById('weekDateRange').textContent = t('please_select_week'); return; } if (!loggedInUser) { console.warn("Tentative chargement non connecté."); displayAlert("login_title", true); return; } console.log(`fetchPlanData S${week} (${currentSection}) pour ${loggedInUser}`); displayAlert('loading_data_week', false, { week: week }); showProgressBar(); updateProgressBar(10); currentWeek = week; const weekNum=parseInt(week,10); const dateRangeEl=document.getElementById('weekDateRange'); weekStartDate=null; planData=[]; headers=[]; weeklyClassNotes={}; dateRangeEl.textContent=`${t('week_label')} ${week}: ${t('loading')}`; displayPlanTable([]); updateActionButtonsState(false); const dates=specificWeekDateRanges[weekNum]; if(dates?.start&&dates?.end){try{const s=new Date(dates.start+'T00:00:00Z'); const e=new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ weekStartDate=s; dateRangeEl.textContent = `${t('week_label')} ${week} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'from' : 'du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;} else throw new Error();}catch(e){dateRangeEl.textContent=`S ${week} (Err dates)`; weekStartDate=null;}} else {dateRangeEl.textContent=`${t('week_label')} ${week} (${t('no_data')}: dates non définies)`; weekStartDate=null;} updateProgressBar(30); try{const r=await fetch(`/api/plans/${week}?section=${currentSection}`); updateProgressBar(70); if(!r.ok){const d=await r.json().catch(()=>null); throw new Error(d?.message || `Err ${r.status}`);} const fetched=await r.json(); if(fetched&&typeof fetched==='object'){planData=fetched.planData||[]; weeklyClassNotes=fetched.classNotes||{}; window.availableWeeklyPlans = fetched.availableWeeklyPlans || [];} else {planData=[]; weeklyClassNotes={}; window.availableWeeklyPlans = [];} updateProgressBar(90); if(planData.length>0){headers=Object.keys(planData[0]).filter(h=>h!=='_id'&&h!=='id'); if(loggedInUser==='Imad'){const enseignantKey=findHKey('Enseignant');const originalCount=planData.length;if(enseignantKey){planData=planData.filter(row=>arabicTeachers.includes(row[enseignantKey]));console.log(`[Imad Admin] Data filtered for Arabic teachers. ${planData.length}/${originalCount} rows remain.`)}} displayAlert('data_loaded_week', false, { week: week });} else {headers=[]; displayAlert('no_data_found_week', false, { week: week });} createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateActionButtonsState(planData.length > 0); updateProgressBar(100); } catch(e){ console.error("Err fetchPlanData:",e); displayAlert('error_loading_week', true, { week: week, error: e.message }); planData=[]; headers=[]; weeklyClassNotes={}; createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateProgressBar(0); updateActionButtonsState(false); } finally{hideProgressBar();} }
         
+        function makeTableColumnsResizable() {
+            const table = document.getElementById('planTable');
+            if (!table) return;
+            const ths = table.querySelectorAll('thead th');
+            ths.forEach(th => {
+                const existing = th.querySelector('.col-resizer');
+                if (existing) existing.remove();
+
+                const resizer = document.createElement('div');
+                resizer.className = 'col-resizer';
+                th.appendChild(resizer);
+
+                resizer.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const startX = e.pageX;
+                    const startWidth = th.offsetWidth;
+                    resizer.classList.add('resizing');
+                    document.body.style.cursor = 'col-resize';
+                    document.body.style.userSelect = 'none';
+
+                    function onMouseMove(e) {
+                        const diffX = e.pageX - startX;
+                        const newWidth = Math.max(50, startWidth + diffX);
+                        th.style.width = newWidth + 'px';
+                        th.style.minWidth = newWidth + 'px';
+                    }
+
+                    function onMouseUp() {
+                        resizer.classList.remove('resizing');
+                        document.body.style.cursor = '';
+                        document.body.style.userSelect = '';
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    }
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+            });
+        }
+
         function createTableHeader() {
             const tHead = document.querySelector('#planTable thead tr');
             tHead.innerHTML = '';
@@ -600,12 +653,13 @@
             const hDisp = curH.filter(h => h !== '_id' && h !== 'id' && h.toLowerCase() !== 'updatedat');
             const headerTranslations = translations[currentUserLanguage].headers || translations.fr.headers;
             
-            const leconKey = findHKey('Leçon');
+            const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
             const supportKey = findHKey('Support');
 
             if (hDisp.length > 0) {
                 hDisp.forEach(h => {
-                    if (arabicTeachers.includes(loggedInUser) && (h === leconKey || h === supportKey)) {
+                    // Pour l'Arabe : afficher uniquement Leçon, Travaux de classe et Devoirs pour la saisie (masquer Support)
+                    if (isAr && h === supportKey) {
                         return;
                     }
                     
@@ -628,11 +682,138 @@
             }
             const tBody = document.querySelector('#planTable tbody');
             tBody.innerHTML = '';
+            makeTableColumnsResizable();
         }
 
         function updateFilterOptionDefaultTexts() { const filters = [ { selId: 'filterEnseignant', defaultKey: 'all' }, { selId: 'filterClasse', defaultKey: 'all_f' }, { selId: 'filterMatiere', defaultKey: 'all_f' }, { selId: 'filterPeriode', defaultKey: 'all_f' }, { selId: 'filterJour', defaultKey: 'all' }, { selId: 'weekSelector', defaultKey: 'select_week' }, { selId: 'notesClassSelector', defaultKey: 'select_class' } ]; filters.forEach(f => { const select = document.getElementById(f.selId); if (select) { const defaultOption = select.querySelector('option[value=""]'); if (defaultOption) { defaultOption.textContent = t(f.defaultKey); } } }); const jSel = document.getElementById('filterJour'); if (jSel) { const dayOptions = jSel.querySelectorAll('option'); const dayValues = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]; const dayTransKeys = ["day_sun", "day_mon", "day_tue", "day_wed", "day_thu"]; dayOptions.forEach(opt => { if (opt.value !== "") { const idx = dayValues.indexOf(opt.value); if (idx !== -1) opt.textContent = t(dayTransKeys[idx]); } }); } const weekSel = document.getElementById('weekSelector'); if (weekSel) { const weekOptions = weekSel.querySelectorAll('option'); weekOptions.forEach(opt => { if (opt.value && opt.value.match(/^\d+$/)) { const weekLabel = t('week_label'); opt.textContent = `${weekLabel.replace(':', '')} ${opt.value}`; } }); } }
-        function populateFilterOptions() { const data = planData || []; const getUniq = (k) => { const uniq = new Set(); data.forEach(i => { if (i && i[k] != null && i[k] !== '') { uniq.add(i[k]); } }); if (k?.trim().toLowerCase() === 'classe') { return [...uniq].sort(compareClasses); } else { return [...uniq].sort((a, b) => String(a).localeCompare(String(b))); } }; const ensK = findHKey('Enseignant'); const clsK = findHKey('Classe'); const perK = findHKey('Période'); const matK = findHKey('Matière'); const ens = ensK ? getUniq(ensK) : []; const cls = clsK ? getUniq(clsK) : []; const per = perK ? getUniq(perK) : []; const mat = matK ? getUniq(matK) : []; const updateSel = (id, opts, isCls = false) => { const sel = document.getElementById(id); const curV = sel.value; const defaultOptHTML = sel.querySelector('option[value=""]')?.outerHTML || `<option value="">${t(isCls ? 'all_f' : 'all')}</option>`; sel.innerHTML = defaultOptHTML; opts.forEach(o => { const opt = document.createElement('option'); opt.value = o; if (isCls) { const ar = classTranslations[o]; opt.textContent = ar ? `${ar} (${o})` : o; } else { opt.textContent = o; } sel.appendChild(opt); }); if (opts.includes(curV)) { sel.value = curV; } else { sel.value = ""; } }; updateSel('filterEnseignant', ens); updateSel('filterClasse', cls, true); updateSel('filterPeriode', per); updateSel('filterMatiere', mat); updateFilterOptionDefaultTexts(); const filterEnsSelect = document.getElementById('filterEnseignant'); if(loggedInUser&&loggedInUser!=='Mohamed'&&loggedInUser!=='Zohra'&&loggedInUser!=='Imad'){ filterEnsSelect.value = loggedInUser; filterEnsSelect.disabled = true; } else { filterEnsSelect.disabled = false; } }
-        function sortAndDisplay() { const filterEnsSelect = document.getElementById('filterEnseignant'); if(loggedInUser&&loggedInUser!=='Mohamed'&&loggedInUser!=='Zohra'&&loggedInUser!=='Imad'){ filterEnsSelect.value = loggedInUser; filterEnsSelect.disabled = true; } else { filterEnsSelect.disabled = false; } const ensF = filterEnsSelect.value; const clsF = document.getElementById('filterClasse').value; const matF = document.getElementById('filterMatiere').value; const perF = document.getElementById('filterPeriode').value; const jF = document.getElementById('filterJour').value; const ensK = findHKey('Enseignant'); const clsK = findHKey('Classe'); const matK = findHKey('Matière'); const perK = findHKey('Période'); const jK = findHKey('Jour'); filteredAndSortedData = planData.filter(i => { if (!i) return false; const iE = ensK && i.hasOwnProperty(ensK) ? String(i[ensK]) : null; const iC = clsK && i.hasOwnProperty(clsK) ? String(i[clsK]) : null; const iM = matK && i.hasOwnProperty(matK) ? String(i[matK]) : null; const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]) : null; const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]) : null; const pE = !ensF || iE === ensF; const pC = !clsF || iC === clsF; const pM = !matF || iM === matF; const pP = !perF || iP === perF; const dayNameFromData = iJ ? extractDayName(iJ) : null; const pJ = !jF || dayNameFromData === jF; return pE && pC && pM && pP && pJ; }); const dayValuesFr = { "Dimanche": 1, "Lundi": 2, "Mardi": 3, "Mercredi": 4, "Jeudi": 5 }; filteredAndSortedData.sort((a, b) => { const classA = (clsK && a.hasOwnProperty(clsK)) ? a[clsK] : null; const classB = (clsK && b.hasOwnProperty(clsK)) ? b[clsK] : null; const classComp = compareClasses(classA, classB); if (classComp !== 0) return classComp; const jA_fr = (jK && a.hasOwnProperty(jK)) ? extractDayName(String(a[jK])) : null; const jB_fr = (jK && b.hasOwnProperty(jK)) ? extractDayName(String(b[jK])) : null; const dayOrdA = dayValuesFr[jA_fr] || 99; const dayOrdB = dayValuesFr[jB_fr] || 99; const dC = dayOrdA - dayOrdB; if (dC !== 0) return dC; const pA = (perK && a.hasOwnProperty(perK)) ? a[perK] : null; const pB = (perK && b.hasOwnProperty(perK)) ? b[perK] : null; const piA = parseInt(pA, 10); const piB = parseInt(pB, 10); if (!isNaN(piA) && !isNaN(piB)) { return piA - piB; } else { const sA = pA == null ? '' : String(pA); const sB = pB == null ? '' : String(pB); return sA.localeCompare(sB); } }); displayPlanTable(filteredAndSortedData); updateActionButtonsState(filteredAndSortedData.length > 0); }
+        
+        function populateFilterOptions() { 
+            const data = planData || []; 
+            const getUniq = (k) => { 
+                const uniq = new Set(); 
+                data.forEach(i => { 
+                    if (i && i[k] != null && i[k] !== '') { 
+                        uniq.add(i[k]); 
+                    } 
+                }); 
+                if (k?.trim().toLowerCase() === 'classe') { 
+                    return [...uniq].sort(compareClasses); 
+                } else { 
+                    return [...uniq].sort((a, b) => String(a).localeCompare(String(b))); 
+                } 
+            }; 
+            const ensK = findHKey('Enseignant'); 
+            const clsK = findHKey('Classe'); 
+            const perK = findHKey('Période'); 
+            const matK = findHKey('Matière'); 
+            const ens = ensK ? getUniq(ensK) : []; 
+            const cls = clsK ? getUniq(clsK) : []; 
+            const per = perK ? getUniq(perK) : []; 
+            const mat = matK ? getUniq(matK) : []; 
+            const updateSel = (id, opts, isCls = false) => { 
+                const sel = document.getElementById(id); 
+                const curV = sel.value; 
+                const defaultOptHTML = sel.querySelector('option[value=""]')?.outerHTML || `<option value="">${t(isCls ? 'all_f' : 'all')}</option>`; 
+                sel.innerHTML = defaultOptHTML; 
+                opts.forEach(o => { 
+                    const opt = document.createElement('option'); 
+                    opt.value = o; 
+                    if (isCls) { 
+                        const ar = classTranslations[o]; 
+                        opt.textContent = ar ? `${ar} (${o})` : o; 
+                    } else { 
+                        opt.textContent = o; 
+                    } 
+                    sel.appendChild(opt); 
+                }); 
+                if (opts.includes(curV)) { 
+                    sel.value = curV; 
+                } else { 
+                    sel.value = ""; 
+                } 
+            }; 
+            updateSel('filterEnseignant', ens); 
+            updateSel('filterClasse', cls, true); 
+            updateSel('filterPeriode', per); 
+            updateSel('filterMatiere', mat); 
+            updateFilterOptionDefaultTexts(); 
+            const filterEnsSelect = document.getElementById('filterEnseignant'); 
+            if (loggedInUser && loggedInUser !== 'Med01') { 
+                filterEnsSelect.value = loggedInUser; 
+                filterEnsSelect.disabled = true; 
+            } else { 
+                filterEnsSelect.disabled = false; 
+            } 
+        }
+
+        function sortAndDisplay() { 
+            const filterEnsSelect = document.getElementById('filterEnseignant'); 
+            if (loggedInUser && loggedInUser !== 'Med01') { 
+                filterEnsSelect.value = loggedInUser; 
+                filterEnsSelect.disabled = true; 
+            } else { 
+                filterEnsSelect.disabled = false; 
+            } 
+            const ensF = filterEnsSelect.value; 
+            const clsF = document.getElementById('filterClasse').value; 
+            const matF = document.getElementById('filterMatiere').value; 
+            const perF = document.getElementById('filterPeriode').value; 
+            const jF = document.getElementById('filterJour').value; 
+            const ensK = findHKey('Enseignant'); 
+            const clsK = findHKey('Classe'); 
+            const matK = findHKey('Matière'); 
+            const perK = findHKey('Période'); 
+            const jK = findHKey('Jour'); 
+            
+            filteredAndSortedData = planData.filter(i => { 
+                if (!i) return false; 
+                const iE = ensK && i.hasOwnProperty(ensK) ? String(i[ensK]) : null; 
+                const iC = clsK && i.hasOwnProperty(clsK) ? String(i[clsK]) : null; 
+                const iM = matK && i.hasOwnProperty(matK) ? String(i[matK]) : null; 
+                const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]) : null; 
+                const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]) : null; 
+                
+                // Si l'utilisateur est un enseignant (non Med01), n'afficher STRICTEMENT que ses matières et séances
+                if (loggedInUser && loggedInUser !== 'Med01' && iE !== loggedInUser) {
+                    return false;
+                }
+                
+                const pE = !ensF || iE === ensF; 
+                const pC = !clsF || iC === clsF; 
+                const pM = !matF || iM === matF; 
+                const pP = !perF || iP === perF; 
+                const dayNameFromData = iJ ? extractDayName(iJ) : null; 
+                const pJ = !jF || dayNameFromData === jF; 
+                return pE && pC && pM && pP && pJ; 
+            }); 
+            
+            const dayValuesFr = { "Dimanche": 1, "Lundi": 2, "Mardi": 3, "Mercredi": 4, "Jeudi": 5 }; 
+            filteredAndSortedData.sort((a, b) => { 
+                const classA = (clsK && a.hasOwnProperty(clsK)) ? a[clsK] : null; 
+                const classB = (clsK && b.hasOwnProperty(clsK)) ? b[clsK] : null; 
+                const classComp = compareClasses(classA, classB); 
+                if (classComp !== 0) return classComp; 
+                const jA_fr = (jK && a.hasOwnProperty(jK)) ? extractDayName(String(a[jK])) : null; 
+                const jB_fr = (jK && b.hasOwnProperty(jK)) ? extractDayName(String(b[jK])) : null; 
+                const dayOrdA = dayValuesFr[jA_fr] || 99; 
+                const dayOrdB = dayValuesFr[jB_fr] || 99; 
+                const dC = dayOrdA - dayOrdB; 
+                if (dC !== 0) return dC; 
+                const pA = (perK && a.hasOwnProperty(perK)) ? a[perK] : null; 
+                const pB = (perK && b.hasOwnProperty(perK)) ? b[perK] : null; 
+                const piA = parseInt(pA, 10); 
+                const piB = parseInt(pB, 10); 
+                if (!isNaN(piA) && !isNaN(piB)) { 
+                    return piA - piB; 
+                } else { 
+                    const sA = pA == null ? '' : String(pA); 
+                    const sB = pB == null ? '' : String(pB); 
+                    return sA.localeCompare(sB); 
+                } 
+            }); 
+            displayPlanTable(filteredAndSortedData); 
+            updateActionButtonsState(filteredAndSortedData.length > 0); 
+        }
         
         function displayPlanTable(data) {
             const tBody = document.querySelector('#planTable tbody');
@@ -646,7 +827,7 @@
             const clsK = findHKey('Classe');
             const updK = findHKey('updatedAt');
             const editHdrKeys = ['Leçon', 'Travaux de classe', 'Support', 'Devoirs'].map(k => findHKey(k)).filter(Boolean);
-            const leconKey = findHKey('Leçon');
+            const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
             const supportKey = findHKey('Support');
             const initialRow = document.getElementById('initial-table-row');
             if(initialRow) initialRow.remove();
@@ -663,16 +844,10 @@
                 return;
             }
             data.forEach((rowObj, rIdx) => {
-                console.log(`📊 Ligne ${rIdx}:`, {
-                    Enseignant: rowObj[findHKey('Enseignant')],
-                    Classe: rowObj[findHKey('Classe')],
-                    Matière: rowObj[findHKey('Matière')],
-                    lessonPlanId: rowObj.lessonPlanId || '❌ NON PRÉSENT'
-                });
                 const tr = document.createElement('tr');
                 tr.dataset.rowIndex = rIdx;
                 hDisp.forEach(header => {
-                    if (arabicTeachers.includes(loggedInUser) && (header === leconKey || header === supportKey)) {
+                    if (isAr && header === supportKey) {
                         return;
                     }
                     
@@ -688,24 +863,21 @@
                     } else if (editHdrKeys.includes(header)) {
                         td.contentEditable = true;
                         td.classList.add('editable');
-                        td.textContent = content; // Utiliser textContent pour préserver les sauts de ligne
+                        td.textContent = content;
                         td.spellcheck = true;
-                        applyRTLToElement(td, content); // Appliquer le style RTL si nécessaire
+                        applyRTLToElement(td, content);
                         
-                        // Nettoyer TOUS les sauts de ligne lors du collage (copier-coller externe)
                         td.addEventListener('paste', (e) => {
                             e.preventDefault();
                             const text = (e.clipboardData || window.clipboardData).getData('text');
-                            // Supprimer TOUS les sauts de ligne et espaces superflus
                             const cleanedText = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
                             document.execCommand('insertText', false, cleanedText);
                         });
                         
                         td.addEventListener('input', (e) => {
-                            // ### CORRECTION : Utiliser innerText pour lire les sauts de ligne lors de la modification
                             if (rowObj) {
                                 rowObj[header] = e.target.textContent;
-                                applyRTLToElement(e.target, e.target.textContent); // Réappliquer le style RTL si nécessaire
+                                applyRTLToElement(e.target, e.target.textContent);
                             }
                             const parentTR = e.target.closest('tr');
                             if (parentTR) {
@@ -734,10 +906,9 @@
                 actTd.appendChild(indicatorSpan);
                 
                 // Bouton disquette pour générer le plan de leçon IA pour cette ligne
-                // Les enseignants peuvent générer leurs propres plans, l'admin peut tout générer
                 const teacherKey = findHKey('Enseignant');
                 const rowTeacher = teacherKey ? rowObj[teacherKey] : null;
-                const canGenerate = (loggedInUser === 'Mohamed' || loggedInUser === rowTeacher);
+                const canGenerate = (loggedInUser === 'Med01' || loggedInUser === rowTeacher);
                 
                 if (canGenerate) {
                     const aiGenBtn = document.createElement('button');
@@ -745,27 +916,21 @@
                     aiGenBtn.title = 'Générer Plan de Leçon de cette séance';
                     aiGenBtn.classList.add('ai-lesson-plan-button');
                     aiGenBtn.style.marginLeft = '5px';
-                    console.log('🔵 Bouton disquette créé:', aiGenBtn);
                     
-                    // Changer la couleur si un plan de leçon existe déjà (vert au lieu de bleu)
                     if (rowObj && rowObj.lessonPlanId) {
-                        console.log(`🟢 Bouton VERT pour lessonPlanId: ${rowObj.lessonPlanId}`);
                         aiGenBtn.classList.add('lesson-plan-exists');
                         aiGenBtn.title = 'Plan de Leçon déjà généré - Régénérer';
-                    } else {
-                        console.log(`🔵 Bouton BLEU (pas de lessonPlanId)`);
                     }
                     
                     aiGenBtn.onclick = () => generateAILessonPlan(rowObj, tr);
                     actTd.appendChild(aiGenBtn);
                 }
                 
-                // Bouton pour télécharger le plan de leçon (si disponible)
-                // Les enseignants peuvent télécharger leurs propres plans
+                // Bouton pour télécharger le plan de leçon
                 if (rowObj && rowObj.lessonPlanId) {
                     const teacherKey = findHKey('Enseignant');
                     const rowTeacher = teacherKey ? rowObj[teacherKey] : null;
-                    const canDownload = (loggedInUser === 'Mohamed' || loggedInUser === rowTeacher);
+                    const canDownload = (loggedInUser === 'Med01' || loggedInUser === rowTeacher);
                     
                     if (canDownload) {
                         const lessonBtn = document.createElement('button');
@@ -787,6 +952,7 @@
                 }
                 tBody.appendChild(tr);
             });
+            makeTableColumnsResizable();
         }
         
         async function generateAILessonPlan(rowData, tableRowElement) {
@@ -1019,7 +1185,7 @@
             
             document.getElementById('loggedInUserInfo').textContent = t('connected_as', { user: loggedInUser });
             
-            const isAdminUser = (loggedInUser === 'Mohamed' || loggedInUser === 'Med01' || loggedInUser === 'Admin' || loggedInUser === 'Zohra' || loggedInUser === 'Imad');
+            const isAdminUser = (loggedInUser === 'Med01');
             if (isAdminUser) { 
                 const adminActionsEl = document.getElementById('admin-actions');
                 if (adminActionsEl) adminActionsEl.style.display = 'block';

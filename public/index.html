@@ -63,19 +63,36 @@
             <h1 class="home-title">Suivi des plans hebdomadaires et les devoirs</h1>
             <p class="section-subtitle">متابعة الخطط الأسبوعية والواجبات المدرسية</p>
             
-            <div class="home-spaces-grid">
-                <!-- 1. ESPACE PARENT -->
-                <div class="home-space-card parent-space-theme">
-                    <div class="space-card-header">
-                        <div class="space-icon-wrapper parent-icon">
+            <!-- ÉTAPE 1 : DEUX BOUTONS PRINCIPAUX TRÈS BIEN CLAIRS -->
+            <div id="home-step-main" class="home-step-container">
+                <div class="home-main-buttons">
+                    <!-- BOUTON 1 : ESPACE PARENT -->
+                    <button type="button" class="home-primary-btn parent-choice" onclick="showHomeStep('parent')">
+                        <div class="home-btn-icon">
                             <i class="fas fa-user-friends"></i>
                         </div>
-                        <div>
-                            <h2 class="space-card-title">Espace Parent</h2>
-                            <p class="space-card-ar-title">فضاء أولياء الأمور</p>
+                        <div class="home-btn-title">Espace Parent</div>
+                        <div class="home-btn-subtitle">فضاء أولياء الأمور 👨‍👩‍👧‍👦</div>
+                        <div class="home-btn-desc">Accès libre au suivi des cours, devoirs et évaluations de vos enfants</div>
+                    </button>
+
+                    <!-- BOUTON 2 : ESPACE ENSEIGNANT -->
+                    <button type="button" class="home-primary-btn teacher-choice" onclick="showHomeStep('teacher')">
+                        <div class="home-btn-icon">
+                            <i class="fas fa-chalkboard-teacher"></i>
                         </div>
-                    </div>
-                    <p class="space-card-desc">Consultation des plans de cours, devoirs quotidiens, suivi des élèves et contact direct avec les enseignants.</p>
+                        <div class="home-btn-title">Espace Enseignant</div>
+                        <div class="home-btn-subtitle">فضاء المعلمين والإدارة 👨‍🏫</div>
+                        <div class="home-btn-desc">Saisie des plans hebdomadaires, enregistrement des devoirs et gestion</div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ÉTAPE 2 PARENT : CHOIX DE SECTION (ACCÈS LIBRE) -->
+            <div id="home-step-parent" class="home-step-container" style="display: none;">
+                <div class="section-choice-box">
+                    <div class="section-choice-title">Espace Parent 👨‍👩‍👧‍👦</div>
+                    <div class="section-choice-subtitle">Veuillez choisir la section de vos enfants (accès libre) : / يرجى اختيار القسم</div>
                     
                     <div class="space-buttons-row">
                         <button type="button" class="space-section-btn girls-btn" onclick="enterParentSpaceWithSection('filles')">
@@ -94,19 +111,16 @@
                         </button>
                     </div>
                 </div>
+                <button type="button" class="home-back-btn" onclick="showHomeStep('main')">
+                    <i class="fas fa-arrow-left"></i> <span>Retour à l'accueil / العودة</span>
+                </button>
+            </div>
 
-                <!-- 2. ESPACE ENSEIGNANT -->
-                <div class="home-space-card teacher-space-theme">
-                    <div class="space-card-header">
-                        <div class="space-icon-wrapper teacher-icon">
-                            <i class="fas fa-chalkboard-teacher"></i>
-                        </div>
-                        <div>
-                            <h2 class="space-card-title">Espace Enseignant</h2>
-                            <p class="space-card-ar-title">فضاء المعلمين</p>
-                        </div>
-                    </div>
-                    <p class="space-card-desc">Saisie et validation des plans hebdomadaires, évaluation des devoirs et réception des messages de parents.</p>
+            <!-- ÉTAPE 2 ENSEIGNANT : CHOIX DE SECTION POUR CONNEXION -->
+            <div id="home-step-teacher" class="home-step-container" style="display: none;">
+                <div class="section-choice-box">
+                    <div class="section-choice-title">Espace Enseignant 👨‍🏫</div>
+                    <div class="section-choice-subtitle">Veuillez choisir votre section pour vous connecter : / يرجى اختيار القسم للدخول</div>
                     
                     <div class="space-buttons-row">
                         <button type="button" class="space-section-btn girls-btn" onclick="chooseSection('filles')">
@@ -125,6 +139,9 @@
                         </button>
                     </div>
                 </div>
+                <button type="button" class="home-back-btn" onclick="showHomeStep('main')">
+                    <i class="fas fa-arrow-left"></i> <span>Retour à l'accueil / العودة</span>
+                </button>
             </div>
         </div>
     </div>
@@ -135,22 +152,25 @@
             <img id="logo"
                  src="https://lh3.googleusercontent.com/d/1lQ3Babrs3Wgv4rakVmkK0oCWcM0cTKPK"
                  alt="Logo Al-Kawthar">
-            <h1>Connexion</h1>
+            <h1>Connexion Enseignant</h1>
             <div id="sectionBadgeContainer" class="section-badge-container">
                 <span id="loginSectionBadge" class="section-badge badge-garcons">Section Garçons</span>
-                <button type="button" class="change-section-link" onclick="resetSectionChoice()"><i class="fas fa-exchange-alt"></i> Changer de section</button>
+                <button type="button" class="change-section-link" onclick="resetSectionChoice()"><i class="fas fa-exchange-alt"></i> Changer</button>
             </div>
             <div>
-                <label for="username">Nom d'utilisateur (Enseignant) :</label>
-                <input type="text" id="username" name="username" required>
+                <label for="username">Nom d'utilisateur :</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
             </div>
             <div class="password-container">
-                <label for="password">Mot de passe (idem Nom) :</label>
-                <input type="password" id="password" name="password" required>
+                <label for="password">Mot de passe :</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
                 <i class="fas fa-eye password-toggle-icon" id="togglePassword"></i>
             </div>
-            <button id="login-button" class="pro-button"><i class="fas fa-sign-in-alt"></i> <span class="btn-text">Se connecter</span></button>
+            <button id="login-button" class="pro-button" style="width:100%; margin-top:10px;"><i class="fas fa-sign-in-alt"></i> <span class="btn-text">Se connecter</span></button>
             <p id="login-error"></p>
+            <button type="button" class="home-back-btn" style="width:100%; justify-content:center; margin-top:15px;" onclick="resetSectionChoice()">
+                <i class="fas fa-arrow-left"></i> <span>Retour à l'accueil</span>
+            </button>
         </div>
     </div>
     <div id="main-content" style="display: none;">
