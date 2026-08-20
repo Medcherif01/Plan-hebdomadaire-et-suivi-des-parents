@@ -393,6 +393,20 @@ class InMemoryCollection {
     return { deletedCount: initialLen - this.items.length };
   }
 
+  async bulkWrite(operations) {
+    if (!Array.isArray(operations)) return { ok: 1 };
+    for (const op of operations) {
+      if (op.updateOne) {
+        await this.updateOne(op.updateOne.filter, op.updateOne.update, { upsert: op.updateOne.upsert });
+      } else if (op.insertOne) {
+        await this.insertOne(op.insertOne.document);
+      } else if (op.deleteOne) {
+        await this.deleteOne(op.deleteOne.filter);
+      }
+    }
+    return { ok: 1 };
+  }
+
   async countDocuments(query = {}) {
     return this.items.filter(item => this._matches(item, query)).length;
   }
@@ -498,23 +512,33 @@ function formatDateFrenchNode(date) {
   const yearNum = date.getUTCFullYear();
   return `${dayName} ${dayNum} ${monthName} ${yearNum}`;
 }
+const fieldKeyAliasesServer = {
+  'classe': ['classe', 'class', 'الفصل', 'الصف', 'صف', 'فصل', 'classes'],
+  'jour': ['jour', 'day', 'اليوم', 'يوم', 'jours'],
+  'periode': ['periode', 'période', 'period', 'الحصة', 'حصة', 'seance', 'séance'],
+  'matiere': ['matiere', 'matière', 'subject', 'المادة', 'مادة'],
+  'enseignant': ['enseignant', 'professeur', 'teacher', 'المعلم', 'الأستاذ', 'الاستاذ', 'prof', 'professeur(e)'],
+  'lecon': ['lecon', 'leçon', 'lesson', 'الدرس', 'درس', 'titre', 'titre de la leçon'],
+  'travaux de classe': ['travaux de classe', 'travaux', 'classwork', 'العمل الصفي', 'أعمال الفصل', 'اعمال الفصل', 'activites', 'activités'],
+  'devoirs': ['devoirs', 'devoir', 'homework', 'الواجبات', 'الواجب', 'واجب', 'واجبات', 'devoir a la maison'],
+  'support': ['support', 'supports', 'ressources', 'الدعم', 'المرفقات', 'lien', 'liens']
+};
+
 function extractDayNameFromString(dayString) {
   if (!dayString || typeof dayString !== 'string') return null;
   const trimmed = dayString.trim();
-  const dayNames = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
-  
-  // Check if it's already just a day name
-  if (dayNames.includes(trimmed)) {
-    return trimmed;
+  const dayMap = {
+    'dimanche': 'Dimanche', 'sun': 'Dimanche', 'sunday': 'Dimanche', 'الأحد': 'Dimanche', 'الاحد': 'Dimanche',
+    'lundi': 'Lundi', 'mon': 'Lundi', 'monday': 'Lundi', 'الإثنين': 'Lundi', 'الاثنين': 'Lundi',
+    'mardi': 'Mardi', 'tue': 'Mardi', 'tuesday': 'Mardi', 'الثلاثاء': 'Mardi',
+    'mercredi': 'Mercredi', 'wed': 'Mercredi', 'wednesday': 'Mercredi', 'الأربعاء': 'Mercredi', 'الاربعاء': 'Mercredi',
+    'jeudi': 'Jeudi', 'thu': 'Jeudi', 'thursday': 'Jeudi', 'الخميس': 'Jeudi'
+  };
+  const lower = trimmed.toLowerCase();
+  if (dayMap[lower]) return dayMap[lower];
+  for (const [k, v] of Object.entries(dayMap)) {
+    if (lower.startsWith(k.toLowerCase())) return v;
   }
-  
-  // Extract day name from formatted date (e.g., "Dimanche 07 Décembre 2025")
-  for (const dayName of dayNames) {
-    if (trimmed.startsWith(dayName)) {
-      return dayName;
-    }
-  }
-  
   return null;
 }
 
@@ -531,7 +555,29 @@ function getDateForDayNameNode(weekStartDate, dayName) {
   specificDate.setUTCDate(specificDate.getUTCDate() + offset);
   return specificDate;
 }
-const findKey = (obj, target) => obj ? Object.keys(obj).find(k => k.trim().toLowerCase() === target.toLowerCase()) : undefined;
+
+const findKey = (obj, target) => {
+  if (!obj || typeof obj !== 'object' || !target) return undefined;
+  const keys = Object.keys(obj);
+  const targetLower = target.trim().toLowerCase();
+  const targetNorm = targetLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  
+  // 1. Direct match
+  const direct = keys.find(k => k.trim().toLowerCase() === targetLower);
+  if (direct) return direct;
+  
+  // 2. Normalized match
+  const normKey = keys.find(k => k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === targetNorm);
+  if (normKey) return normKey;
+  
+  // 3. Aliases
+  const aliases = fieldKeyAliasesServer[targetNorm] || [];
+  for (const k of keys) {
+    const kNorm = k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (aliases.includes(kNorm)) return k;
+  }
+  return undefined;
+};
 
 // ======================= Fonction utilitaire pour les noms de fichiers ==
 const sanitizeForFilename = (str) => {
@@ -1431,11 +1477,18 @@ app.get('/api/teacher-homeworks', async (req, res) => {
     }
 
     // Charger toutes les évaluations existantes pour vérifier le statut évalué/non évalué
-    const allEvaluations = await db.collection('evaluations').find({ section }).toArray();
+    const allEvaluations = await db.collection('evaluations').find({
+      $or: [{ section }, { section: { $exists: false } }]
+    }).toArray();
     const evalMap = new Set();
+    const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
     allEvaluations.forEach(ev => {
       if (ev.class && ev.date && ev.subject) {
-        evalMap.add(`${String(ev.class).trim().toLowerCase()}_${String(ev.date).trim()}_${String(ev.subject).trim().toLowerCase()}`);
+        evalMap.add(`${norm(ev.class)}_${String(ev.date).trim()}_${norm(ev.subject)}`);
+      }
+      if (ev.class && ev.date) {
+        evalMap.add(`${norm(ev.class)}_${String(ev.date).trim()}`);
       }
     });
 
@@ -1475,8 +1528,9 @@ app.get('/api/teacher-homeworks', async (req, res) => {
                 exactDate = wDates.start;
               }
 
-              const evalKey = `${String(rowClasse).trim().toLowerCase()}_${exactDate}_${String(rowMatiere).trim().toLowerCase()}`;
-              const isEvaluated = evalMap.has(evalKey);
+              const evalKeyFull = `${norm(rowClasse)}_${exactDate}_${norm(rowMatiere)}`;
+              const evalKeyClassDate = `${norm(rowClasse)}_${exactDate}`;
+              const isEvaluated = evalMap.has(evalKeyFull) || evalMap.has(evalKeyClassDate);
 
               teacherHws.push({
                 week: wNum,

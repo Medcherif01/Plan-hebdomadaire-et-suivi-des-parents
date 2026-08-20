@@ -463,6 +463,15 @@
         }
 
         // --- Utilitaires ---
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
         function showProgressBar() { document.getElementById('progress-bar-container').style.display='block'; document.getElementById('progress-bar').style.width='0%'; document.getElementById('progress-bar').textContent='0%'; }
         function updateProgressBar(p) { const clampedP = Math.min(100, Math.max(0, p)); document.getElementById('progress-bar').style.width=clampedP+'%'; document.getElementById('progress-bar').textContent=clampedP+'%'; }
         function hideProgressBar() { setTimeout(() => { document.getElementById('progress-bar-container').style.display='none'; }, 500); }
@@ -471,7 +480,89 @@
         function containsArabic(text) { if (typeof text !== 'string') return false; const arabicRegex = /[\u0600-\u06FF]/; return arabicRegex.test(text); }
         function applyRTLToElement(element, content) { if (containsArabic(content)) { element.classList.add('arabic-content'); } else { element.classList.remove('arabic-content'); } }
         function formatDateForDisplay(d) { if (!d || isNaN(d.getTime())) return "Invalid Date"; const dayIndex = d.getUTCDay(); if (dayIndex === 5) { console.warn(`⚠️ Vendredi détecté (${d.toISOString().split('T')[0]}), remplacement par Jeudi`); d.setUTCDate(d.getUTCDate() - 1); } else if (dayIndex === 6) { console.warn(`⚠️ Samedi détecté (${d.toISOString().split('T')[0]}), remplacement par Dimanche suivant`); d.setUTCDate(d.getUTCDate() + 1); } const days = translations[currentUserLanguage].fullDays || translations.fr.fullDays; const months = translations[currentUserLanguage].months || translations.fr.months; const correctedDayIndex = d.getUTCDay(); const dayName = days[correctedDayIndex] || `Jour ${correctedDayIndex}`; const dayOfMonth = String(d.getUTCDate()).padStart(2, '0'); const monthName = months[d.getUTCMonth()]; const year = d.getUTCFullYear(); if (currentUserLanguage === 'en') { return `${dayName}, ${monthName} ${dayOfMonth}, ${year}`; } else { return `${dayName} ${dayOfMonth} ${monthName} ${year}`; } }
-        const findHKey = (targetHeader) => { if (!headers || headers.length === 0 || !targetHeader) return null; const targetLower = targetHeader.trim().toLowerCase(); return headers.find(h => h?.trim().toLowerCase() === targetLower); };
+        
+        const fieldKeyAliases = {
+            'classe': ['classe', 'class', 'الفصل', 'الصف', 'صف', 'فصل', 'classes'],
+            'jour': ['jour', 'day', 'اليوم', 'يوم', 'jours'],
+            'periode': ['periode', 'période', 'period', 'الحصة', 'حصة', 'seance', 'séance'],
+            'matiere': ['matiere', 'matière', 'subject', 'المادة', 'مادة'],
+            'enseignant': ['enseignant', 'professeur', 'teacher', 'المعلم', 'الأستاذ', 'الاستاذ', 'prof', 'professeur(e)'],
+            'lecon': ['lecon', 'leçon', 'lesson', 'الدرس', 'درس', 'titre', 'titre de la leçon'],
+            'travaux de classe': ['travaux de classe', 'travaux', 'classwork', 'العمل الصفي', 'أعمال الفصل', 'اعمال الفصل', 'activites', 'activités'],
+            'devoirs': ['devoirs', 'devoir', 'homework', 'الواجبات', 'الواجب', 'واجب', 'واجبات', 'devoir a la maison'],
+            'support': ['support', 'supports', 'ressources', 'الدعم', 'المرفقات', 'lien', 'liens']
+        };
+
+        const findHKey = (targetHeader) => {
+            if (!targetHeader) return null;
+            const targetLower = targetHeader.trim().toLowerCase();
+            const targetNorm = targetLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (headers && headers.length > 0) {
+                const direct = headers.find(h => h && h.trim().toLowerCase() === targetLower);
+                if (direct) return direct;
+                const normH = headers.find(h => h && h.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === targetNorm);
+                if (normH) return normH;
+                const aliases = fieldKeyAliases[targetNorm] || [];
+                const aliasH = headers.find(h => {
+                    if (!h) return false;
+                    const hNorm = h.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                    return aliases.includes(hNorm);
+                });
+                if (aliasH) return aliasH;
+            }
+            return targetHeader;
+        };
+
+        function getRowField(row, fieldName, fallback = '') {
+            if (!row || typeof row !== 'object') return fallback;
+            if (row[fieldName] !== undefined && row[fieldName] !== null) return row[fieldName];
+            
+            const targetLower = String(fieldName).trim().toLowerCase();
+            const targetNorm = targetLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const keys = Object.keys(row);
+            
+            // 1. Direct match case-insensitive
+            const directKey = keys.find(k => k.trim().toLowerCase() === targetLower);
+            if (directKey && row[directKey] !== undefined && row[directKey] !== null) return row[directKey];
+            
+            // 2. Normalized match
+            const normKey = keys.find(k => k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === targetNorm);
+            if (normKey && row[normKey] !== undefined && row[normKey] !== null) return row[normKey];
+            
+            // 3. Aliases
+            const aliases = fieldKeyAliases[targetNorm] || [];
+            for (const k of keys) {
+                const kNorm = k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                if (aliases.includes(kNorm) && row[k] !== undefined && row[k] !== null) {
+                    return row[k];
+                }
+            }
+            return fallback;
+        }
+
+        function normalizeDayName(dayStr) {
+            if (!dayStr || typeof dayStr !== 'string') return null;
+            const trimmed = dayStr.trim();
+            const dayMap = {
+                'dimanche': 'Dimanche', 'sun': 'Dimanche', 'sunday': 'Dimanche', 'الأحد': 'Dimanche', 'الاحد': 'Dimanche',
+                'lundi': 'Lundi', 'mon': 'Lundi', 'monday': 'Lundi', 'الإثنين': 'Lundi', 'الاثنين': 'Lundi',
+                'mardi': 'Mardi', 'tue': 'Mardi', 'tuesday': 'Mardi', 'الثلاثاء': 'Mardi',
+                'mercredi': 'Mercredi', 'wed': 'Mercredi', 'wednesday': 'Mercredi', 'الأربعاء': 'Mercredi', 'الاربعاء': 'Mercredi',
+                'jeudi': 'Jeudi', 'thu': 'Jeudi', 'thursday': 'Jeudi', 'الخميس': 'Jeudi'
+            };
+            const lower = trimmed.toLowerCase();
+            if (dayMap[lower]) return dayMap[lower];
+            for (const [k, v] of Object.entries(dayMap)) {
+                if (lower.startsWith(k.toLowerCase())) return v;
+            }
+            const parsed = parseDateFromJourColumn(trimmed);
+            if (parsed) {
+                const dayNames = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+                return dayNames[parsed.getUTCDay()];
+            }
+            return null;
+        }
+
         function getDateForDayName(dayNameFrench) { if(!weekStartDate || isNaN(weekStartDate.getTime())) return null; const dayMapFr = {"Dimanche":0, "Lundi":1, "Mardi":2, "Mercredi":3, "Jeudi":4}; const offset = dayMapFr[dayNameFrench]; if(offset === undefined) return null; const dt = new Date(Date.UTC(weekStartDate.getUTCFullYear(), weekStartDate.getUTCMonth(), weekStartDate.getUTCDate())); dt.setUTCDate(dt.getUTCDate() + offset); return dt; }
         function parseDateFromJourColumn(jourValue) { if (!jourValue || typeof jourValue !== 'string') return null; const trimmed = jourValue.trim(); const dayMapFr = {"Dimanche":0, "Lundi":1, "Mardi":2, "Mercredi":3, "Jeudi":4}; if (dayMapFr.hasOwnProperty(trimmed)) { return getDateForDayName(trimmed); } const frenchDateRegex = /^(Dimanche|Lundi|Mardi|Mercredi|Jeudi)\s+(\d{1,2})\s+(Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre)\s+(\d{4})$/i; const frenchMatch = trimmed.match(frenchDateRegex); if (frenchMatch) { const day = parseInt(frenchMatch[2], 10); const monthNames = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]; const month = monthNames.findIndex(m => m.toLowerCase() === frenchMatch[3].toLowerCase()); const year = parseInt(frenchMatch[4], 10); if (month !== -1) { return new Date(Date.UTC(year, month, day)); } } const frenchDateNoDay = /^(\d{1,2})\s+(Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre)\s+(\d{4})$/i; const noDayMatch = trimmed.match(frenchDateNoDay); if (noDayMatch) { const day = parseInt(noDayMatch[1], 10); const monthNames = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]; const month = monthNames.findIndex(m => m.toLowerCase() === noDayMatch[2].toLowerCase()); const year = parseInt(noDayMatch[3], 10); if (month !== -1) { return new Date(Date.UTC(year, month, day)); } } const isoRegex = /^(\d{4})-(\d{2})-(\d{2})$/; const isoMatch = trimmed.match(isoRegex); if (isoMatch) { const year = parseInt(isoMatch[1], 10); const month = parseInt(isoMatch[2], 10) - 1; const day = parseInt(isoMatch[3], 10); return new Date(Date.UTC(year, month, day)); } const dmyRegex = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/; const dmyMatch = trimmed.match(dmyRegex); if (dmyMatch) { const day = parseInt(dmyMatch[1], 10); const month = parseInt(dmyMatch[2], 10) - 1; const year = parseInt(dmyMatch[3], 10); return new Date(Date.UTC(year, month, day)); } const numValue = parseFloat(trimmed); if (!isNaN(numValue) && numValue > 0) { const excelEpoch = new Date(Date.UTC(1899, 11, 30)); const date = new Date(excelEpoch.getTime() + numValue * 86400000); if (!isNaN(date.getTime())) { return date; } } try { const attemptDate = new Date(trimmed); if (!isNaN(attemptDate.getTime())) { return attemptDate; } } catch (e) {} return null; }
         function extractDayName(jourValue) { if (!jourValue || typeof jourValue !== 'string') return null; const trimmed = jourValue.trim(); const dayNames = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]; if (dayNames.includes(trimmed)) { return trimmed; } const frenchDateRegex = /^(Dimanche|Lundi|Mardi|Mercredi|Jeudi)\s+/i; const match = trimmed.match(frenchDateRegex); if (match) { return match[1]; } const parsed = parseDateFromJourColumn(trimmed); if (parsed) { return dayNames[parsed.getUTCDay()]; } return null; }
@@ -1913,20 +2004,23 @@ async function loadParentWeeklyPlan() {
         const data = await res.json();
         parentRawPlanData = data.planData || [];
         parentRawClassNotes = data.classNotes || {};
+
+        if (parentRawPlanData.length > 0 && (!headers || headers.length === 0)) {
+            headers = Object.keys(parentRawPlanData[0]);
+        }
         
         // Filtrer les lignes pour la classe sélectionnée
+        const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
         const classRows = parentRawPlanData.filter(row => {
-            const classKey = findHKey('Classe');
-            return classKey && row[classKey] === selectedClass;
+            const classVal = getRowField(row, 'Classe');
+            return classVal && norm(classVal) === norm(selectedClass);
         });
         
         // Vérifier si la saisie est complète pour cette classe
         let emptyCount = 0;
         classRows.forEach(row => {
-            const leconKey = findHKey('Leçon');
-            const taskKey = findHKey('Travaux de classe');
-            const leconVal = leconKey ? row[leconKey] : null;
-            const taskVal = taskKey ? row[taskKey] : null;
+            const leconVal = getRowField(row, 'Leçon');
+            const taskVal = getRowField(row, 'Travaux de classe');
             if ((!leconVal || String(leconVal).trim() === '') && (!taskVal || String(taskVal).trim() === '')) {
                 emptyCount++;
             }
@@ -1976,7 +2070,7 @@ async function loadParentWeeklyPlan() {
                         <div style="font-size:1.05rem; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
                             <i class="fas fa-sticky-note" style="color:#D97706;"></i> ${currentUserLanguage === 'ar' ? 'ملاحظات عامة للصف' : 'Remarques Générales de la Classe'} (${selectedClass}) :
                         </div>
-                        <p style="margin:0; font-weight:400; font-size:0.95rem; white-space:pre-wrap;">${classNote}</p>
+                        <p style="margin:0; font-weight:400; font-size:0.95rem; white-space:pre-wrap;">${escapeHtml(classNote)}</p>
                     </div>
                 `;
             } else {
@@ -2009,23 +2103,20 @@ function renderParentPlanCards(rows) {
     }
     
     const dayOrder = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
-    const jourKey = findHKey('Jour');
-    const periodeKey = findHKey('Période');
-    const matiereKey = findHKey('Matière');
-    const enseignantKey = findHKey('Enseignant');
-    const leconKey = findHKey('Leçon');
-    const travauxKey = findHKey('Travaux de classe');
-    const devoirsKey = findHKey('Devoirs');
-    const supportKey = findHKey('Support');
     
     // Grouper par jour
     const grouped = {};
     rows.forEach(r => {
-        const dayVal = r[jourKey];
-        const dayName = extractDayName(dayVal) || dayVal;
-        if (dayName && dayOrder.includes(dayName)) {
-            if (!grouped[dayName]) grouped[dayName] = [];
-            grouped[dayName].push(r);
+        const dayVal = getRowField(r, 'Jour');
+        const standardDay = normalizeDayName(dayVal) || extractDayName(dayVal) || dayVal;
+        if (standardDay && dayOrder.includes(standardDay)) {
+            if (!grouped[standardDay]) grouped[standardDay] = [];
+            grouped[standardDay].push(r);
+        } else {
+            // Si le nom du jour n'est pas standardisé, l'ajouter quand même au premier jour valide ou direct
+            const fallbackDay = dayOrder.find(d => String(dayVal).toLowerCase().includes(d.toLowerCase())) || "Dimanche";
+            if (!grouped[fallbackDay]) grouped[fallbackDay] = [];
+            grouped[fallbackDay].push(r);
         }
     });
     
@@ -2037,7 +2128,11 @@ function renderParentPlanCards(rows) {
         const dayRows = grouped[dayName];
         if (!dayRows || dayRows.length === 0) return;
         
-        dayRows.sort((a, b) => (parseInt(a[periodeKey], 10) || 0) - (parseInt(b[periodeKey], 10) || 0));
+        dayRows.sort((a, b) => {
+            const pA = parseInt(getRowField(a, 'Période'), 10) || 0;
+            const pB = parseInt(getRowField(b, 'Période'), 10) || 0;
+            return pA - pB;
+        });
         
         const weekStartDateNode = getDateForDayName(dayName);
         let formattedDayDate = weekStartDateNode ? formatDateForDisplay(weekStartDateNode) : dayName;
@@ -2062,30 +2157,30 @@ function renderParentPlanCards(rows) {
         `;
         
         dayRows.forEach(row => {
-            const period = row[periodeKey] || '-';
-            const matiere = row[matiereKey] || 'Matière non spécifiée';
-            const enseignant = row[enseignantKey] || '';
-            const lecon = row[leconKey] || '';
-            const travaux = row[travauxKey] || '';
-            const devoirs = row[devoirsKey] || '';
-            const support = row[supportKey] || '';
+            const period = getRowField(row, 'Période') || '-';
+            const matiere = getRowField(row, 'Matière') || 'Matière';
+            const enseignant = getRowField(row, 'Enseignant') || '';
+            const lecon = getRowField(row, 'Leçon') || '';
+            const travaux = getRowField(row, 'Travaux de classe') || '';
+            const devoirs = getRowField(row, 'Devoirs') || '';
+            const support = getRowField(row, 'Support') || '';
             
-            const isLessonEmpty = !lecon || lecon.trim() === '';
-            const isHomeworkEmpty = !devoirs || devoirs.trim() === '';
+            const isLessonEmpty = !lecon || String(lecon).trim() === '';
+            const isHomeworkEmpty = !devoirs || String(devoirs).trim() === '';
             
             html += `
                 <div class="parent-course-item" style="border:1px solid #E5E7EB; border-radius:14px; padding:18px; background:#FAFAFA; transition:all 0.2s ease;">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #E5E7EB;">
                         <div style="display:flex; align-items:center; gap:10px;">
                             <span style="background:#EEF2FF; color:#4F46E5; font-weight:800; padding:6px 12px; border-radius:8px; font-size:0.9rem;">
-                                ${t.periodLabel} ${period}
+                                ${t.periodLabel} ${escapeHtml(period)}
                             </span>
-                            <h4 style="margin:0; color:#1E1B4B; font-size:1.15rem; font-weight:700;">${matiere}</h4>
+                            <h4 style="margin:0; color:#1E1B4B; font-size:1.15rem; font-weight:700;">${escapeHtml(matiere)}</h4>
                         </div>
                         ${enseignant ? `
-                            <button type="button" onclick="openContactTeacherModal('${enseignant.replace(/'/g, "\\'")}')" class="teacher-direct-msg-btn" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:6px 12px; border-radius:10px; font-size:0.88rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.2s ease;">
+                            <button type="button" onclick="openContactTeacherModal('${escapeHtml(enseignant).replace(/'/g, "\\'")}')" class="teacher-direct-msg-btn" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:6px 12px; border-radius:10px; font-size:0.88rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.2s ease;">
                                 <i class="fas fa-chalkboard-teacher" style="color:#6366F1;"></i>
-                                <span>${enseignant}</span>
+                                <span>${escapeHtml(enseignant)}</span>
                                 <span style="font-size:0.75rem; background:#4338CA; color:white; padding:2px 6px; border-radius:6px; margin-left:4px;">✉️ ${currentUserLanguage === 'ar' ? 'تواصل' : 'Message'}</span>
                             </button>
                         ` : ''}
@@ -2098,7 +2193,7 @@ function renderParentPlanCards(rows) {
                                 <i class="fas fa-book-reader" style="color:#3B82F6;"></i> ${t.lessonTopic}
                             </div>
                             <div style="font-size:0.98rem; font-weight:600; color:${isLessonEmpty ? '#9CA3AF' : '#1F2937'};">
-                                ${isLessonEmpty ? `<i>${currentUserLanguage === 'ar' ? 'غير مسجل' : 'Non renseigné'}</i>` : lecon}
+                                ${isLessonEmpty ? `<i>${currentUserLanguage === 'ar' ? 'غير مسجل' : 'Non renseigné'}</i>` : escapeHtml(lecon)}
                             </div>
                         </div>
                         
@@ -2108,7 +2203,7 @@ function renderParentPlanCards(rows) {
                                 <i class="fas fa-tasks" style="color:#8B5CF6;"></i> ${t.classWork}
                             </div>
                             <div style="font-size:0.95rem; color:#374151;">
-                                ${travaux && travaux.trim() !== '' ? travaux : `<i>${currentUserLanguage === 'ar' ? 'تمارين وأنشطة صفية' : 'Exercices et activités en classe'}</i>`}
+                                ${travaux && String(travaux).trim() !== '' ? escapeHtml(travaux) : `<i>${currentUserLanguage === 'ar' ? 'تمارين وأنشطة صفية' : 'Exercices et activités en classe'}</i>`}
                             </div>
                         </div>
                     </div>
@@ -2119,13 +2214,13 @@ function renderParentPlanCards(rows) {
                             <i class="fas fa-pen-fancy"></i> ${t.homeWork}
                         </div>
                         <div style="font-size:0.98rem; color:${isHomeworkEmpty ? '#9CA3AF' : '#064E3B'}; font-weight:${isHomeworkEmpty ? '400' : '700'};">
-                            ${isHomeworkEmpty ? t.noHomework : devoirs}
+                            ${isHomeworkEmpty ? t.noHomework : escapeHtml(devoirs)}
                         </div>
                     </div>
                     
-                    ${support && support.trim() !== '' ? `
+                    ${support && String(support).trim() !== '' ? `
                         <div style="margin-top:10px; font-size:0.88rem; color:#2563EB; font-weight:600;">
-                            <i class="fas fa-link" style="margin-right:5px;"></i> ${t.supportLinks} <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="color:#2563EB; text-decoration:underline;">${support}</a>
+                            <i class="fas fa-link" style="margin-right:5px;"></i> ${t.supportLinks} <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="color:#2563EB; text-decoration:underline;">${escapeHtml(support)}</a>
                         </div>
                     ` : ''}
                 </div>
@@ -2155,10 +2250,14 @@ function filterParentPlanByDay() {
     if (!classSelect || !parentRawPlanData) return;
     
     const selectedClass = classSelect.value || 'PEI1';
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
     const classRows = parentRawPlanData.filter(row => {
-        const classKey = findHKey('Classe');
-        return classKey && row[classKey] === selectedClass;
+        const classVal = getRowField(row, 'Classe');
+        return classVal && norm(classVal) === norm(selectedClass);
     });
+    
+    renderParentPlanCards(classRows);
+}
     
     renderParentPlanCards(classRows);
 }
@@ -3130,8 +3229,9 @@ async function submitParentMessage() {
 }
 
 async function openTeacherMessagesModal() {
-    const teacherName = currentUser || 'all';
-    const res = await fetch(`/api/get-messages?teacherName=${encodeURIComponent(teacherName)}&section=${currentSection}`);
+    const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser) ? loggedInUser : 'all';
+    const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+    const res = await fetch(`/api/get-messages?teacherName=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
     if (res.ok) {
         const messages = await res.json();
         alert(`Vous avez ${messages.length} message(s) de parents.`);
@@ -3154,11 +3254,11 @@ async function loadTeacherHomeworksDashboard() {
     `;
 
     try {
-        const teacherName = (loggedInUser && loggedInUser !== 'Med01') ? loggedInUser : (currentUser || 'all');
-        const section = currentSection || 'garcons';
+        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && loggedInUser !== 'Med01') ? loggedInUser : 'all';
+        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
 
         const nameEl = document.getElementById('teacherEvalActiveName');
-        if (nameEl) nameEl.textContent = loggedInUser || 'Enseignant';
+        if (nameEl) nameEl.textContent = (typeof loggedInUser !== 'undefined' && loggedInUser) ? loggedInUser : 'Enseignant';
 
         const secEl = document.getElementById('teacherEvalActiveSection');
         if (secEl) {
