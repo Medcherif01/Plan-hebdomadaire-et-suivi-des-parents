@@ -912,8 +912,17 @@ app.get('/api/admin/users', async (req, res) => {
     // Ajouter les utilisateurs personnalisés ajoutés par l'admin qui ne sont pas dans defaultList
     for (const u of users) {
       if (!deletedUserIds.has(u._id) && !defaultList.includes(u.username)) {
+        if (section === 'garcons' && femaleTeachers.includes(u.username)) continue;
+        if (section === 'filles' && maleTeachers.includes(u.username)) continue;
         completeList.push(u);
       }
+    }
+
+    // Filtre de sécurité strict par section
+    if (section === 'garcons') {
+      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()));
+    } else if (section === 'filles') {
+      completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()));
     }
 
     res.status(200).json(completeList);
@@ -1189,7 +1198,7 @@ const calculateStarsLegacy = (evaluations) => {
   return stars;
 };
 
-const defaultStudents = {
+const defaultBoysStudents = {
   PEI1: [
     { name: "Faysal", photo: "https://lh3.googleusercontent.com/d/1IB6BKROX3TRxaIIHVVVWbB7-Ii-V8VrC", birthday: "4/2014" },
     { name: "Bilal", photo: "https://lh3.googleusercontent.com/d/1B0QUZJhpSad5Fs3qRTugUe4oyTlUDEVu", birthday: "2/2015" },
@@ -1218,20 +1227,69 @@ const defaultStudents = {
   ]
 };
 
+const defaultGirlsStudents = {
+  PEI1: [
+    { name: "Fatima", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "3/2014" },
+    { name: "Mariam", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "5/2014" },
+    { name: "Sarah", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "8/2014" },
+    { name: "Salma", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "10/2014" }
+  ],
+  PEI2: [
+    { name: "Khadija", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "4/2013" },
+    { name: "Zainab", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "7/2013" },
+    { name: "Nour", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", birthday: "9/2013" },
+    { name: "Amina", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "11/2013" }
+  ],
+  PEI3: [
+    { name: "Houda", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "2/2012" },
+    { name: "Leila", photo: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80", birthday: "5/2012" },
+    { name: "Zohra", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "8/2012" },
+    { name: "Aya", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "11/2012" }
+  ],
+  PEI4: [
+    { name: "Yasmine", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "1/2011" },
+    { name: "Hiba", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "6/2011" },
+    { name: "Rania", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "9/2011" },
+    { name: "Ines", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "12/2011" }
+  ]
+};
+
 // ============================================================================
 // API GESTION DES ÉLÈVES (ADMIN)
 // ============================================================================
+
+// Cache mémoire pour optimiser la réactivité et supprimer tout lag
+const studentsMemoryCache = new Map();
+
+function invalidateStudentsCache(section) {
+  if (section) {
+    for (const key of studentsMemoryCache.keys()) {
+      if (key.startsWith(section)) {
+        studentsMemoryCache.delete(key);
+      }
+    }
+  } else {
+    studentsMemoryCache.clear();
+  }
+}
 
 app.get('/api/admin/students', async (req, res) => {
   try {
     const section = req.query.section || 'garcons';
     const targetClass = req.query.class;
+    const cacheKey = `${section}_${targetClass || 'all'}`;
+
+    if (studentsMemoryCache.has(cacheKey)) {
+      return res.status(200).json(studentsMemoryCache.get(cacheKey));
+    }
+
     const db = await connectToDatabase();
 
     // Auto-seeding si la section n'a encore aucun élève enregistré
     const totalInSection = await db.collection('students').countDocuments({ section: section });
     if (totalInSection === 0) {
-      for (const [cls, list] of Object.entries(defaultStudents)) {
+      const seedList = section === 'filles' ? defaultGirlsStudents : defaultBoysStudents;
+      for (const [cls, list] of Object.entries(seedList)) {
         for (const s of list) {
           const studentObj = {
             _id: `${section}_${cls}_${s.name}`,
@@ -1257,6 +1315,10 @@ app.get('/api/admin/students', async (req, res) => {
     }
 
     let students = await db.collection('students').find(query).sort({ name: 1 }).toArray();
+
+    // Mise en cache (5 minutes)
+    studentsMemoryCache.set(cacheKey, students);
+    setTimeout(() => studentsMemoryCache.delete(cacheKey), 5 * 60 * 1000);
 
     res.status(200).json(students);
   } catch (error) {
@@ -1292,6 +1354,8 @@ app.post('/api/admin/students', async (req, res) => {
       { upsert: true }
     );
 
+    invalidateStudentsCache(section);
+
     res.status(200).json({ success: true, message: `Élève '${cleanName}' enregistré avec succès.`, student: studentData });
   } catch (error) {
     console.error('Erreur POST /api/admin/students:', error);
@@ -1309,6 +1373,7 @@ app.delete('/api/admin/students', async (req, res) => {
     if (name) {
       await db.collection('students').deleteMany({ name: name.trim(), section: section });
     }
+    invalidateStudentsCache(section);
     res.status(200).json({ success: true, message: 'Élève supprimé avec succès.' });
   } catch (error) {
     console.error('Erreur DELETE /api/admin/students:', error);
@@ -2207,7 +2272,21 @@ app.get('/api/plans/:week', async (req, res) => {
       
       console.log(`📋 Plans disponibles pour S${weekNumber} (${section}):`, Array.from(availableLessonPlanIds));
       
-      const enrichedData = (planDocument.data || []).map(row => {
+      let rawData = planDocument.data || [];
+      // Filtrage strict par section pour garantir qu'aucun enseignant de la mauvaise section ne figure dans le plan
+      if (section === 'garcons') {
+        rawData = rawData.filter(row => {
+          const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
+          return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
+        });
+      } else if (section === 'filles') {
+        rawData = rawData.filter(row => {
+          const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
+          return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
+        });
+      }
+
+      const enrichedData = rawData.map(row => {
         const enseignant = row[findKey(row, 'Enseignant')] || '';
         const classe = row[findKey(row, 'Classe')] || '';
         const matiere = row[findKey(row, 'Matière')] || '';

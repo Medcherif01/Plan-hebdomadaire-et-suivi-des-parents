@@ -88,15 +88,15 @@
                 mainBadge.className = badgeClass;
             }
 
-            const parentSectionBadge = document.getElementById('parentSectionBadgeDisplay');
-            if (parentSectionBadge) {
-                parentSectionBadge.className = badgeClass;
-            }
+            document.querySelectorAll('.parentSectionBadgeDisplay').forEach(el => {
+                el.className = `parentSectionBadgeDisplay ${badgeClass}`;
+            });
 
-            const parentSectionToggle = document.getElementById('parentSectionToggleText');
-            if (parentSectionToggle) {
-                parentSectionToggle.textContent = isBoys ? 'Section Garçons 👦 (بنين)' : 'Section Filles 👧 (بنات)';
-            }
+            document.querySelectorAll('.parentSectionToggleText').forEach(el => {
+                el.textContent = isBoys 
+                    ? (currentUserLanguage === 'ar' ? 'قسم البنين 👦' : 'Section Garçons 👦') 
+                    : (currentUserLanguage === 'ar' ? 'قسم البنات 👧' : 'Section Filles 👧');
+            });
 
             const adminFilter = document.getElementById('adminSectionFilter');
             if (adminFilter) {
@@ -1875,8 +1875,6 @@ function switchMainTab(tab) {
             // L'enseignant accède DIRECTEMENT à son espace enseignant
             showHomeworkView('homework-teacher');
         }
-        loadHomeworkShowcase();
-        loadTeachersContactGrid();
     } else {
         if (plansTab) plansTab.style.display = 'block';
         if (devoirsTab) devoirsTab.style.display = 'none';
@@ -1931,7 +1929,7 @@ function showHomeworkView(viewName) {
         loadTeacherHomeworksDashboard();
     } else if (viewName === 'parent-selection') {
         const activeClassBtn = document.querySelector('#parent-class-buttons button.active');
-        const defaultClass = activeClassBtn ? activeClassBtn.textContent.trim().split(' ')[0] : 'PEI1';
+        const defaultClass = activeClassBtn ? (activeClassBtn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'PEI1') : 'PEI1';
         loadClassStudents(defaultClass || 'PEI1');
     }
 }
@@ -1959,6 +1957,7 @@ function enterParentSpaceWithSection(section) {
     // Réinitialiser le cache pour éviter tout mélange entre filles et garçons
     parentRawPlanData = [];
     parentRawClassNotes = {};
+    if (typeof studentsClientCache !== 'undefined') studentsClientCache.clear();
     const studentsGrid = document.getElementById('students-grid');
     if (studentsGrid) studentsGrid.innerHTML = '';
     
@@ -1980,9 +1979,6 @@ function enterParentSpaceWithSection(section) {
     // Basculer vers le portail devoirs/parents sur l'écran d'accueil du Suivi des Élèves
     switchMainTab('devoirs');
     showHomeworkView('parent-selection');
-    loadClassStudents('PEI1');
-    loadTeachersContactGrid();
-    loadHomeworkShowcase();
 }
 
 function toggleParentSection() {
@@ -1995,13 +1991,15 @@ function toggleParentSection() {
     // Réinitialiser le cache pour la nouvelle section
     parentRawPlanData = [];
     parentRawClassNotes = {};
+    if (typeof studentsClientCache !== 'undefined') studentsClientCache.clear();
     const studentsGrid = document.getElementById('students-grid');
     if (studentsGrid) studentsGrid.innerHTML = '';
     
-    // Recharger les données du plan parent, des contacts et des vitrines strictement pour la nouvelle section
-    loadParentWeeklyPlan();
-    loadTeachersContactGrid();
-    loadHomeworkShowcase();
+    const activeClassBtn = document.querySelector('#parent-class-buttons button.active');
+    const defaultClass = activeClassBtn ? (activeClassBtn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'PEI1') : 'PEI1';
+    
+    // Recharger la classe active
+    loadClassStudents(defaultClass);
 }
 
 function populateParentWeekSelector() {
@@ -2085,7 +2083,22 @@ async function loadParentWeeklyPlan() {
         }
         
         const data = await res.json();
-        parentRawPlanData = data.planData || [];
+        let fetchedData = data.planData || [];
+        
+        // Double sécurité : filtrer les enseignants de l'autre section
+        if (section === 'garcons') {
+            fetchedData = fetchedData.filter(row => {
+                const ens = (getRowField(row, 'Enseignant') || '').trim();
+                return !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase());
+            });
+        } else if (section === 'filles') {
+            fetchedData = fetchedData.filter(row => {
+                const ens = (getRowField(row, 'Enseignant') || '').trim();
+                return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase());
+            });
+        }
+        
+        parentRawPlanData = fetchedData;
         parentRawClassNotes = data.classNotes || {};
 
         if (parentRawPlanData.length > 0 && (!headers || headers.length === 0)) {
@@ -2385,22 +2398,106 @@ function setHomeworkLanguage(lang) {
     }
 }
 
+// Cache client et jetons de synchronisation pour garantir une réactivité instantanée sans aucun décalage ni mélange
+const studentsClientCache = new Map();
+let activeClassFetchSeq = 0;
+let currentActiveClassName = 'PEI1';
+
+function renderStudentsGrid(students, className, section) {
+    const grid = document.getElementById('students-grid');
+    if (!grid) return;
+    
+    if (!students || students.length === 0) {
+        grid.innerHTML = `
+            <div style="grid-column: 1/-1; text-align:center; padding:40px 20px; background:white; border-radius:16px; color:#6B7280; font-weight:600; border:1px dashed #CBD5E1; max-width:480px; margin:20px auto;">
+                <i class="fas fa-user-slash fa-2x" style="display:block; margin-bottom:12px; color:#9CA3AF;"></i>
+                <p style="margin:0; font-size:1rem;">${currentUserLanguage === 'ar' ? `لا يوجد طلاب مسجلين في قسم ${className}` : `Aucun élève enregistré pour la classe ${className} (${section === 'garcons' ? 'Garçons 👦' : 'Filles 👧'}).`}</p>
+            </div>
+        `;
+        return;
+    }
+
+    const fallbackAvatar = getStudentFallbackAvatar(section);
+    grid.innerHTML = students.map(s => {
+        const photoSrc = (s.photo && s.photo.trim() !== '') ? s.photo : fallbackAvatar;
+        return `
+            <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapeHtml(s.name).replace(/'/g, "\\'")}', '${className}')" style="background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.25s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
+                <div style="position:relative; width:96px; height:96px; margin:0 auto 12px auto; overflow:hidden; border-radius:50%;">
+                    <img src="${photoSrc}" loading="lazy" decoding="async" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(s.name)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${section === 'garcons' ? '#3B82F6' : '#EC4899'}; background:#F8FAFC; display:block; margin:0 auto;">
+                </div>
+                <h4 style="margin:6px 0 4px 0; color:#1E1B4B; font-size:1.05rem; font-weight:700; line-height:1.3; text-align:center;">${escapeHtml(s.name)}</h4>
+                <span style="font-size:0.85rem; font-weight:600; color:#6B7280; background:#F1F5F9; padding:3px 10px; border-radius:12px; margin-top:4px;">${s.birthday ? '🎂 ' + s.birthday : className}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+async function loadClassStudents(className) {
+    try {
+        const section = currentSection || 'garcons';
+        currentActiveClassName = className;
+        const mySeq = ++activeClassFetchSeq;
+
+        // Mettre à jour l'état actif des boutons de classe immédiatement
+        const classBtns = document.querySelectorAll('#parent-class-buttons button');
+        classBtns.forEach(btn => {
+            const btnClassMatch = btn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+            if (btnClassMatch === className) {
+                btn.classList.add('primary-button', 'active');
+            } else {
+                btn.classList.remove('primary-button', 'active');
+            }
+        });
+
+        const cacheKey = `${section}_${className}`;
+        
+        // Si les données sont déjà en mémoire, les afficher instantanément (0ms de latence)
+        if (studentsClientCache.has(cacheKey)) {
+            renderStudentsGrid(studentsClientCache.get(cacheKey), className, section);
+            return;
+        }
+
+        const grid = document.getElementById('students-grid');
+        if (grid) {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:40px; color:#64748B; font-size:1rem;"><i class="fas fa-circle-notch fa-spin fa-2x" style="color:#3B82F6; margin-bottom:10px; display:block;"></i> Chargement...</div>';
+        }
+
+        const res = await fetch(`/api/admin/students?class=${className}&section=${section}`);
+        if (res.ok) {
+            const students = await res.json();
+            // Ignorer si une autre classe a été sélectionnée entre temps
+            if (mySeq !== activeClassFetchSeq || currentSection !== section || currentActiveClassName !== className) {
+                return;
+            }
+            studentsClientCache.set(cacheKey, students);
+            renderStudentsGrid(students, className, section);
+        }
+    } catch (e) {
+        console.error('Erreur loadClassStudents:', e);
+    }
+}
+
 async function loadHomeworkShowcase() {
     try {
         const section = currentSection || 'garcons';
 
-        // Élève de la semaine
-        const sotwRes = await fetch(`/api/weekly-summary?section=${section}`);
-        if (sotwRes.ok) {
-            const data = await sotwRes.json();
+        // Lancement en parallèle non bloquant avec Promise.allSettled
+        Promise.allSettled([
+            fetch(`/api/weekly-summary?section=${section}`).then(r => r.ok ? r.json() : null),
+            fetch(`/api/photo-of-the-day?section=${section}`).then(r => r.ok ? r.json() : null),
+            fetch(`/api/photo-2?section=${section}`).then(r => r.ok ? r.json() : null),
+            fetch(`/api/photo-3?section=${section}`).then(r => r.ok ? r.json() : null)
+        ]).then(([sotwRes, p1Res, p2Res, p3Res]) => {
+            // Élève de la semaine
             const sotwEl = document.getElementById('sotw-content');
-            if (sotwEl) {
+            if (sotwEl && sotwRes.status === 'fulfilled' && sotwRes.value) {
+                const data = sotwRes.value;
                 if (data.studentsOfWeek && data.studentsOfWeek.length > 0) {
                     const st = data.studentsOfWeek[0];
                     sotwEl.innerHTML = `
                         <div style="background:white; padding:15px; border-radius:12px; display:inline-block; box-shadow:0 4px 10px rgba(0,0,0,0.05);">
-                            <h4 style="margin:0; color:#667eea; font-size:1.2rem;">${st.name}</h4>
-                            <p style="margin:5px 0; color:#6B7280; font-weight:600;">Classe: ${st.class}</p>
+                            <h4 style="margin:0; color:#667eea; font-size:1.2rem;">${escapeHtml(st.name)}</h4>
+                            <p style="margin:5px 0; color:#6B7280; font-weight:600;">Classe: ${escapeHtml(st.class)}</p>
                             <p style="margin:0; color:#F59E0B; font-weight:bold;"><i class="fas fa-star"></i> ${st.stars} Étoiles cette semaine</p>
                         </div>
                     `;
@@ -2408,95 +2505,28 @@ async function loadHomeworkShowcase() {
                     sotwEl.innerHTML = '<p style="color:#6B7280;">Aucun élève de la semaine sélectionné pour le moment.</p>';
                 }
             }
-        }
 
-        // Photos de la journée
-        const p1Res = await fetch(`/api/photo-of-the-day?section=${section}`);
-        if (p1Res.ok) {
-            const p1 = await p1Res.json();
+            // Photos
             const el1 = document.getElementById('potd-content');
-            if (el1) {
-                if (p1.url) {
-                    el1.innerHTML = `<img src="${p1.url}" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${p1.comment || ''}</p>`;
-                } else {
-                    el1.innerHTML = '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
-                }
+            if (el1 && p1Res.status === 'fulfilled' && p1Res.value) {
+                const p1 = p1Res.value;
+                el1.innerHTML = p1.url ? `<img src="${p1.url}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p1.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
             }
-        }
 
-        const p2Res = await fetch(`/api/photo-2?section=${section}`);
-        if (p2Res.ok) {
-            const p2 = await p2Res.json();
             const el2 = document.getElementById('photo2-content');
-            if (el2) {
-                if (p2.url) {
-                    el2.innerHTML = `<img src="${p2.url}" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${p2.comment || ''}</p>`;
-                } else {
-                    el2.innerHTML = '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
-                }
+            if (el2 && p2Res.status === 'fulfilled' && p2Res.value) {
+                const p2 = p2Res.value;
+                el2.innerHTML = p2.url ? `<img src="${p2.url}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p2.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
             }
-        }
 
-        const p3Res = await fetch(`/api/photo-3?section=${section}`);
-        if (p3Res.ok) {
-            const p3 = await p3Res.json();
             const el3 = document.getElementById('photo3-content');
-            if (el3) {
-                if (p3.url) {
-                    el3.innerHTML = `<img src="${p3.url}" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${p3.comment || ''}</p>`;
-                } else {
-                    el3.innerHTML = '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
-                }
-            }
-        }
-    } catch (e) {
-        console.error('Erreur loadHomeworkShowcase:', e);
-    }
-}
-
-async function loadClassStudents(className) {
-    try {
-        const section = currentSection || 'garcons';
-        const grid = document.getElementById('students-grid');
-        if (grid) grid.innerHTML = '<p style="grid-column: 1/-1; text-align:center; padding:30px; color:#64748B;"><i class="fas fa-spinner fa-spin"></i> Chargement des élèves...</p>';
-
-        // Mettre à jour l'état actif des boutons de classe
-        const classBtns = document.querySelectorAll('#parent-class-buttons button');
-        classBtns.forEach(btn => {
-            if (btn.getAttribute('onclick')?.includes(`'${className}'`)) {
-                btn.classList.add('primary-button');
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('primary-button');
-                btn.classList.remove('active');
+            if (el3 && p3Res.status === 'fulfilled' && p3Res.value) {
+                const p3 = p3Res.value;
+                el3.innerHTML = p3.url ? `<img src="${p3.url}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p3.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
             }
         });
-
-        const res = await fetch(`/api/admin/students?class=${className}&section=${section}`);
-        if (res.ok) {
-            const students = await res.json();
-            if (grid) {
-                if (!students || students.length === 0) {
-                    grid.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:40px; background:white; border-radius:16px; color:#6B7280; font-weight:600; border:1px dashed #CBD5E1;"><i class="fas fa-user-slash fa-2x" style="display:block; margin-bottom:10px; color:#9CA3AF;"></i> Aucun élève enregistré pour la classe ${className} (${section === 'garcons' ? 'Garçons 👦' : 'Filles 👧'}).</p>`;
-                    return;
-                }
-                const fallbackAvatar = getStudentFallbackAvatar(section);
-                grid.innerHTML = students.map(s => {
-                    const photoSrc = (s.photo && s.photo.trim() !== '') ? s.photo : fallbackAvatar;
-                    return `
-                        <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapeHtml(s.name).replace(/'/g, "\\'")}', '${className}')" style="background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.3s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px;">
-                            <div style="position:relative; width:96px; height:96px; margin:0 auto 12px auto;">
-                                <img src="${photoSrc}" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(s.name)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${section === 'garcons' ? '#3B82F6' : '#EC4899'}; background:#F8FAFC; display:block; margin:0 auto;">
-                            </div>
-                            <h4 style="margin:6px 0 4px 0; color:#1E1B4B; font-size:1.05rem; font-weight:700; line-height:1.3; text-align:center;">${escapeHtml(s.name)}</h4>
-                            <span style="font-size:0.85rem; font-weight:600; color:#6B7280; background:#F1F5F9; padding:3px 10px; border-radius:12px; margin-top:4px;">${s.birthday ? '🎂 ' + s.birthday : className}</span>
-                        </div>
-                    `;
-                }).join('');
-            }
-        }
     } catch (e) {
-        console.error('Erreur loadClassStudents:', e);
+        console.error('Erreur loadHomeworkShowcase:', e);
     }
 }
 
@@ -3265,6 +3295,13 @@ async function loadTeachersContactGrid() {
             }
         } catch (fetchErr) {
             console.warn('Utilisation de la liste prédéfinie pour la section:', currentSection);
+        }
+
+        // Filtre de sécurité frontend strict pour empêcher tout mélange entre garçons et filles
+        if (currentSection === 'garcons') {
+            teachers = teachers.filter(t => !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()));
+        } else if (currentSection === 'filles') {
+            teachers = teachers.filter(t => !maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()));
         }
 
         const t = parentI18n[currentUserLanguage] || parentI18n.fr;
