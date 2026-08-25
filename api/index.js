@@ -4300,7 +4300,7 @@ app.post('/api/notify-incomplete-teachers', async (req, res) => {
   }
 });
 // Configuration Port et Host
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 const HOST = '0.0.0.0';
 
 // Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel

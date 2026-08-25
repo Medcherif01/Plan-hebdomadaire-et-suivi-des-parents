@@ -1890,18 +1890,43 @@ function showHomeworkView(viewName) {
         displayAlert("Accès réservé uniquement aux enseignants.", true);
         viewName = 'parent-selection';
     }
-    if (!isParentMode && (viewName === 'parent-plan' || viewName === 'parent-selection' || viewName === 'student-dashboard')) {
+    if (!isParentMode && (viewName === 'parent-plan' || viewName === 'parent-selection' || viewName === 'student-dashboard' || viewName === 'parent-contacts')) {
         // Un enseignant connecté ne navigue pas dans les vues réservées aux parents
         viewName = 'homework-teacher';
     }
-    const views = ['homework-home', 'parent-selection', 'student-dashboard', 'homework-teacher', 'parent-plan'];
+    const views = ['homework-home', 'parent-selection', 'student-dashboard', 'homework-teacher', 'parent-plan', 'parent-contacts'];
     views.forEach(v => {
         const el = document.getElementById(v + '-view');
         if (el) el.style.display = (v === viewName) ? 'block' : 'none';
     });
+
+    // Mettre à jour l'état actif des 4 onglets dans tous les conteneurs de navigation
+    const activeTabMap = {
+        'parent-selection': 'students',
+        'student-dashboard': 'students',
+        'parent-plan': 'plan',
+        'parent-contacts': 'teachers',
+        'homework-home': 'photos'
+    };
+    const activeType = activeTabMap[viewName] || 'students';
+    document.querySelectorAll('.parent-nav-tabs').forEach(tabGroup => {
+        tabGroup.querySelectorAll('button').forEach(btn => {
+            const isTarget = btn.classList.contains(`tab-btn-${activeType}`);
+            if (isTarget) {
+                btn.classList.add('primary-button', 'active');
+            } else {
+                btn.classList.remove('primary-button', 'active');
+            }
+        });
+    });
+
     if (viewName === 'parent-plan') {
         populateParentWeekSelector();
         loadParentWeeklyPlan();
+    } else if (viewName === 'parent-contacts') {
+        loadTeachersContactGrid();
+    } else if (viewName === 'homework-home') {
+        loadHomeworkShowcase();
     } else if (viewName === 'homework-teacher') {
         loadTeacherHomeworksDashboard();
     } else if (viewName === 'parent-selection') {
@@ -2979,8 +3004,8 @@ const parentI18n = {
         homeBtn: 'Accueil',
         parentPlanTitle: 'Plan Hebdomadaire',
         studentFollowBtn: 'Suivi Élève & Contact',
-        tabPlan: '1. Plan Hebdomadaire',
-        tabStudents: '2. Suivi Élèves & Devoirs',
+        tabStudents: '1. Suivi Élèves & Devoirs',
+        tabPlan: '2. Plan Hebdomadaire',
         tabTeachers: '3. Contacter Enseignants',
         tabPhotos: '4. Célébrations & Photos',
         filterWeek: 'Semaine :',
@@ -2988,6 +3013,8 @@ const parentI18n = {
         filterDay: 'Jour :',
         allDays: 'Tous les jours de la semaine',
         contactTeachersTitle: 'Contacter les Enseignants',
+        parentContactsHeader: 'Espace Parents - Contacter les Enseignants',
+        parentPhotosHeader: 'Espace Parents - Célébrations & Photos',
         parentAuthBtn: 'Connexion / Inscription Parent',
         contactTeachersDesc: 'Cliquez sur n\'importe quel enseignant ci-dessous pour lui envoyer directement un message concernant votre enfant.',
         sendMessageBtn: 'Envoyer message',
@@ -3032,8 +3059,8 @@ const parentI18n = {
         homeBtn: 'الرئيسية',
         parentPlanTitle: 'الخطة الأسبوعية',
         studentFollowBtn: 'متابعة الطالب والتواصل',
-        tabPlan: '١. الخطة الأسبوعية',
-        tabStudents: '٢. متابعة الطلاب والواجبات',
+        tabStudents: '١. متابعة الطلاب والواجبات',
+        tabPlan: '٢. الخطة الأسبوعية',
         tabTeachers: '٣. تواصل مع المعلمين',
         tabPhotos: '٤. لوحة الشرف والأنشطة',
         filterWeek: 'الأسبوع :',
@@ -3041,6 +3068,8 @@ const parentI18n = {
         filterDay: 'اليوم :',
         allDays: 'جميع أيام الأسبوع',
         contactTeachersTitle: 'التواصل المباشر مع المعلمين والمعلمات',
+        parentContactsHeader: 'فضاء أولياء الأمور - تواصل مع المعلمين',
+        parentPhotosHeader: 'فضاء أولياء الأمور - لوحة الشرف والأنشطة',
         parentAuthBtn: 'تسجيل دخول / حساب ولي الأمر',
         contactTeachersDesc: 'اضغط على اسم المعلم أدناه لإرسال رسالة مباشرة بخصوص متابعة مستوى ابنكم الدراسي.',
         sendMessageBtn: 'مراسلة المعلم ✉️',
@@ -3108,7 +3137,12 @@ function applyParentLanguageUI() {
     };
 
     setTxt('btnHomeText', t.homeBtn);
+    setTxt('btnHomeText2', t.homeBtn);
+    setTxt('btnHomeText3', t.homeBtn);
+    setTxt('btnHomeTextPhotos', t.homeBtn);
     setTxt('parentPlanViewHeader', t.parentPlanTitle);
+    setTxt('parentContactsHeaderTitle', t.parentContactsHeader);
+    setTxt('parentPhotosTitleText', t.parentPhotosHeader);
     setTxt('btnHeaderStudentFollow', t.studentFollowBtn);
     setTxt('btnBackToPlanText', t.backToPlan);
     setTxt('parentTitleText', t.parentTitle);
@@ -3139,13 +3173,7 @@ function applyParentLanguageUI() {
 }
 
 function showTeacherContactSection() {
-    showHomeworkView('parent-selection');
-    setTimeout(() => {
-        const el = document.getElementById('teacher-contact-section');
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth' });
-        }
-    }, 100);
+    showHomeworkView('parent-contacts');
 }
 
 function openParentAuthModal() {

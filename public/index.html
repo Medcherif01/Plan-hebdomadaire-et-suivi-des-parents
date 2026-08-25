@@ -675,17 +675,41 @@
         <div id="devoirs-tab-content" style="display: none;">
             <div id="homework-portal-container">
                 
-                <!-- 1. VUE ACCUEIL PORTAIL DEVOIRS -->
-                <div id="homework-home-view" class="homework-view">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
-                        <h2 style="color:#1e1b4b; margin:0;"><i class="fas fa-graduation-cap"></i> Bienvenue sur le Portail Suivi des Devoirs</h2>
-                        <div>
-                            <button class="pro-button" onclick="setHomeworkLanguage('fr')" style="padding:6px 12px; font-size:0.85em;"><i class="fas fa-globe"></i> Français</button>
-                            <button class="pro-button" onclick="setHomeworkLanguage('ar')" style="padding:6px 12px; font-size:0.85em;"><i class="fas fa-globe"></i> العربية</button>
+                <!-- 1. VUE ACCUEIL PORTAIL DEVOIRS & CÉLÉBRATIONS -->
+                <div id="homework-home-view" class="homework-view" style="max-width:1200px; margin:0 auto;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <button class="pro-button" onclick="resetSectionChoice()" style="padding:8px 14px;">
+                                <i class="fas fa-home"></i> <span id="btnHomeTextPhotos">Accueil</span>
+                            </button>
+                            <h2 style="color:#1E1B4B; margin:0; font-size:1.4rem; font-weight:700;">
+                                <i class="fas fa-camera-retro" style="color:#EC4899;"></i> <span id="parentPhotosTitleText">Espace Parents - Célébrations & Photos</span>
+                            </h2>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <button type="button" class="pro-button" onclick="toggleParentLanguage()" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
+                                <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
+                            </button>
                         </div>
                     </div>
 
-                    <div style="display:flex; gap:15px; justify-content:center; flex-wrap:wrap; margin-bottom:25px;">
+                    <!-- ONGLETS DE NAVIGATION ESPACE PARENT (1. Suivi Élèves, 2. Plan Hebdo, 3. Contacts, 4. Célébrations) -->
+                    <div class="parent-nav-tabs" style="display:flex; gap:10px; margin-bottom:20px; overflow-x:auto; padding-bottom:5px;">
+                        <button type="button" class="pro-button tab-btn-students" onclick="showHomeworkView('parent-selection')">
+                            <i class="fas fa-user-graduate"></i> <span class="tab-txt-students">1. Suivi Élèves & Devoirs</span>
+                        </button>
+                        <button type="button" class="pro-button tab-btn-plan" onclick="showHomeworkView('parent-plan')">
+                            <i class="fas fa-calendar-alt"></i> <span class="tab-txt-plan">2. Plan Hebdomadaire</span>
+                        </button>
+                        <button type="button" class="pro-button tab-btn-teachers" onclick="showHomeworkView('parent-contacts')">
+                            <i class="fas fa-comments"></i> <span class="tab-txt-teachers">3. Contacter Enseignants</span>
+                        </button>
+                        <button type="button" class="pro-button tab-btn-photos primary-button active" onclick="showHomeworkView('homework-home')">
+                            <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
+                        </button>
+                    </div>
+
+                    <div style="display:none; gap:15px; justify-content:center; flex-wrap:wrap; margin-bottom:25px;" id="portal-role-buttons">
                         <button type="button" class="pro-button primary-button" id="go-to-parent" onclick="showHomeworkView('parent-selection')" style="padding:15px 30px; font-size:1.1rem;">
                             <i class="fas fa-user-friends"></i> Espace Parents
                         </button>
@@ -721,7 +745,7 @@
                     </div>
                 </div>
 
-                <!-- 2. VUE SÉLECTION PARENT (CHOIX CLASSE / ÉLÈVE & CONTACT ENSEIGNANTS) -->
+                <!-- 2. VUE 1 : SÉLECTION PARENT (1. SUIVI ÉLÈVES & DEVOIRS UNIQUEMENT) -->
                 <div id="parent-selection-view" class="homework-view" style="display:none; max-width:1200px; margin:0 auto;">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
                         <div style="display:flex; align-items:center; gap:12px;">
@@ -741,16 +765,16 @@
 
                     <!-- ONGLETS DE NAVIGATION ESPACE PARENT (1. Suivi Élèves, 2. Plan Hebdo, 3. Contacts, 4. Célébrations) -->
                     <div class="parent-nav-tabs" style="display:flex; gap:10px; margin-bottom:20px; overflow-x:auto; padding-bottom:5px;">
-                        <button type="button" class="pro-button primary-button active" onclick="showHomeworkView('parent-selection')">
+                        <button type="button" class="pro-button tab-btn-students primary-button active" onclick="showHomeworkView('parent-selection')">
                             <i class="fas fa-user-graduate"></i> <span class="tab-txt-students">1. Suivi Élèves & Devoirs</span>
                         </button>
-                        <button type="button" class="pro-button" onclick="showHomeworkView('parent-plan')">
+                        <button type="button" class="pro-button tab-btn-plan" onclick="showHomeworkView('parent-plan')">
                             <i class="fas fa-calendar-alt"></i> <span class="tab-txt-plan">2. Plan Hebdomadaire</span>
                         </button>
-                        <button type="button" class="pro-button" onclick="showTeacherContactSection()">
+                        <button type="button" class="pro-button tab-btn-teachers" onclick="showHomeworkView('parent-contacts')">
                             <i class="fas fa-comments"></i> <span class="tab-txt-teachers">3. Contacter Enseignants</span>
                         </button>
-                        <button type="button" class="pro-button" onclick="showHomeworkView('homework-home')">
+                        <button type="button" class="pro-button tab-btn-photos" onclick="showHomeworkView('homework-home')">
                             <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
                         </button>
                     </div>
@@ -773,9 +797,44 @@
                     <div id="students-grid" style="display:flex; flex-wrap:wrap; justify-content:center; gap:24px; margin-bottom:35px;">
                         <!-- Cartes d'élèves générées dynamiquement -->
                     </div>
+                </div>
+
+                <!-- 3. VUE 3 : CONTACTER LES ENSEIGNANTS DÉDIÉ -->
+                <div id="parent-contacts-view" class="homework-view" style="display:none; max-width:1200px; margin:0 auto;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <button class="pro-button" onclick="resetSectionChoice()" style="padding:8px 14px;">
+                                <i class="fas fa-home"></i> <span id="btnHomeText3">Accueil</span>
+                            </button>
+                            <h2 style="color:#1E1B4B; margin:0; font-size:1.4rem; font-weight:700;">
+                                <i class="fas fa-comments" style="color:#2563EB;"></i> <span id="parentContactsHeaderTitle">Espace Parents - Contacter les Enseignants</span>
+                            </h2>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <button type="button" class="pro-button" onclick="toggleParentLanguage()" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
+                                <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ONGLETS DE NAVIGATION ESPACE PARENT (1. Suivi Élèves, 2. Plan Hebdo, 3. Contacts, 4. Célébrations) -->
+                    <div class="parent-nav-tabs" style="display:flex; gap:10px; margin-bottom:20px; overflow-x:auto; padding-bottom:5px;">
+                        <button type="button" class="pro-button tab-btn-students" onclick="showHomeworkView('parent-selection')">
+                            <i class="fas fa-user-graduate"></i> <span class="tab-txt-students">1. Suivi Élèves & Devoirs</span>
+                        </button>
+                        <button type="button" class="pro-button tab-btn-plan" onclick="showHomeworkView('parent-plan')">
+                            <i class="fas fa-calendar-alt"></i> <span class="tab-txt-plan">2. Plan Hebdomadaire</span>
+                        </button>
+                        <button type="button" class="pro-button tab-btn-teachers primary-button active" onclick="showHomeworkView('parent-contacts')">
+                            <i class="fas fa-comments"></i> <span class="tab-txt-teachers">3. Contacter Enseignants</span>
+                        </button>
+                        <button type="button" class="pro-button tab-btn-photos" onclick="showHomeworkView('homework-home')">
+                            <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
+                        </button>
+                    </div>
 
                     <!-- CONTACT ENSEIGNANTS ET MESSAGES PARENT -->
-                    <div id="teacher-contact-section" class="teacher-contact-section" style="background:white; border-radius:18px; padding:24px; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1px solid #E2E8F0; margin-top:30px;">
+                    <div id="teacher-contact-section" class="teacher-contact-section" style="background:white; border-radius:18px; padding:24px; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1px solid #E2E8F0; margin-top:10px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
                             <h3 style="margin:0; color:#1E1B4B; font-size:1.25rem;"><i class="fas fa-comments" style="color:#2563EB;"></i> <span id="txtContactTeachersTitle">Contacter les Enseignants</span></h3>
                             <button class="pro-button primary-button" onclick="openParentAuthModal()"><i class="fas fa-user-lock"></i> <span id="txtParentAuthBtn">Connexion / Inscription Parent</span></button>
@@ -1016,16 +1075,16 @@
 
                     <!-- ONGLETS DE NAVIGATION ESPACE PARENT (1. Suivi Élèves, 2. Plan Hebdo, 3. Contacts, 4. Célébrations) -->
                     <div class="parent-nav-tabs" style="display:flex; gap:10px; margin-bottom:20px; overflow-x:auto; padding-bottom:5px;">
-                        <button type="button" class="pro-button" onclick="showHomeworkView('parent-selection')">
+                        <button type="button" class="pro-button tab-btn-students" onclick="showHomeworkView('parent-selection')">
                             <i class="fas fa-user-graduate"></i> <span class="tab-txt-students">1. Suivi Élèves & Devoirs</span>
                         </button>
-                        <button type="button" class="pro-button primary-button active" onclick="showHomeworkView('parent-plan')">
+                        <button type="button" class="pro-button tab-btn-plan primary-button active" onclick="showHomeworkView('parent-plan')">
                             <i class="fas fa-calendar-alt"></i> <span class="tab-txt-plan">2. Plan Hebdomadaire</span>
                         </button>
-                        <button type="button" class="pro-button" onclick="showTeacherContactSection()">
+                        <button type="button" class="pro-button tab-btn-teachers" onclick="showHomeworkView('parent-contacts')">
                             <i class="fas fa-comments"></i> <span class="tab-txt-teachers">3. Contacter Enseignants</span>
                         </button>
-                        <button type="button" class="pro-button" onclick="showHomeworkView('homework-home')">
+                        <button type="button" class="pro-button tab-btn-photos" onclick="showHomeworkView('homework-home')">
                             <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
                         </button>
                     </div>
