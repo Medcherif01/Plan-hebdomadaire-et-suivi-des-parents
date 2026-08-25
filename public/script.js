@@ -1315,6 +1315,9 @@
             
             console.log(`Initialisation pour ${loggedInUser} (Section: ${currentSection}, Lang: ${currentUserLanguage})`);
             
+            // Mode enseignant/admin actif (verrouillage de la section choisie et restriction espace parent)
+            applyParentUIMode(false);
+            
             const sectionSel = document.getElementById('section-selection');
             if (sectionSel) sectionSel.style.display = 'none';
             document.getElementById('login-form').style.display = 'none';
@@ -1801,18 +1804,38 @@ let activeParentAccount = JSON.parse(localStorage.getItem('parentAccount') || 'n
 
 let isParentMode = false;
 
+function getStudentFallbackAvatar(section) {
+    const isGirls = (section === 'filles' || currentSection === 'filles');
+    const colorBg = isGirls ? '#FDF2F8' : '#EFF6FF';
+    const colorFill = isGirls ? '#F472B6' : '#60A5FA';
+    const colorStroke = isGirls ? '#DB2777' : '#2563EB';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100" height="100">
+        <rect width="120" height="120" rx="60" fill="${colorBg}"/>
+        <circle cx="60" cy="45" r="22" fill="${colorFill}"/>
+        <circle cx="60" cy="43" r="16" fill="#FED7AA"/>
+        <path d="M46 32 L60 22 L74 32 L60 38 Z" fill="#1E293B"/>
+        <circle cx="74" cy="33" r="3" fill="#F59E0B"/>
+        <path d="M26 102 C26 78, 42 70, 60 70 C78 70, 94 78, 94 102 Z" fill="${colorStroke}"/>
+    </svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 function applyParentUIMode(enabled) {
     isParentMode = enabled;
     
     const plansTabBtn = document.getElementById('tab-plans-btn');
     const goToTeacherBtn = document.getElementById('go-to-teacher');
+    const goToParentBtn = document.getElementById('go-to-parent');
     const loggedInInfo = document.getElementById('loggedInUserInfo');
     const logoutBtn = document.getElementById('logout-button');
     const mainTitle = document.getElementById('main-title');
+    const switchSecBtn = document.querySelector('.switch-section-btn');
     
     if (enabled) {
         if (plansTabBtn) plansTabBtn.style.display = 'none'; // Masquer l'accès aux plans enseignants
         if (goToTeacherBtn) goToTeacherBtn.style.display = 'none'; // Masquer l'accès à l'espace enseignants
+        if (goToParentBtn) goToParentBtn.style.display = 'inline-flex';
+        if (switchSecBtn) switchSecBtn.style.display = 'none';
         if (loggedInInfo) loggedInInfo.textContent = 'Espace Parent 👨‍👩‍👧‍👦';
         if (logoutBtn) {
             logoutBtn.innerHTML = '<i class="fas fa-arrow-left"></i> <span class="btn-text">Retour Accueil</span>';
@@ -1821,7 +1844,9 @@ function applyParentUIMode(enabled) {
         if (mainTitle) mainTitle.textContent = 'Espace Parents - Portail Suivi & Devoirs';
     } else {
         if (plansTabBtn) plansTabBtn.style.display = 'inline-block';
-        if (goToTeacherBtn) goToTeacherBtn.style.display = 'inline-block';
+        if (goToTeacherBtn) goToTeacherBtn.style.display = 'inline-flex';
+        if (goToParentBtn) goToParentBtn.style.display = 'none'; // L'enseignant ne voit pas l'espace parent
+        if (switchSecBtn) switchSecBtn.style.display = 'none'; // Verrouillage de la section pour l'enseignant une fois connecté
         if (mainTitle) mainTitle.textContent = 'Plans Hebdomadaires';
         if (logoutBtn) {
             logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> <span class="btn-text">Déconnecter</span>';
@@ -1845,9 +1870,10 @@ function switchMainTab(tab) {
         if (plansBtn) plansBtn.classList.remove('active');
         if (devoirsBtn) devoirsBtn.classList.add('active');
         if (isParentMode) {
-            showHomeworkView('parent-plan');
+            showHomeworkView('parent-selection');
         } else {
-            showHomeworkView('homework-home');
+            // L'enseignant accède DIRECTEMENT à son espace enseignant
+            showHomeworkView('homework-teacher');
         }
         loadHomeworkShowcase();
         loadTeachersContactGrid();
@@ -1862,7 +1888,11 @@ function switchMainTab(tab) {
 function showHomeworkView(viewName) {
     if (isParentMode && viewName === 'homework-teacher') {
         displayAlert("Accès réservé uniquement aux enseignants.", true);
-        viewName = 'parent-plan';
+        viewName = 'parent-selection';
+    }
+    if (!isParentMode && (viewName === 'parent-plan' || viewName === 'parent-selection' || viewName === 'student-dashboard')) {
+        // Un enseignant connecté ne navigue pas dans les vues réservées aux parents
+        viewName = 'homework-teacher';
     }
     const views = ['homework-home', 'parent-selection', 'student-dashboard', 'homework-teacher', 'parent-plan'];
     views.forEach(v => {
@@ -1874,6 +1904,10 @@ function showHomeworkView(viewName) {
         loadParentWeeklyPlan();
     } else if (viewName === 'homework-teacher') {
         loadTeacherHomeworksDashboard();
+    } else if (viewName === 'parent-selection') {
+        const activeClassBtn = document.querySelector('#parent-class-buttons button.active');
+        const defaultClass = activeClassBtn ? activeClassBtn.textContent.trim().split(' ')[0] : 'PEI1';
+        loadClassStudents(defaultClass || 'PEI1');
     }
 }
 
@@ -1918,9 +1952,10 @@ function enterParentSpaceWithSection(section) {
     updateSectionBadges();
     applyParentLanguageUI();
     
-    // Basculer vers le portail devoirs/parents
+    // Basculer vers le portail devoirs/parents sur l'écran d'accueil du Suivi des Élèves
     switchMainTab('devoirs');
-    showHomeworkView('parent-plan');
+    showHomeworkView('parent-selection');
+    loadClassStudents('PEI1');
     loadTeachersContactGrid();
     loadHomeworkShowcase();
 }
@@ -1968,6 +2003,29 @@ function populateParentWeekSelector() {
 
 let parentRawPlanData = [];
 let parentRawClassNotes = {};
+let parentActiveDay = 'Dimanche';
+const schoolDaysList = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
+
+function setParentActiveDay(dayName) {
+    parentActiveDay = dayName;
+    const classSelect = document.getElementById('parentClassSelector');
+    if (!classSelect || !parentRawPlanData) return;
+    
+    const selectedClass = classSelect.value || 'PEI1';
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+    const classRows = parentRawPlanData.filter(row => {
+        const classVal = getRowField(row, 'Classe');
+        return classVal && norm(classVal) === norm(selectedClass);
+    });
+    renderParentPlanCards(classRows);
+}
+
+function changeParentActiveDay(offset) {
+    let idx = schoolDaysList.indexOf(parentActiveDay);
+    if (idx === -1) idx = 0;
+    idx = (idx + offset + schoolDaysList.length) % schoolDaysList.length;
+    setParentActiveDay(schoolDaysList[idx]);
+}
 
 async function loadParentWeeklyPlan() {
     try {
@@ -2087,7 +2145,6 @@ async function loadParentWeeklyPlan() {
 
 function renderParentPlanCards(rows) {
     const container = document.getElementById('parentPlanDisplayContainer');
-    const dayFilter = document.getElementById('parentDaySelector')?.value || 'all';
     const t = parentI18n[currentUserLanguage] || parentI18n.fr;
     
     if (!container) return;
@@ -2102,62 +2159,113 @@ function renderParentPlanCards(rows) {
         return;
     }
     
-    const dayOrder = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
-    
     // Grouper par jour
     const grouped = {};
     rows.forEach(r => {
         const dayVal = getRowField(r, 'Jour');
         const standardDay = normalizeDayName(dayVal) || extractDayName(dayVal) || dayVal;
-        if (standardDay && dayOrder.includes(standardDay)) {
+        if (standardDay && schoolDaysList.includes(standardDay)) {
             if (!grouped[standardDay]) grouped[standardDay] = [];
             grouped[standardDay].push(r);
         } else {
-            // Si le nom du jour n'est pas standardisé, l'ajouter quand même au premier jour valide ou direct
-            const fallbackDay = dayOrder.find(d => String(dayVal).toLowerCase().includes(d.toLowerCase())) || "Dimanche";
+            const fallbackDay = schoolDaysList.find(d => String(dayVal).toLowerCase().includes(d.toLowerCase())) || "Dimanche";
             if (!grouped[fallbackDay]) grouped[fallbackDay] = [];
             grouped[fallbackDay].push(r);
         }
     });
     
-    let html = '';
+    if (!schoolDaysList.includes(parentActiveDay)) {
+        parentActiveDay = 'Dimanche';
+    }
     
-    dayOrder.forEach(dayName => {
-        if (dayFilter !== 'all' && dayFilter !== dayName) return;
-        
-        const dayRows = grouped[dayName];
-        if (!dayRows || dayRows.length === 0) return;
-        
-        dayRows.sort((a, b) => {
-            const pA = parseInt(getRowField(a, 'Période'), 10) || 0;
-            const pB = parseInt(getRowField(b, 'Période'), 10) || 0;
-            return pA - pB;
-        });
-        
-        const weekStartDateNode = getDateForDayName(dayName);
-        let formattedDayDate = weekStartDateNode ? formatDateForDisplay(weekStartDateNode) : dayName;
-        if (currentUserLanguage === 'ar') {
-            const arDay = t.daysMap[dayName] || dayName;
-            formattedDayDate = `${arDay} ${weekStartDateNode ? `(${weekStartDateNode.getUTCDate()}/${weekStartDateNode.getUTCMonth() + 1})` : ''}`;
-        }
-        
-        html += `
-            <div class="parent-day-card" style="background:white; border-radius:18px; box-shadow:0 4px 20px rgba(0,0,0,0.06); border:1px solid #E2E8F0; overflow:hidden;">
-                <div style="background:linear-gradient(135deg, #1E1B4B, #312E81); color:white; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <div style="font-size:1.2rem; font-weight:700; display:flex; align-items:center; gap:10px;">
-                        <i class="fas fa-calendar-day" style="color:#10B981;"></i>
-                        <span>${formattedDayDate}</span>
+    // Barre de navigation des 5 jours
+    let daysNavHtml = `
+        <div style="background:white; border-radius:16px; padding:14px 18px; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px;">
+            <button type="button" class="pro-button" onclick="changeParentActiveDay(-1)" style="padding:10px 18px; font-weight:700;">
+                <i class="fas fa-chevron-left"></i> <span>${t.prevDay}</span>
+            </button>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center;">
+    `;
+    
+    schoolDaysList.forEach(day => {
+        const isActive = (day === parentActiveDay);
+        const dayLabel = (currentUserLanguage === 'ar') ? (t.daysMap[day] || day) : day;
+        const count = (grouped[day] || []).length;
+        daysNavHtml += `
+            <button type="button" class="pro-button ${isActive ? 'primary-button active' : ''}" onclick="setParentActiveDay('${day}')" style="padding:10px 18px; font-size:1rem; font-weight:700; border-radius:12px; transition:all 0.2s ease; ${isActive ? 'box-shadow:0 4px 12px rgba(59,130,246,0.35); transform:scale(1.03);' : 'background:#F8FAFC; color:#334155; border:1px solid #CBD5E1;'}">
+                <span>${dayLabel}</span>
+                <span style="font-size:0.75rem; padding:2px 7px; border-radius:10px; margin-left:6px; margin-right:6px; background:${isActive ? 'rgba(255,255,255,0.25)' : '#E2E8F0'}; color:${isActive ? 'white' : '#475569'};">${count}</span>
+            </button>
+        `;
+    });
+    
+    daysNavHtml += `
+            </div>
+            <button type="button" class="pro-button" onclick="changeParentActiveDay(1)" style="padding:10px 18px; font-weight:700;">
+                <span>${t.nextDay}</span> <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    `;
+    
+    // Récupérer et trier les cours du jour sélectionné
+    const currentDayRows = grouped[parentActiveDay] || [];
+    currentDayRows.sort((a, b) => {
+        const pA = parseInt(getRowField(a, 'Période'), 10) || 0;
+        const pB = parseInt(getRowField(b, 'Période'), 10) || 0;
+        return pA - pB;
+    });
+    
+    const weekStartDateNode = getDateForDayName(parentActiveDay);
+    let formattedDayDate = weekStartDateNode ? formatDateForDisplay(weekStartDateNode) : parentActiveDay;
+    if (currentUserLanguage === 'ar') {
+        const arDay = t.daysMap[parentActiveDay] || parentActiveDay;
+        formattedDayDate = `${arDay} ${weekStartDateNode ? `(${weekStartDateNode.getUTCDate()}/${weekStartDateNode.getUTCMonth() + 1})` : ''}`;
+    }
+    
+    let tableHtml = '';
+    
+    if (currentDayRows.length === 0) {
+        tableHtml = `
+            <div style="background:white; border-radius:16px; padding:45px 20px; text-align:center; border:1px dashed #CBD5E1; box-shadow:0 4px 18px rgba(0,0,0,0.04);">
+                <i class="fas fa-calendar-day fa-3x" style="color:#94A3B8; margin-bottom:12px;"></i>
+                <h4 style="font-size:1.15rem; color:#334155; margin:0 0 6px 0;">${t.noCoursesFound}</h4>
+                <p style="color:#64748B; font-size:0.95rem; margin:0;">${currentUserLanguage === 'ar' ? `لا توجد حصص مجدولة ليوم ${formattedDayDate}.` : `Aucun cours planifié pour ${formattedDayDate}.`}</p>
+            </div>
+        `;
+    } else {
+        tableHtml = `
+            <div class="parent-day-table-card" style="background:white; border-radius:18px; box-shadow:0 6px 24px rgba(0,0,0,0.06); border:1px solid #E2E8F0; overflow:hidden;">
+                <!-- En-tête du jour -->
+                <div style="background:linear-gradient(135deg, #1E1B4B, #312E81); color:white; padding:18px 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div style="font-size:1.25rem; font-weight:800; display:flex; align-items:center; gap:10px;">
+                        <i class="fas fa-calendar-check" style="color:#10B981;"></i>
+                        <span>${currentUserLanguage === 'ar' ? 'جدول حصص يوم' : 'Tableau des cours du'} : ${formattedDayDate}</span>
                     </div>
-                    <span style="background:rgba(255,255,255,0.15); padding:4px 12px; border-radius:20px; font-size:0.85rem; font-weight:600;">
-                        ${dayRows.length} ${t.sessionsCount}
+                    <span style="background:rgba(255,255,255,0.18); padding:6px 14px; border-radius:20px; font-size:0.9rem; font-weight:700;">
+                        ${currentDayRows.length} ${t.sessionsCount}
                     </span>
                 </div>
                 
-                <div style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+                <!-- Tableau des cours -->
+                <div style="overflow-x:auto; padding:10px;">
+                    <table style="width:100%; border-collapse:separate; border-spacing:0; min-width:850px;">
+                        <thead>
+                            <tr style="background:#F1F5F9; color:#1E1B4B; font-size:0.95rem; font-weight:700;">
+                                <th style="padding:14px 12px; border-bottom:2px solid #CBD5E1; text-align:center; width:90px;">${t.colPeriod || 'Période'}</th>
+                                <th style="padding:14px 14px; border-bottom:2px solid #CBD5E1; text-align:${currentUserLanguage === 'ar' ? 'right' : 'left'}; width:200px;">${t.colSubjectTeacher || 'Matière & Enseignant'}</th>
+                                <th style="padding:14px 14px; border-bottom:2px solid #CBD5E1; text-align:${currentUserLanguage === 'ar' ? 'right' : 'left'};">${t.colLesson || 'Leçon & Sujet'}</th>
+                                <th style="padding:14px 14px; border-bottom:2px solid #CBD5E1; text-align:${currentUserLanguage === 'ar' ? 'right' : 'left'};">${t.colClassWork || 'Travail de classe'}</th>
+                                <th style="padding:14px 14px; border-bottom:2px solid #CBD5E1; text-align:${currentUserLanguage === 'ar' ? 'right' : 'left'}; width:240px; background:#ECFDF5; color:#065F46;">
+                                    <i class="fas fa-pen-fancy"></i> ${t.colHomework || 'Devoirs à la maison'}
+                                </th>
+                                <th style="padding:14px 12px; border-bottom:2px solid #CBD5E1; text-align:center; width:100px;">${t.colSupport || 'Supports'}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
         `;
         
-        dayRows.forEach(row => {
-            const period = getRowField(row, 'Période') || '-';
+        currentDayRows.forEach((row, idx) => {
+            const period = getRowField(row, 'Période') || (idx + 1);
             const matiere = getRowField(row, 'Matière') || 'Matière';
             const enseignant = getRowField(row, 'Enseignant') || '';
             const lecon = getRowField(row, 'Leçon') || '';
@@ -2167,82 +2275,67 @@ function renderParentPlanCards(rows) {
             
             const isLessonEmpty = !lecon || String(lecon).trim() === '';
             const isHomeworkEmpty = !devoirs || String(devoirs).trim() === '';
+            const bgRow = (idx % 2 === 0) ? '#FFFFFF' : '#F8FAFC';
             
-            html += `
-                <div class="parent-course-item" style="border:1px solid #E5E7EB; border-radius:14px; padding:18px; background:#FAFAFA; transition:all 0.2s ease;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #E5E7EB;">
-                        <div style="display:flex; align-items:center; gap:10px;">
-                            <span style="background:#EEF2FF; color:#4F46E5; font-weight:800; padding:6px 12px; border-radius:8px; font-size:0.9rem;">
-                                ${t.periodLabel} ${escapeHtml(period)}
-                            </span>
-                            <h4 style="margin:0; color:#1E1B4B; font-size:1.15rem; font-weight:700;">${escapeHtml(matiere)}</h4>
-                        </div>
+            tableHtml += `
+                <tr style="background:${bgRow}; border-bottom:1px solid #E2E8F0; vertical-align:middle; transition:background 0.2s ease;">
+                    <!-- Période -->
+                    <td style="padding:16px 12px; border-bottom:1px solid #E2E8F0; text-align:center;">
+                        <span style="background:#EEF2FF; color:#4338CA; font-weight:800; padding:6px 12px; border-radius:10px; font-size:0.95rem; display:inline-block;">
+                            ${period}
+                        </span>
+                    </td>
+                    
+                    <!-- Matière & Enseignant -->
+                    <td style="padding:16px 14px; border-bottom:1px solid #E2E8F0;">
+                        <div style="font-weight:800; color:#1E1B4B; font-size:1.05rem; margin-bottom:4px;">${escapeHtml(matiere)}</div>
                         ${enseignant ? `
-                            <button type="button" onclick="openContactTeacherModal('${escapeHtml(enseignant).replace(/'/g, "\\'")}')" class="teacher-direct-msg-btn" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:6px 12px; border-radius:10px; font-size:0.88rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all 0.2s ease;">
-                                <i class="fas fa-chalkboard-teacher" style="color:#6366F1;"></i>
+                            <button type="button" onclick="openContactTeacherModal('${escapeHtml(enseignant).replace(/'/g, "\\'")}')" class="teacher-direct-msg-btn" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:4px 10px; border-radius:8px; font-size:0.82rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; margin-top:2px;">
+                                <i class="fas fa-chalkboard-teacher"></i>
                                 <span>${escapeHtml(enseignant)}</span>
-                                <span style="font-size:0.75rem; background:#4338CA; color:white; padding:2px 6px; border-radius:6px; margin-left:4px;">✉️ ${currentUserLanguage === 'ar' ? 'تواصل' : 'Message'}</span>
+                                <span style="background:#4338CA; color:white; padding:1px 5px; border-radius:4px; font-size:0.75rem;">✉️</span>
                             </button>
                         ` : ''}
-                    </div>
+                    </td>
                     
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
-                        <!-- Leçon / Sujet du cours -->
-                        <div style="background:white; padding:12px 16px; border-radius:10px; border:1px solid #E2E8F0;">
-                            <div style="font-size:0.82rem; font-weight:700; color:#6B7280; margin-bottom:4px;">
-                                <i class="fas fa-book-reader" style="color:#3B82F6;"></i> ${t.lessonTopic}
-                            </div>
-                            <div style="font-size:0.98rem; font-weight:600; color:${isLessonEmpty ? '#9CA3AF' : '#1F2937'};">
-                                ${isLessonEmpty ? `<i>${currentUserLanguage === 'ar' ? 'غير مسجل' : 'Non renseigné'}</i>` : escapeHtml(lecon)}
-                            </div>
-                        </div>
-                        
-                        <!-- Travail de classe -->
-                        <div style="background:white; padding:12px 16px; border-radius:10px; border:1px solid #E2E8F0;">
-                            <div style="font-size:0.82rem; font-weight:700; color:#6B7280; margin-bottom:4px;">
-                                <i class="fas fa-tasks" style="color:#8B5CF6;"></i> ${t.classWork}
-                            </div>
-                            <div style="font-size:0.95rem; color:#374151;">
-                                ${travaux && String(travaux).trim() !== '' ? escapeHtml(travaux) : `<i>${currentUserLanguage === 'ar' ? 'تمارين وأنشطة صفية' : 'Exercices et activités en classe'}</i>`}
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Leçon / Sujet -->
+                    <td style="padding:16px 14px; border-bottom:1px solid #E2E8F0; font-size:0.98rem; line-height:1.5; color:${isLessonEmpty ? '#94A3B8' : '#1E293B'}; font-weight:${isLessonEmpty ? '400' : '600'};">
+                        ${isLessonEmpty ? `<i>${currentUserLanguage === 'ar' ? 'غير مسجل' : 'Non renseigné'}</i>` : escapeHtml(lecon)}
+                    </td>
                     
-                    <!-- Devoirs à la maison (Design vert pro) -->
-                    <div style="margin-top:12px; background:${isHomeworkEmpty ? '#F9FAFB' : '#ECFDF5'}; border:1px solid ${isHomeworkEmpty ? '#E5E7EB' : '#A7F3D0'}; padding:12px 16px; border-radius:10px; color:${isHomeworkEmpty ? '#6B7280' : '#065F46'}; font-weight:600;">
-                        <div style="font-size:0.85rem; font-weight:800; color:${isHomeworkEmpty ? '#9CA3AF' : '#059669'}; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-                            <i class="fas fa-pen-fancy"></i> ${t.homeWork}
-                        </div>
-                        <div style="font-size:0.98rem; color:${isHomeworkEmpty ? '#9CA3AF' : '#064E3B'}; font-weight:${isHomeworkEmpty ? '400' : '700'};">
-                            ${isHomeworkEmpty ? t.noHomework : escapeHtml(devoirs)}
-                        </div>
-                    </div>
+                    <!-- Travaux de classe -->
+                    <td style="padding:16px 14px; border-bottom:1px solid #E2E8F0; font-size:0.95rem; line-height:1.5; color:#334155;">
+                        ${travaux && String(travaux).trim() !== '' ? escapeHtml(travaux) : `<span style="color:#94A3B8;">-</span>`}
+                    </td>
                     
-                    ${support && String(support).trim() !== '' ? `
-                        <div style="margin-top:10px; font-size:0.88rem; color:#2563EB; font-weight:600;">
-                            <i class="fas fa-link" style="margin-right:5px;"></i> ${t.supportLinks} <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="color:#2563EB; text-decoration:underline;">${escapeHtml(support)}</a>
+                    <!-- Devoirs à la maison -->
+                    <td style="padding:16px 14px; border-bottom:1px solid #E2E8F0; background:${isHomeworkEmpty ? 'inherit' : '#F0FDF4'};">
+                        <div style="font-size:0.98rem; font-weight:${isHomeworkEmpty ? '400' : '700'}; color:${isHomeworkEmpty ? '#94A3B8' : '#065F46'}; line-height:1.4;">
+                            ${isHomeworkEmpty ? `<span style="color:#94A3B8;">${t.noHomework}</span>` : `<div style="display:flex; align-items:flex-start; gap:6px;"><i class="fas fa-check" style="color:#10B981; margin-top:4px;"></i> <span>${escapeHtml(devoirs)}</span></div>`}
                         </div>
-                    ` : ''}
-                </div>
+                    </td>
+                    
+                    <!-- Support / Liens -->
+                    <td style="padding:16px 12px; border-bottom:1px solid #E2E8F0; text-align:center;">
+                        ${support && String(support).trim() !== '' ? `
+                            <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; padding:6px 10px; border-radius:8px; font-size:0.85rem; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                                <i class="fas fa-external-link-alt"></i> <span>Ouvrir</span>
+                            </a>
+                        ` : `<span style="color:#CBD5E1;">-</span>`}
+                    </td>
+                </tr>
             `;
         });
         
-        html += `
+        tableHtml += `
+                        </tbody>
+                    </table>
                 </div>
             </div>
         `;
-    });
-    
-    if (!html) {
-        container.innerHTML = `
-            <div style="text-align:center; padding:40px; background:white; border-radius:16px; border:1px dashed #CBD5E1;">
-                <i class="fas fa-calendar-day fa-3x" style="color:#9CA3AF; margin-bottom:12px;"></i>
-                <p style="color:#6B7280; font-size:1.05rem; font-weight:600; margin:0;">${t.noCoursesFound}</p>
-            </div>
-        `;
-    } else {
-        container.innerHTML = html;
     }
+    
+    container.innerHTML = daysNavHtml + tableHtml;
 }
 
 function filterParentPlanByDay() {
@@ -2340,23 +2433,41 @@ async function loadClassStudents(className) {
     try {
         const section = currentSection || 'garcons';
         const grid = document.getElementById('students-grid');
-        if (grid) grid.innerHTML = '<p style="grid-column: 1/-1;">Chargement des élèves...</p>';
+        if (grid) grid.innerHTML = '<p style="grid-column: 1/-1; text-align:center; padding:30px; color:#64748B;"><i class="fas fa-spinner fa-spin"></i> Chargement des élèves...</p>';
+
+        // Mettre à jour l'état actif des boutons de classe
+        const classBtns = document.querySelectorAll('#parent-class-buttons button');
+        classBtns.forEach(btn => {
+            if (btn.getAttribute('onclick')?.includes(`'${className}'`)) {
+                btn.classList.add('primary-button');
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('primary-button');
+                btn.classList.remove('active');
+            }
+        });
 
         const res = await fetch(`/api/admin/students?class=${className}&section=${section}`);
         if (res.ok) {
             const students = await res.json();
             if (grid) {
                 if (!students || students.length === 0) {
-                    grid.innerHTML = '<p style="grid-column: 1/-1;">Aucun élève trouvé pour cette classe.</p>';
+                    grid.innerHTML = `<p style="grid-column: 1/-1; text-align:center; padding:40px; background:white; border-radius:16px; color:#6B7280; font-weight:600; border:1px dashed #CBD5E1;"><i class="fas fa-user-slash fa-2x" style="display:block; margin-bottom:10px; color:#9CA3AF;"></i> Aucun élève enregistré pour la classe ${className} (${section === 'garcons' ? 'Garçons 👦' : 'Filles 👧'}).</p>`;
                     return;
                 }
-                grid.innerHTML = students.map(s => `
-                    <div class="teacher-contact-card" onclick="openStudentDashboard('${s.name}', '${className}')">
-                        <img src="${s.photo || 'https://via.placeholder.com/100'}" class="teacher-contact-photo" alt="${s.name}" onerror="this.src='https://via.placeholder.com/100'">
-                        <h4 style="margin:5px 0; color:#1e1b4b;">${s.name}</h4>
-                        <p style="margin:0; font-size:0.85em; color:#6B7280;">${s.birthday ? 'Né(e) en ' + s.birthday : className}</p>
-                    </div>
-                `).join('');
+                const fallbackAvatar = getStudentFallbackAvatar(section);
+                grid.innerHTML = students.map(s => {
+                    const photoSrc = (s.photo && s.photo.trim() !== '') ? s.photo : fallbackAvatar;
+                    return `
+                        <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapeHtml(s.name).replace(/'/g, "\\'")}', '${className}')" style="background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.3s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px;">
+                            <div style="position:relative; width:96px; height:96px; margin:0 auto 12px auto;">
+                                <img src="${photoSrc}" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(s.name)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${section === 'garcons' ? '#3B82F6' : '#EC4899'}; background:#F8FAFC; display:block; margin:0 auto;">
+                            </div>
+                            <h4 style="margin:6px 0 4px 0; color:#1E1B4B; font-size:1.05rem; font-weight:700; line-height:1.3; text-align:center;">${escapeHtml(s.name)}</h4>
+                            <span style="font-size:0.85rem; font-weight:600; color:#6B7280; background:#F1F5F9; padding:3px 10px; border-radius:12px; margin-top:4px;">${s.birthday ? '🎂 ' + s.birthday : className}</span>
+                        </div>
+                    `;
+                }).join('');
             }
         }
     } catch (e) {
@@ -2370,18 +2481,25 @@ async function openStudentDashboard(studentName, className) {
         showHomeworkView('student-dashboard');
 
         const section = currentSection || 'garcons';
-        document.getElementById('student-profile-name').innerText = studentName;
-        document.getElementById('student-profile-details').innerText = `Classe: ${className} | Section: ${section === 'garcons' ? 'Garçons 👦' : 'Filles 👧'}`;
+        const fallbackAvatar = getStudentFallbackAvatar(section);
+        const nameEl = document.getElementById('student-profile-name');
+        const detailsEl = document.getElementById('student-profile-details');
+        const photoEl = document.getElementById('student-profile-photo');
 
-        // Récupérer photo
+        if (nameEl) nameEl.innerText = studentName;
+        if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : 'Filles 👧'}`;
+        if (photoEl) {
+            photoEl.src = fallbackAvatar;
+            photoEl.onerror = function() { this.src = fallbackAvatar; };
+        }
+
+        // Récupérer photo réelle si disponible
         const stRes = await fetch(`/api/admin/students?class=${className}&section=${section}`);
         if (stRes.ok) {
             const stList = await stRes.json();
             const matched = stList.find(s => s.name === studentName);
-            if (matched && matched.photo) {
-                document.getElementById('student-profile-photo').src = matched.photo;
-            } else {
-                document.getElementById('student-profile-photo').src = 'https://via.placeholder.com/100';
+            if (matched && matched.photo && matched.photo.trim() !== '') {
+                if (photoEl) photoEl.src = matched.photo;
             }
         }
 
