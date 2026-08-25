@@ -1492,12 +1492,47 @@
             console.log("État appli réinitialisé après logout.");
         }
 
-        // --- Fonctions Admin de Gestion des Utilisateurs ---
+        // --- Fonctions Admin de Gestion des Onglets et Utilisateurs ---
+        function switchAdminTab(tabName) {
+            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports'];
+            tabs.forEach(t => {
+                const contentEl = document.getElementById(`adminTab_${t}`);
+                const btnEl = document.getElementById(`tabBtn_${t}`);
+                if (contentEl) {
+                    contentEl.style.display = (t === tabName) ? 'block' : 'none';
+                }
+                if (btnEl) {
+                    if (t === tabName) {
+                        btnEl.classList.add('active');
+                    } else {
+                        btnEl.classList.remove('active');
+                    }
+                }
+            });
+
+            if (tabName === 'teachers') {
+                const filterEl = document.getElementById('adminSectionFilter');
+                if (filterEl && (!filterEl.value || filterEl.value === '')) {
+                    filterEl.value = currentSection || 'garcons';
+                }
+                loadAdminUsersList();
+            } else if (tabName === 'calendar') {
+                populateAdminWeekSelectToEdit();
+                renderAdminWeeksTable();
+            } else if (tabName === 'students') {
+                loadAdminStudentsList();
+            } else if (tabName === 'reports') {
+                populateAdminReportClassSelector();
+            } else if (tabName === 'upload') {
+                populateAdminUploadWeekSelector();
+            }
+        }
+
         let allAdminUsersCache = [];
 
         async function loadAdminUsersList() {
             const filterEl = document.getElementById('adminSectionFilter');
-            const targetSection = filterEl ? filterEl.value : currentSection;
+            const targetSection = (filterEl && filterEl.value) ? filterEl.value : (currentSection || 'garcons');
             const container = document.getElementById('usersTableContainer');
             if (!container) return;
             

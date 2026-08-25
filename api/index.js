@@ -885,7 +885,7 @@ app.get('/api/admin/users', async (req, res) => {
     const existingUserMap = new Map();
     users.forEach(u => existingUserMap.set(u.username, u));
 
-    const completeList = [];
+    let completeList = [];
     for (const teacherName of defaultList) {
       const uId = `${section}_${teacherName}`;
       if (deletedUserIds.has(uId)) continue;
