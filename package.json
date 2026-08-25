@@ -6,7 +6,8 @@
   "scripts": {
     "build": "echo 'Build complete'",
     "start": "node api/index.js",
-    "dev": "node api/index.js"
+    "dev": "node api/index.js",
+    "lint": "node -c api/index.js"
   },
   "dependencies": {
     "@google/genai": "latest",
