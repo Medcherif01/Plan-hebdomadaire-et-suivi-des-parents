@@ -823,6 +823,12 @@ app.post('/api/login', async (req, res) => {
       return res.status(200).json({ success: true, username: 'Med01', role: 'admin', section, language: 'fr' });
     }
 
+    // Compte Administrateur / Superviseur Racha (Racha avec mot de passe Racha@90)
+    if ((trimmedUsername.toLowerCase() === 'racha') && password === 'Racha@90') {
+      console.log('[LOGIN] Authentification Administratrice Racha réussie');
+      return res.status(200).json({ success: true, username: 'Racha', role: 'supervisor', section, language: 'fr' });
+    }
+
     const userId = `${section}_${trimmedUsername}`;
 
     // 1. Vérifier si l'utilisateur a été supprimé par l'administrateur
@@ -2209,6 +2215,122 @@ app.get('/api/get-conversation', async (req, res) => {
   }
 });
 
+// ============================================================================
+// ROUTES ADMIN : SUPERVISION DE TOUS LES MESSAGES ENSEIGNANTS - PARENTS
+// ============================================================================
+app.get('/api/admin/all-messages', async (req, res) => {
+  try {
+    const { section, teacherName, search } = req.query;
+    const db = await connectToDatabase();
+    
+    let query = {};
+    if (section && section !== 'all') {
+      query.section = section;
+    }
+    if (teacherName && teacherName !== 'all') {
+      query.teacherName = teacherName;
+    }
+    if (search && search.trim() !== '') {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { teacherName: searchRegex },
+        { parentName: searchRegex },
+        { parentPhone: searchRegex },
+        { message: searchRegex }
+      ];
+    }
+    
+    const messages = await db.collection('teacher_messages').find(query).sort({ createdAt: -1 }).toArray();
+    
+    // Récupérer toutes les réponses associées à ces messages
+    const messageIds = messages.map(m => String(m._id));
+    const replies = await db.collection('teacher_replies').find({ messageId: { $in: messageIds } }).sort({ createdAt: 1 }).toArray();
+    
+    const repliesMap = {};
+    replies.forEach(rep => {
+      if (!repliesMap[rep.messageId]) repliesMap[rep.messageId] = [];
+      repliesMap[rep.messageId].push(rep);
+    });
+    
+    const enrichedMessages = messages.map(m => ({
+      ...m,
+      replies: repliesMap[String(m._id)] || []
+    }));
+    
+    res.status(200).json({ success: true, total: enrichedMessages.length, messages: enrichedMessages });
+  } catch (error) {
+    console.error('Erreur GET /api/admin/all-messages:', error);
+    res.status(500).json({ success: false, error: error.message, messages: [] });
+  }
+});
+
+app.delete('/api/admin/delete-message/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, error: 'ID requis' });
+    const db = await connectToDatabase();
+    const objId = new (require('mongodb').ObjectId)(id);
+    await db.collection('teacher_messages').deleteOne({ _id: objId });
+    await db.collection('teacher_replies').deleteMany({ messageId: id });
+    res.status(200).json({ success: true, message: 'Message et réponses supprimés avec succès.' });
+  } catch (error) {
+    console.error('Erreur DELETE /api/admin/delete-message:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// ROUTES ADMIN : GESTION DE LA PUBLICATION ET AUTORISATION DES PLANS AUX PARENTS
+// ============================================================================
+app.get('/api/plan-publication-status', async (req, res) => {
+  try {
+    const { section } = req.query;
+    const db = await connectToDatabase();
+    let query = {};
+    if (section && section !== 'all') {
+      query.section = section;
+    }
+    const list = await db.collection('published_plans').find(query).toArray();
+    res.status(200).json({ success: true, publishedPlans: list });
+  } catch (error) {
+    console.error('Erreur GET /api/plan-publication-status:', error);
+    res.status(500).json({ success: false, publishedPlans: [] });
+  }
+});
+
+app.post('/api/admin/toggle-plan-publication', async (req, res) => {
+  try {
+    const { week, section, published, updatedBy } = req.body;
+    const weekNumber = parseInt(week, 10);
+    if (isNaN(weekNumber) || !section) {
+      return res.status(400).json({ success: false, error: 'Semaine ou section invalide.' });
+    }
+    const db = await connectToDatabase();
+    const docId = `${section}_${weekNumber}`;
+    const isPub = Boolean(published);
+    
+    await db.collection('published_plans').updateOne(
+      { _id: docId },
+      {
+        $set: {
+          week: weekNumber,
+          section: section,
+          published: isPub,
+          updatedAt: new Date(),
+          updatedBy: updatedBy || 'Admin'
+        }
+      },
+      { upsert: true }
+    );
+    
+    console.log(`📢 [PUBLICATION] Semaine S${weekNumber} (${section}) -> ${isPub ? 'PUBLIÉE AUX PARENTS' : 'MASQUÉE'}`);
+    res.status(200).json({ success: true, week: weekNumber, section, published: isPub });
+  } catch (error) {
+    console.error('Erreur POST /api/admin/toggle-plan-publication:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/translate-text', async (req, res) => {
   try {
     const { text, targetLang } = req.body;
@@ -2371,13 +2493,20 @@ app.get('/api/plans/:week', async (req, res) => {
         return row;
       });
       
+      // Vérifier si le plan a été explicitement autorisé / publié pour les parents par l'admin
+      const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
+      const isPublishedToParents = pubDoc ? Boolean(pubDoc.published) : false;
+
       res.status(200).json({ 
           planData: enrichedData, 
           classNotes: planDocument.classNotes || {},
-          availableWeeklyPlans: availableWeeklyPlans
+          availableWeeklyPlans: availableWeeklyPlans,
+          isPublishedToParents: isPublishedToParents
       });
     } else {
-      res.status(200).json({ planData: [], classNotes: {}, availableWeeklyPlans: [] });
+      const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
+      const isPublishedToParents = pubDoc ? Boolean(pubDoc.published) : false;
+      res.status(200).json({ planData: [], classNotes: {}, availableWeeklyPlans: [], isPublishedToParents });
     }
   } catch (error) {
     console.error('Erreur MongoDB /plans/:week:', error);

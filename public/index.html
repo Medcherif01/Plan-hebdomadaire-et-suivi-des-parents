@@ -275,6 +275,12 @@
                  <button type="button" class="admin-tab-btn" onclick="switchAdminTab('reports')" id="tabBtn_reports">
                      <i class="fas fa-file-invoice"></i> <span>5. Rapports de Direction</span>
                  </button>
+                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('messages')" id="tabBtn_messages">
+                     <i class="fas fa-comments"></i> <span>6. Messages Enseignants & Parents</span>
+                 </button>
+                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('publication')" id="tabBtn_publication">
+                     <i class="fas fa-bullhorn"></i> <span>7. Publication Plans aux Parents</span>
+                 </button>
              </div>
 
              <!-- ONGLET 1 : IMPORT EXCEL DES PLANS HEBDOMADAIRES -->
@@ -567,8 +573,103 @@
                      </div>
                  </div>
              </div>
+
+             <!-- ONGLET 6 : SUPERVISION DES MESSAGES ENSEIGNANTS - PARENTS -->
+             <div id="adminTab_messages" class="admin-tab-content" style="display:none; width:100%;">
+                 <div class="admin-card-inner">
+                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                         <div>
+                             <h4 style="margin:0; color:#1E1B4B; display:flex; align-items:center; gap:8px;">
+                                 <i class="fas fa-comments" style="color:#2563EB;"></i> Suivi des Échanges & Messages Enseignants - Parents
+                             </h4>
+                             <p class="admin-subtext" style="margin:4px 0 0 0;">Visualisez en temps réel l'ensemble des questions des parents et des réponses des enseignants.</p>
+                         </div>
+                         <button type="button" class="pro-button" onclick="loadAdminAllMessages()" style="background:#F1F5F9; color:#1E293B; font-weight:700; border:1px solid #CBD5E1;">
+                             <i class="fas fa-sync-alt"></i> Actualiser les messages
+                         </button>
+                     </div>
+
+                     <!-- STATISTIQUES RÉSUMÉES -->
+                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:18px;">
+                         <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px; padding:12px 16px;">
+                             <div style="font-size:0.8rem; font-weight:700; color:#1D4ED8; text-transform:uppercase;">Total Messages</div>
+                             <div id="adminMsgTotalCount" style="font-size:1.6rem; font-weight:900; color:#1E3A8A; margin-top:2px;">0</div>
+                         </div>
+                         <div style="background:#ECFDF5; border:1px solid #A7F3D0; border-radius:12px; padding:12px 16px;">
+                             <div style="font-size:0.8rem; font-weight:700; color:#047857; text-transform:uppercase;">Messages Répondus</div>
+                             <div id="adminMsgRepliedCount" style="font-size:1.6rem; font-weight:900; color:#065F46; margin-top:2px;">0</div>
+                         </div>
+                         <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; padding:12px 16px;">
+                             <div style="font-size:0.8rem; font-weight:700; color:#B45309; text-transform:uppercase;">En Attente de Réponse</div>
+                             <div id="adminMsgPendingCount" style="font-size:1.6rem; font-weight:900; color:#92400E; margin-top:2px;">0</div>
+                         </div>
+                     </div>
+
+                     <!-- FILTRES DE RECHERCHE ET SECTION -->
+                     <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:14px; margin-bottom:16px; display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                         <div style="flex:1; min-width:180px;">
+                             <label style="font-size:0.85rem; font-weight:700; color:#475569; display:block; margin-bottom:4px;"><i class="fas fa-venus-mars"></i> Section :</label>
+                             <select id="adminMsgSectionFilter" onchange="loadAdminAllMessages()" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                                 <option value="all">Toutes les sections</option>
+                                 <option value="garcons">👦 Section Garçons</option>
+                                 <option value="filles">👧 Section Filles</option>
+                                 <option value="primaire">👶🎒 Primaire & Maternelle</option>
+                             </select>
+                         </div>
+                         <div style="flex:1.5; min-width:220px;">
+                             <label style="font-size:0.85rem; font-weight:700; color:#475569; display:block; margin-bottom:4px;"><i class="fas fa-search"></i> Recherche Rapide :</label>
+                             <input type="text" id="adminMsgSearchInput" oninput="filterAdminMessagesLocally()" placeholder="Parent, Enseignant, Téléphone, Contenu..." style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-size:0.9rem;">
+                         </div>
+                     </div>
+
+                     <!-- LISTE DES CONVERSATIONS -->
+                     <div id="adminMessagesListContainer" style="display:flex; flex-direction:column; gap:12px;">
+                         <div style="text-align:center; padding:30px; color:#64748B;">
+                             <i class="fas fa-spinner fa-spin fa-2x"></i>
+                             <p style="margin-top:8px;">Chargement des messages...</p>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+
+             <!-- ONGLET 7 : AUTORISATION & PUBLICATION DES PLANS AUX PARENTS -->
+             <div id="adminTab_publication" class="admin-tab-content" style="display:none; width:100%;">
+                 <div class="admin-card-inner">
+                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                         <div>
+                             <h4 style="margin:0; color:#065F46; display:flex; align-items:center; gap:8px;">
+                                 <i class="fas fa-bullhorn" style="color:#10B981;"></i> Autorisation & Publication des Plans aux Parents
+                             </h4>
+                             <p class="admin-subtext" style="margin:4px 0 0 0;">Le plan hebdomadaire n'est affiché aux parents que lorsque vous l'autorisez explicitement.</p>
+                         </div>
+                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                             <button type="button" class="pro-button success-button" onclick="bulkPublishAllWeeks(true)" style="padding:8px 14px; font-size:0.88rem;">
+                                 <i class="fas fa-check-double"></i> Tout Publier (S1-S38)
+                             </button>
+                             <button type="button" class="pro-button secondary-button" onclick="bulkPublishAllWeeks(false)" style="padding:8px 14px; font-size:0.88rem;">
+                                 <i class="fas fa-eye-slash"></i> Tout Masquer
+                             </button>
+                         </div>
+                     </div>
+
+                     <div style="background:#ECFDF5; border:1.5px solid #10B981; border-radius:12px; padding:12px 16px; margin-bottom:18px; display:flex; align-items:center; gap:12px;">
+                         <i class="fas fa-shield-alt fa-2x" style="color:#10B981;"></i>
+                         <div style="font-size:0.9rem; color:#065F46; line-height:1.4;">
+                             <strong>Sécurité & Confidentialité :</strong> Tant qu'une semaine est marquée <span style="background:#EF4444; color:white; padding:1px 6px; border-radius:4px; font-weight:700;">Masqué 🔒</span>, les parents qui consultent cette semaine voient un message officiel les informant que le plan est en cours de validation par la direction.
+                         </div>
+                     </div>
+
+                     <div id="adminPlanPublicationGrid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px;">
+                         <!-- Grille dynamique générée par loadAdminPublicationStatus() -->
+                     </div>
+                 </div>
+             </div>
         </div>
         <div class="filter-container main-actions-container">
+            <!-- BOUTON POUR TOUS LES ENSEIGNANTS : TÉLÉCHARGER LE PLAN COMPLET PAR CLASSE (WORD) -->
+            <button id="generateFullClassWordBtn" onclick="openFullClassWordModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #1E40AF, #2563EB); color: white; border: none; font-weight: 700; box-shadow: 0 4px 12px rgba(37,99,235,0.25);">
+                 <i class="fas fa-file-word"></i> <span class="btn-text">📄 Télécharger Plan Complet par Classe (Word)</span>
+            </button>
             <button id="generateWordBtn" onclick="generateWordByClasse()" class="action-button pro-button" disabled>
                  <i class="fas fa-file-word"></i> <span class="btn-text">Générer Word par Classe</span>
             </button>
@@ -950,7 +1051,10 @@
                                     Enseignant connecté : <strong id="teacherEvalActiveName" style="color:#93C5FD;">--</strong> | Section : <strong id="teacherEvalActiveSection" style="color:#A7F3D0;">--</strong>
                                 </p>
                             </div>
-                            <div id="teacherEvaluationStats" style="display:flex; gap:12px; flex-wrap:wrap;">
+                            <div id="teacherEvaluationStats" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                                <button type="button" class="pro-button" onclick="openFullClassWordModal()" style="background:#2563EB; color:white; font-weight:700; border:none; padding:10px 16px; border-radius:10px; box-shadow:0 4px 12px rgba(37,99,235,0.4); display:flex; align-items:center; gap:8px;">
+                                    <i class="fas fa-file-word"></i> <span>Télécharger Plan Complet (Word)</span>
+                                </button>
                                 <div style="background:rgba(255,255,255,0.12); padding:8px 16px; border-radius:10px; text-align:center;">
                                     <div style="font-size:1.3rem; font-weight:800; color:#60A5FA;" id="statTotalHw">0</div>
                                     <div style="font-size:0.75rem; color:#E2E8F0; text-transform:uppercase;">Total Devoirs</div>
@@ -1264,6 +1368,46 @@
             <button type="button" class="pro-button secondary-button" onclick="closeParentSectionModal()" style="margin-top:20px; width:100%; padding:10px;">
                 Annuler
             </button>
+        </div>
+    </div>
+
+    <!-- MODAL TÉLÉCHARGEMENT PLAN COMPLET WORD PAR CLASSE (POUR TOUS LES ENSEIGNANTS) -->
+    <div id="fullClassWordModal" class="hw-modal" style="display:none; z-index:99999;">
+        <div class="hw-modal-content" style="max-width:520px; border-radius:20px; padding:28px; background:white; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+            <span class="hw-close-modal" onclick="closeFullClassWordModal()">&times;</span>
+            <h3 style="margin-top:0; color:#1E1B4B; display:flex; align-items:center; gap:10px; font-size:1.3rem;">
+                <i class="fas fa-file-word" style="color:#2563EB;"></i> <span>Télécharger le Plan Hebdomadaire Complet</span>
+            </h3>
+            <p style="color:#64748B; font-size:0.92rem; margin-bottom:20px; line-height:1.4;">
+                Téléchargez le document Word (.docx) officiel complet pour la classe sélectionnée (contenant toutes les matières et tous les enseignants).
+            </p>
+
+            <div style="margin-bottom:16px;">
+                <label style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                    <i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine du Plan :
+                </label>
+                <select id="modalWordWeekSelector" style="width:100%; padding:10px 14px; border-radius:10px; border:2px solid #CBD5E1; font-weight:700; background:#F8FAFC; font-size:0.95rem;">
+                    <!-- Rempli dynamiquement 1..38 -->
+                </select>
+            </div>
+
+            <div style="margin-bottom:24px;">
+                <label style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                    <i class="fas fa-chalkboard-user" style="color:#2563EB;"></i> Classe à Exporter :
+                </label>
+                <select id="modalWordClassSelector" style="width:100%; padding:10px 14px; border-radius:10px; border:2px solid #CBD5E1; font-weight:700; background:#F8FAFC; font-size:0.95rem;">
+                    <!-- Rempli dynamiquement avec les classes de la section -->
+                </select>
+            </div>
+
+            <div style="display:flex; gap:12px; justify-content:flex-end;">
+                <button type="button" class="pro-button secondary-button" onclick="closeFullClassWordModal()" style="padding:10px 18px;">
+                    Annuler
+                </button>
+                <button type="button" id="btnExecuteWordDownload" class="pro-button primary-button" onclick="executeFullClassWordDownload()" style="padding:10px 24px; font-weight:700; background:linear-gradient(135deg, #1E40AF, #2563EB); border:none; box-shadow:0 4px 12px rgba(37,99,235,0.3);">
+                    <i class="fas fa-download"></i> <span id="btnExecuteWordText">Télécharger Word (.docx)</span>
+                </button>
+            </div>
         </div>
     </div>
     <script src="notifications.js"></script>

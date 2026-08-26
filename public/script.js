@@ -1457,8 +1457,10 @@
             }
         }
 
-        function initializeApp(username, customLang) {
+        function initializeApp(username, customLang, role) {
             loggedInUser = username;
+            currentUserRole = role || localStorage.getItem('userRole') || (username === 'Med01' ? 'admin' : (username === 'Racha' ? 'supervisor' : 'teacher'));
+            localStorage.setItem('userRole', currentUserRole);
             
             if (customLang && ['fr', 'ar', 'en'].includes(customLang)) {
                 currentUserLanguage = customLang;
@@ -1475,7 +1477,7 @@
                 }
             }
             
-            console.log(`Initialisation pour ${loggedInUser} (Section: ${currentSection}, Lang: ${currentUserLanguage})`);
+            console.log(`Initialisation pour ${loggedInUser} (Role: ${currentUserRole}, Section: ${currentSection}, Lang: ${currentUserLanguage})`);
             
             // Mode enseignant/admin actif (verrouillage de la section choisie et restriction espace parent)
             applyParentUIMode(false);
@@ -1488,16 +1490,52 @@
             updateSectionBadges();
             applyLanguageSettings();
             
-            document.getElementById('loggedInUserInfo').textContent = t('connected_as', { user: loggedInUser });
+            const roleBadge = currentUserRole === 'admin' ? ' [Administrateur Principal]' : (currentUserRole === 'supervisor' ? ' [Superviseur Direction]' : '');
+            document.getElementById('loggedInUserInfo').textContent = t('connected_as', { user: loggedInUser }) + roleBadge;
             
-            const isAdminUser = (loggedInUser === 'Med01');
-            if (isAdminUser) { 
+            const isAdminUser = (currentUserRole === 'admin' || loggedInUser === 'Med01');
+            const isSupervisorUser = (currentUserRole === 'supervisor' || loggedInUser === 'Racha');
+            const hasAdminAccess = isAdminUser || isSupervisorUser;
+
+            if (hasAdminAccess) { 
                 const adminActionsEl = document.getElementById('admin-actions');
                 if (adminActionsEl) adminActionsEl.style.display = 'block';
-                populateAdminUploadWeekSelector();
-                switchAdminTab('upload');
+
+                const tabUpload = document.getElementById('tabBtn_upload');
+                const tabTeachers = document.getElementById('tabBtn_teachers');
+                const tabCalendar = document.getElementById('tabBtn_calendar');
+                const tabStudents = document.getElementById('tabBtn_students');
+                const tabReports = document.getElementById('tabBtn_reports');
+                const tabMessages = document.getElementById('tabBtn_messages');
+                const tabPublication = document.getElementById('tabBtn_publication');
+
+                if (isSupervisorUser && !isAdminUser) {
+                    // Masquer pour Racha les 5 boutons spécifiés
+                    if (tabUpload) tabUpload.style.display = 'none';
+                    if (tabTeachers) tabTeachers.style.display = 'none';
+                    if (tabCalendar) tabCalendar.style.display = 'none';
+                    if (tabStudents) tabStudents.style.display = 'none';
+                    if (tabReports) tabReports.style.display = 'none';
+                    if (tabMessages) tabMessages.style.display = 'inline-flex';
+                    if (tabPublication) tabPublication.style.display = 'inline-flex';
+
+                    switchAdminTab('messages');
+                } else {
+                    // Admin Med01 voit l'ensemble des 7 onglets
+                    if (tabUpload) tabUpload.style.display = 'inline-flex';
+                    if (tabTeachers) tabTeachers.style.display = 'inline-flex';
+                    if (tabCalendar) tabCalendar.style.display = 'inline-flex';
+                    if (tabStudents) tabStudents.style.display = 'inline-flex';
+                    if (tabReports) tabReports.style.display = 'inline-flex';
+                    if (tabMessages) tabMessages.style.display = 'inline-flex';
+                    if (tabPublication) tabPublication.style.display = 'inline-flex';
+
+                    populateAdminUploadWeekSelector();
+                    switchAdminTab('upload');
+                }
+
                 const lessonPlanGen = document.getElementById('lesson-plan-generator');
-                if (lessonPlanGen) lessonPlanGen.style.display = 'flex';
+                if (lessonPlanGen) lessonPlanGen.style.display = isAdminUser ? 'flex' : 'none';
             } else {
                 const adminActionsEl = document.getElementById('admin-actions');
                 if (adminActionsEl) adminActionsEl.style.display = 'none';
@@ -1592,6 +1630,9 @@
                 if (response.ok && result.success) {
                     localStorage.setItem('loggedInUser', result.username);
                     localStorage.setItem('authVersion', AUTH_VERSION.toString());
+                    if (result.role) {
+                        localStorage.setItem('userRole', result.role);
+                    }
                     if (result.language) {
                         localStorage.setItem('userLanguage', result.language);
                     }
@@ -1599,11 +1640,12 @@
                         currentSection = result.section;
                         localStorage.setItem('selectedSection', result.section);
                     }
-                    initializeApp(result.username, result.language);
+                    initializeApp(result.username, result.language, result.role);
                 } else {
                     errorDiv.textContent = result.message || "Échec connexion.";
                     errorDiv.style.display = 'block';
                     localStorage.removeItem('loggedInUser');
+                    localStorage.removeItem('userRole');
                 }
             } catch (error) {
                 console.error("Erreur connexion fetch:", error);
@@ -1624,10 +1666,12 @@
         function handleLogout() {
             console.log("Déconnexion par:", loggedInUser);
             localStorage.removeItem('loggedInUser');
+            localStorage.removeItem('userRole');
             localStorage.removeItem('authVersion');
             localStorage.removeItem('userLanguage');
             
             loggedInUser = null;
+            currentUserRole = null;
             currentWeek = null;
             planData = [];
             headers = [];
@@ -1654,9 +1698,9 @@
             console.log("État appli réinitialisé après logout.");
         }
 
-        // --- Fonctions Admin de Gestion des Onglets et Utilisateurs ---
+        // --- Fonctions Admin de Gestion des Onglets et Supervision ---
         function switchAdminTab(tabName) {
-            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports'];
+            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication'];
             tabs.forEach(t => {
                 const contentEl = document.getElementById(`adminTab_${t}`);
                 const btnEl = document.getElementById(`tabBtn_${t}`);
@@ -1682,11 +1726,15 @@
                 populateAdminWeekSelectToEdit();
                 renderAdminWeeksTable();
             } else if (tabName === 'students') {
-                loadAdminStudentsList();
+                if (typeof loadAdminStudentsList === 'function') loadAdminStudentsList();
             } else if (tabName === 'reports') {
                 populateAdminReportClassSelector();
             } else if (tabName === 'upload') {
                 populateAdminUploadWeekSelector();
+            } else if (tabName === 'messages') {
+                loadAdminAllMessages();
+            } else if (tabName === 'publication') {
+                loadAdminPublicationStatus();
             }
         }
 
@@ -2296,6 +2344,31 @@ async function loadParentWeeklyPlan() {
         }
         
         const data = await res.json();
+
+        // Contrôle de publication admin : si non publié, afficher le message officiel aux parents
+        if (data.isPublishedToParents === false) {
+            container.innerHTML = `
+                <div style="background:white; border:2px solid #F59E0B; border-radius:18px; padding:35px 25px; text-align:center; box-shadow:0 6px 20px rgba(0,0,0,0.06); max-width:700px; margin:20px auto;">
+                    <div style="width:70px; height:70px; background:#FEF3C7; color:#D97706; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px auto; font-size:2rem;">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <h3 style="color:#1E1B4B; margin:0 0 10px 0; font-size:1.35rem; font-weight:800;">
+                        Plan Hebdomadaire en Cours de Validation
+                    </h3>
+                    <p style="color:#64748B; font-size:0.98rem; line-height:1.6; margin:0 0 16px 0;">
+                        Le plan hebdomadaire de la <strong>Semaine ${selectedWeek}</strong> pour la <strong>Section ${secLabel}</strong> est en cours de révision et de finalisation par la direction pédagogique.<br>
+                        Il sera consultable dès sa publication officielle par l'administration.
+                    </p>
+                    <div style="display:inline-flex; align-items:center; gap:8px; background:#EFF6FF; border:1px solid #BFDBFE; color:#1D4ED8; padding:8px 16px; border-radius:10px; font-weight:600; font-size:0.9rem;">
+                        <i class="fas fa-info-circle"></i> Vous pouvez consulter les semaines précédentes déjà publiées via le sélecteur ci-dessus.
+                    </div>
+                </div>
+            `;
+            if (statusBanner) statusBanner.innerHTML = '';
+            if (notesBox) notesBox.style.display = 'none';
+            return;
+        }
+
         let fetchedData = data.planData || [];
         
         // Double sécurité : filtrer les enseignants des autres sections
@@ -4185,4 +4258,450 @@ async function loadTeacherHomeworks() {
 
 async function saveTeacherEvaluations(className, dateStr) {
     submitCurrentHomeworkEvaluation();
+}
+
+// ==========================================
+// 1. MODULE SUPERVISION DES MESSAGES (ADMIN)
+// ==========================================
+let allAdminMessagesCache = [];
+
+async function loadAdminAllMessages() {
+    const container = document.getElementById('adminMessagesListContainer');
+    const secFilter = document.getElementById('adminMsgSectionFilter');
+    const totalCountEl = document.getElementById('adminMsgTotalCount');
+    const repliedCountEl = document.getElementById('adminMsgRepliedCount');
+    const pendingCountEl = document.getElementById('adminMsgPendingCount');
+
+    if (!container) return;
+
+    container.innerHTML = `
+        <div style="text-align:center; padding:35px; color:#64748B;">
+            <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:10px;"></i>
+            <p style="font-weight:600; margin:0;">Chargement de tous les échanges enseignants - parents...</p>
+        </div>
+    `;
+
+    const section = secFilter ? secFilter.value : 'all';
+    try {
+        const res = await fetch(`/api/admin/all-messages?section=${section}&adminUser=${encodeURIComponent(loggedInUser || 'Admin')}`);
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+        const data = await res.json();
+        allAdminMessagesCache = data.messages || [];
+
+        // Mise à jour des compteurs statistiques
+        if (totalCountEl) totalCountEl.textContent = (data.stats && data.stats.total !== undefined) ? data.stats.total : allAdminMessagesCache.length;
+        if (repliedCountEl) repliedCountEl.textContent = (data.stats && data.stats.replied !== undefined) ? data.stats.replied : allAdminMessagesCache.filter(m => m.replies && m.replies.length > 0).length;
+        if (pendingCountEl) pendingCountEl.textContent = (data.stats && data.stats.pending !== undefined) ? data.stats.pending : allAdminMessagesCache.filter(m => !m.replies || m.replies.length === 0).length;
+
+        renderAdminMessagesList(allAdminMessagesCache);
+    } catch (err) {
+        console.error('Erreur loadAdminAllMessages:', err);
+        container.innerHTML = `<div style="background:#FEE2E2; color:#991B1B; padding:15px; border-radius:10px; font-weight:600; text-align:center;">Erreur de chargement: ${err.message}</div>`;
+    }
+}
+
+function filterAdminMessagesLocally() {
+    const searchVal = (document.getElementById('adminMsgSearchInput')?.value || '').toLowerCase().trim();
+    if (!searchVal) {
+        renderAdminMessagesList(allAdminMessagesCache);
+        return;
+    }
+
+    const filtered = allAdminMessagesCache.filter(m => {
+        const parentName = (m.parentName || '').toLowerCase();
+        const teacherName = (m.teacherName || '').toLowerCase();
+        const phone = (m.parentPhone || '').toLowerCase();
+        const msg = (m.message || '').toLowerCase();
+        const replies = (m.replies || []).map(r => (r.message || '') + ' ' + (r.senderName || '')).join(' ').toLowerCase();
+        return parentName.includes(searchVal) || teacherName.includes(searchVal) || phone.includes(searchVal) || msg.includes(searchVal) || replies.includes(searchVal);
+    });
+
+    renderAdminMessagesList(filtered);
+}
+
+function renderAdminMessagesList(messages) {
+    const container = document.getElementById('adminMessagesListContainer');
+    if (!container) return;
+
+    if (!messages || messages.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:40px; background:#F8FAFC; border:1px dashed #CBD5E1; border-radius:14px; color:#64748B;">
+                <i class="fas fa-inbox fa-3x" style="color:#CBD5E1; margin-bottom:12px;"></i>
+                <h4 style="margin:0 0 6px 0; color:#334155;">Aucun message trouvé</h4>
+                <p style="margin:0; font-size:0.9rem;">Aucun échange ne correspond aux filtres actuels.</p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    messages.forEach(msg => {
+        const hasReplies = msg.replies && msg.replies.length > 0;
+        const statusBadge = hasReplies
+            ? `<span style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;"><i class="fas fa-check-circle"></i> Répondu (${msg.replies.length})</span>`
+            : `<span style="background:#FFFBEB; color:#B45309; border:1px solid #FDE68A; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;"><i class="fas fa-clock"></i> En attente de réponse</span>`;
+
+        const secBadge = msg.section === 'garcons'
+            ? `<span style="background:#EFF6FF; color:#1D4ED8; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;">👦 Garçons</span>`
+            : (msg.section === 'filles'
+                ? `<span style="background:#FDF2F8; color:#BE185D; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;">👧 Filles</span>`
+                : `<span style="background:#ECFDF5; color:#047857; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;">👶 Primaire</span>`);
+
+        const dateStr = msg.createdAt ? new Date(msg.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'Date inconnue';
+
+        let repliesHtml = '';
+        if (hasReplies) {
+            repliesHtml = `
+                <div style="margin-top:12px; padding-top:12px; border-top:1px dashed #E2E8F0;">
+                    <div style="font-size:0.8rem; font-weight:700; color:#475569; margin-bottom:8px; text-transform:uppercase;">
+                        <i class="fas fa-reply"></i> Réponses de l'enseignant (${msg.replies.length}) :
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+            `;
+            msg.replies.forEach(rep => {
+                const repDate = rep.createdAt ? new Date(rep.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+                repliesHtml += `
+                    <div style="background:#F0FDF4; border:1px solid #DCFCE7; border-radius:8px; padding:10px 14px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                            <strong style="color:#166534; font-size:0.88rem;"><i class="fas fa-user-check"></i> ${escapeHtml(rep.senderName || msg.teacherName || 'Enseignant')}</strong>
+                            <span style="color:#65A30D; font-size:0.75rem;">${repDate}</span>
+                        </div>
+                        <div style="color:#1E293B; font-size:0.92rem; line-height:1.4;">${escapeHtml(rep.message)}</div>
+                    </div>
+                `;
+            });
+            repliesHtml += `</div></div>`;
+        }
+
+        html += `
+            <div style="background:white; border:1px solid #E2E8F0; border-radius:14px; padding:16px 20px; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        ${secBadge}
+                        ${statusBadge}
+                        <span style="font-size:0.8rem; color:#64748B;"><i class="far fa-calendar-alt"></i> ${dateStr}</span>
+                    </div>
+                    <button type="button" onclick="deleteAdminMessage('${msg._id}')" class="pro-button danger-button" style="padding:4px 10px; font-size:0.75rem;" title="Supprimer ce message">
+                        <i class="fas fa-trash-alt"></i> Supprimer
+                    </button>
+                </div>
+
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:10px; background:#F8FAFC; padding:10px 14px; border-radius:10px;">
+                    <div>
+                        <div style="font-size:0.75rem; color:#64748B; font-weight:700; text-transform:uppercase;">Parent Émetteur</div>
+                        <div style="font-weight:700; color:#1E293B; font-size:0.95rem;">👤 ${escapeHtml(msg.parentName || 'Parent')}</div>
+                        ${msg.parentPhone ? `<div style="font-size:0.82rem; color:#2563EB;"><i class="fas fa-phone-alt"></i> <a href="tel:${msg.parentPhone}" style="color:#2563EB; text-decoration:none;">${escapeHtml(msg.parentPhone)}</a></div>` : ''}
+                    </div>
+                    <div>
+                        <div style="font-size:0.75rem; color:#64748B; font-weight:700; text-transform:uppercase;">Enseignant Destinataire</div>
+                        <div style="font-weight:700; color:#1E293B; font-size:0.95rem;">👨‍🏫 ${escapeHtml(msg.teacherName || 'Enseignant')}</div>
+                    </div>
+                </div>
+
+                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:10px; padding:12px 14px; color:#1E293B; font-size:0.95rem; line-height:1.5;">
+                    <div style="font-size:0.78rem; font-weight:700; color:#475569; margin-bottom:4px; text-transform:uppercase;">Message du Parent :</div>
+                    ${escapeHtml(msg.message)}
+                </div>
+
+                ${repliesHtml}
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+async function deleteAdminMessage(msgId) {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer définitivement ce message ?")) return;
+    try {
+        const res = await fetch(`/api/admin/delete-message/${msgId}?adminUser=${encodeURIComponent(loggedInUser || 'Admin')}`, {
+            method: 'DELETE'
+        });
+        const result = await res.json();
+        if (res.ok && result.success) {
+            displayAlert("Message supprimé avec succès.", false);
+            loadAdminAllMessages();
+        } else {
+            throw new Error(result.message || "Erreur lors de la suppression");
+        }
+    } catch (err) {
+        console.error("Erreur deleteAdminMessage:", err);
+        displayAlert("Erreur suppression: " + err.message, true);
+    }
+}
+
+// ===============================================
+// 2. MODULE PUBLICATION DES PLANS HEBDO (ADMIN)
+// ===============================================
+let adminPublicationStatusMap = {};
+
+async function loadAdminPublicationStatus() {
+    const grid = document.getElementById('adminPlanPublicationGrid');
+    if (!grid) return;
+
+    grid.innerHTML = `
+        <div style="grid-column:1/-1; text-align:center; padding:35px; color:#64748B;">
+            <i class="fas fa-spinner fa-spin fa-2x" style="color:#10B981; margin-bottom:10px;"></i>
+            <p style="font-weight:600; margin:0;">Chargement des statuts d'autorisation et de publication...</p>
+        </div>
+    `;
+
+    try {
+        const section = currentSection || 'garcons';
+        const res = await fetch(`/api/plan-publication-status?section=${section}`);
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+        const data = await res.json();
+        adminPublicationStatusMap = data.statusMap || {};
+
+        renderAdminPublicationGrid(section);
+    } catch (err) {
+        console.error('Erreur loadAdminPublicationStatus:', err);
+        grid.innerHTML = `<div style="grid-column:1/-1; color:red; padding:15px; text-align:center;">Erreur: ${err.message}</div>`;
+    }
+}
+
+function renderAdminPublicationGrid(section) {
+    const grid = document.getElementById('adminPlanPublicationGrid');
+    if (!grid) return;
+
+    let html = '';
+    const currentW = getCurrentWeekNumber() || 1;
+
+    for (let w = 1; w <= 38; w++) {
+        const isPublished = (adminPublicationStatusMap[w] !== false);
+        const isCurrent = (w === currentW);
+
+        const cardBg = isPublished ? '#F0FDF4' : '#FEF2F2';
+        const borderColor = isPublished ? '#86EFAC' : '#FECACA';
+        const statusText = isPublished ? 'Publié aux Parents ✅' : 'Masqué aux Parents 🔒';
+        const statusColor = isPublished ? '#15803D' : '#B91C1C';
+
+        const btnBg = isPublished ? '#EF4444' : '#10B981';
+        const btnText = isPublished ? '🔒 Masquer aux Parents' : '✅ Autoriser & Publier';
+
+        html += `
+            <div style="background:${cardBg}; border:1.5px solid ${borderColor}; border-radius:14px; padding:14px 16px; display:flex; flex-direction:column; justify-content:space-between; gap:10px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <strong style="font-size:1.05rem; color:#1E1B4B;">Semaine ${w}</strong>
+                        ${isCurrent ? '<span style="background:#3B82F6; color:white; font-size:0.7rem; font-weight:700; padding:2px 6px; border-radius:6px;">Actuelle</span>' : ''}
+                    </div>
+                    <span style="font-size:0.8rem; font-weight:700; color:${statusColor};">${statusText}</span>
+                </div>
+                <div style="font-size:0.8rem; color:#64748B; line-height:1.4;">
+                    ${isPublished ? 'Visible par les parents dans leur espace.' : 'Masqué (les parents voient le message de validation).'}
+                </div>
+                <button type="button" onclick="togglePlanPublication(${w}, '${section}', ${!isPublished})" class="pro-button" style="background:${btnBg}; color:white; border:none; padding:8px 12px; font-size:0.85rem; font-weight:700; border-radius:8px; width:100%; cursor:pointer;">
+                    ${btnText}
+                </button>
+            </div>
+        `;
+    }
+
+    grid.innerHTML = html;
+}
+
+async function togglePlanPublication(weekNumber, section, newStatus) {
+    try {
+        const res = await fetch('/api/admin/toggle-plan-publication', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                weekNumber,
+                section,
+                isPublishedToParents: newStatus,
+                adminUser: loggedInUser || 'Admin'
+            })
+        });
+        const result = await res.json();
+        if (res.ok && result.success) {
+            adminPublicationStatusMap[weekNumber] = newStatus;
+            renderAdminPublicationGrid(section);
+            displayAlert(`Semaine ${weekNumber} : ${newStatus ? 'Publiée aux parents avec succès !' : 'Masquée aux parents avec succès.'}`, false);
+        } else {
+            throw new Error(result.message || "Erreur mise à jour statut");
+        }
+    } catch (err) {
+        console.error("Erreur togglePlanPublication:", err);
+        displayAlert("Erreur: " + err.message, true);
+    }
+}
+
+async function bulkPublishAllWeeks(status) {
+    const confirmMsg = status
+        ? "Voulez-vous autoriser et publier toutes les semaines (1 à 38) pour les parents ?"
+        : "Voulez-vous masquer toutes les semaines (1 à 38) pour les parents ?";
+    if (!confirm(confirmMsg)) return;
+
+    showProgressBar();
+    updateProgressBar(0);
+    const section = currentSection || 'garcons';
+    let count = 0;
+
+    for (let w = 1; w <= 38; w++) {
+        try {
+            await fetch('/api/admin/toggle-plan-publication', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    weekNumber: w,
+                    section,
+                    isPublishedToParents: status,
+                    adminUser: loggedInUser || 'Admin'
+                })
+            });
+            adminPublicationStatusMap[w] = status;
+            count++;
+        } catch (e) {
+            console.error(`Erreur publication semaine ${w}:`, e);
+        }
+        updateProgressBar(Math.round((w / 38) * 100));
+    }
+
+    hideProgressBar();
+    renderAdminPublicationGrid(section);
+    displayAlert(`Opération terminée : ${count}/38 semaines ${status ? 'publiées' : 'masquées'}.`, false);
+}
+
+// =========================================================
+// 3. MODULE TÉLÉCHARGEMENT PLAN COMPLET PAR CLASSE (WORD)
+// =========================================================
+function openFullClassWordModal() {
+    const modal = document.getElementById('fullClassWordModal');
+    const weekSel = document.getElementById('modalWordWeekSelector');
+    const classSel = document.getElementById('modalWordClassSelector');
+    if (!modal) return;
+
+    if (weekSel) {
+        weekSel.innerHTML = '';
+        const curWeek = currentWeek || getCurrentWeekNumber() || 1;
+        for (let i = 1; i <= 38; i++) {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = `Semaine ${i}` + (i == curWeek ? ' (Semaine active)' : '');
+            if (i == curWeek) opt.selected = true;
+            weekSel.appendChild(opt);
+        }
+    }
+
+    if (classSel) {
+        classSel.innerHTML = '';
+        const classes = getSectionClasses(currentSection || 'garcons');
+        classes.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            classSel.appendChild(opt);
+        });
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeFullClassWordModal() {
+    const modal = document.getElementById('fullClassWordModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, section) {
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+    const classRows = (rawPlanData || []).filter(row => {
+        const classVal = getRowField(row, 'Classe') || row['Classe'] || row['classe'];
+        return classVal && norm(classVal) === norm(selectedClass);
+    });
+
+    if (classRows.length === 0) {
+        throw new Error(`Aucune donnée de cours trouvée pour la classe ${selectedClass} en Semaine ${weekNum}.`);
+    }
+
+    const notes = (weeklyClassNotes && weeklyClassNotes[selectedClass]) || "";
+
+    const payload = {
+        week: Number(weekNum),
+        classe: selectedClass,
+        data: classRows,
+        notes: notes
+    };
+
+    const res = await fetch('/api/generate-word', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+        const errData = await res.json().catch(() => ({ message: `Erreur serveur ${res.status}` }));
+        throw new Error(errData.message || `Erreur génération Word (${res.status})`);
+    }
+
+    const blob = await res.blob();
+    const cd = res.headers.get('content-disposition');
+    let filename = `plan_hebdo_S${weekNum}_${selectedClass.replace(/[^a-zA-Z0-9]/g, '_')}.docx`;
+    if (cd) {
+        const m = cd.match(/filename="?(.+?)"?(;|$)/i);
+        if (m && m[1]) filename = m[1];
+    }
+
+    if (typeof saveAs === 'function') {
+        saveAs(blob, filename);
+    } else {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }
+}
+
+async function executeFullClassWordDownload() {
+    const weekSel = document.getElementById('modalWordWeekSelector');
+    const classSel = document.getElementById('modalWordClassSelector');
+    const btn = document.getElementById('btnExecuteWordDownload');
+    const btnText = document.getElementById('btnExecuteWordText');
+
+    const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
+    const selectedClass = classSel ? classSel.value : '';
+
+    if (!selectedClass) {
+        alert("Veuillez sélectionner une classe.");
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        if (btnText) btnText.textContent = "Génération Word en cours...";
+    }
+
+    try {
+        const section = currentSection || 'garcons';
+        displayAlert(`Chargement du plan de la Semaine ${selectedWeek} pour la classe ${selectedClass}...`, false);
+
+        const res = await fetch(`/api/plans/${selectedWeek}?section=${section}`);
+        if (!res.ok) throw new Error(`Erreur lors du chargement (${res.status})`);
+        const data = await res.json();
+        const fullPlanData = data.planData || [];
+
+        if (fullPlanData.length === 0) {
+            alert(`Aucune donnée de plan enregistrée pour la Semaine ${selectedWeek}.`);
+            return;
+        }
+
+        displayAlert(`Génération du document Word officiel pour ${selectedClass}...`, false);
+        await exportClasseToWordDocx(selectedClass, fullPlanData, selectedWeek, section);
+        displayAlert(`✅ Téléchargement du plan Word complet pour ${selectedClass} réussi !`, false);
+        closeFullClassWordModal();
+    } catch (err) {
+        console.error("Erreur executeFullClassWordDownload:", err);
+        alert("Erreur lors de la génération du document Word: " + err.message);
+        displayAlert("Erreur génération Word: " + err.message, true);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            if (btnText) btnText.textContent = "Télécharger Word (.docx)";
+        }
+    }
 }
