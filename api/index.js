@@ -832,11 +832,10 @@ app.post('/api/login', async (req, res) => {
     }
 
     // 2. Contrôle de section strict (enseignantes / enseignants / primaire)
-    const primNames = primaireTeachers.map(t => t.username);
-    if (section === 'garcons' && (femaleTeachers.includes(trimmedUsername) || primNames.includes(trimmedUsername))) {
+    if (section === 'garcons' && (femaleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername))) {
       return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Garçons.` });
     }
-    if (section === 'filles' && (maleTeachers.includes(trimmedUsername) || primNames.includes(trimmedUsername))) {
+    if (section === 'filles' && (maleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername))) {
       return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Filles.` });
     }
     if (section === 'primaire' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername))) {
@@ -919,11 +918,10 @@ app.get('/api/admin/users', async (req, res) => {
     }
 
     // Ajouter les utilisateurs personnalisés ajoutés par l'admin qui ne sont pas dans defaultList
-    const primTNames = primaireTeachers.map(t => t.username);
     for (const u of users) {
       if (!deletedUserIds.has(u._id) && !defaultList.includes(u.username)) {
-        if (section === 'garcons' && (femaleTeachers.includes(u.username) || primTNames.includes(u.username))) continue;
-        if (section === 'filles' && (maleTeachers.includes(u.username) || primTNames.includes(u.username))) continue;
+        if (section === 'garcons' && (femaleTeachers.includes(u.username) || primaireTeachers.includes(u.username))) continue;
+        if (section === 'filles' && (maleTeachers.includes(u.username) || primaireTeachers.includes(u.username))) continue;
         if (section === 'primaire' && (maleTeachers.includes(u.username) || femaleTeachers.includes(u.username))) continue;
         completeList.push(u);
       }
@@ -931,9 +929,9 @@ app.get('/api/admin/users', async (req, res) => {
 
     // Filtre de sécurité strict par section
     if (section === 'garcons') {
-      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && !primTNames.some(p => p.toLowerCase() === u.username.toLowerCase()));
+      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()));
     } else if (section === 'filles') {
-      completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !primTNames.some(p => p.toLowerCase() === u.username.toLowerCase()));
+      completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()));
     } else if (section === 'primaire') {
       completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()));
     }
@@ -2341,12 +2339,20 @@ app.get('/api/plans/:week', async (req, res) => {
       if (section === 'garcons') {
         rawData = rawData.filter(row => {
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
-          return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
+          return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase()) &&
+                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase());
         });
       } else if (section === 'filles') {
         rawData = rawData.filter(row => {
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
-          return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
+          return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
+                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase());
+        });
+      } else if (section === 'primaire') {
+        rawData = rawData.filter(row => {
+          const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
+          return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
+                 !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
         });
       }
 

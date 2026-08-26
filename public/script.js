@@ -26,8 +26,8 @@
         ];
 
         const primaireTeachersList = [
-            'Mme Sophie', 'Mme Nadia', 'Mme Layla', 'Mme Asma', 'Mme Claire', 
-            'Mme Hajar', 'Mme Rania', 'Mme Ines', 'Mme Sarah P', 'Mme Mona'
+            'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
+            'Salma P', 'Khadija P', 'Aicha', 'Hanane'
         ];
 
         const teachersSectionMap = {
@@ -138,9 +138,61 @@
                 adminStudFilter.value = currentSection;
             }
 
+            // Mettre à jour l'état visuel des boutons commutateurs de section admin
+            document.querySelectorAll('.admin-sec-toggle-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const activeAdminBtn = document.getElementById(`adminSecBtn_${currentSection}`);
+            if (activeAdminBtn) activeAdminBtn.classList.add('active');
+
             // Mettre à jour les sélecteurs de classe pour la section active
             if (typeof renderParentClassButtons === 'function') renderParentClassButtons();
             if (typeof updateClassDropdowns === 'function') updateClassDropdowns();
+        }
+
+        // Basculer la section de travail de l'administrateur sans déconnexion
+        function switchAdminActiveSection(newSection) {
+            if (!newSection) return;
+            
+            currentSection = newSection;
+            localStorage.setItem('selectedSection', newSection);
+            localStorage.setItem('currentSection', newSection);
+            
+            updateSectionBadges();
+            
+            // Mettre à jour les filtres d'onglets de gestion admin
+            const adminFilter = document.getElementById('adminSectionFilter');
+            if (adminFilter) adminFilter.value = newSection;
+            
+            const adminStudFilter = document.getElementById('adminStudentSectionFilter');
+            if (adminStudFilter) adminStudFilter.value = newSection;
+            
+            // Recharger l'onglet admin actuellement actif
+            const activeTabBtn = document.querySelector('.admin-tab-btn.active');
+            const activeTab = activeTabBtn ? activeTabBtn.id.replace('tabBtn_', '') : 'upload';
+            if (activeTab === 'teachers') {
+                loadAdminUsersList();
+            } else if (activeTab === 'students') {
+                if (typeof loadAdminStudentsList === 'function') loadAdminStudentsList();
+            } else if (activeTab === 'reports') {
+                if (typeof populateAdminReportClassSelector === 'function') populateAdminReportClassSelector();
+            }
+            
+            // Recharger le tableau du plan hebdomadaire de la semaine en cours si ouvert
+            if (typeof currentWeek !== 'undefined' && currentWeek) {
+                if (typeof fetchPlanData === 'function') fetchPlanData(currentWeek);
+            }
+            
+            const secLabel = newSection === 'garcons' ? 'Section Garçons 👦' : (newSection === 'primaire' ? 'Section Primaire & Maternelle 👶🎒' : 'Section Filles 👧');
+            displayAlert(`Section active de travail : <strong>${secLabel}</strong> (basculement immédiat)`, false);
+        }
+
+        function cycleAdminSection() {
+            let nextSec = 'garcons';
+            if (currentSection === 'garcons') nextSec = 'filles';
+            else if (currentSection === 'filles') nextSec = 'primaire';
+            else nextSec = 'garcons';
+            switchAdminActiveSection(nextSec);
         }
         
         // Version d'authentification pour forcer la déconnexion
@@ -1992,7 +2044,16 @@ function applyParentUIMode(enabled) {
         if (plansTabBtn) plansTabBtn.style.display = 'inline-block';
         if (goToTeacherBtn) goToTeacherBtn.style.display = 'inline-flex';
         if (goToParentBtn) goToParentBtn.style.display = 'none'; // L'enseignant ne voit pas l'espace parent
-        if (switchSecBtn) switchSecBtn.style.display = 'none'; // Verrouillage de la section pour l'enseignant une fois connecté
+        if (switchSecBtn) {
+            if (loggedInUser === 'Med01') {
+                switchSecBtn.style.display = 'inline-flex';
+                switchSecBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Changer Section';
+                switchSecBtn.onclick = cycleAdminSection;
+                switchSecBtn.title = "Basculer vers une autre section sans vous déconnecter";
+            } else {
+                switchSecBtn.style.display = 'none'; // Verrouillage de la section pour l'enseignant
+            }
+        }
         if (mainTitle) mainTitle.textContent = 'Plans Hebdomadaires';
         if (logoutBtn) {
             logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> <span class="btn-text">Déconnecter</span>';
