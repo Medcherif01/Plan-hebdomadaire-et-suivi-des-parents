@@ -109,6 +109,13 @@
                                 <span class="btn-sub-text">قسم البنين 👦</span>
                             </div>
                         </button>
+                        <button type="button" class="space-section-btn primary-btn" onclick="enterParentSpaceWithSection('primaire')">
+                            <i class="fas fa-shapes"></i>
+                            <div class="btn-labels">
+                                <span class="btn-primary-text">Primaire & Maternelle</span>
+                                <span class="btn-sub-text">الابتدائي والروضة 👶🎒</span>
+                            </div>
+                        </button>
                     </div>
                 </div>
                 <button type="button" class="home-back-btn" onclick="showHomeStep('main')">
@@ -135,6 +142,13 @@
                             <div class="btn-labels">
                                 <span class="btn-primary-text">Section Garçons</span>
                                 <span class="btn-sub-text">قسم البنين 👦</span>
+                            </div>
+                        </button>
+                        <button type="button" class="space-section-btn primary-btn" onclick="chooseSection('primaire')">
+                            <i class="fas fa-shapes"></i>
+                            <div class="btn-labels">
+                                <span class="btn-primary-text">Primaire & Maternelle</span>
+                                <span class="btn-sub-text">الابتدائي والروضة 👶🎒</span>
                             </div>
                         </button>
                     </div>
@@ -261,6 +275,7 @@
                              <select id="adminUploadSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:2px solid #3B82F6; font-weight:700; background:#EFF6FF;">
                                  <option value="garcons">👦 Section Garçons</option>
                                  <option value="filles">👧 Section Filles</option>
+                                 <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
                                  <option value="current">🔄 Section Active en cours</option>
                              </select>
                          </div>
@@ -303,6 +318,7 @@
                              <select id="adminSectionFilter" onchange="loadAdminUsersList()" style="padding:8px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700;">
                                  <option value="garcons">Section Garçons 👦</option>
                                  <option value="filles">Section Filles 👧</option>
+                                 <option value="primaire">Section Primaire & Maternelle 👶🎒</option>
                              </select>
                          </div>
                          <div style="flex:1; max-width:280px;">
@@ -428,6 +444,7 @@
                          <select id="adminStudentSectionFilter" onchange="loadAdminStudentsList()" style="padding:7px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
                              <option value="garcons">Section Garçons 👦</option>
                              <option value="filles">Section Filles 👧</option>
+                             <option value="primaire">Section Primaire & Maternelle 👶🎒</option>
                          </select>
                      </div>
 
@@ -1221,6 +1238,10 @@
                 </button>
                 <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('filles')" style="padding:16px 20px; background:linear-gradient(135deg, #EC4899, #DB2777); color:white; border-radius:14px; font-weight:700; font-size:1.05rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(236,72,153,0.3);">
                     <span><i class="fas fa-venus" style="margin-right:10px; font-size:1.2rem;"></i> Section Filles 👧</span>
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+                <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('primaire')" style="padding:16px 20px; background:linear-gradient(135deg, #10B981, #059669); color:white; border-radius:14px; font-weight:700; font-size:1.05rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(16,185,129,0.3);">
+                    <span><i class="fas fa-shapes" style="margin-right:10px; font-size:1.2rem;"></i> Section Primaire & Maternelle 👶🎒</span>
                     <i class="fas fa-chevron-right"></i>
                 </button>
             </div>

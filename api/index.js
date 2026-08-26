@@ -255,6 +255,11 @@ const femaleTeachers = [
   'Leila', 'Sarah', 'Zohra'
 ];
 
+const primaireTeachers = [
+  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
+  'Salma P', 'Khadija P', 'Aicha', 'Hanane'
+];
+
 const defaultWeeksConfig = {
   1: { title: "Semaine 1", titleAr: "الأسبوع 1", start: "2026-08-30", end: "2026-09-03" },
   2: { title: "Semaine 2", titleAr: "الأسبوع 2", start: "2026-09-06", end: "2026-09-10" },
@@ -826,12 +831,16 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Ce compte a été supprimé par l\'administrateur.' });
     }
 
-    // 2. Contrôle de section strict (enseignantes / enseignants)
-    if (section === 'garcons' && femaleTeachers.includes(trimmedUsername)) {
-      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignante '${trimmedUsername}' appartient à la Section Filles et ne peut pas se connecter à la Section Garçons.` });
+    // 2. Contrôle de section strict (enseignantes / enseignants / primaire)
+    const primNames = primaireTeachers.map(t => t.username);
+    if (section === 'garcons' && (femaleTeachers.includes(trimmedUsername) || primNames.includes(trimmedUsername))) {
+      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Garçons.` });
     }
-    if (section === 'filles' && maleTeachers.includes(trimmedUsername)) {
-      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant '${trimmedUsername}' appartient à la Section Garçons et ne peut pas se connecter à la Section Filles.` });
+    if (section === 'filles' && (maleTeachers.includes(trimmedUsername) || primNames.includes(trimmedUsername))) {
+      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Filles.` });
+    }
+    if (section === 'primaire' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername))) {
+      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Primaire & Maternelle.` });
     }
 
     // 3. Recherche stricte de l'utilisateur dans la base de données (seuls les comptes configurés par l'admin sont acceptés)
@@ -881,7 +890,7 @@ app.get('/api/admin/users', async (req, res) => {
     let users = await db.collection('users').find({ section: section }).toArray();
 
     // Assurer que la liste par défaut des enseignants est visible dans le panel pour configuration facile
-    const defaultList = section === 'filles' ? femaleTeachers : maleTeachers;
+    const defaultList = section === 'filles' ? femaleTeachers : (section === 'primaire' ? primaireTeachers : maleTeachers);
     const existingUserMap = new Map();
     users.forEach(u => existingUserMap.set(u.username, u));
 
@@ -910,19 +919,23 @@ app.get('/api/admin/users', async (req, res) => {
     }
 
     // Ajouter les utilisateurs personnalisés ajoutés par l'admin qui ne sont pas dans defaultList
+    const primTNames = primaireTeachers.map(t => t.username);
     for (const u of users) {
       if (!deletedUserIds.has(u._id) && !defaultList.includes(u.username)) {
-        if (section === 'garcons' && femaleTeachers.includes(u.username)) continue;
-        if (section === 'filles' && maleTeachers.includes(u.username)) continue;
+        if (section === 'garcons' && (femaleTeachers.includes(u.username) || primTNames.includes(u.username))) continue;
+        if (section === 'filles' && (maleTeachers.includes(u.username) || primTNames.includes(u.username))) continue;
+        if (section === 'primaire' && (maleTeachers.includes(u.username) || femaleTeachers.includes(u.username))) continue;
         completeList.push(u);
       }
     }
 
     // Filtre de sécurité strict par section
     if (section === 'garcons') {
-      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()));
+      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && !primTNames.some(p => p.toLowerCase() === u.username.toLowerCase()));
     } else if (section === 'filles') {
-      completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()));
+      completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !primTNames.some(p => p.toLowerCase() === u.username.toLowerCase()));
+    } else if (section === 'primaire') {
+      completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()));
     }
 
     res.status(200).json(completeList);
@@ -1254,6 +1267,57 @@ const defaultGirlsStudents = {
   ]
 };
 
+const defaultPrimaireStudents = {
+  PS: [
+    { name: "Adam K.", photo: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80", birthday: "5/2023" },
+    { name: "Lina M.", photo: "https://images.unsplash.com/photo-1519456264917-42d0aa2e0625?w=150&auto=format&fit=crop&q=80", birthday: "8/2023" },
+    { name: "Zaid B.", photo: "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=150&auto=format&fit=crop&q=80", birthday: "2/2023" },
+    { name: "Maya S.", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "11/2023" }
+  ],
+  MS: [
+    { name: "Youssef T.", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "3/2022" },
+    { name: "Nour H.", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "7/2022" },
+    { name: "Kareem A.", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "10/2022" },
+    { name: "Sarah B.", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "1/2022" }
+  ],
+  GS: [
+    { name: "Ilyas R.", photo: "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=150&auto=format&fit=crop&q=80", birthday: "4/2021" },
+    { name: "Khadija F.", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "6/2021" },
+    { name: "Sami D.", photo: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80", birthday: "9/2021" },
+    { name: "Rania N.", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", birthday: "12/2021" }
+  ],
+  PP1: [
+    { name: "Anas C.", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "2/2020" },
+    { name: "Salma K.", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "5/2020" },
+    { name: "Bilal E.", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "8/2020" },
+    { name: "Aya M.", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "11/2020" }
+  ],
+  PP2: [
+    { name: "Hamza L.", photo: "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=150&auto=format&fit=crop&q=80", birthday: "3/2019" },
+    { name: "Mariam Z.", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "7/2019" },
+    { name: "Rayane V.", photo: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80", birthday: "9/2019" },
+    { name: "Ines G.", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "12/2019" }
+  ],
+  PP3: [
+    { name: "Yassine S.", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "1/2018" },
+    { name: "Fatima E.", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "4/2018" },
+    { name: "Tariq B.", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "8/2018" },
+    { name: "Hajar D.", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "10/2018" }
+  ],
+  PP4: [
+    { name: "Omar N.", photo: "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=150&auto=format&fit=crop&q=80", birthday: "2/2017" },
+    { name: "Zineb B.", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "6/2017" },
+    { name: "Mehdi T.", photo: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80", birthday: "9/2017" },
+    { name: "Imane L.", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", birthday: "11/2017" }
+  ],
+  PP5: [
+    { name: "Walid K.", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "3/2016" },
+    { name: "Manal R.", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "5/2016" },
+    { name: "Driss H.", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "8/2016" },
+    { name: "Soukaina A.", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "12/2016" }
+  ]
+};
+
 // ============================================================================
 // API GESTION DES ÉLÈVES (ADMIN)
 // ============================================================================
@@ -1288,7 +1352,7 @@ app.get('/api/admin/students', async (req, res) => {
     // Auto-seeding si la section n'a encore aucun élève enregistré
     const totalInSection = await db.collection('students').countDocuments({ section: section });
     if (totalInSection === 0) {
-      const seedList = section === 'filles' ? defaultGirlsStudents : defaultBoysStudents;
+      const seedList = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
       for (const [cls, list] of Object.entries(seedList)) {
         for (const s of list) {
           const studentObj = {

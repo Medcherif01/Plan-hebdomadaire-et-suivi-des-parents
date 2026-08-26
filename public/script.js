@@ -25,10 +25,26 @@
             'Leila', 'Sarah', 'Zohra'
         ];
 
+        const primaireTeachersList = [
+            'Mme Sophie', 'Mme Nadia', 'Mme Layla', 'Mme Asma', 'Mme Claire', 
+            'Mme Hajar', 'Mme Rania', 'Mme Ines', 'Mme Sarah P', 'Mme Mona'
+        ];
+
         const teachersSectionMap = {
             garcons: maleTeachersList,
-            filles: femaleTeachersList
+            filles: femaleTeachersList,
+            primaire: primaireTeachersList
         };
+
+        const sectionClassesMap = {
+            garcons: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
+            filles: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
+            primaire: ["PS", "MS", "GS", "PP1", "PP2", "PP3", "PP4", "PP5"]
+        };
+
+        function getSectionClasses(sec) {
+            return sectionClassesMap[sec || currentSection] || sectionClassesMap.garcons;
+        }
 
         // --- Fonctions de Gestion de Section et Accueil ---
         function showHomeStep(step) {
@@ -73,8 +89,24 @@
 
         function updateSectionBadges() {
             const isBoys = currentSection === 'garcons';
-            const badgeText = isBoys ? 'Section Garçons 👦' : 'Section Filles 👧';
-            const badgeClass = isBoys ? 'section-badge badge-garcons' : 'section-badge badge-filles';
+            const isGirls = currentSection === 'filles';
+            const isPrimaire = currentSection === 'primaire';
+            
+            let badgeText = 'Section Garçons 👦';
+            let badgeClass = 'section-badge badge-garcons';
+            let toggleText = 'Section Garçons 👦';
+            
+            if (isGirls) {
+                badgeText = 'Section Filles 👧';
+                badgeClass = 'section-badge badge-filles';
+                toggleText = currentUserLanguage === 'ar' ? 'قسم البنات 👧' : 'Section Filles 👧';
+            } else if (isPrimaire) {
+                badgeText = 'Section Primaire & Maternelle 👶🎒';
+                badgeClass = 'section-badge badge-primaire';
+                toggleText = currentUserLanguage === 'ar' ? 'الابتدائي والروضة 👶🎒' : 'Primaire & Maternelle 👶🎒';
+            } else {
+                toggleText = currentUserLanguage === 'ar' ? 'قسم البنين 👦' : 'Section Garçons 👦';
+            }
             
             const loginBadge = document.getElementById('loginSectionBadge');
             if (loginBadge) {
@@ -93,9 +125,7 @@
             });
 
             document.querySelectorAll('.parentSectionToggleText').forEach(el => {
-                el.textContent = isBoys 
-                    ? (currentUserLanguage === 'ar' ? 'قسم البنين 👦' : 'Section Garçons 👦') 
-                    : (currentUserLanguage === 'ar' ? 'قسم البنات 👧' : 'Section Filles 👧');
+                el.textContent = toggleText;
             });
 
             const adminFilter = document.getElementById('adminSectionFilter');
@@ -107,6 +137,10 @@
             if (adminStudFilter) {
                 adminStudFilter.value = currentSection;
             }
+
+            // Mettre à jour les sélecteurs de classe pour la section active
+            if (typeof renderParentClassButtons === 'function') renderParentClassButtons();
+            if (typeof updateClassDropdowns === 'function') updateClassDropdowns();
         }
         
         // Version d'authentification pour forcer la déconnexion
@@ -144,10 +178,86 @@
         };
         const t = (key, params = {}) => { let text = translations[currentUserLanguage]?.[key] || translations.fr[key] || key; for (const p in params) { text = text.replace(`{${p}}`, params[p]); } return text; };
 
-        // Ordre/Traductions Classes
-        const classOrder = ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"];
-        const classTranslations = { 'PEI1':'السادس', 'PEI2':'الاول متوسط', 'PEI3':'الثاني متوسط', 'PEI4':'الثالث متوسط', 'PEI5':'الأول ثانوي', 'DP1':'الثاني ثانوي', 'DP2':'الثالث ثانوي' };
+        // Ordre/Traductions Classes (Maternelle, Primaire, Collège, Lycée)
+        const classOrder = ["PS", "MS", "GS", "PP1", "PP2", "PP3", "PP4", "PP5", "PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"];
+        const classTranslations = { 
+            'PS': 'الروضة الصغرى',
+            'MS': 'الروضة المتوسطة',
+            'GS': 'الروضة الكبرى',
+            'PP1': 'الابتدائي الأول',
+            'PP2': 'الابتدائي الثاني',
+            'PP3': 'الابتدائي الثالث',
+            'PP4': 'الابتدائي الرابع',
+            'PP5': 'الابتدائي الخامس',
+            'PEI1': 'السادس', 
+            'PEI2': 'الاول متوسط', 
+            'PEI3': 'الثاني متوسط', 
+            'PEI4': 'الثالث متوسط', 
+            'PEI5': 'الأول ثانوي', 
+            'DP1': 'الثاني ثانوي', 
+            'DP2': 'الثالث ثانوي' 
+        };
+        function getClassLabel(cls) {
+            const ar = classTranslations[cls];
+            return ar ? `${ar} (${cls})` : cls;
+        }
         function compareClasses(a, b) { const indexA = classOrder.indexOf(a); const indexB = classOrder.indexOf(b); if (indexA !== -1 && indexB !== -1) return indexA - indexB; if (indexA !== -1) return -1; if (indexB !== -1) return 1; return String(a).localeCompare(String(b)); }
+
+        function renderParentClassButtons() {
+            const container = document.getElementById('parent-class-buttons');
+            if (!container) return;
+            const classes = getSectionClasses(currentSection);
+            if (!classes.includes(currentActiveClassName)) {
+                currentActiveClassName = classes[0];
+            }
+            container.innerHTML = classes.map(cls => {
+                const isActive = (cls === currentActiveClassName);
+                const label = getClassLabel(cls);
+                return `<button class="pro-button ${isActive ? 'primary-button active' : ''}" onclick="loadClassStudents('${cls}')">${label}</button>`;
+            }).join(' ');
+        }
+
+        function updateClassDropdowns() {
+            const classes = getSectionClasses(currentSection);
+            
+            // Parent Class Selector
+            const parentClassSel = document.getElementById('parentClassSelector');
+            if (parentClassSel) {
+                const prevVal = parentClassSel.value;
+                parentClassSel.innerHTML = classes.map(cls => `<option value="${cls}">${getClassLabel(cls)}</option>`).join('');
+                if (classes.includes(prevVal)) {
+                    parentClassSel.value = prevVal;
+                } else {
+                    parentClassSel.value = classes[0];
+                }
+            }
+            
+            // Teacher Filter Class
+            const teacherFilter = document.getElementById('teacherFilterClass');
+            if (teacherFilter) {
+                const prevVal = teacherFilter.value;
+                let html = '<option value="all">Toutes les classes</option>';
+                html += classes.map(cls => `<option value="${cls}">${getClassLabel(cls)}</option>`).join('');
+                teacherFilter.innerHTML = html;
+                if (prevVal === 'all' || classes.includes(prevVal)) {
+                    teacherFilter.value = prevVal;
+                }
+            }
+            
+            // Admin Student Class Filter
+            const adminStudClassFilter = document.getElementById('adminStudentClassFilter');
+            const adminSelectedSection = document.getElementById('adminStudentSectionFilter')?.value || currentSection;
+            const adminClasses = getSectionClasses(adminSelectedSection);
+            if (adminStudClassFilter) {
+                const prevVal = adminStudClassFilter.value;
+                let html = '<option value="all">-- Toutes les classes --</option>';
+                html += adminClasses.map(cls => `<option value="${cls}">${getClassLabel(cls)}</option>`).join('');
+                adminStudClassFilter.innerHTML = html;
+                if (prevVal === 'all' || adminClasses.includes(prevVal)) {
+                    adminStudClassFilter.value = prevVal;
+                }
+            }
+        }
 
         // Dates et Configuration des 38 semaines de l'année scolaire 2026/2027
         let weeksConfig = {
@@ -604,7 +714,7 @@
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.message || `Erreur serveur ${response.status}`);
                 updateProgressBar(100);
-                const secLabel = targetSection === 'garcons' ? 'Garçons 👦' : 'Filles 👧';
+                const secLabel = targetSection === 'garcons' ? 'Garçons 👦' : (targetSection === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧');
                 displayAlert(`Données de la semaine S${selectedWeek} pour la section ${secLabel} enregistrées avec succès !`, false);
                 if (statusSpan) statusSpan.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Données S${selectedWeek} (${secLabel}) enregistrées avec succès !</span>`;
                 uploadedPlanData = null;
@@ -1580,7 +1690,7 @@
             `;
             
             users.forEach(u => {
-                const secLabel = u.section === 'garcons' ? '👦 Garçons' : '👧 Filles';
+                const secLabel = u.section === 'garcons' ? '👦 Garçons' : (u.section === 'primaire' ? '👶🎒 Primaire' : '👧 Filles');
                 const userLang = u.language || (arabicTeachers.includes(u.username) ? 'ar' : (englishTeachers.includes(u.username) ? 'en' : 'fr'));
                 const langInfo = langLabels[userLang] || langLabels.fr;
                 const safeUsername = u.username.replace(/'/g, "\\'");
@@ -1841,9 +1951,10 @@ let isParentMode = false;
 
 function getStudentFallbackAvatar(section) {
     const isGirls = (section === 'filles' || currentSection === 'filles');
-    const colorBg = isGirls ? '#FDF2F8' : '#EFF6FF';
-    const colorFill = isGirls ? '#F472B6' : '#60A5FA';
-    const colorStroke = isGirls ? '#DB2777' : '#2563EB';
+    const isPrimaire = (section === 'primaire' || currentSection === 'primaire');
+    const colorBg = isGirls ? '#FDF2F8' : (isPrimaire ? '#ECFDF5' : '#EFF6FF');
+    const colorFill = isGirls ? '#F472B6' : (isPrimaire ? '#34D399' : '#60A5FA');
+    const colorStroke = isGirls ? '#DB2777' : (isPrimaire ? '#059669' : '#2563EB');
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100" height="100">
         <rect width="120" height="120" rx="60" fill="${colorBg}"/>
         <circle cx="60" cy="45" r="22" fill="${colorFill}"/>
@@ -2017,7 +2128,11 @@ function enterParentSpaceWithSection(section) {
 }
 
 function toggleParentSection() {
-    const newSection = (currentSection === 'garcons') ? 'filles' : 'garcons';
+    let newSection = 'garcons';
+    if (currentSection === 'garcons') newSection = 'filles';
+    else if (currentSection === 'filles') newSection = 'primaire';
+    else newSection = 'garcons';
+    
     currentSection = newSection;
     localStorage.setItem('selectedSection', newSection);
     localStorage.setItem('currentSection', newSection);
@@ -2030,8 +2145,8 @@ function toggleParentSection() {
     const studentsGrid = document.getElementById('students-grid');
     if (studentsGrid) studentsGrid.innerHTML = '';
     
-    const activeClassBtn = document.querySelector('#parent-class-buttons button.active');
-    const defaultClass = activeClassBtn ? (activeClassBtn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'PEI1') : 'PEI1';
+    const classes = getSectionClasses(currentSection);
+    const defaultClass = classes[0];
     
     // Recharger la classe active
     loadClassStudents(defaultClass);
@@ -2097,17 +2212,19 @@ async function loadParentWeeklyPlan() {
         if (!weekSelect || !classSelect || !container) return;
         
         const selectedWeek = weekSelect.value || (getCurrentWeekNumber() || 1);
-        const selectedClass = classSelect.value || 'PEI1';
+        const classes = getSectionClasses(currentSection);
+        const selectedClass = classSelect.value || classes[0];
         const section = currentSection || 'garcons';
         
         if (sectionToggleBtnText) {
-            sectionToggleBtnText.textContent = section === 'garcons' ? 'Section Garçons 👦' : 'Section Filles 👧';
+            sectionToggleBtnText.textContent = section === 'garcons' ? 'Section Garçons 👦' : (section === 'filles' ? 'Section Filles 👧' : 'Primaire & Maternelle 👶🎒');
         }
         
+        const secLabel = section === 'garcons' ? 'Garçons' : (section === 'filles' ? 'Filles' : 'Primaire');
         container.innerHTML = `
             <div style="text-align:center; padding:40px; background:white; border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
                 <i class="fas fa-spinner fa-spin fa-2x" style="color:#10B981; margin-bottom:12px;"></i>
-                <p style="color:#4B5563; font-size:1.05rem; font-weight:600; margin:0;">Chargement du plan hebdomadaire pour la classe ${selectedClass} (${section === 'garcons' ? 'Garçons' : 'Filles'})...</p>
+                <p style="color:#4B5563; font-size:1.05rem; font-weight:600; margin:0;">Chargement du plan hebdomadaire pour la classe ${selectedClass} (${secLabel})...</p>
             </div>
         `;
         
@@ -2120,16 +2237,24 @@ async function loadParentWeeklyPlan() {
         const data = await res.json();
         let fetchedData = data.planData || [];
         
-        // Double sécurité : filtrer les enseignants de l'autre section
+        // Double sécurité : filtrer les enseignants des autres sections
         if (section === 'garcons') {
             fetchedData = fetchedData.filter(row => {
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
-                return !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase());
+                return !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase()) &&
+                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase());
             });
         } else if (section === 'filles') {
             fetchedData = fetchedData.filter(row => {
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
-                return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase());
+                return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
+                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase());
+            });
+        } else if (section === 'primaire') {
+            fetchedData = fetchedData.filter(row => {
+                const ens = (getRowField(row, 'Enseignant') || '').trim();
+                return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
+                       !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase());
             });
         }
         
@@ -2442,11 +2567,14 @@ function renderStudentsGrid(students, className, section) {
     const grid = document.getElementById('students-grid');
     if (!grid) return;
     
+    const secLabel = section === 'garcons' ? 'Garçons 👦' : (section === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧');
+    const borderColor = section === 'garcons' ? '#3B82F6' : (section === 'primaire' ? '#10B981' : '#EC4899');
+    
     if (!students || students.length === 0) {
         grid.innerHTML = `
             <div style="grid-column: 1/-1; text-align:center; padding:40px 20px; background:white; border-radius:16px; color:#6B7280; font-weight:600; border:1px dashed #CBD5E1; max-width:480px; margin:20px auto;">
                 <i class="fas fa-user-slash fa-2x" style="display:block; margin-bottom:12px; color:#9CA3AF;"></i>
-                <p style="margin:0; font-size:1rem;">${currentUserLanguage === 'ar' ? `لا يوجد طلاب مسجلين في قسم ${className}` : `Aucun élève enregistré pour la classe ${className} (${section === 'garcons' ? 'Garçons 👦' : 'Filles 👧'}).`}</p>
+                <p style="margin:0; font-size:1rem;">${currentUserLanguage === 'ar' ? `لا يوجد طلاب مسجلين في قسم ${className}` : `Aucun élève enregistré pour la classe ${className} (${secLabel}).`}</p>
             </div>
         `;
         return;
@@ -2458,7 +2586,7 @@ function renderStudentsGrid(students, className, section) {
         return `
             <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapeHtml(s.name).replace(/'/g, "\\'")}', '${className}')" style="background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.25s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
                 <div style="position:relative; width:96px; height:96px; margin:0 auto 12px auto; overflow:hidden; border-radius:50%;">
-                    <img src="${photoSrc}" loading="lazy" decoding="async" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(s.name)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${section === 'garcons' ? '#3B82F6' : '#EC4899'}; background:#F8FAFC; display:block; margin:0 auto;">
+                    <img src="${photoSrc}" loading="lazy" decoding="async" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(s.name)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${borderColor}; background:#F8FAFC; display:block; margin:0 auto;">
                 </div>
                 <h4 style="margin:6px 0 4px 0; color:#1E1B4B; font-size:1.05rem; font-weight:700; line-height:1.3; text-align:center;">${escapeHtml(s.name)}</h4>
                 <span style="font-size:0.85rem; font-weight:600; color:#6B7280; background:#F1F5F9; padding:3px 10px; border-radius:12px; margin-top:4px;">${s.birthday ? '🎂 ' + s.birthday : className}</span>
@@ -2577,7 +2705,7 @@ async function openStudentDashboard(studentName, className) {
         const photoEl = document.getElementById('student-profile-photo');
 
         if (nameEl) nameEl.innerText = studentName;
-        if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : 'Filles 👧'}`;
+        if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : (section === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧')}`;
         if (photoEl) {
             photoEl.src = fallbackAvatar;
             photoEl.onerror = function() { this.src = fallbackAvatar; };
@@ -2783,23 +2911,30 @@ async function loadAdminStudentsList() {
             studentsToDisplay = allStudents.filter(s => s.class === className);
         }
 
+        const secLabel = section === 'garcons' ? 'Section Garçons 👦' : (section === 'primaire' ? 'Section Primaire & Maternelle 👶🎒' : 'Section Filles 👧');
         if (!studentsToDisplay || studentsToDisplay.length === 0) {
             const classLabel = className === 'all' ? 'Toutes les classes' : className;
             container.innerHTML = `<p style="color:#64748B; padding:15px; background:#F8FAFC; border-radius:8px; border:1px solid #E2E8F0;">
-                <i class="fas fa-info-circle"></i> Aucun élève trouvé pour <strong>${classLabel}</strong> (${section === 'garcons' ? 'Section Garçons 👦' : 'Section Filles 👧'}).
+                <i class="fas fa-info-circle"></i> Aucun élève trouvé pour <strong>${classLabel}</strong> (${secLabel}).
             </p>`;
             return;
         }
 
-        const allClasses = [
-            { id: 'PEI1', label: 'السادس (PEI1)' },
-            { id: 'PEI2', label: 'الاول متوسط (PEI2)' },
-            { id: 'PEI3', label: 'الثاني متوسط (PEI3)' },
-            { id: 'PEI4', label: 'الثالث متوسط (PEI4)' },
-            { id: 'PEI5', label: 'الأول ثانوي (PEI5)' },
-            { id: 'DP1', label: 'الثاني ثانوي (DP1)' },
-            { id: 'DP2', label: 'الثالث ثانوي (DP2)' }
-        ];
+        const secClasses = getSectionClasses(section);
+        const allClasses = secClasses.map(cls => ({
+            id: cls,
+            label: getClassLabel(cls)
+        }));
+
+        const moveTargetClassSelect = document.getElementById('adminMoveTargetClass');
+        if (moveTargetClassSelect) {
+            const curMoveVal = moveTargetClassSelect.value;
+            moveTargetClassSelect.innerHTML = '<option value="">-- Choisir la nouvelle classe --</option>' +
+                allClasses.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
+            if (curMoveVal && secClasses.includes(curMoveVal)) {
+                moveTargetClassSelect.value = curMoveVal;
+            }
+        }
 
         container.innerHTML = `
             <div style="margin-bottom:8px; font-size:0.85rem; color:#475569;">
@@ -3332,18 +3467,21 @@ async function loadTeachersContactGrid() {
             console.warn('Utilisation de la liste prédéfinie pour la section:', currentSection);
         }
 
-        // Filtre de sécurité frontend strict pour empêcher tout mélange entre garçons et filles
+        // Filtre de sécurité frontend strict pour empêcher tout mélange entre sections
         if (currentSection === 'garcons') {
-            teachers = teachers.filter(t => !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()));
+            teachers = teachers.filter(t => !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()));
         } else if (currentSection === 'filles') {
-            teachers = teachers.filter(t => !maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()));
+            teachers = teachers.filter(t => !maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()));
+        } else if (currentSection === 'primaire') {
+            teachers = teachers.filter(t => !maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()));
         }
 
         const t = parentI18n[currentUserLanguage] || parentI18n.fr;
+        const iconBg = currentSection === 'filles' ? 'linear-gradient(135deg, #EC4899, #DB2777)' : (currentSection === 'primaire' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #6366F1, #4F46E5)');
 
         grid.innerHTML = teachers.map(teacher => `
             <div class="teacher-contact-card" onclick="openContactTeacherModal('${teacher.replace(/'/g, "\\'")}')" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:14px; padding:16px; text-align:center; cursor:pointer; transition:all 0.25s ease; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
-                <div style="width:48px; height:48px; background:${currentSection === 'filles' ? 'linear-gradient(135deg, #EC4899, #DB2777)' : 'linear-gradient(135deg, #6366F1, #4F46E5)'}; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; margin:0 auto 10px auto;">
+                <div style="width:48px; height:48px; background:${iconBg}; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; margin:0 auto 10px auto;">
                     <i class="fas fa-chalkboard-teacher"></i>
                 </div>
                 <h4 style="margin:0 0 6px 0; color:#1E1B4B; font-size:1rem; font-weight:700;">${teacher}</h4>
@@ -3477,7 +3615,7 @@ async function loadTeacherHomeworksDashboard() {
 
         const secEl = document.getElementById('teacherEvalActiveSection');
         if (secEl) {
-            secEl.textContent = section === 'garcons' ? 'Section Garçons (بنين)' : 'Section Filles (بنات)';
+            secEl.textContent = section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'primaire' ? 'Section Primaire & Maternelle (ابتدائي وروضة)' : 'Section Filles (بنات)');
         }
 
         const res = await fetch(`/api/teacher-homeworks?teacher=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
