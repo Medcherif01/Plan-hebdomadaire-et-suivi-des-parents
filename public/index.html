@@ -666,14 +666,15 @@
              </div>
         </div>
         <div class="filter-container main-actions-container">
-            <!-- BOUTON POUR TOUS LES ENSEIGNANTS : TÉLÉCHARGER LE PLAN COMPLET PAR CLASSE (WORD) -->
-            <button id="generateFullClassWordBtn" onclick="openFullClassWordModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #1E40AF, #2563EB); color: white; border: none; font-weight: 700; box-shadow: 0 4px 12px rgba(37,99,235,0.25);">
-                 <i class="fas fa-file-word"></i> <span class="btn-text">📄 Télécharger Plan Complet par Classe (Word)</span>
+            <!-- BOUTON PRINCIPAL POUR TOUS LES ENSEIGNANTS : TÉLÉCHARGER LE PLAN COMPLET PAR CLASSE (TOUTES MATIÈRES & TOUS ENSEIGNANTS) -->
+            <button id="generateFullClassWordBtn" onclick="openFullClassWordModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #1E3A8A, #2563EB); color: white; border: none; font-weight: 800; padding: 10px 18px; border-radius: 10px; box-shadow: 0 4px 14px rgba(37,99,235,0.3); display: inline-flex; align-items: center; gap: 8px;">
+                 <i class="fas fa-file-word" style="font-size: 1.2em;"></i>
+                 <span class="btn-text">📄 Télécharger le Plan Hebdo Complet par Classe (Toutes les matières & Tous les enseignants)</span>
             </button>
-            <button id="generateWordBtn" onclick="generateWordByClasse()" class="action-button pro-button" disabled>
-                 <i class="fas fa-file-word"></i> <span class="btn-text">Générer Word par Classe</span>
+            <button id="generateWordBtn" onclick="generateWordByClasse()" class="action-button pro-button" disabled style="display: inline-flex; align-items: center; gap: 6px;">
+                 <i class="fas fa-user-edit"></i> <span class="btn-text">Mon Plan Individuel (Mes matières)</span>
             </button>
-            <button id="generateExcelBtn" onclick="generateExcelWorkbook()" class="action-button pro-button" disabled>
+            <button id="generateExcelBtn" onclick="generateExcelWorkbook()" class="action-button pro-button" disabled style="display: inline-flex; align-items: center; gap: 6px;">
                  <i class="fas fa-file-excel"></i> <span class="btn-text">Générer Excel (1 Fichier)</span>
             </button>
             <a id="downloadLink" style="display:none;"></a>
@@ -681,8 +682,15 @@
         <div class="filter-container data-filters-container">
              <label for="filterEnseignant" id="filter-enseignant-label"><i class="fas fa-user-tie"></i> Enseignant:</label>
              <select id="filterEnseignant" onchange="sortAndDisplay()"> <option value="">Tous</option> </select>
+             
              <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
-             <select id="filterClasse" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
+             <div style="display:inline-flex; align-items:center; gap:6px;">
+                 <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
+                 <button type="button" id="btnQuickClassFullWord" onclick="downloadSelectedClassFullWord()" class="pro-button" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 700; background: #EEF2FF; color: #1E40AF; border: 1.5px solid #BFDBFE; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger le document Word complet pour la classe sélectionnée (avec toutes les matières et tous les enseignants)">
+                     <i class="fas fa-file-word" style="color:#2563EB;"></i> <span>📄 Plan Complet Word</span>
+                 </button>
+             </div>
+
              <label for="filterMatiere" id="filter-matiere-label"><i class="fas fa-book"></i> Matière:</label>
              <select id="filterMatiere" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
              <label for="filterPeriode" id="filter-periode-label"><i class="fas fa-clock"></i> Période:</label>
@@ -702,10 +710,17 @@
             <div id="progress-bar">0%</div>
         </div>
          <div class="notes-container">
-            <label for="notesClassSelector" id="notes-class-label" style="font-weight: bold;"><i class="fas fa-sticky-note"></i> Notes pour la classe :</label>
-            <select id="notesClassSelector" onchange="displayClassNotes()">
-                <option value="">-- Sélectionnez une classe --</option>
-            </select>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <label for="notesClassSelector" id="notes-class-label" style="font-weight: bold; margin: 0;"><i class="fas fa-sticky-note"></i> Notes pour la classe :</label>
+                    <select id="notesClassSelector" onchange="displayClassNotes()">
+                        <option value="">-- Sélectionnez une classe --</option>
+                    </select>
+                </div>
+                <button type="button" id="downloadNotesClassWordBtn" onclick="downloadSelectedNotesClassFullWord()" class="action-button pro-button" style="background: linear-gradient(135deg, #1E40AF, #2563EB); color: white; border: none; font-size: 0.85rem; padding: 6px 14px; font-weight: 700; border-radius: 8px;">
+                    <i class="fas fa-file-word"></i> Télécharger Plan Complet Word de cette classe
+                </button>
+            </div>
             <textarea id="notesInput" rows="4" placeholder="Sélectionnez une classe pour voir ou ajouter des notes..." spellcheck="true" disabled dir="auto"></textarea>
             <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
                 <button id="saveNotesBtn" onclick="saveNotes()" class="action-button pro-button success-button" disabled>
@@ -1373,17 +1388,28 @@
 
     <!-- MODAL TÉLÉCHARGEMENT PLAN COMPLET WORD PAR CLASSE (POUR TOUS LES ENSEIGNANTS) -->
     <div id="fullClassWordModal" class="hw-modal" style="display:none; z-index:99999;">
-        <div class="hw-modal-content" style="max-width:520px; border-radius:20px; padding:28px; background:white; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+        <div class="hw-modal-content" style="max-width:580px; border-radius:20px; padding:28px; background:white; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
             <span class="hw-close-modal" onclick="closeFullClassWordModal()">&times;</span>
-            <h3 style="margin-top:0; color:#1E1B4B; display:flex; align-items:center; gap:10px; font-size:1.3rem;">
-                <i class="fas fa-file-word" style="color:#2563EB;"></i> <span>Télécharger le Plan Hebdomadaire Complet</span>
-            </h3>
-            <p style="color:#64748B; font-size:0.92rem; margin-bottom:20px; line-height:1.4;">
-                Téléchargez le document Word (.docx) officiel complet pour la classe sélectionnée (contenant toutes les matières et tous les enseignants).
-            </p>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                <div style="width:46px; height:46px; background:#EFF6FF; color:#2563EB; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">
+                    <i class="fas fa-file-word"></i>
+                </div>
+                <div>
+                    <h3 style="margin:0; color:#1E1B4B; font-size:1.25rem; font-weight:800;">
+                        Plan Hebdomadaire Complet par Classe
+                    </h3>
+                    <div style="color:#64748B; font-size:0.85rem; font-weight:600;">
+                        Document Word officiel (.docx) multi-matières
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px; padding:12px 14px; margin-bottom:18px; font-size:0.88rem; color:#1E40AF; line-height:1.5;">
+                <i class="fas fa-info-circle" style="color:#2563EB;"></i> <strong>Complet & Intégral :</strong> Ce document regroupe <strong>toutes les matières</strong> (Arabe, Français, Maths, Sciences, Anglais, etc.) et <strong>tous les enseignants</strong> de la classe sélectionnée.
+            </div>
 
             <div style="margin-bottom:16px;">
-                <label style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                <label style="font-weight:700; color:#334155; display:block; margin-bottom:6px; font-size:0.9rem;">
                     <i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine du Plan :
                 </label>
                 <select id="modalWordWeekSelector" style="width:100%; padding:10px 14px; border-radius:10px; border:2px solid #CBD5E1; font-weight:700; background:#F8FAFC; font-size:0.95rem;">
@@ -1391,9 +1417,19 @@
                 </select>
             </div>
 
+            <!-- CHIPS D'ACCÈS RAPIDE PAR CLASSE -->
+            <div style="margin-bottom:16px;">
+                <label style="font-weight:700; color:#334155; display:block; margin-bottom:8px; font-size:0.9rem;">
+                    <i class="fas fa-bolt" style="color:#F59E0B;"></i> Téléchargement Rapide en 1 Clic :
+                </label>
+                <div id="modalWordQuickClassChips" style="display:flex; flex-wrap:wrap; gap:8px;">
+                    <!-- Rempli dynamiquement avec les boutons de classes -->
+                </div>
+            </div>
+
             <div style="margin-bottom:24px;">
-                <label style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
-                    <i class="fas fa-chalkboard-user" style="color:#2563EB;"></i> Classe à Exporter :
+                <label style="font-weight:700; color:#334155; display:block; margin-bottom:6px; font-size:0.9rem;">
+                    <i class="fas fa-chalkboard-user" style="color:#2563EB;"></i> Ou Choisir dans la Liste :
                 </label>
                 <select id="modalWordClassSelector" style="width:100%; padding:10px 14px; border-radius:10px; border:2px solid #CBD5E1; font-weight:700; background:#F8FAFC; font-size:0.95rem;">
                     <!-- Rempli dynamiquement avec les classes de la section -->

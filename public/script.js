@@ -4565,16 +4565,35 @@ async function bulkPublishAllWeeks(status) {
 
 // =========================================================
 // 3. MODULE TÉLÉCHARGEMENT PLAN COMPLET PAR CLASSE (WORD)
+//    (Accessible à TOUS les enseignants & enseignantes pour
+//     toutes les matières et tous les professeurs)
 // =========================================================
-function openFullClassWordModal() {
+
+function handleClassFilterChange() {
+    sortAndDisplay();
+    const selClass = document.getElementById('filterClasse')?.value;
+    const btnQuick = document.getElementById('btnQuickClassFullWord');
+    if (btnQuick) {
+        if (selClass) {
+            btnQuick.innerHTML = `<i class="fas fa-file-word" style="color:#2563EB;"></i> <span>📄 Plan Complet (${escapeHtml(selClass)})</span>`;
+            btnQuick.title = `Télécharger le document Word complet pour la classe ${selClass} (Toutes les matières & Tous les professeurs)`;
+        } else {
+            btnQuick.innerHTML = `<i class="fas fa-file-word" style="color:#2563EB;"></i> <span>📄 Plan Complet Word</span>`;
+            btnQuick.title = `Choisir une classe pour télécharger le plan complet (toutes les matières et tous les enseignants)`;
+        }
+    }
+}
+
+function openFullClassWordModal(preselectedClass, preselectedWeek) {
     const modal = document.getElementById('fullClassWordModal');
     const weekSel = document.getElementById('modalWordWeekSelector');
     const classSel = document.getElementById('modalWordClassSelector');
+    const chipsContainer = document.getElementById('modalWordQuickClassChips');
     if (!modal) return;
 
+    const curWeek = preselectedWeek || currentWeek || getCurrentWeekNumber() || 1;
     if (weekSel) {
         weekSel.innerHTML = '';
-        const curWeek = currentWeek || getCurrentWeekNumber() || 1;
         for (let i = 1; i <= 38; i++) {
             const opt = document.createElement('option');
             opt.value = i;
@@ -4584,14 +4603,75 @@ function openFullClassWordModal() {
         }
     }
 
+    const currentFilterClass = preselectedClass || document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value || '';
+    const section = currentSection || 'garcons';
+    const classes = getSectionClasses(section);
+
+    // Identifier les classes enseignées par l'utilisateur connecté
+    const teacherClasses = new Set();
+    if (planData && Array.isArray(planData) && loggedInUser) {
+        const norm = (s) => String(s || '').trim().toLowerCase();
+        const uE = norm(loggedInUser);
+        planData.forEach(row => {
+            const ensVal = getRowField(row, 'Enseignant');
+            const clsVal = getRowField(row, 'Classe');
+            if (ensVal && norm(ensVal) === uE && clsVal) {
+                teacherClasses.add(clsVal.trim());
+            }
+        });
+    }
+
+    // Remplir le sélecteur déroulant
     if (classSel) {
         classSel.innerHTML = '';
-        const classes = getSectionClasses(currentSection || 'garcons');
         classes.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c;
-            opt.textContent = c;
+            const isMine = teacherClasses.has(c);
+            opt.textContent = (isMine ? '⭐ ' : '') + c + (isMine ? ' (Votre classe)' : '');
+            if (c === currentFilterClass) opt.selected = true;
             classSel.appendChild(opt);
+        });
+    }
+
+    // Remplir les puces / boutons de téléchargement rapide en 1 clic
+    if (chipsContainer) {
+        chipsContainer.innerHTML = '';
+        classes.forEach(c => {
+            const isMine = teacherClasses.has(c);
+            const chipBtn = document.createElement('button');
+            chipBtn.type = 'button';
+            chipBtn.className = 'pro-button';
+            chipBtn.style.padding = '6px 12px';
+            chipBtn.style.fontSize = '0.85rem';
+            chipBtn.style.fontWeight = '700';
+            chipBtn.style.borderRadius = '8px';
+            chipBtn.style.cursor = 'pointer';
+            chipBtn.style.display = 'inline-flex';
+            chipBtn.style.alignItems = 'center';
+            chipBtn.style.gap = '6px';
+            chipBtn.style.transition = 'all 0.2s ease';
+
+            if (isMine) {
+                chipBtn.style.background = '#EFF6FF';
+                chipBtn.style.border = '1.5px solid #3B82F6';
+                chipBtn.style.color = '#1D4ED8';
+                chipBtn.innerHTML = `<span>⭐ ${escapeHtml(c)}</span> <i class="fas fa-arrow-down" style="font-size:0.75rem;"></i>`;
+                chipBtn.title = `Télécharger en 1 clic le plan complet pour votre classe ${c}`;
+            } else {
+                chipBtn.style.background = '#F8FAFC';
+                chipBtn.style.border = '1px solid #CBD5E1';
+                chipBtn.style.color = '#334155';
+                chipBtn.innerHTML = `<span>${escapeHtml(c)}</span> <i class="fas fa-download" style="font-size:0.75rem; opacity:0.6;"></i>`;
+                chipBtn.title = `Télécharger en 1 clic le plan complet pour ${c}`;
+            }
+
+            chipBtn.onclick = () => {
+                if (classSel) classSel.value = c;
+                executeFullClassWordDownload(c);
+            };
+
+            chipsContainer.appendChild(chipBtn);
         });
     }
 
@@ -4603,6 +4683,63 @@ function closeFullClassWordModal() {
     if (modal) modal.style.display = 'none';
 }
 
+async function downloadSelectedClassFullWord() {
+    const selClass = document.getElementById('filterClasse')?.value;
+    if (selClass) {
+        const week = currentWeek || getCurrentWeekNumber() || 1;
+        await downloadFullClassWord(week, selClass);
+    } else {
+        openFullClassWordModal();
+    }
+}
+
+async function downloadSelectedNotesClassFullWord() {
+    const selClass = document.getElementById('notesClassSelector')?.value;
+    if (selClass) {
+        const week = currentWeek || getCurrentWeekNumber() || 1;
+        await downloadFullClassWord(week, selClass);
+    } else {
+        openFullClassWordModal();
+    }
+}
+
+async function downloadFullClassWord(weekNum, className) {
+    if (!className) {
+        openFullClassWordModal();
+        return;
+    }
+
+    showProgressBar();
+    updateProgressBar(15);
+    displayAlert(`Préparation du plan complet de la Semaine ${weekNum} pour la classe ${className} (Toutes les matières & Tous les professeurs)...`, false);
+
+    try {
+        const section = currentSection || 'garcons';
+        updateProgressBar(40);
+
+        const res = await fetch(`/api/plans/${weekNum}?section=${section}`);
+        if (!res.ok) throw new Error(`Erreur réseau (${res.status})`);
+        const data = await res.json();
+        const fullPlanData = data.planData || [];
+
+        if (fullPlanData.length === 0) {
+            hideProgressBar();
+            displayAlert(`Aucune donnée de plan enregistrée pour la Semaine ${weekNum}.`, true);
+            return;
+        }
+
+        updateProgressBar(75);
+        await exportClasseToWordDocx(className, fullPlanData, weekNum, section);
+        updateProgressBar(100);
+        displayAlert(`✅ Téléchargement réussi du plan Word complet pour ${className} !`, false);
+    } catch (err) {
+        console.error("Erreur downloadFullClassWord:", err);
+        displayAlert("Erreur lors de la génération du plan complet: " + err.message, true);
+    } finally {
+        setTimeout(hideProgressBar, 800);
+    }
+}
+
 async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, section) {
     const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
     const classRows = (rawPlanData || []).filter(row => {
@@ -4611,7 +4748,7 @@ async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, secti
     });
 
     if (classRows.length === 0) {
-        throw new Error(`Aucune donnée de cours trouvée pour la classe ${selectedClass} en Semaine ${weekNum}.`);
+        throw new Error(`Aucune séance trouvée pour la classe ${selectedClass} en Semaine ${weekNum}.`);
     }
 
     const notes = (weeklyClassNotes && weeklyClassNotes[selectedClass]) || "";
@@ -4657,14 +4794,14 @@ async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, secti
     }
 }
 
-async function executeFullClassWordDownload() {
+async function executeFullClassWordDownload(explicitClass) {
     const weekSel = document.getElementById('modalWordWeekSelector');
     const classSel = document.getElementById('modalWordClassSelector');
     const btn = document.getElementById('btnExecuteWordDownload');
     const btnText = document.getElementById('btnExecuteWordText');
 
     const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
-    const selectedClass = classSel ? classSel.value : '';
+    const selectedClass = explicitClass || (classSel ? classSel.value : '');
 
     if (!selectedClass) {
         alert("Veuillez sélectionner une classe.");
@@ -4678,7 +4815,7 @@ async function executeFullClassWordDownload() {
 
     try {
         const section = currentSection || 'garcons';
-        displayAlert(`Chargement du plan de la Semaine ${selectedWeek} pour la classe ${selectedClass}...`, false);
+        displayAlert(`Chargement du plan complet de la Semaine ${selectedWeek} pour la classe ${selectedClass}...`, false);
 
         const res = await fetch(`/api/plans/${selectedWeek}?section=${section}`);
         if (!res.ok) throw new Error(`Erreur lors du chargement (${res.status})`);
@@ -4690,7 +4827,7 @@ async function executeFullClassWordDownload() {
             return;
         }
 
-        displayAlert(`Génération du document Word officiel pour ${selectedClass}...`, false);
+        displayAlert(`Génération du document Word officiel complet pour ${selectedClass}...`, false);
         await exportClasseToWordDocx(selectedClass, fullPlanData, selectedWeek, section);
         displayAlert(`✅ Téléchargement du plan Word complet pour ${selectedClass} réussi !`, false);
         closeFullClassWordModal();
