@@ -1810,8 +1810,8 @@
                 <table class="users-table">
                     <thead>
                         <tr>
-                            <th>Nom d'utilisateur (Connexion)</th>
-                            <th>Nom dans le Tableau (Tri Plan)</th>
+                            <th>Nom d'utilisateur (Accès)</th>
+                            <th>Nom de l'Enseignant (Tableau & Tri)</th>
                             <th>Mot de passe</th>
                             <th>Section</th>
                             <th>Langue par défaut</th>
@@ -1831,12 +1831,12 @@
                 
                 const hasCustomTableTeacher = u.tableTeacherName && u.tableTeacherName.trim() !== '' && u.tableTeacherName.trim().toLowerCase() !== u.username.trim().toLowerCase();
                 const tableTeacherBadge = hasCustomTableTeacher
-                    ? `<span style="background:#EEF2FF; color:#3730A3; border:1px solid #C7D2FE; font-weight:700; padding:4px 9px; border-radius:6px; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-filter" style="color:#4F46E5;"></i> ${escapeHtml(u.tableTeacherName)}</span>`
-                    : `<span style="color:#64748B; font-size:0.85rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-check" style="color:#10B981; font-size:0.75rem;"></i> Identique (${escapeHtml(u.username)})</span>`;
+                    ? `<span style="background:#EEF2FF; color:#3730A3; border:1px solid #C7D2FE; font-weight:700; padding:4px 9px; border-radius:6px; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-chalkboard-teacher" style="color:#4F46E5;"></i> ${escapeHtml(u.tableTeacherName)} <span style="font-size:0.72rem; background:#4F46E5; color:white; padding:1px 5px; border-radius:4px; margin-left:3px;">Tableau</span></span>`
+                    : `<span style="color:#475569; font-size:0.88rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-check-circle" style="color:#10B981;"></i> ${escapeHtml(u.username)} <span style="color:#64748B; font-size:0.75rem;">(Même nom)</span></span>`;
                 
                 html += `
                     <tr>
-                        <td><strong><i class="fas fa-chalkboard-teacher" style="color:#4F46E5; margin-right:6px;"></i>${escapeHtml(u.username)}</strong></td>
+                        <td><strong><i class="fas fa-id-badge" style="color:#2563EB; margin-right:6px;"></i>${escapeHtml(u.username)}</strong></td>
                         <td>${tableTeacherBadge}</td>
                         <td><code style="background:#F1F5F9; padding:3px 8px; border-radius:6px; font-weight:700; color:#0F172A;">${escapeHtml(u.password || 'Non défini')}</code></td>
                         <td><span style="font-weight:600;">${secLabel}</span></td>
@@ -1885,19 +1885,21 @@
             const filterEl = document.getElementById('adminSectionFilter');
             
             if (userInput) userInput.value = username;
-            if (tableTeacherInput) tableTeacherInput.value = tableTeacherName || '';
+            if (tableTeacherInput) {
+                tableTeacherInput.value = tableTeacherName || username;
+                tableTeacherInput.dataset.customized = (tableTeacherName && tableTeacherName.trim().toLowerCase() !== username.trim().toLowerCase()) ? "true" : "";
+            }
             if (passInput) passInput.value = password;
             if (langSelect) langSelect.value = language || 'fr';
             if (filterEl && section) filterEl.value = section;
             
             if (userInput) {
                 userInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                if (tableTeacherInput && !tableTeacherInput.value) tableTeacherInput.focus();
-                else if (passInput) passInput.focus();
+                if (passInput) passInput.focus();
             }
             const statusDiv = document.getElementById('adminUsersStatus');
             if (statusDiv) {
-                const diffInfo = tableTeacherName && tableTeacherName !== username ? ` (Nom de tri tableau: <strong>${tableTeacherName}</strong>)` : '';
+                const diffInfo = (tableTeacherName && tableTeacherName !== username) ? ` (Nom de tableau pour le tri: <strong>${tableTeacherName}</strong>)` : '';
                 statusDiv.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-info-circle"></i> Modification du compte pour <strong>${username}</strong>${diffInfo}. Modifiez les informations puis cliquez sur 'Enregistrer Compte'.</span>`;
             }
         }
@@ -1910,15 +1912,24 @@
             const filterEl = document.getElementById('adminSectionFilter');
             const statusDiv = document.getElementById('adminUsersStatus');
             
-            const username = userInput ? userInput.value.trim() : '';
-            const tableTeacherName = tableTeacherInput ? tableTeacherInput.value.trim() : '';
+            let username = userInput ? userInput.value.trim() : '';
+            let tableTeacherName = tableTeacherInput ? tableTeacherInput.value.trim() : '';
             const password = passInput ? passInput.value.trim() : '';
             const language = langSelect ? langSelect.value : 'fr';
             const section = filterEl ? filterEl.value : currentSection;
             
+            // Si l'un des deux noms est renseigné, l'autre prend la même valeur par défaut s'il est vide
+            if (!username && tableTeacherName) {
+                username = tableTeacherName;
+                if (userInput) userInput.value = username;
+            }
+            if (!tableTeacherName && username) {
+                tableTeacherName = username;
+            }
+            
             if (!username || !password) {
                 if (statusDiv) {
-                    statusDiv.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Entrez le nom d\'utilisateur et le mot de passe.</span>';
+                    statusDiv.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Veuillez renseigner le nom d\'utilisateur (ou enseignant) et le mot de passe.</span>';
                 }
                 return;
             }
@@ -1938,7 +1949,10 @@
                         setTimeout(() => { if (statusDiv) statusDiv.innerHTML = ''; }, 4000);
                     }
                     if (userInput) userInput.value = '';
-                    if (tableTeacherInput) tableTeacherInput.value = '';
+                    if (tableTeacherInput) {
+                        tableTeacherInput.value = '';
+                        tableTeacherInput.dataset.customized = "";
+                    }
                     if (passInput) passInput.value = '';
                     loadAdminUsersList();
                 } else {
@@ -1999,6 +2013,24 @@
             if (notesInput) {
                 notesInput.addEventListener("input", function(e) {
                     applyRTLToElement(e.target, e.target.value);
+                });
+            }
+
+            // Synchronisation automatique par défaut entre Nom d'utilisateur et Nom de l'Enseignant dans le formulaire Admin
+            const adminUserField = document.getElementById('adminNewUsername');
+            const adminTeacherField = document.getElementById('adminNewTableTeacherName');
+            if (adminUserField && adminTeacherField) {
+                adminUserField.addEventListener('input', () => {
+                    if (!adminTeacherField.dataset.customized || adminTeacherField.dataset.customized !== "true") {
+                        adminTeacherField.value = adminUserField.value;
+                    }
+                });
+                adminTeacherField.addEventListener('input', () => {
+                    if (adminTeacherField.value.trim() !== '' && adminTeacherField.value !== adminUserField.value) {
+                        adminTeacherField.dataset.customized = "true";
+                    } else if (adminTeacherField.value.trim() === '') {
+                        adminTeacherField.dataset.customized = "";
+                    }
                 });
             }
             

@@ -848,10 +848,13 @@ app.post('/api/login', async (req, res) => {
       return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Primaire & Maternelle.` });
     }
 
-    // 3. Recherche stricte de l'utilisateur dans la base de données (seuls les comptes configurés par l'admin sont acceptés)
+    // 3. Recherche de l'utilisateur dans la base de données (par nom d'utilisateur d'accès ou nom d'enseignant dans le tableau)
     const userDoc = await db.collection('users').findOne({ 
-      username: trimmedUsername, 
-      section: section 
+      section: section,
+      $or: [
+        { username: trimmedUsername },
+        { tableTeacherName: trimmedUsername }
+      ]
     });
 
     if (userDoc && userDoc.password) {
@@ -859,7 +862,7 @@ app.post('/api/login', async (req, res) => {
         console.log('[LOGIN] Authentification réussie pour (DB):', trimmedUsername);
         let userLang = userDoc.language;
         if (!userLang) {
-          userLang = arabicTeachers.includes(trimmedUsername) ? 'ar' : (englishTeachers.includes(trimmedUsername) ? 'en' : 'fr');
+          userLang = arabicTeachers.includes(userDoc.username) ? 'ar' : (englishTeachers.includes(userDoc.username) ? 'en' : 'fr');
         }
         return res.status(200).json({ 
           success: true, 
@@ -958,7 +961,7 @@ app.post('/api/admin/users', async (req, res) => {
       return res.status(400).json({ message: 'Nom d\'utilisateur et mot de passe requis.' });
     }
     const trimmedUser = username.trim();
-    const trimmedTableTeacherName = (tableTeacherName || '').trim();
+    const trimmedTableTeacherName = (tableTeacherName || '').trim() || trimmedUser;
     const db = await connectToDatabase();
 
     const userId = `${section}_${trimmedUser}`;

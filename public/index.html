@@ -348,7 +348,7 @@
                          </div>
                      </div>
                      
-                     <!-- Formulaire d'ajout / modification d'enseignant avec sélection de la langue et nom dans le tableau pour le tri -->
+                     <!-- Formulaire d'ajout / modification d'enseignant avec Nom Enseignant (Tableau), Nom d'utilisateur (Accès), Mot de passe et Langue -->
                      <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:16px; margin-bottom:16px;">
                          <div style="font-weight:700; color:#1E293B; margin-bottom:10px; font-size:0.95rem;">
                              <i class="fas fa-user-edit" style="color:#2563EB;"></i> Ajouter ou Modifier un Enseignant :
@@ -356,15 +356,15 @@
                          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; align-items:end;">
                              <div>
                                  <label for="adminNewUsername" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">
-                                     <i class="fas fa-user" style="color:#2563EB;"></i> Nom d'utilisateur :
+                                     <i class="fas fa-id-badge" style="color:#2563EB;"></i> Nom d'utilisateur (Accès) :
                                  </label>
-                                 <input type="text" id="adminNewUsername" placeholder="Ex: Jean, Sarah, Mohamed..." style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                                 <input type="text" id="adminNewUsername" placeholder="Ex: Jean, Mohamed, Sarah..." style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
                              </div>
                              <div>
                                  <label for="adminNewTableTeacherName" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">
-                                     <i class="fas fa-filter" style="color:#8B5CF6;"></i> Nom dans le Tableau (Tri) :
+                                     <i class="fas fa-chalkboard-teacher" style="color:#8B5CF6;"></i> Nom de l'Enseignant (Tableau) :
                                  </label>
-                                 <input type="text" id="adminNewTableTeacherName" placeholder="Si différent (Ex: M. Jean, أ. محمد)" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                                 <input type="text" id="adminNewTableTeacherName" placeholder="Même nom par défaut ou nom du tableau" style="width:100%; padding:9px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
                              </div>
                              <div>
                                  <label for="adminNewPassword" style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:4px;">
@@ -388,8 +388,10 @@
                                  </button>
                              </div>
                          </div>
-                         <div style="font-size:0.8rem; color:#64748B; margin-top:8px; line-height:1.4;">
-                             <i class="fas fa-info-circle" style="color:#2563EB;"></i> <strong>Nom dans le Tableau (Tri) :</strong> Renseignez ce champ si le nom écrit dans la colonne <em>'Enseignant'</em> du fichier Excel / plan hebdomadaire est différent du nom d'utilisateur de connexion (Ex: <em>M. Jean DUPONT</em> vs <em>Jean</em>, ou <em>أ. محمد</em> vs <em>mohamed</em>). Si identique, laissez vide.
+                         <div style="font-size:0.82rem; color:#475569; margin-top:10px; line-height:1.45; background:#EEF2FF; padding:8px 12px; border-radius:8px; border:1px solid #C7D2FE;">
+                             <i class="fas fa-info-circle" style="color:#4F46E5;"></i> <strong>Fonctionnement :</strong> 
+                             Le <em>Nom d'utilisateur</em> sert pour l'accès/connexion. Le <em>Nom de l'Enseignant</em> sert pour le tri et l'affichage exclusif de son tableau hebdomadaire. 
+                             Par défaut, si vous ne changez pas le <em>Nom de l'Enseignant</em>, il reste automatiquement identique au <em>Nom d'utilisateur</em>.
                          </div>
                          <div id="adminUsersStatus" style="font-size:0.9rem; margin-top:10px; font-weight:600;"></div>
                      </div>
