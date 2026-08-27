@@ -864,6 +864,7 @@ app.post('/api/login', async (req, res) => {
         return res.status(200).json({ 
           success: true, 
           username: userDoc.username, 
+          tableTeacherName: userDoc.tableTeacherName || userDoc.username,
           role: userDoc.role || 'teacher', 
           section, 
           language: userLang 
@@ -914,6 +915,7 @@ app.get('/api/admin/users', async (req, res) => {
         completeList.push({
           _id: uId,
           username: teacherName,
+          tableTeacherName: '',
           password: '',
           section: section,
           role: 'teacher',
@@ -951,11 +953,12 @@ app.get('/api/admin/users', async (req, res) => {
 
 app.post('/api/admin/users', async (req, res) => {
   try {
-    const { username, password, section = 'garcons', role = 'teacher', language = 'fr' } = req.body;
+    const { username, password, section = 'garcons', role = 'teacher', language = 'fr', tableTeacherName = '' } = req.body;
     if (!username || !password) {
       return res.status(400).json({ message: 'Nom d\'utilisateur et mot de passe requis.' });
     }
     const trimmedUser = username.trim();
+    const trimmedTableTeacherName = (tableTeacherName || '').trim();
     const db = await connectToDatabase();
 
     const userId = `${section}_${trimmedUser}`;
@@ -968,6 +971,7 @@ app.post('/api/admin/users', async (req, res) => {
       { 
         $set: { 
           username: trimmedUser, 
+          tableTeacherName: trimmedTableTeacherName,
           password: password, 
           section: section, 
           role: role, 
@@ -978,7 +982,7 @@ app.post('/api/admin/users', async (req, res) => {
       { upsert: true }
     );
 
-    res.status(200).json({ message: `Compte '${trimmedUser}' enregistré (Langue: ${language}) pour la section ${section}.` });
+    res.status(200).json({ message: `Compte '${trimmedUser}' enregistré (Nom Tableau/Tri: '${trimmedTableTeacherName || trimmedUser}', Langue: ${language}) pour la section ${section}.` });
   } catch (error) {
     console.error('Erreur POST /api/admin/users:', error);
     res.status(500).json({ message: 'Erreur serveur.' });

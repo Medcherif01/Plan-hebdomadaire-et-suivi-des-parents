@@ -2,6 +2,7 @@
 
         // Variables globales
         let loggedInUser = null;
+        let loggedInTeacherTable = localStorage.getItem('tableTeacherName') || '';
         let currentUserLanguage = 'fr';
         let currentSection = localStorage.getItem('selectedSection') || localStorage.getItem('currentSection') || 'garcons';
         let planData = [];
@@ -979,9 +980,10 @@
             // Si l'utilisateur est un enseignant connecté (non Med01), n'extraire les options (matières, classes, etc.) QUE de ses propres séances
             if (loggedInUser && loggedInUser !== 'Med01' && ensK) { 
                 const uE = String(loggedInUser).trim().toLowerCase(); 
+                const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
                 data = allData.filter(i => { 
                     const iE = i && i[ensK] ? String(i[ensK]).trim().toLowerCase() : ''; 
-                    return iE === uE; 
+                    return iE === uE || (uTable && iE === uTable); 
                 }); 
             } 
 
@@ -1034,7 +1036,15 @@
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
                 if (loggedInUser && loggedInUser !== 'Med01') { 
-                    filterEnsSelect.value = loggedInUser; 
+                    const matchingOption = Array.from(filterEnsSelect.options).find(o => 
+                        (loggedInTeacherTable && o.value.toLowerCase() === loggedInTeacherTable.toLowerCase()) ||
+                        (o.value.toLowerCase() === loggedInUser.toLowerCase())
+                    );
+                    if (matchingOption) {
+                        filterEnsSelect.value = matchingOption.value;
+                    } else {
+                        filterEnsSelect.value = loggedInTeacherTable || loggedInUser; 
+                    }
                     filterEnsSelect.disabled = true; 
                 } else { 
                     filterEnsSelect.disabled = false; 
@@ -1046,7 +1056,15 @@
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
                 if (loggedInUser && loggedInUser !== 'Med01') { 
-                    filterEnsSelect.value = loggedInUser; 
+                    const matchingOption = Array.from(filterEnsSelect.options).find(o => 
+                        (loggedInTeacherTable && o.value.toLowerCase() === loggedInTeacherTable.toLowerCase()) ||
+                        (o.value.toLowerCase() === loggedInUser.toLowerCase())
+                    );
+                    if (matchingOption) {
+                        filterEnsSelect.value = matchingOption.value;
+                    } else {
+                        filterEnsSelect.value = loggedInTeacherTable || loggedInUser; 
+                    }
                     filterEnsSelect.disabled = true; 
                 } else { 
                     filterEnsSelect.disabled = false; 
@@ -1074,8 +1092,9 @@
                 // Si l'utilisateur est un enseignant (non Med01), n'afficher STRICTEMENT que ses matières et séances
                 if (loggedInUser && loggedInUser !== 'Med01') {
                     const uE = String(loggedInUser).trim().toLowerCase();
+                    const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
                     const iETight = iE ? String(iE).trim().toLowerCase() : '';
-                    if (iETight !== uE) {
+                    if (iETight !== uE && (!uTable || iETight !== uTable)) {
                         return false;
                     }
                 }
@@ -1457,8 +1476,14 @@
             }
         }
 
-        function initializeApp(username, customLang, role) {
+        function initializeApp(username, customLang, role, tableTeacherName) {
             loggedInUser = username;
+            if (typeof tableTeacherName !== 'undefined') {
+                loggedInTeacherTable = tableTeacherName || '';
+                localStorage.setItem('tableTeacherName', loggedInTeacherTable);
+            } else {
+                loggedInTeacherTable = localStorage.getItem('tableTeacherName') || '';
+            }
             currentUserRole = role || localStorage.getItem('userRole') || (username === 'Med01' ? 'admin' : (username === 'Racha' ? 'supervisor' : 'teacher'));
             localStorage.setItem('userRole', currentUserRole);
             
@@ -1629,6 +1654,8 @@
                 
                 if (response.ok && result.success) {
                     localStorage.setItem('loggedInUser', result.username);
+                    localStorage.setItem('tableTeacherName', result.tableTeacherName || '');
+                    loggedInTeacherTable = result.tableTeacherName || '';
                     localStorage.setItem('authVersion', AUTH_VERSION.toString());
                     if (result.role) {
                         localStorage.setItem('userRole', result.role);
@@ -1640,11 +1667,13 @@
                         currentSection = result.section;
                         localStorage.setItem('selectedSection', result.section);
                     }
-                    initializeApp(result.username, result.language, result.role);
+                    initializeApp(result.username, result.language, result.role, result.tableTeacherName);
                 } else {
                     errorDiv.textContent = result.message || "Échec connexion.";
                     errorDiv.style.display = 'block';
                     localStorage.removeItem('loggedInUser');
+                    localStorage.removeItem('tableTeacherName');
+                    loggedInTeacherTable = '';
                     localStorage.removeItem('userRole');
                 }
             } catch (error) {
@@ -1666,11 +1695,13 @@
         function handleLogout() {
             console.log("Déconnexion par:", loggedInUser);
             localStorage.removeItem('loggedInUser');
+            localStorage.removeItem('tableTeacherName');
             localStorage.removeItem('userRole');
             localStorage.removeItem('authVersion');
             localStorage.removeItem('userLanguage');
             
             loggedInUser = null;
+            loggedInTeacherTable = '';
             currentUserRole = null;
             currentWeek = null;
             planData = [];
@@ -1779,7 +1810,8 @@
                 <table class="users-table">
                     <thead>
                         <tr>
-                            <th>Nom d'enseignant</th>
+                            <th>Nom d'utilisateur (Connexion)</th>
+                            <th>Nom dans le Tableau (Tri Plan)</th>
                             <th>Mot de passe</th>
                             <th>Section</th>
                             <th>Langue par défaut</th>
@@ -1793,13 +1825,20 @@
                 const secLabel = u.section === 'garcons' ? '👦 Garçons' : (u.section === 'primaire' ? '👶🎒 Primaire' : '👧 Filles');
                 const userLang = u.language || (arabicTeachers.includes(u.username) ? 'ar' : (englishTeachers.includes(u.username) ? 'en' : 'fr'));
                 const langInfo = langLabels[userLang] || langLabels.fr;
-                const safeUsername = u.username.replace(/'/g, "\\'");
+                const safeUsername = (u.username || '').replace(/'/g, "\\'");
+                const safeTableTeacher = (u.tableTeacherName || '').replace(/'/g, "\\'");
                 const safePassword = (u.password || '').replace(/'/g, "\\'");
+                
+                const hasCustomTableTeacher = u.tableTeacherName && u.tableTeacherName.trim() !== '' && u.tableTeacherName.trim().toLowerCase() !== u.username.trim().toLowerCase();
+                const tableTeacherBadge = hasCustomTableTeacher
+                    ? `<span style="background:#EEF2FF; color:#3730A3; border:1px solid #C7D2FE; font-weight:700; padding:4px 9px; border-radius:6px; display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-filter" style="color:#4F46E5;"></i> ${escapeHtml(u.tableTeacherName)}</span>`
+                    : `<span style="color:#64748B; font-size:0.85rem; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-check" style="color:#10B981; font-size:0.75rem;"></i> Identique (${escapeHtml(u.username)})</span>`;
                 
                 html += `
                     <tr>
-                        <td><strong><i class="fas fa-chalkboard-teacher" style="color:#4F46E5; margin-right:6px;"></i>${u.username}</strong></td>
-                        <td><code style="background:#F1F5F9; padding:3px 8px; border-radius:6px; font-weight:700; color:#0F172A;">${u.password || 'Non défini'}</code></td>
+                        <td><strong><i class="fas fa-chalkboard-teacher" style="color:#4F46E5; margin-right:6px;"></i>${escapeHtml(u.username)}</strong></td>
+                        <td>${tableTeacherBadge}</td>
+                        <td><code style="background:#F1F5F9; padding:3px 8px; border-radius:6px; font-weight:700; color:#0F172A;">${escapeHtml(u.password || 'Non défini')}</code></td>
                         <td><span style="font-weight:600;">${secLabel}</span></td>
                         <td>
                             <span class="lang-badge ${langInfo.cls}">
@@ -1807,7 +1846,7 @@
                             </span>
                         </td>
                         <td>
-                            <button type="button" class="pro-button primary-button" onclick="adminEditUserPrefill('${safeUsername}', '${safePassword}', '${u.section}', '${userLang}')" style="padding:4px 9px; font-size:0.8rem; margin-right:5px;">
+                            <button type="button" class="pro-button primary-button" onclick="adminEditUserPrefill('${safeUsername}', '${safePassword}', '${u.section}', '${userLang}', '${safeTableTeacher}')" style="padding:4px 9px; font-size:0.8rem; margin-right:5px;">
                                 <i class="fas fa-edit"></i> Modifier
                             </button>
                             <button type="button" class="btn-sm-delete" onclick="adminDeleteUser('${safeUsername}', '${u.section}')" style="padding:4px 9px; font-size:0.8rem;">
@@ -1831,41 +1870,48 @@
             }
             const filtered = allAdminUsersCache.filter(u => 
                 (u.username && u.username.toLowerCase().includes(query)) ||
+                (u.tableTeacherName && u.tableTeacherName.toLowerCase().includes(query)) ||
                 (u.language && u.language.toLowerCase().includes(query)) ||
                 (u.password && u.password.toLowerCase().includes(query))
             );
             renderAdminUsersTable(filtered);
         }
 
-        function adminEditUserPrefill(username, password, section, language) {
+        function adminEditUserPrefill(username, password, section, language, tableTeacherName) {
             const userInput = document.getElementById('adminNewUsername');
+            const tableTeacherInput = document.getElementById('adminNewTableTeacherName');
             const passInput = document.getElementById('adminNewPassword');
             const langSelect = document.getElementById('adminNewUserLanguage');
             const filterEl = document.getElementById('adminSectionFilter');
             
             if (userInput) userInput.value = username;
+            if (tableTeacherInput) tableTeacherInput.value = tableTeacherName || '';
             if (passInput) passInput.value = password;
             if (langSelect) langSelect.value = language || 'fr';
             if (filterEl && section) filterEl.value = section;
             
             if (userInput) {
                 userInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                if (passInput) passInput.focus();
+                if (tableTeacherInput && !tableTeacherInput.value) tableTeacherInput.focus();
+                else if (passInput) passInput.focus();
             }
             const statusDiv = document.getElementById('adminUsersStatus');
             if (statusDiv) {
-                statusDiv.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-info-circle"></i> Modification du compte pour <strong>${username}</strong>. Changez le mot de passe ou la langue puis cliquez sur 'Enregistrer Compte'.</span>`;
+                const diffInfo = tableTeacherName && tableTeacherName !== username ? ` (Nom de tri tableau: <strong>${tableTeacherName}</strong>)` : '';
+                statusDiv.innerHTML = `<span style="color:#2563EB;"><i class="fas fa-info-circle"></i> Modification du compte pour <strong>${username}</strong>${diffInfo}. Modifiez les informations puis cliquez sur 'Enregistrer Compte'.</span>`;
             }
         }
 
         async function adminAddOrUpdateUser() {
             const userInput = document.getElementById('adminNewUsername');
+            const tableTeacherInput = document.getElementById('adminNewTableTeacherName');
             const passInput = document.getElementById('adminNewPassword');
             const langSelect = document.getElementById('adminNewUserLanguage');
             const filterEl = document.getElementById('adminSectionFilter');
             const statusDiv = document.getElementById('adminUsersStatus');
             
             const username = userInput ? userInput.value.trim() : '';
+            const tableTeacherName = tableTeacherInput ? tableTeacherInput.value.trim() : '';
             const password = passInput ? passInput.value.trim() : '';
             const language = langSelect ? langSelect.value : 'fr';
             const section = filterEl ? filterEl.value : currentSection;
@@ -1883,7 +1929,7 @@
                 const response = await fetch('/api/admin/users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, section, language })
+                    body: JSON.stringify({ username, password, section, language, tableTeacherName })
                 });
                 const res = await response.json();
                 if (response.ok) {
@@ -1892,6 +1938,7 @@
                         setTimeout(() => { if (statusDiv) statusDiv.innerHTML = ''; }, 4000);
                     }
                     if (userInput) userInput.value = '';
+                    if (tableTeacherInput) tableTeacherInput.value = '';
                     if (passInput) passInput.value = '';
                     loadAdminUsersList();
                 } else {
@@ -4612,10 +4659,11 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
     if (planData && Array.isArray(planData) && loggedInUser) {
         const norm = (s) => String(s || '').trim().toLowerCase();
         const uE = norm(loggedInUser);
+        const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? norm(loggedInTeacherTable) : '';
         planData.forEach(row => {
             const ensVal = getRowField(row, 'Enseignant');
             const clsVal = getRowField(row, 'Classe');
-            if (ensVal && norm(ensVal) === uE && clsVal) {
+            if (ensVal && (norm(ensVal) === uE || (uTable && norm(ensVal) === uTable)) && clsVal) {
                 teacherClasses.add(clsVal.trim());
             }
         });
