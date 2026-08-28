@@ -2995,7 +2995,7 @@ function renderParentPlanCards(rows) {
                         <h3 style="color:#1E1B4B; font-size:1.4rem; font-weight:800; margin:0 0 10px 0;">
                             ${escapeHtml(activeSpecialDay.title)}
                         </h3>
-                        <p style="color:#334155; font-size:1.05rem; line-height:1.7; margin:0; white-space:pre-wrap;">${escapeHtml(activeSpecialDay.message || 'Aucune séance de cours n\\'est programmée pour ce jour.')}</p>
+                        <p style="color:#334155; font-size:1.05rem; line-height:1.7; margin:0; white-space:pre-wrap;">${escapeHtml(activeSpecialDay.message || "Aucune séance de cours n'est programmée pour ce jour.")}</p>
                     </div>
 
                     ${photosGalleryHtml}
@@ -3285,7 +3285,7 @@ async function saveAdminSpecialDay() {
 
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || 'Erreur lors de l\\'enregistrement');
+            throw new Error(err.message || "Erreur lors de l'enregistrement");
         }
 
         displayAlert('✅ Journée spéciale / fusion enregistrée avec succès !', false);
@@ -3423,7 +3423,7 @@ async function saveQuickSpecialDay() {
 
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || 'Erreur lors de l\\'enregistrement');
+            throw new Error(err.message || "Erreur lors de l'enregistrement");
         }
 
         displayAlert('✅ Journée fusionnée avec succès pour les parents !', false);
