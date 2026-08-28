@@ -1658,10 +1658,10 @@
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
                 <div>
                     <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Section :</label>
-                    <select id="quickSpecialSection" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;">
+                    <select id="quickSpecialSection" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;" onchange="onQuickSpecialSectionChange()">
                         <option value="garcons">👦 Section Garçons</option>
                         <option value="filles">👧 Section Filles</option>
-                        <option value="primaire">👶🎒 Section Primaire</option>
+                        <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
                     </select>
                 </div>
                 <div>
@@ -1684,19 +1684,19 @@
                 <div>
                     <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Classe :</label>
                     <select id="quickSpecialClass" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;">
-                        <option value="all">🌟 Toutes les classes</option>
+                        <option value="ALL">🌟 Toutes les classes</option>
                     </select>
                 </div>
             </div>
 
             <div style="margin-bottom:12px;">
                 <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Titre de l'Événement :</label>
-                <input type="text" id="quickSpecialTitle" placeholder="Ex: 🎉 Fête Nationale / Journée sans cours" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:600; box-sizing:border-box;">
+                <input type="text" id="quickSpecialTitle" placeholder="Ex: 🎉 Orientation / Fête Nationale / Pas de cours" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:600; box-sizing:border-box;">
             </div>
 
             <div style="margin-bottom:12px;">
                 <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Description / Message aux Parents :</label>
-                <textarea id="quickSpecialDesc" rows="2" placeholder="Chers parents, aucun cours aujourd'hui..." style="width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.9rem; box-sizing:border-box;"></textarea>
+                <textarea id="quickSpecialMessage" rows="3" placeholder="Chers parents, aucun cours aujourd'hui..." style="width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.9rem; box-sizing:border-box;"></textarea>
             </div>
 
             <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px; margin-bottom:16px;">

@@ -2730,9 +2730,22 @@ app.post('/api/special-days', async (req, res) => {
   }
 });
 
+app.delete('/api/special-days/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await connectToDatabase();
+    await db.collection('special_days').deleteOne({ _id: id });
+    console.log(`[Special Day] Journée spéciale supprimée: ${id}`);
+    res.status(200).json({ success: true, message: 'Journée spéciale supprimée.' });
+  } catch (error) {
+    console.error('Erreur /api/special-days/:id DELETE:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.delete('/api/special-days', async (req, res) => {
   try {
-    const { id, section, week, day, classe = 'all' } = req.body;
+    const { id, section, week, day, classe = 'all' } = (req.body && Object.keys(req.body).length > 0) ? req.body : req.query;
     const db = await connectToDatabase();
     let query = {};
     if (id) {
@@ -2743,6 +2756,7 @@ app.delete('/api/special-days', async (req, res) => {
       return res.status(400).json({ error: 'Identifiant manquant.' });
     }
     await db.collection('special_days').deleteOne(query);
+    console.log(`[Special Day] Journée spéciale supprimée:`, query);
     res.status(200).json({ success: true, message: 'Journée spéciale supprimée.' });
   } catch (error) {
     console.error('Erreur /api/special-days DELETE:', error);

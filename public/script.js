@@ -1741,7 +1741,7 @@
             } else if (tabName === 'publication') {
                 if (typeof loadWeeklyPermissionsMatrix === 'function') loadWeeklyPermissionsMatrix();
             } else if (tabName === 'special_days') {
-                populateAdminUploadWeekSelector();
+                if (typeof populateAdminSpecialDaysForm === 'function') populateAdminSpecialDaysForm();
                 if (typeof loadAdminSpecialDaysList === 'function') loadAdminSpecialDaysList();
             }
         }
@@ -3148,51 +3148,117 @@ function renderParentPlanCards(rows) {
 // GESTION ADMIN DES JOURS SPÉCIAUX & PHOTOS (FUSION)
 // ----------------------------------------------------
 
-async function loadAdminSpecialDaysList() {
-    const tbody = document.getElementById('adminSpecialDaysTableBody');
-    if (!tbody) return;
+function populateAdminSpecialDaysForm() {
+    const weekSelect = document.getElementById('specialDayWeek');
+    if (weekSelect) {
+        const curWeek = currentWeek || 1;
+        weekSelect.innerHTML = '';
+        for (let w = 1; w <= 40; w++) {
+            const opt = document.createElement('option');
+            opt.value = w;
+            opt.textContent = `Semaine ${w}`;
+            if (Number(w) === Number(curWeek)) opt.selected = true;
+            weekSelect.appendChild(opt);
+        }
+        weekSelect.value = curWeek;
+    }
+    updateAdminSpecialDaysClassDropdown();
+}
 
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#6B7280;"><i class="fas fa-spinner fa-spin"></i> Chargement des fusions...</td></tr>`;
+function updateAdminSpecialDaysClassDropdown() {
+    const classSelect = document.getElementById('specialDayClass');
+    const secSelect = document.getElementById('specialDaySection');
+    if (!classSelect) return;
+    const sec = secSelect ? secSelect.value : (currentSection || 'garcons');
+    
+    let classes = [];
+    if (sec === 'garcons') {
+        classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+    } else if (sec === 'filles') {
+        classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+    } else {
+        classes = ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2', '1P', '2P', '3P', '4P', '5P'];
+    }
+
+    let html = `<option value="ALL">🌟 Toutes les classes de la section</option>`;
+    classes.forEach(c => {
+        html += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+    });
+    classSelect.innerHTML = html;
+}
+
+async function loadAdminSpecialDaysList() {
+    const container = document.getElementById('adminSpecialDaysListContainer');
+    const tbody = document.getElementById('adminSpecialDaysTableBody');
+    if (!container && !tbody) return;
+
+    if (container) {
+        container.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:25px; color:#6B7280;"><i class="fas fa-spinner fa-spin fa-2x"></i><p style="margin-top:8px;">Chargement des journées fusionnées...</p></div>`;
+    }
 
     try {
-        const section = currentSection || 'garcons';
+        const sectionEl = document.getElementById('specialDaySection');
+        const section = (sectionEl ? sectionEl.value : currentSection) || 'garcons';
         const res = await fetch(`/api/special-days?section=${section}`);
         if (!res.ok) throw new Error('Erreur lors du chargement');
         const list = await res.json();
 
         if (!list || list.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#9CA3AF;">Aucune fusion ou journée spéciale enregistrée.</td></tr>`;
+            if (container) {
+                container.innerHTML = `
+                    <div style="grid-column:1/-1; text-align:center; padding:35px 20px; background:white; border-radius:14px; border:1px dashed #CBD5E1;">
+                        <i class="fas fa-calendar-check fa-2x" style="color:#94A3B8; margin-bottom:8px;"></i>
+                        <p style="color:#64748B; font-weight:600; margin:0;">Aucune journée fusionnée pour cette section.</p>
+                    </div>
+                `;
+            }
+            if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#9CA3AF;">Aucune fusion enregistrée.</td></tr>`;
             return;
         }
 
-        const typeBadges = {
-            'no_courses': '<span class="status-badge" style="background:#FEF2F2; color:#DC2626;">Pas de cours</span>',
-            'holiday': '<span class="status-badge" style="background:#FFFBEB; color:#D97706;">Vacances / Férié</span>',
-            'event': '<span class="status-badge" style="background:#F5F3FF; color:#7C3AED;">Événement</span>',
-            'activity': '<span class="status-badge" style="background:#ECFDF5; color:#059669;">Activité / Sortie</span>'
-        };
-
-        tbody.innerHTML = list.map(item => {
-            const photoCount = (item.photos && item.photos.length) || 0;
-            return `
-                <tr>
-                    <td><strong>Semaine ${item.week}</strong></td>
-                    <td><span class="status-badge">${escapeHtml(item.day)}</span></td>
-                    <td>${item.classe === 'ALL' ? '<span style="font-weight:700; color:#4338CA;">Toutes les classes</span>' : escapeHtml(item.classe || 'Toutes')}</td>
-                    <td>${typeBadges[item.type] || item.type}</td>
-                    <td><strong>${escapeHtml(item.title)}</strong><br><small style="color:#64748B;">${escapeHtml((item.message || '').substring(0, 50))}${item.message && item.message.length > 50 ? '...' : ''}</small></td>
-                    <td>${photoCount > 0 ? `<span style="background:#EFF6FF; color:#2563EB; padding:3px 8px; border-radius:10px; font-weight:700; font-size:0.85rem;"><i class="fas fa-images"></i> ${photoCount}</span>` : '<span style="color:#CBD5E1;">0</span>'}</td>
-                    <td>
-                        <button type="button" class="pro-button" onclick="deleteAdminSpecialDay('${item._id}')" style="background:#FEF2F2; color:#DC2626; border:1px solid #FECACA; padding:6px 12px; font-size:0.85rem;" title="Supprimer">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        if (container) {
+            container.innerHTML = list.map(item => {
+                const photoCount = (item.photos && item.photos.length) || 0;
+                return `
+                    <div style="background:white; border:1.5px solid #E2E8F0; border-radius:14px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.04); display:flex; flex-direction:column; justify-content:space-between;">
+                        <div>
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:10px;">
+                                <div>
+                                    <span style="background:#EDE9FE; color:#6D28D9; font-weight:800; font-size:0.8rem; padding:3px 8px; border-radius:6px;">Semaine ${item.week}</span>
+                                    <span style="background:#F1F5F9; color:#334155; font-weight:700; font-size:0.8rem; padding:3px 8px; border-radius:6px; margin-left:4px;">${escapeHtml(item.day)}</span>
+                                </div>
+                                <span style="background:#FEF2F2; color:#DC2626; font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:10px;">Pas de cours</span>
+                            </div>
+                            <h5 style="margin:0 0 6px 0; color:#1E1B4B; font-size:1.05rem; font-weight:800;">
+                                ${escapeHtml(item.title)}
+                            </h5>
+                            <div style="font-size:0.85rem; color:#475569; margin-bottom:8px; line-height:1.4;">
+                                ${escapeHtml(item.description || item.message || '')}
+                            </div>
+                            <div style="font-size:0.8rem; color:#64748B; margin-bottom:10px;">
+                                <i class="fas fa-users"></i> Classe : <strong>${item.classe === 'ALL' || item.classe === 'all' ? 'Toutes les classes' : escapeHtml(item.classe)}</strong>
+                            </div>
+                            ${photoCount > 0 ? `
+                                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+                                    ${item.photos.slice(0, 3).map(p => `
+                                        <img src="${escapeHtml(p.url)}" alt="Photo" style="width:48px; height:48px; border-radius:6px; object-fit:cover; border:1px solid #CBD5E1;">
+                                    `).join('')}
+                                    ${photoCount > 3 ? `<span style="font-size:0.75rem; color:#6D28D9; font-weight:700; align-self:center;">+${photoCount - 3}</span>` : ''}
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div style="display:flex; justify-content:flex-end; border-top:1px solid #F1F5F9; padding-top:10px;">
+                            <button type="button" class="pro-button" onclick="deleteAdminSpecialDay('${item._id}')" style="background:#FEF2F2; color:#DC2626; border:1px solid #FECACA; padding:5px 12px; font-size:0.8rem; font-weight:700; border-radius:8px;">
+                                <i class="fas fa-trash-alt"></i> Supprimer
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
     } catch (e) {
         console.error('Erreur loadAdminSpecialDaysList:', e);
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#DC2626;">Erreur: ${e.message}</td></tr>`;
+        if (container) container.innerHTML = `<div style="grid-column:1/-1; color:#DC2626; padding:20px;">Erreur: ${e.message}</div>`;
     }
 }
 
@@ -3215,7 +3281,7 @@ function handleSpecialDayPhotosSelected(e) {
 }
 
 function addSpecialDayPhotoFromUrl() {
-    const input = document.getElementById('specialPhotoUrlInput');
+    const input = document.getElementById('specialDayPhotoUrlInput') || document.getElementById('specialPhotoUrlInput');
     const url = input ? input.value.trim() : '';
     if (!url) return;
 
@@ -3233,7 +3299,7 @@ function removeAdminSpecialPhoto(index) {
 }
 
 function renderAdminSpecialPhotosPreview() {
-    const container = document.getElementById('specialPhotosPreviewContainer');
+    const container = document.getElementById('specialDayPhotosPreviewContainer') || document.getElementById('specialPhotosPreviewContainer');
     if (!container) return;
 
     if (adminSpecialPhotosList.length === 0) {
@@ -3252,28 +3318,37 @@ function renderAdminSpecialPhotosPreview() {
 }
 
 async function saveAdminSpecialDay() {
+    const section = document.getElementById('specialDaySection')?.value || currentSection || 'garcons';
     const week = document.getElementById('specialDayWeek')?.value;
-    const day = document.getElementById('specialDayJour')?.value;
-    const classe = document.getElementById('specialDayClasse')?.value || 'ALL';
-    const type = document.getElementById('specialDayType')?.value || 'no_courses';
+    const day = document.getElementById('specialDayDay')?.value || document.getElementById('specialDayJour')?.value;
+    const classe = document.getElementById('specialDayClass')?.value || document.getElementById('specialDayClasse')?.value || 'ALL';
     const title = document.getElementById('specialDayTitle')?.value?.trim();
-    const message = document.getElementById('specialDayMessage')?.value?.trim();
-    const section = currentSection || 'garcons';
+    const description = (document.getElementById('specialDayDescription') || document.getElementById('specialDayMessage'))?.value?.trim() || '';
 
-    if (!week || !day || !title) {
-        alert('Veuillez renseigner la semaine, le jour et le titre de la fusion.');
+    if (!week) {
+        alert('Veuillez sélectionner la semaine cible.');
+        return;
+    }
+    if (!day) {
+        alert('Veuillez sélectionner le jour.');
+        return;
+    }
+    if (!title) {
+        alert('Veuillez renseigner le titre de l\'événement.');
         return;
     }
 
     const payload = {
+        section: section,
         week: Number(week),
         day: day,
         classe: classe,
-        type: type,
+        type: 'no_courses',
         title: title,
-        message: message,
+        description: description,
+        message: description,
         photos: adminSpecialPhotosList,
-        section: section
+        isNoSchool: true
     };
 
     try {
@@ -3292,7 +3367,7 @@ async function saveAdminSpecialDay() {
         adminSpecialPhotosList = [];
         renderAdminSpecialPhotosPreview();
         if (document.getElementById('specialDayTitle')) document.getElementById('specialDayTitle').value = '';
-        if (document.getElementById('specialDayMessage')) document.getElementById('specialDayMessage').value = '';
+        if (document.getElementById('specialDayDescription')) document.getElementById('specialDayDescription').value = '';
         loadAdminSpecialDaysList();
         if (typeof loadParentWeeklyPlan === 'function') loadParentWeeklyPlan();
     } catch (e) {
@@ -3316,30 +3391,79 @@ async function deleteAdminSpecialDay(id) {
     }
 }
 
-// Quick Modal de fusion depuis la vue des parents
+// Quick Modal de fusion depuis la vue des parents ou le bouton rapide
 function openSpecialDayQuickModal(day, classe) {
     const modal = document.getElementById('specialDayQuickModal');
     if (!modal) return;
 
-    const curWeek = document.getElementById('parentWeekSelector')?.value || (currentWeek || 1);
-    const curClass = classe || document.getElementById('parentClassSelector')?.value || 'PEI1';
+    const curWeek = document.getElementById('parentWeekSelector')?.value || document.getElementById('weekSelector')?.value || (currentWeek || 1);
+    const curSection = currentSection || 'garcons';
     const curDay = day || parentActiveDay || 'Dimanche';
 
-    const weekInput = document.getElementById('quickSpecialWeek');
-    const dayInput = document.getElementById('quickSpecialDay');
-    const classInput = document.getElementById('quickSpecialClass');
-    const titleInput = document.getElementById('quickSpecialTitle');
-    const msgInput = document.getElementById('quickSpecialMessage');
+    const sectionSelect = document.getElementById('quickSpecialSection');
+    if (sectionSelect) {
+        sectionSelect.value = curSection;
+    }
 
-    if (weekInput) weekInput.value = curWeek;
-    if (dayInput) dayInput.value = curDay;
-    if (classInput) classInput.value = curClass;
-    if (titleInput) titleInput.value = `Pas de cours - ${curDay}`;
-    if (msgInput) msgInput.value = `Chers parents, il n'y a pas de cours réguliers le ${curDay}.`;
+    const weekSelect = document.getElementById('quickSpecialWeek');
+    if (weekSelect) {
+        weekSelect.innerHTML = '';
+        for (let w = 1; w <= 40; w++) {
+            const opt = document.createElement('option');
+            opt.value = w;
+            opt.textContent = `Semaine ${w}`;
+            if (Number(w) === Number(curWeek)) opt.selected = true;
+            weekSelect.appendChild(opt);
+        }
+        weekSelect.value = curWeek;
+    }
+
+    const daySelect = document.getElementById('quickSpecialDay');
+    if (daySelect) {
+        daySelect.value = curDay;
+    }
+
+    updateQuickSpecialClassesDropdown(classe);
+
+    const titleInput = document.getElementById('quickSpecialTitle');
+    const msgInput = document.getElementById('quickSpecialMessage') || document.getElementById('quickSpecialDesc');
+
+    if (titleInput && (!titleInput.value || titleInput.value.startsWith('Pas de cours'))) {
+        titleInput.value = 'Orientation';
+    }
+    if (msgInput && !msgInput.value) {
+        msgInput.value = "La Direction & L'Equipe Pédagogique\nLes Écoles Internationales Al Kawthar";
+    }
 
     quickSpecialPhotosList = [];
     renderQuickSpecialPhotosPreview();
     modal.style.display = 'flex';
+}
+
+function onQuickSpecialSectionChange() {
+    updateQuickSpecialClassesDropdown();
+}
+
+function updateQuickSpecialClassesDropdown(targetClass) {
+    const classSelect = document.getElementById('quickSpecialClass');
+    if (!classSelect) return;
+    const sec = document.getElementById('quickSpecialSection')?.value || currentSection || 'garcons';
+    
+    let classes = [];
+    if (sec === 'garcons') {
+        classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+    } else if (sec === 'filles') {
+        classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+    } else {
+        classes = ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2', '1P', '2P', '3P', '4P', '5P'];
+    }
+
+    let html = `<option value="ALL">🌟 Toutes les classes (${sec === 'garcons' ? 'Garçons' : (sec === 'filles' ? 'Filles' : 'Primaire')})</option>`;
+    classes.forEach(c => {
+        const isSel = (targetClass && String(targetClass).toLowerCase() === String(c).toLowerCase());
+        html += `<option value="${escapeHtml(c)}" ${isSel ? 'selected' : ''}>${escapeHtml(c)}</option>`;
+    });
+    classSelect.innerHTML = html;
 }
 
 function closeSpecialDayQuickModal() {
@@ -3390,28 +3514,38 @@ function renderQuickSpecialPhotosPreview() {
 }
 
 async function saveQuickSpecialDay() {
+    const section = document.getElementById('quickSpecialSection')?.value || currentSection || 'garcons';
     const week = document.getElementById('quickSpecialWeek')?.value;
     const day = document.getElementById('quickSpecialDay')?.value;
     const classe = document.getElementById('quickSpecialClass')?.value || 'ALL';
-    const type = document.getElementById('quickSpecialType')?.value || 'no_courses';
     const title = document.getElementById('quickSpecialTitle')?.value?.trim();
-    const message = document.getElementById('quickSpecialMessage')?.value?.trim();
-    const section = currentSection || 'garcons';
+    const msgEl = document.getElementById('quickSpecialMessage') || document.getElementById('quickSpecialDesc');
+    const message = msgEl ? msgEl.value.trim() : '';
 
-    if (!week || !day || !title) {
-        alert('Veuillez renseigner le titre.');
+    if (!week) {
+        alert('Veuillez sélectionner la semaine.');
+        return;
+    }
+    if (!day) {
+        alert('Veuillez sélectionner le jour.');
+        return;
+    }
+    if (!title) {
+        alert("Veuillez renseigner le titre de l'événement.");
         return;
     }
 
     const payload = {
+        section: section,
         week: Number(week),
         day: day,
         classe: classe,
-        type: type,
+        type: 'no_courses',
         title: title,
+        description: message,
         message: message,
         photos: quickSpecialPhotosList,
-        section: section
+        isNoSchool: true
     };
 
     try {
@@ -3423,12 +3557,13 @@ async function saveQuickSpecialDay() {
 
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || "Erreur lors de l'enregistrement");
+            throw new Error(err.error || err.message || "Erreur lors de l'enregistrement");
         }
 
         displayAlert('✅ Journée fusionnée avec succès pour les parents !', false);
         closeSpecialDayQuickModal();
         if (typeof loadParentWeeklyPlan === 'function') loadParentWeeklyPlan();
+        if (typeof loadAdminSpecialDaysList === 'function') loadAdminSpecialDaysList();
     } catch (e) {
         console.error('Erreur saveQuickSpecialDay:', e);
         alert('Erreur: ' + e.message);
