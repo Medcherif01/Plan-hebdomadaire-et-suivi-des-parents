@@ -2504,16 +2504,27 @@ app.get('/api/plans/:week', async (req, res) => {
       const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
       const isPublishedToParents = pubDoc ? Boolean(pubDoc.published) : false;
 
+      // Récupérer les journées spéciales / fusionnées pour cette semaine et section
+      const specialDays = await db.collection('special_days').find({ 
+        section: section, 
+        week: weekNumber 
+      }).toArray();
+
       res.status(200).json({ 
           planData: enrichedData, 
           classNotes: planDocument.classNotes || {},
           availableWeeklyPlans: availableWeeklyPlans,
-          isPublishedToParents: isPublishedToParents
+          isPublishedToParents: isPublishedToParents,
+          specialDays: specialDays || []
       });
     } else {
       const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
       const isPublishedToParents = pubDoc ? Boolean(pubDoc.published) : false;
-      res.status(200).json({ planData: [], classNotes: {}, availableWeeklyPlans: [], isPublishedToParents });
+      const specialDays = await db.collection('special_days').find({ 
+        section: section, 
+        week: weekNumber 
+      }).toArray();
+      res.status(200).json({ planData: [], classNotes: {}, availableWeeklyPlans: [], isPublishedToParents, specialDays: specialDays || [] });
     }
   } catch (error) {
     console.error('Erreur MongoDB /plans/:week:', error);
@@ -2541,6 +2552,46 @@ app.post('/api/save-plan', async (req, res) => {
   }
 });
 
+// Enregistrement d'un plan Excel vers plusieurs semaines pour chaque section séparée
+app.post('/api/save-multiple-weeks', async (req, res) => {
+  try {
+    const { weeks, data, section = 'garcons' } = req.body;
+    if (!Array.isArray(weeks) || weeks.length === 0 || !Array.isArray(data) || data.length === 0) {
+      return res.status(400).json({ message: 'Données ou liste de semaines invalides.' });
+    }
+    const validWeeks = weeks.map(w => parseInt(w, 10)).filter(w => !isNaN(w) && w >= 1 && w <= 38);
+    if (validWeeks.length === 0) {
+      return res.status(400).json({ message: 'Aucune semaine valide sélectionnée.' });
+    }
+    const db = await connectToDatabase();
+    const now = new Date();
+    const operations = validWeeks.map(w => ({
+      updateOne: {
+        filter: { _id: `${section}_${w}` },
+        update: { 
+          $set: { 
+            week: w, 
+            section: section, 
+            data: data, 
+            updatedAt: now 
+          } 
+        },
+        upsert: true
+      }
+    }));
+    await db.collection('plans').bulkWrite(operations);
+    console.log(`[Multi-Weeks Upload] ${data.length} lignes appliquées aux semaines ${validWeeks.join(', ')} pour la section ${section}.`);
+    res.status(200).json({ 
+      success: true,
+      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section}.`,
+      savedWeeks: validWeeks
+    });
+  } catch (error) {
+    console.error('Erreur MongoDB /api/save-multiple-weeks:', error);
+    res.status(500).json({ message: 'Erreur lors de l\'enregistrement multi-semaines: ' + error.message });
+  }
+});
+
 app.post('/api/save-notes', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const { classe, notes, section = 'garcons' } = req.body;
@@ -2563,24 +2614,51 @@ app.post('/api/save-notes', async (req, res) => {
 app.post('/api/save-row', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const rowData = req.body.data;
+  const originalData = req.body.originalData;
   const section = req.body.section || 'garcons';
   if (isNaN(weekNumber) || typeof rowData !== 'object') return res.status(400).json({ message: 'Données invalides.' });
   try {
     const db = await connectToDatabase();
     const docId = `${section}_${weekNumber}`;
-    const updateFields = {};
     const now = new Date();
+    
+    // Si originalData est fourni, chercher d'abord la ligne d'origine dans le document
+    const planDoc = await db.collection('plans').findOne({ _id: docId });
+    if (planDoc && Array.isArray(planDoc.data)) {
+      const matchCriteria = originalData || rowData;
+      const targetIdx = planDoc.data.findIndex(elem => {
+        const ensMatch = (elem[findKey(elem, 'Enseignant')] || '') === (matchCriteria[findKey(matchCriteria, 'Enseignant')] || '');
+        const clsMatch = (elem[findKey(elem, 'Classe')] || '') === (matchCriteria[findKey(matchCriteria, 'Classe')] || '');
+        const jourMatch = (elem[findKey(elem, 'Jour')] || '') === (matchCriteria[findKey(matchCriteria, 'Jour')] || '');
+        const perMatch = String(elem[findKey(elem, 'Période')] || '') === String(matchCriteria[findKey(matchCriteria, 'Période')] || '');
+        const matMatch = (elem[findKey(elem, 'Matière')] || '') === (matchCriteria[findKey(matchCriteria, 'Matière')] || '');
+        return ensMatch && clsMatch && jourMatch && perMatch && matMatch;
+      });
+
+      if (targetIdx !== -1) {
+        planDoc.data[targetIdx] = { ...planDoc.data[targetIdx], ...rowData, updatedAt: now };
+        await db.collection('plans').updateOne(
+          { _id: docId },
+          { $set: { data: planDoc.data, updatedAt: now } }
+        );
+        return res.status(200).json({ message: 'Ligne enregistrée avec succès.', updatedData: { updatedAt: now } });
+      }
+    }
+
+    // Fallback avec arrayFilters
+    const updateFields = {};
     for (const key in rowData) {
       updateFields[`data.$[elem].${key}`] = rowData[key];
     }
     updateFields['data.$[elem].updatedAt'] = now;
 
+    const filterObj = originalData || rowData;
     const arrayFilters = [{
-      "elem.Enseignant": rowData[findKey(rowData, 'Enseignant')],
-      "elem.Classe": rowData[findKey(rowData, 'Classe')],
-      "elem.Jour": rowData[findKey(rowData, 'Jour')],
-      "elem.Période": rowData[findKey(rowData, 'Période')],
-      "elem.Matière": rowData[findKey(rowData, 'Matière')]
+      "elem.Enseignant": filterObj[findKey(filterObj, 'Enseignant')],
+      "elem.Classe": filterObj[findKey(filterObj, 'Classe')],
+      "elem.Jour": filterObj[findKey(filterObj, 'Jour')],
+      "elem.Période": filterObj[findKey(filterObj, 'Période')],
+      "elem.Matière": filterObj[findKey(filterObj, 'Matière')]
     }];
 
     const result = await db.collection('plans').updateOne(
@@ -2597,6 +2675,78 @@ app.post('/api/save-row', async (req, res) => {
   } catch (error) {
     console.error('Erreur MongoDB /save-row:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
+  }
+});
+
+// --------------------- Gestion des Journées Spéciales / Fusion des Jours & Photos ---------------------
+
+app.get('/api/special-days', async (req, res) => {
+  try {
+    const { section = 'garcons', week } = req.query;
+    const db = await connectToDatabase();
+    const query = { section };
+    if (week) {
+      query.week = parseInt(week, 10);
+    }
+    const days = await db.collection('special_days').find(query).toArray();
+    res.status(200).json(days || []);
+  } catch (error) {
+    console.error('Erreur /api/special-days GET:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/special-days', async (req, res) => {
+  try {
+    const { section = 'garcons', week, day, classe = 'all', title, description, isNoSchool = true, photos = [] } = req.body;
+    const weekNum = parseInt(week, 10);
+    if (!day || isNaN(weekNum)) {
+      return res.status(400).json({ error: 'Jour et Semaine requis.' });
+    }
+    const db = await connectToDatabase();
+    const docId = `${section}_${weekNum}_${day}_${classe || 'all'}`;
+    const doc = {
+      _id: docId,
+      section,
+      week: weekNum,
+      day,
+      classe: classe || 'all',
+      title: title || 'Journée Sans Cours',
+      description: description || '',
+      isNoSchool: Boolean(isNoSchool),
+      photos: Array.isArray(photos) ? photos : [],
+      updatedAt: new Date()
+    };
+    await db.collection('special_days').updateOne(
+      { _id: docId },
+      { $set: doc },
+      { upsert: true }
+    );
+    console.log(`[Special Day] Journée ${day} S${weekNum} (${section}) enregistrée: ${title} avec ${photos.length} photo(s).`);
+    res.status(200).json({ success: true, message: 'Journée spéciale enregistrée.', specialDay: doc });
+  } catch (error) {
+    console.error('Erreur /api/special-days POST:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/special-days', async (req, res) => {
+  try {
+    const { id, section, week, day, classe = 'all' } = req.body;
+    const db = await connectToDatabase();
+    let query = {};
+    if (id) {
+      query = { _id: id };
+    } else if (section && week && day) {
+      query = { _id: `${section}_${parseInt(week, 10)}_${day}_${classe || 'all'}` };
+    } else {
+      return res.status(400).json({ error: 'Identifiant manquant.' });
+    }
+    await db.collection('special_days').deleteOne(query);
+    res.status(200).json({ success: true, message: 'Journée spéciale supprimée.' });
+  } catch (error) {
+    console.error('Erreur /api/special-days DELETE:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

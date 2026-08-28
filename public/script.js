@@ -401,19 +401,146 @@
 
         function populateAdminUploadWeekSelector() {
           const sel = document.getElementById('adminUploadWeekSelect');
-          if (!sel) return;
-          const currentVal = sel.value;
-          let html = '';
+          const rangeFrom = document.getElementById('uploadRangeFromWeek');
+          const rangeTo = document.getElementById('uploadRangeToWeek');
+          const grid = document.getElementById('uploadWeeksCheckboxesGrid');
+          const specialWeekSel = document.getElementById('specialDayWeek');
+          
           const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+          let optionsHtml = '';
           sortedWeekNums.forEach(wNum => {
             const label = formatWeekDateRangeText(wNum);
-            html += `<option value="${wNum}">${label}</option>`;
+            optionsHtml += `<option value="${wNum}">${label}</option>`;
           });
-          sel.innerHTML = html;
-          if (currentVal && weeksConfig[currentVal]) {
-            sel.value = currentVal;
-          } else if (currentWeek && weeksConfig[currentWeek]) {
-            sel.value = currentWeek;
+
+          if (sel) {
+            const currentVal = sel.value;
+            sel.innerHTML = optionsHtml;
+            if (currentVal && weeksConfig[currentVal]) {
+              sel.value = currentVal;
+            } else if (currentWeek && weeksConfig[currentWeek]) {
+              sel.value = currentWeek;
+            }
+          }
+
+          if (rangeFrom) {
+            const curFrom = rangeFrom.value || "1";
+            rangeFrom.innerHTML = optionsHtml;
+            rangeFrom.value = curFrom;
+          }
+          if (rangeTo) {
+            const curTo = rangeTo.value || "38";
+            rangeTo.innerHTML = optionsHtml;
+            rangeTo.value = curTo;
+          }
+
+          if (specialWeekSel) {
+            const curSpec = specialWeekSel.value || (currentWeek || "1");
+            specialWeekSel.innerHTML = optionsHtml;
+            specialWeekSel.value = curSpec;
+          }
+
+          if (grid) {
+            let gridHtml = '';
+            for (let i = 1; i <= 38; i++) {
+              gridHtml += `
+                <label style="display:flex; align-items:center; gap:4px; font-size:0.8rem; font-weight:700; color:#334155; padding:4px 6px; border-radius:6px; background:#F8FAFC; border:1px solid #E2E8F0; cursor:pointer; user-select:none;">
+                  <input type="checkbox" class="upload-week-checkbox" value="${i}" onchange="updateUploadTargetInfo()" style="cursor:pointer;">
+                  <span>S${i}</span>
+                </label>
+              `;
+            }
+            grid.innerHTML = gridHtml;
+          }
+
+          updateUploadTargetInfo();
+        }
+
+        function toggleUploadWeekMode(mode) {
+          const singleBox = document.getElementById('uploadModeSingleContainer');
+          const multiBox = document.getElementById('uploadModeMultipleContainer');
+          const rangeBox = document.getElementById('uploadModeRangeContainer');
+
+          if (singleBox) singleBox.style.display = (mode === 'single') ? 'block' : 'none';
+          if (multiBox) multiBox.style.display = (mode === 'multiple') ? 'block' : 'none';
+          if (rangeBox) rangeBox.style.display = (mode === 'range') ? 'block' : 'none';
+
+          updateUploadTargetInfo();
+        }
+
+        function selectUploadWeeksPreset(preset) {
+          const checkboxes = document.querySelectorAll('.upload-week-checkbox');
+          checkboxes.forEach(cb => {
+            const wNum = parseInt(cb.value, 10);
+            if (preset === 'all') {
+              cb.checked = true;
+            } else if (preset === 'p1') {
+              cb.checked = (wNum >= 1 && wNum <= 12);
+            } else if (preset === 'p2') {
+              cb.checked = (wNum >= 13 && wNum <= 24);
+            } else if (preset === 'p3') {
+              cb.checked = (wNum >= 25 && wNum <= 38);
+            } else if (preset === 'none') {
+              cb.checked = false;
+            }
+          });
+          updateUploadTargetInfo();
+        }
+
+        function getUploadTargetWeeks() {
+          const modeRadio = document.querySelector('input[name="uploadWeekMode"]:checked');
+          const mode = modeRadio ? modeRadio.value : 'single';
+
+          if (mode === 'single') {
+            const sel = document.getElementById('adminUploadWeekSelect');
+            const mainSel = document.getElementById('weekSelector');
+            const val = (sel && sel.value) ? parseInt(sel.value, 10) : (mainSel ? parseInt(mainSel.value, 10) : null);
+            return val ? [val] : [];
+          } else if (mode === 'multiple') {
+            const checked = [];
+            document.querySelectorAll('.upload-week-checkbox:checked').forEach(cb => {
+              const num = parseInt(cb.value, 10);
+              if (!isNaN(num)) checked.push(num);
+            });
+            checked.sort((a, b) => a - b);
+            return checked;
+          } else if (mode === 'range') {
+            const fromSel = document.getElementById('uploadRangeFromWeek');
+            const toSel = document.getElementById('uploadRangeToWeek');
+            const fromW = fromSel ? parseInt(fromSel.value, 10) : 1;
+            const toW = toSel ? parseInt(toSel.value, 10) : 38;
+            const minW = Math.min(fromW, toW);
+            const maxW = Math.max(fromW, toW);
+            const range = [];
+            for (let i = minW; i <= maxW; i++) {
+              range.push(i);
+            }
+            return range;
+          }
+          return [];
+        }
+
+        function updateUploadTargetInfo() {
+          const weeks = getUploadTargetWeeks();
+          const countEl = document.getElementById('uploadMultiSelectedCount');
+          const summaryEl = document.getElementById('uploadTargetSummaryText');
+          const secSelect = document.getElementById('adminUploadSectionSelect');
+          const sec = secSelect ? secSelect.value : (currentSection || 'garcons');
+          const secLabel = (sec === 'garcons') ? 'Garçons 👦' : (sec === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧');
+
+          if (countEl) {
+            countEl.textContent = `${weeks.length} semaine(s) sélectionnée(s)`;
+          }
+
+          if (summaryEl) {
+            if (weeks.length === 0) {
+              summaryEl.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-exclamation-triangle"></i> Aucune semaine sélectionnée</span> pour la Section <strong>${secLabel}</strong>.`;
+            } else if (weeks.length === 1) {
+              summaryEl.innerHTML = `L'import Excel s'appliquera uniquement à la <strong>Semaine ${weeks[0]}</strong> pour la Section <strong>${secLabel}</strong>.`;
+            } else {
+              const weeksList = weeks.length <= 8 ? weeks.map(w => `S${w}`).join(', ') : `S${weeks[0]}...S${weeks[weeks.length-1]} (${weeks.length} semaines)`;
+              summaryEl.innerHTML = `L'import Excel sera <strong>propagé sur ${weeks.length} semaines</strong> (${weeksList}) pour la Section <strong>${secLabel}</strong>.`;
+            }
           }
         }
 
@@ -734,17 +861,14 @@
         // --- Fonctions Admin ---
         function handleFileUpload(event) { const file = event.target.files[0]; const statusSpan = document.getElementById('file-upload-status'); const saveBtn = document.getElementById('saveUploadedDataBtn'); uploadedPlanData = null; saveBtn.disabled = true; statusSpan.textContent = ''; if (!file) { statusSpan.textContent = t('no_file_selected'); return; } console.log(`[Admin Upload] Fichier: ${file.name}`); statusSpan.textContent = t('reading_file', { fileName: file.name }); if (!/\.(xlsx|xls)$/i.test(file.name)) { displayAlert("invalid_file_type", true); statusSpan.textContent = "Type invalide."; event.target.value = ''; return; } const reader = new FileReader(); reader.onload = function(e) { try { const data = e.target.result; const workbook = XLSX.read(data, { type: 'array' }); const firstSheetName = workbook.SheetNames[0]; const worksheet = workbook.Sheets[firstSheetName]; const jsonDataRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false }); if (!jsonDataRaw || jsonDataRaw.length < 1) throw new Error("Feuille Excel vide."); const headersRaw = jsonDataRaw[0]; if (!headersRaw || !Array.isArray(headersRaw) || headersRaw.length === 0) throw new Error("En-têtes non trouvés."); const extractedHeaders = headersRaw.map(h => h ? String(h).trim().replace(/\s+/g, ' ') : null).filter(Boolean); if (extractedHeaders.length === 0) throw new Error("Aucun en-tête valide."); const dataRows = jsonDataRaw.slice(1); uploadedPlanData = dataRows.map((row) => { if (!Array.isArray(row)) return null; const obj = {}; extractedHeaders.forEach((header, index) => { obj[header] = (row && index < row.length) ? row[index] : null; }); return Object.values(obj).some(val => val != null && String(val).trim() !== '') ? obj : null; }).filter(Boolean); console.log(`[Admin Upload] ${uploadedPlanData.length} lignes extraites.`); statusSpan.textContent = t('file_read_success', { count: uploadedPlanData.length }).replace(file.name, ''); displayAlert('file_read_success', false, { fileName: file.name, count: uploadedPlanData.length }); saveBtn.disabled = false; } catch (error) { console.error("Erreur lecture Excel:", error); displayAlert('file_error', true, { error: error.message }); statusSpan.textContent = t('file_error', { error: '' }).replace(': {error}', '.'); uploadedPlanData = null; saveBtn.disabled = true; event.target.value = ''; } }; reader.onerror = function(e) { console.error("Erreur FileReader:", e); displayAlert('file_error', true, { error: "Erreur FileReader" }); statusSpan.textContent = t('file_error', { error: '' }).replace(': {error}', '.'); uploadedPlanData = null; saveBtn.disabled = true; event.target.value = ''; }; reader.readAsArrayBuffer(file); }
         async function saveUploadedData() {
-            const adminWeekSelect = document.getElementById('adminUploadWeekSelect');
-            const mainWeekSelect = document.getElementById('weekSelector');
-            const selectedWeek = (adminWeekSelect && adminWeekSelect.value) ? adminWeekSelect.value : (mainWeekSelect ? mainWeekSelect.value : null);
-            
+            const targetWeeks = (typeof getUploadTargetWeeks === 'function') ? getUploadTargetWeeks() : [];
             const adminSectionSelect = document.getElementById('adminUploadSectionSelect');
-            const targetSection = (adminSectionSelect && adminSectionSelect.value) ? adminSectionSelect.value : currentSection;
-
+            const targetSection = (adminSectionSelect && adminSectionSelect.value) ? adminSectionSelect.value : (currentSection || 'garcons');
             const statusSpan = document.getElementById('file-upload-status');
-            if (!selectedWeek) {
+
+            if (!targetWeeks || targetWeeks.length === 0) {
                 displayAlert("please_select_week", true);
-                if (statusSpan) statusSpan.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Veuillez sélectionner une semaine.</span>';
+                if (statusSpan) statusSpan.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Veuillez sélectionner au moins une semaine.</span>';
                 return;
             }
             if (!uploadedPlanData || uploadedPlanData.length === 0) {
@@ -752,33 +876,54 @@
                 if (statusSpan) statusSpan.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Aucun fichier Excel chargé ou fichier vide.</span>';
                 return;
             }
-            console.log(`[Admin Save] Enregistrement ${uploadedPlanData.length} lignes S${selectedWeek} (${targetSection}).`);
-            displayAlert('saving_uploaded_data', false, { week: selectedWeek });
+
+            const secLabel = targetSection === 'garcons' ? 'Garçons 👦' : (targetSection === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧');
+            const isMulti = targetWeeks.length > 1;
+            const weeksStr = isMulti ? `${targetWeeks.length} semaines (${targetWeeks.map(w => `S${w}`).join(', ')})` : `Semaine S${targetWeeks[0]}`;
+
+            console.log(`[Admin Save] Enregistrement ${uploadedPlanData.length} lignes pour ${weeksStr} (Section ${targetSection}).`);
+            displayAlert(`Enregistrement en cours pour ${weeksStr} (${secLabel})...`, false);
             setButtonLoading('saveUploadedDataBtn', true, 'fas fa-database');
             showProgressBar();
-            updateProgressBar(10);
+            updateProgressBar(15);
+
             try {
-                const response = await fetch('/api/save-plan', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ week: selectedWeek, data: uploadedPlanData, section: targetSection })
-                });
-                updateProgressBar(80);
-                const result = await response.json();
+                let response, result;
+                if (isMulti) {
+                    response = await fetch('/api/save-multiple-weeks', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ weeks: targetWeeks, data: uploadedPlanData, section: targetSection })
+                    });
+                } else {
+                    response = await fetch('/api/save-plan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ week: targetWeeks[0], data: uploadedPlanData, section: targetSection })
+                    });
+                }
+
+                updateProgressBar(85);
+                result = await response.json();
                 if (!response.ok) throw new Error(result.message || `Erreur serveur ${response.status}`);
                 updateProgressBar(100);
-                const secLabel = targetSection === 'garcons' ? 'Garçons 👦' : (targetSection === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧');
-                displayAlert(`Données de la semaine S${selectedWeek} pour la section ${secLabel} enregistrées avec succès !`, false);
-                if (statusSpan) statusSpan.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Données S${selectedWeek} (${secLabel}) enregistrées avec succès !</span>`;
+
+                const successMsg = isMulti 
+                    ? `Données appliquées avec succès sur ${targetWeeks.length} semaines pour la section ${secLabel} !`
+                    : `Données de la semaine S${targetWeeks[0]} pour la section ${secLabel} enregistrées avec succès !`;
+
+                displayAlert(successMsg, false);
+                if (statusSpan) statusSpan.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> ${successMsg}</span>`;
+                
                 uploadedPlanData = null;
                 const fileInputEl = document.getElementById('excelFileInput');
                 if (fileInputEl) fileInputEl.value = '';
                 const saveBtn = document.getElementById('saveUploadedDataBtn');
                 if (saveBtn) saveBtn.disabled = true;
                 
-                if (targetSection === currentSection && String(selectedWeek) === String(currentWeek)) {
+                if (targetSection === currentSection && targetWeeks.map(String).includes(String(currentWeek))) {
                     console.log("[Admin Save] Rechargement automatique de la semaine courante...");
-                    await fetchPlanData(selectedWeek);
+                    await fetchPlanData(currentWeek);
                 }
             } catch (error) {
                 console.error("Erreur enregistrement upload:", error);
@@ -1147,7 +1292,14 @@
             const jK = findHKey('Jour');
             const clsK = findHKey('Classe');
             const updK = findHKey('updatedAt');
-            const editHdrKeys = ['Leçon', 'Travaux de classe', 'Support', 'Devoirs'].map(k => findHKey(k)).filter(Boolean);
+            
+            const isAdmin = (loggedInUser === 'Med01' || currentUserRole === 'admin');
+            let allowedEditNames = ['Leçon', 'Travaux de classe', 'Support', 'Devoirs'];
+            if (isAdmin) {
+                allowedEditNames = ['Enseignant', 'Jour', 'Période', 'Classe', 'Matière', 'Leçon', 'Travaux de classe', 'Support', 'Devoirs'];
+            }
+            const editHdrKeys = allowedEditNames.map(k => findHKey(k)).filter(Boolean);
+
             const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
             const supportKey = findHKey('Support');
             const initialRow = document.getElementById('initial-table-row');
@@ -1165,6 +1317,9 @@
                 return;
             }
             data.forEach((rowObj, rIdx) => {
+                if (rowObj && !rowObj._originalCopy) {
+                    rowObj._originalCopy = { ...rowObj };
+                }
                 const tr = document.createElement('tr');
                 tr.dataset.rowIndex = rIdx;
                 hDisp.forEach(header => {
@@ -1175,13 +1330,15 @@
                     const td = document.createElement('td');
                     let content = rowObj ? (rowObj[header] ?? '') : '';
                     td.setAttribute('dir', 'auto');
-                    if (header === jK && content) {
+                    const isEditable = editHdrKeys.includes(header);
+
+                    if (header === jK && content && !isAdmin) {
                         const dt = parseDateFromJourColumn(content);
                         td.textContent = dt ? formatDateForDisplay(dt) : content;
-                    } else if (header === clsK && content) {
+                    } else if (header === clsK && content && !isAdmin) {
                         const ar = classTranslations[content];
                         td.textContent = ar ? `${ar} (${content})` : content;
-                    } else if (editHdrKeys.includes(header)) {
+                    } else if (isEditable) {
                         td.contentEditable = true;
                         td.classList.add('editable');
                         td.textContent = content;
@@ -1444,8 +1601,114 @@
         
         async function generateWeeklyLessonPlans() { if (!currentWeek) { displayAlert("please_select_week", true); return; } if (!filteredAndSortedData || filteredAndSortedData.length === 0) { displayAlert("no_data_to_display_filters", true); return; } const confirmation = confirm(t("Voulez-vous générer les plans de leçons pour toutes les données affichées de la semaine " + currentWeek + " ?")); if (!confirmation) return; console.log("Generating Weekly Lesson Plans for week:", currentWeek); displayAlert("generating_weekly_lessons", false); setButtonLoading("generateWeeklyLessonsBtn", true, "fas fa-robot"); showProgressBar(); updateProgressBar(10); try { const response = await fetch("/api/generate-weekly-lesson-plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ week: currentWeek, data: filteredAndSortedData }) }); updateProgressBar(80); if (response.ok) { const blob = await response.blob(); const contentDisposition = response.headers.get("content-disposition"); let filename = `plans_lecons_semaine_${currentWeek}.zip`; if (contentDisposition) { const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i); if (filenameMatch && filenameMatch[1]) { filename = filenameMatch[1]; } } saveAs(blob, filename); updateProgressBar(100); displayAlert("weekly_lessons_generated", false); } else { const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." })); throw new Error(errorResult.message || `Erreur serveur ${response.status}`); } } catch (error) { console.error("Error generating weekly lesson plans:", error); displayAlert("error_generating_ai_lesson_plan", true, { error: error.message }); updateProgressBar(0); } finally { hideProgressBar(); setButtonLoading("generateWeeklyLessonsBtn", false, "fas fa-robot"); } }
         function updateActionButtonsState(isEnabled) { document.getElementById('generateWordBtn').disabled = !isEnabled; document.getElementById('generateExcelBtn').disabled = !isEnabled; const saveAllBtn = document.getElementById('saveAllDisplayedBtn'); if (saveAllBtn) { saveAllBtn.disabled = !isEnabled || !filteredAndSortedData || filteredAndSortedData.length === 0; } const generateAllDisplayedPlansBtn = document.getElementById('generateAllDisplayedPlansBtn'); if (generateAllDisplayedPlansBtn) { generateAllDisplayedPlansBtn.disabled = !isEnabled || !filteredAndSortedData || filteredAndSortedData.length === 0; generateAllDisplayedPlansBtn.style.display = ''; } }
-        async function saveRow(rowData, tableRowElement) { if(!rowData||typeof rowData!=='object'){displayAlert('invalid_row',true); return;} console.log("saveRow:",JSON.stringify(rowData).substring(0,100)+'...'); displayAlert(''); const btn=tableRowElement?.querySelector('.save-row-button'); const indicator=tableRowElement?.querySelector('.save-indicator'); const origBtnIcon = btn ? btn.querySelector('i')?.className || 'fas fa-check' : 'fas fa-check'; if(indicator) indicator.style.display='none'; if(btn){btn.innerHTML='<i class="fas fa-spinner fa-spin"></i>'; btn.disabled=true;} try{ if(!currentWeek){throw new Error(t('please_select_week'));} const response=await fetch('/api/save-row',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({week:currentWeek,data:rowData,section:currentSection})}); const result=await response.json(); if(!response.ok){throw new Error(result.message||`Erreur ${response.status}`);} if(tableRowElement){tableRowElement.classList.remove('modified');} if(indicator) indicator.style.display='inline-block'; if(result.updatedData?.updatedAt&&tableRowElement){ const updK=findHKey('updatedAt'); if(updK){ rowData[updK]=result.updatedData.updatedAt; const updCell=tableRowElement.querySelector('.updated-at-column'); if(updCell){updCell.textContent=formatUpdatedAt(result.updatedData.updatedAt);} } } } catch(e){ console.error('Erreur saveRow:',e); displayAlert('error_saving_row', true, { error: e.message }); if(indicator) indicator.style.display='none'; } finally{if(btn){btn.innerHTML=`<i class="${origBtnIcon}"></i>`; btn.disabled=false;} checkAndDisplayIncompleteTeachers();} }
-        async function saveAllDisplayedRows() { if (!filteredAndSortedData || filteredAndSortedData.length === 0) { displayAlert('no_rows_to_save', true); return; } if (!currentWeek) { displayAlert("please_select_week", true); return; } const totalRows = filteredAndSortedData.length; const confirmation = confirm(t('confirm_save_all', { count: totalRows, week: currentWeek })); if (!confirmation) { displayAlert('save_all_cancelled', false); return; } displayAlert('saving_all_displayed', false, { count: totalRows }); setButtonLoading('saveAllDisplayedBtn', true, 'fas fa-save'); showProgressBar(); updateProgressBar(0); let successCount = 0; let errorCount = 0; const tableBody = document.querySelector('#planTable tbody'); for (let i = 0; i < totalRows; i++) { const rowData = filteredAndSortedData[i]; const rowIndex = i; updateProgressBar(Math.round(((i + 1) / totalRows) * 95)); try { const response = await fetch('/api/save-row', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ week: currentWeek, data: rowData, section: currentSection }) }); const result = await response.json(); if (!response.ok) { throw new Error(result.message || `Erreur ${response.status} L${rowIndex + 1}`); } successCount++; const tr = tableBody?.querySelector(`tr[data-row-index="${rowIndex}"]`); if (tr) { tr.classList.remove('modified'); const indicator = tr.querySelector('.save-indicator'); if (indicator) indicator.style.display = 'inline-block'; if (result.updatedData?.updatedAt) { const updK = findHKey('updatedAt'); if (updK) { rowData[updK] = result.updatedData.updatedAt; const updCell = tr.querySelector('.updated-at-column'); if (updCell) updCell.textContent = formatUpdatedAt(result.updatedData.updatedAt); } } } } catch (error) { console.error(`Err L${rowIndex + 1}:`, error); errorCount++; const tr = tableBody?.querySelector(`tr[data-row-index="${rowIndex}"]`); if(tr) { tr.style.backgroundColor = '#f8d7da'; tr.classList.add('modified'); const indicator = tr.querySelector('.save-indicator'); if(indicator) indicator.style.display = 'none'; } } } updateProgressBar(100); hideProgressBar(); setButtonLoading('saveAllDisplayedBtn', false, 'fas fa-save'); if (errorCount === 0) { displayAlert('save_all_success', false, { count: successCount }); } else { displayAlert('save_all_partial', true, { success: successCount, error: errorCount }); } checkAndDisplayIncompleteTeachers(); }
+        async function saveRow(rowData, tableRowElement) { 
+            if(!rowData||typeof rowData!=='object'){displayAlert('invalid_row',true); return;} 
+            console.log("saveRow:",JSON.stringify(rowData).substring(0,100)+'...'); 
+            displayAlert(''); 
+            const btn=tableRowElement?.querySelector('.save-row-button'); 
+            const indicator=tableRowElement?.querySelector('.save-indicator'); 
+            const origBtnIcon = btn ? btn.querySelector('i')?.className || 'fas fa-check' : 'fas fa-check'; 
+            if(indicator) indicator.style.display='none'; 
+            if(btn){btn.innerHTML='<i class="fas fa-spinner fa-spin"></i>'; btn.disabled=true;} 
+            try{ 
+                if(!currentWeek){throw new Error(t('please_select_week'));} 
+                const response=await fetch('/api/save-row',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({
+                        week:currentWeek,
+                        data:rowData,
+                        originalData: rowData._originalCopy || null,
+                        section:currentSection
+                    })
+                }); 
+                const result=await response.json(); 
+                if(!response.ok){throw new Error(result.message||`Erreur ${response.status}`);} 
+                rowData._originalCopy = { ...rowData };
+                if(tableRowElement){tableRowElement.classList.remove('modified');} 
+                if(indicator) indicator.style.display='inline-block'; 
+                if(result.updatedData?.updatedAt&&tableRowElement){ 
+                    const updK=findHKey('updatedAt'); 
+                    if(updK){ 
+                        rowData[updK]=result.updatedData.updatedAt; 
+                        const updCell=tableRowElement.querySelector('.updated-at-column'); 
+                        if(updCell){updCell.textContent=formatUpdatedAt(result.updatedData.updatedAt);} 
+                    } 
+                } 
+            } catch(e){ 
+                console.error('Erreur saveRow:',e); 
+                displayAlert('error_saving_row', true, { error: e.message }); 
+                if(indicator) indicator.style.display='none'; 
+            } finally{
+                if(btn){btn.innerHTML=`<i class="${origBtnIcon}"></i>`; btn.disabled=false;} 
+                checkAndDisplayIncompleteTeachers();
+            } 
+        }
+        async function saveAllDisplayedRows() { 
+            if (!filteredAndSortedData || filteredAndSortedData.length === 0) { displayAlert('no_rows_to_save', true); return; } 
+            if (!currentWeek) { displayAlert("please_select_week", true); return; } 
+            const totalRows = filteredAndSortedData.length; 
+            const confirmation = confirm(t('confirm_save_all', { count: totalRows, week: currentWeek })); 
+            if (!confirmation) { displayAlert('save_all_cancelled', false); return; } 
+            displayAlert('saving_all_displayed', false, { count: totalRows }); 
+            setButtonLoading('saveAllDisplayedBtn', true, 'fas fa-save'); 
+            showProgressBar(); 
+            updateProgressBar(0); 
+            let successCount = 0; 
+            let errorCount = 0; 
+            const tableBody = document.querySelector('#planTable tbody'); 
+            for (let i = 0; i < totalRows; i++) { 
+                const rowData = filteredAndSortedData[i]; 
+                const rowIndex = i; 
+                updateProgressBar(Math.round(((i + 1) / totalRows) * 95)); 
+                try { 
+                    const response = await fetch('/api/save-row', { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify({ 
+                            week: currentWeek, 
+                            data: rowData, 
+                            originalData: rowData._originalCopy || null,
+                            section: currentSection 
+                        }) 
+                    }); 
+                    const result = await response.json(); 
+                    if (!response.ok) { throw new Error(result.message || `Erreur ${response.status} L${rowIndex + 1}`); } 
+                    rowData._originalCopy = { ...rowData };
+                    successCount++; 
+                    const tr = tableBody?.querySelector(`tr[data-row-index="${rowIndex}"]`); 
+                    if (tr) { 
+                        tr.classList.remove('modified'); 
+                        const indicator = tr.querySelector('.save-indicator'); 
+                        if (indicator) indicator.style.display = 'inline-block'; 
+                        if (result.updatedData?.updatedAt) { 
+                            const updK = findHKey('updatedAt'); 
+                            if (updK) { 
+                                rowData[updK] = result.updatedData.updatedAt; 
+                                const updCell = tr.querySelector('.updated-at-column'); 
+                                if (updCell) updCell.textContent = formatUpdatedAt(result.updatedData.updatedAt); 
+                            } 
+                        } 
+                    } 
+                } catch (error) { 
+                    console.error(`Err L${rowIndex + 1}:`, error); 
+                    errorCount++; 
+                    const tr = tableBody?.querySelector(`tr[data-row-index="${rowIndex}"]`); 
+                    if(tr) { 
+                        tr.style.backgroundColor = '#f8d7da'; 
+                        tr.classList.add('modified'); 
+                        const indicator = tr.querySelector('.save-indicator'); 
+                        if(indicator) indicator.style.display = 'none'; 
+                    } 
+                } 
+            } 
+            updateProgressBar(100); 
+            hideProgressBar(); 
+            setButtonLoading('saveAllDisplayedBtn', false, 'fas fa-save'); 
+            if (errorCount === 0) { displayAlert('save_all_success', false, { count: successCount }); } 
+            else { displayAlert('save_all_partial', true, { success: successCount, error: errorCount }); } 
+            checkAndDisplayIncompleteTeachers(); 
+        }
         async function generateWordByClasse() { const dataGen = filteredAndSortedData; if(!dataGen || dataGen.length === 0){ displayAlert("no_data_to_display_filters", true); return; } if(!currentWeek){displayAlert("please_select_week",true); return;} setButtonLoading('generateWordBtn', true, 'fas fa-file-word'); const dataCls = {}; const clsK = findHKey('Classe'); if (!clsK) { displayAlert("error_config_columns", true); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); return; } dataGen.forEach(i => { if (!i || !i[clsK]) return; const cl = i[clsK]; if (!dataCls[cl]) { dataCls[cl] = []; } dataCls[cl].push(i); }); const clsGen = Object.keys(dataCls); if (clsGen.length === 0) { displayAlert("no_data", true); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); return; } displayAlert('generating_word', false, { count: clsGen.length }); showProgressBar(); updateProgressBar(0); let ok = 0, err = 0; const total = clsGen.length; for (let i = 0; i < total; i++) { const cl = clsGen[i]; const clData = dataCls[cl]; const clNote = weeklyClassNotes[cl] || ""; updateProgressBar(Math.round(((i + 1) / total) * 100)); try { const payload = { week: currentWeek, classe: cl, data: clData, notes: clNote }; const r = await fetch('/api/generate-word', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (r.ok) { const blob = await r.blob(); const cd = r.headers.get('content-disposition'); let filename = `plan_s${currentWeek}_${cl.replace(/[^a-z0-9]/gi, '_')}.docx`; if (cd) { const m = cd.match(/filename="?(.+?)"?(;|$)/i); if (m && m[1]) filename = m[1]; } if (typeof saveAs === 'function') { try { saveAs(blob, filename); ok++; } catch (e) { err++; console.error(`SaveAs ${cl}:`, e); displayAlert(t('error', {error: `Err sauvegarde ${cl}: ${e.message}`}), true); } } else { err++; console.error("saveAs non défini!"); displayAlert(t('error', {error: "saveAs non trouvé."}), true); break; } } else { const d = await r.json().catch(() => ({ message: `Erreur ${r.status}` })); console.error(`Err Word ${cl}:`, r.status, d); if (d.message && d.message.includes('Dates non trouvées côté serveur')) { displayAlert('no_word_dates', true, {week: currentWeek}); err++; } else { displayAlert('error_generating_word_for', true, {classe: cl, error: (d.message || 'Inconnue')}); err++; } } } catch (e) { err++; console.error(`Err Fetch Word ${cl}:`, e); displayAlert('error', true, { error: `Erreur réseau Word ${cl}: ${e.message}` }); } } hideProgressBar(); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); if (ok > 0 && err === 0) { displayAlert('generating_word_success', false, { count: ok }); } else if (ok > 0 && err > 0) { displayAlert('generating_word_partial', true, { ok: ok, err: err }); } else if (ok === 0 && err > 0) { if (err > 1) { displayAlert('generating_word_failed', true, {err: err}); } } else if (ok === 0 && err === 0) { displayAlert("no_data", true); } }
         async function generateExcelWorkbook() { if (!currentWeek) { displayAlert("please_select_week", true); return; } setButtonLoading('generateExcelBtn',true,'fas fa-file-excel'); displayAlert('generating_excel', false, { week: currentWeek }); showProgressBar(); updateProgressBar(10); let err=0; try{ const payload = { week: currentWeek }; const r = await fetch('/api/generate-excel-workbook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); updateProgressBar(70); if(r.ok){const blob=await r.blob(); const cd=r.headers.get('content-disposition'); let filename=`plan_s${currentWeek}_complet.xlsx`; if(cd){const m=cd.match(/filename="?(.+?)"?(;|$)/i); if(m&&m[1]) filename=m[1];} if(typeof saveAs==='function'){try{saveAs(blob,filename); updateProgressBar(100); displayAlert('generating_excel_success', false, { filename: filename });} catch(e){err++; console.error(`SaveAs Excel:`,e); displayAlert(t('error', { error: `Err sauvegarde Excel: ${e.message}` }), true); updateProgressBar(0);}} else {err++; console.error("saveAs non défini!"); displayAlert(t('error', { error: "saveAs non trouvé." }), true); updateProgressBar(0);}} else { const d=await r.json().catch(()=>({message:`Err ${r.status}`})); console.error(`Err Excel Wb:`,r.status,d); displayAlert('error_generating_excel', true, { error: (d.message || 'Inconnue') }); updateProgressBar(0); err++;} } catch(e){err++; console.error(`Err Fetch Excel Wb:`,e); displayAlert('error', { error: `Err réseau Excel: ${e.message}` }, true); updateProgressBar(0);} finally{hideProgressBar(); setButtonLoading('generateExcelBtn',false,'fas fa-file-excel');} }
         async function loadPlanForWeek() { const sel = document.getElementById('weekSelector'); if (sel) { const wk = sel.value; if (wk) { await fetchPlanData(wk); } else { currentWeek = null; planData = []; headers = []; weeklyClassNotes = {}; filteredAndSortedData = []; createTableHeader(); displayPlanTable([]); document.getElementById('weekDateRange').textContent = ""; updateActionButtonsState(false); populateFilterOptions(); populateNotesClassSelector(); checkAndDisplayIncompleteTeachers(); displayAlert(''); } } else { console.error("#weekSelector absent"); displayAlert("error_structure", true); } }
@@ -1455,7 +1718,7 @@
         function updateDynamicUIElements() { console.log("Updating dynamic UI for lang:", currentUserLanguage); const dateRangeEl=document.getElementById('weekDateRange'); const weekNum = parseInt(currentWeek, 10); const dates = specificWeekDateRanges[weekNum]; if(weekStartDate && dates?.end){ const s = weekStartDate; const e = new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ dateRangeEl.textContent = `${t('week_label')} ${currentWeek} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'From' : 'Du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`; } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (Err dates)`; } } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (${t('no_data')}: dates non définies)`; } createTableHeader(); displayPlanTable(filteredAndSortedData); const notesInput = document.getElementById('notesInput'); const notesClassSel = document.getElementById('notesClassSelector'); if (notesInput && notesClassSel) { if (notesClassSel.value) { const selText = notesClassSel.options[notesClassSel.selectedIndex].text; notesInput.placeholder = t('notes_placeholder', { classText: selText }); } else { notesInput.placeholder = t('select_class_placeholder'); } } }
 
         function switchAdminTab(tabName) {
-            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports'];
+            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days'];
             tabs.forEach(t => {
                 const contentEl = document.getElementById(`adminTab_${t}`);
                 const btnEl = document.getElementById(`tabBtn_${t}`);
@@ -1473,6 +1736,13 @@
                 populateAdminReportClassSelector();
             } else if (tabName === 'upload') {
                 populateAdminUploadWeekSelector();
+            } else if (tabName === 'messages') {
+                if (typeof loadAdminAllMessages === 'function') loadAdminAllMessages();
+            } else if (tabName === 'publication') {
+                if (typeof loadWeeklyPermissionsMatrix === 'function') loadWeeklyPermissionsMatrix();
+            } else if (tabName === 'special_days') {
+                populateAdminUploadWeekSelector();
+                if (typeof loadAdminSpecialDaysList === 'function') loadAdminSpecialDaysList();
             }
         }
 
@@ -2388,6 +2658,10 @@ function changeParentActiveDay(offset) {
     setParentActiveDay(schoolDaysList[idx]);
 }
 
+let parentSpecialDays = [];
+let adminSpecialPhotosList = [];
+let quickSpecialPhotosList = [];
+
 async function loadParentWeeklyPlan() {
     try {
         const weekSelect = document.getElementById('parentWeekSelector');
@@ -2416,7 +2690,17 @@ async function loadParentWeeklyPlan() {
             </div>
         `;
         
-        const res = await fetch(`/api/plans/${selectedWeek}?section=${section}`);
+        const [res, specRes] = await Promise.all([
+            fetch(`/api/plans/${selectedWeek}?section=${section}`),
+            fetch(`/api/special-days?week=${selectedWeek}&section=${section}`).catch(() => null)
+        ]);
+
+        if (specRes && specRes.ok) {
+            parentSpecialDays = await specRes.json();
+        } else {
+            parentSpecialDays = [];
+        }
+
         if (!res.ok) {
             container.innerHTML = `<div class="alert-error">Impossible de charger le plan hebdomadaire pour le moment.</div>`;
             return;
@@ -2557,22 +2841,15 @@ async function loadParentWeeklyPlan() {
 function renderParentPlanCards(rows) {
     const container = document.getElementById('parentPlanDisplayContainer');
     const t = parentI18n[currentUserLanguage] || parentI18n.fr;
+    const selectedClass = document.getElementById('parentClassSelector')?.value || 'PEI1';
+    const selectedWeek = document.getElementById('parentWeekSelector')?.value || (currentWeek || 1);
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
     
     if (!container) return;
     
-    if (!rows || rows.length === 0) {
-        container.innerHTML = `
-            <div style="text-align:center; padding:40px; background:white; border-radius:16px; border:1px dashed #CBD5E1;">
-                <i class="fas fa-calendar-times fa-3x" style="color:#9CA3AF; margin-bottom:12px;"></i>
-                <p style="color:#6B7280; font-size:1.05rem; font-weight:600; margin:0;">${t.noCoursesFound}</p>
-            </div>
-        `;
-        return;
-    }
-    
-    // Grouper par jour
+    // Grouper les cours par jour
     const grouped = {};
-    rows.forEach(r => {
+    (rows || []).forEach(r => {
         const dayVal = getRowField(r, 'Jour');
         const standardDay = normalizeDayName(dayVal) || extractDayName(dayVal) || dayVal;
         if (standardDay && schoolDaysList.includes(standardDay)) {
@@ -2602,10 +2879,19 @@ function renderParentPlanCards(rows) {
         const isActive = (day === parentActiveDay);
         const dayLabel = (currentUserLanguage === 'ar') ? (t.daysMap[day] || day) : day;
         const count = (grouped[day] || []).length;
+        
+        // Vérifier si ce jour a une fusion spéciale
+        const hasSpecial = (parentSpecialDays || []).some(s => {
+            const dNorm = normalizeDayName(s.day) || s.day;
+            const matchesDay = (dNorm.toLowerCase() === day.toLowerCase());
+            const matchesClass = (!s.classe || s.classe === 'ALL' || norm(s.classe) === norm(selectedClass));
+            return matchesDay && matchesClass;
+        });
+
         daysNavHtml += `
             <button type="button" class="pro-button ${isActive ? 'primary-button active' : ''}" onclick="setParentActiveDay('${day}')" style="padding:10px 18px; font-size:1rem; font-weight:700; border-radius:12px; transition:all 0.2s ease; ${isActive ? 'box-shadow:0 4px 12px rgba(59,130,246,0.35); transform:scale(1.03);' : 'background:#F8FAFC; color:#334155; border:1px solid #CBD5E1;'}">
                 <span>${dayLabel}</span>
-                <span style="font-size:0.75rem; padding:2px 7px; border-radius:10px; margin-left:6px; margin-right:6px; background:${isActive ? 'rgba(255,255,255,0.25)' : '#E2E8F0'}; color:${isActive ? 'white' : '#475569'};">${count}</span>
+                ${hasSpecial ? `<span style="font-size:0.8rem; margin-left:4px;">🌟</span>` : `<span style="font-size:0.75rem; padding:2px 7px; border-radius:10px; margin-left:6px; margin-right:6px; background:${isActive ? 'rgba(255,255,255,0.25)' : '#E2E8F0'}; color:${isActive ? 'white' : '#475569'};">${count}</span>`}
             </button>
         `;
     });
@@ -2633,17 +2919,119 @@ function renderParentPlanCards(rows) {
         formattedDayDate = `${arDay} ${weekStartDateNode ? `(${weekStartDateNode.getUTCDate()}/${weekStartDateNode.getUTCMonth() + 1})` : ''}`;
     }
     
+    // Vérifier si une fusion de jour spéciale est active pour ce jour
+    const activeSpecialDay = (parentSpecialDays || []).find(s => {
+        const dNorm = normalizeDayName(s.day) || s.day;
+        const pNorm = normalizeDayName(parentActiveDay) || parentActiveDay;
+        const matchesDay = (dNorm.toLowerCase() === pNorm.toLowerCase());
+        const matchesClass = (!s.classe || s.classe === 'ALL' || norm(s.classe) === norm(selectedClass));
+        return matchesDay && matchesClass;
+    });
+
     let tableHtml = '';
-    
-    if (currentDayRows.length === 0) {
+    const isAdminUser = (loggedInUser === 'Med01' || currentUserRole === 'admin');
+
+    if (activeSpecialDay) {
+        // AFFICHAGE DU JOUR FUSIONNÉ (PAS DE COURS / PHOTOS / ÉVÉNEMENT)
+        const typeLabels = {
+            'no_courses': { label: 'Pas de cours', icon: 'fas fa-calendar-times', color: '#EF4444', bg: '#FEF2F2', border: '#FECACA' },
+            'holiday': { label: 'Vacances / Jour Férié', icon: 'fas fa-umbrella-beach', color: '#F59E0B', bg: '#FFFBEB', border: '#FDE68A' },
+            'event': { label: 'Événement / Célébration', icon: 'fas fa-award', color: '#8B5CF6', bg: '#F5F3FF', border: '#DDD6FE' },
+            'activity': { label: 'Activité / Sortie Scolaire', icon: 'fas fa-futbol', color: '#10B981', bg: '#ECFDF5', border: '#A7F3D0' }
+        };
+        const typeCfg = typeLabels[activeSpecialDay.type] || typeLabels['no_courses'];
+        const photos = activeSpecialDay.photos || [];
+
+        let photosGalleryHtml = '';
+        if (photos.length > 0) {
+            photosGalleryHtml = `
+                <div style="margin-top:25px; padding-top:20px; border-top:1px solid #E2E8F0;">
+                    <div style="font-weight:800; color:#1E1B4B; font-size:1.1rem; margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+                        <i class="fas fa-camera-retro" style="color:#3B82F6;"></i>
+                        <span>${currentUserLanguage === 'ar' ? 'معرض صور هذا اليوم' : 'Photos & Souvenirs de la journée'} (${photos.length})</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:16px;">
+                        ${photos.map((p, pIdx) => `
+                            <div class="special-photo-card" onclick="openImageLightbox('${escapeHtml(p.url).replace(/'/g, "\\'")}', '${escapeHtml(p.caption || '').replace(/'/g, "\\'")}')" style="background:white; border-radius:14px; overflow:hidden; border:1px solid #E2E8F0; box-shadow:0 4px 14px rgba(0,0,0,0.06); cursor:pointer; transition:transform 0.2s ease, box-shadow 0.2s ease;">
+                                <div style="height:170px; overflow:hidden; position:relative; background:#F8FAFC;">
+                                    <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Photo')}" loading="lazy" style="width:100%; height:100%; object-fit:cover; transition:transform 0.3s ease;">
+                                    <div style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.6); color:white; padding:4px 8px; border-radius:6px; font-size:0.75rem;">
+                                        <i class="fas fa-search-plus"></i> Agrandir
+                                    </div>
+                                </div>
+                                ${p.caption ? `
+                                    <div style="padding:10px 12px; font-size:0.88rem; font-weight:600; color:#334155; line-height:1.4;">
+                                        ${escapeHtml(p.caption)}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
         tableHtml = `
-            <div style="background:white; border-radius:16px; padding:45px 20px; text-align:center; border:1px dashed #CBD5E1; box-shadow:0 4px 18px rgba(0,0,0,0.04);">
-                <i class="fas fa-calendar-day fa-3x" style="color:#94A3B8; margin-bottom:12px;"></i>
-                <h4 style="font-size:1.15rem; color:#334155; margin:0 0 6px 0;">${t.noCoursesFound}</h4>
-                <p style="color:#64748B; font-size:0.95rem; margin:0;">${currentUserLanguage === 'ar' ? `لا توجد حصص مجدولة ليوم ${formattedDayDate}.` : `Aucun cours planifié pour ${formattedDayDate}.`}</p>
+            <div class="parent-special-day-merged-card" style="background:white; border-radius:20px; box-shadow:0 8px 30px rgba(0,0,0,0.08); border:2px solid ${typeCfg.border}; overflow:hidden;">
+                <!-- Bannière En-tête Fusionné -->
+                <div style="background:linear-gradient(135deg, #1E1B4B, #312E81); color:white; padding:22px 28px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+                    <div>
+                        <div style="font-size:1.35rem; font-weight:800; display:flex; align-items:center; gap:10px;">
+                            <i class="${typeCfg.icon}" style="color:${typeCfg.color};"></i>
+                            <span>${formattedDayDate}</span>
+                        </div>
+                        <div style="font-size:0.92rem; opacity:0.9; margin-top:3px;">
+                            ${selectedClass === 'ALL' ? 'Toutes les classes' : `Classe : ${selectedClass}`} • Semaine ${selectedWeek}
+                        </div>
+                    </div>
+                    <span style="background:${typeCfg.bg}; color:${typeCfg.color}; border:1px solid ${typeCfg.border}; padding:8px 18px; border-radius:30px; font-weight:800; font-size:0.95rem; display:inline-flex; align-items:center; gap:8px;">
+                        <i class="${typeCfg.icon}"></i> ${typeCfg.label}
+                    </span>
+                </div>
+
+                <!-- Corps de la Fusion -->
+                <div style="padding:32px 28px;">
+                    <div style="background:${typeCfg.bg}; border-left:6px solid ${typeCfg.color}; border-radius:14px; padding:20px 24px; margin-bottom:20px;">
+                        <h3 style="color:#1E1B4B; font-size:1.4rem; font-weight:800; margin:0 0 10px 0;">
+                            ${escapeHtml(activeSpecialDay.title)}
+                        </h3>
+                        <p style="color:#334155; font-size:1.05rem; line-height:1.7; margin:0; white-space:pre-wrap;">${escapeHtml(activeSpecialDay.message || 'Aucune séance de cours n\\'est programmée pour ce jour.')}</p>
+                    </div>
+
+                    ${photosGalleryHtml}
+
+                    ${isAdminUser ? `
+                        <div style="margin-top:25px; padding-top:16px; border-top:1px dashed #CBD5E1; display:flex; gap:10px; justify-content:flex-end;">
+                            <button type="button" class="pro-button" onclick="openSpecialDayQuickModal('${parentActiveDay}', '${selectedClass}')" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:8px 16px; font-size:0.9rem; font-weight:700;">
+                                <i class="fas fa-edit"></i> Modifier cette fusion
+                            </button>
+                            <button type="button" class="pro-button" onclick="deleteAdminSpecialDay('${activeSpecialDay._id}')" style="background:#FEF2F2; color:#DC2626; border:1px solid #FECACA; padding:8px 16px; font-size:0.9rem; font-weight:700;">
+                                <i class="fas fa-trash-alt"></i> Annuler la fusion
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    } else if (currentDayRows.length === 0) {
+        // AUCUN COURS RENSEIGNÉ
+        tableHtml = `
+            <div style="background:white; border-radius:18px; padding:45px 24px; text-align:center; border:1px dashed #CBD5E1; box-shadow:0 4px 18px rgba(0,0,0,0.04);">
+                <div style="width:70px; height:70px; background:#F1F5F9; color:#94A3B8; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px auto; font-size:2rem;">
+                    <i class="fas fa-calendar-day"></i>
+                </div>
+                <h4 style="font-size:1.25rem; color:#1E1B4B; margin:0 0 8px 0; font-weight:800;">${t.noCoursesFound}</h4>
+                <p style="color:#64748B; font-size:1rem; margin:0 0 20px 0;">${currentUserLanguage === 'ar' ? `لا توجد حصص مجدولة ليوم ${formattedDayDate}.` : `Aucun cours planifié pour ${formattedDayDate}.`}</p>
+                
+                ${isAdminUser ? `
+                    <button type="button" class="pro-button primary-button" onclick="openSpecialDayQuickModal('${parentActiveDay}', '${selectedClass}')" style="padding:10px 20px; font-weight:700; border-radius:12px; display:inline-flex; align-items:center; gap:8px;">
+                        <i class="fas fa-object-group"></i> <span>Fusionner ce jour & Ajouter des photos</span>
+                    </button>
+                ` : ''}
             </div>
         `;
     } else {
+        // TABLEAU STANDARD DES COURS DU JOUR
         tableHtml = `
             <div class="parent-day-table-card" style="background:white; border-radius:18px; box-shadow:0 6px 24px rgba(0,0,0,0.06); border:1px solid #E2E8F0; overflow:hidden;">
                 <!-- En-tête du jour -->
@@ -2652,9 +3040,16 @@ function renderParentPlanCards(rows) {
                         <i class="fas fa-calendar-check" style="color:#10B981;"></i>
                         <span>${currentUserLanguage === 'ar' ? 'جدول حصص يوم' : 'Tableau des cours du'} : ${formattedDayDate}</span>
                     </div>
-                    <span style="background:rgba(255,255,255,0.18); padding:6px 14px; border-radius:20px; font-size:0.9rem; font-weight:700;">
-                        ${currentDayRows.length} ${t.sessionsCount}
-                    </span>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="background:rgba(255,255,255,0.18); padding:6px 14px; border-radius:20px; font-size:0.9rem; font-weight:700;">
+                            ${currentDayRows.length} ${t.sessionsCount}
+                        </span>
+                        ${isAdminUser ? `
+                            <button type="button" class="pro-button" onclick="openSpecialDayQuickModal('${parentActiveDay}', '${selectedClass}')" title="Fusionner les cases de ce jour pour les parents (pas de cours / photos)" style="background:rgba(255,255,255,0.25); color:white; border:none; padding:6px 12px; border-radius:8px; font-size:0.85rem; font-weight:700; cursor:pointer;">
+                                <i class="fas fa-object-group"></i> Fusionner ce jour
+                            </button>
+                        ` : ''}
+                    </div>
                 </div>
                 
                 <!-- Tableau des cours -->
@@ -2747,6 +3142,328 @@ function renderParentPlanCards(rows) {
     }
     
     container.innerHTML = daysNavHtml + tableHtml;
+}
+
+// ----------------------------------------------------
+// GESTION ADMIN DES JOURS SPÉCIAUX & PHOTOS (FUSION)
+// ----------------------------------------------------
+
+async function loadAdminSpecialDaysList() {
+    const tbody = document.getElementById('adminSpecialDaysTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#6B7280;"><i class="fas fa-spinner fa-spin"></i> Chargement des fusions...</td></tr>`;
+
+    try {
+        const section = currentSection || 'garcons';
+        const res = await fetch(`/api/special-days?section=${section}`);
+        if (!res.ok) throw new Error('Erreur lors du chargement');
+        const list = await res.json();
+
+        if (!list || list.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#9CA3AF;">Aucune fusion ou journée spéciale enregistrée.</td></tr>`;
+            return;
+        }
+
+        const typeBadges = {
+            'no_courses': '<span class="status-badge" style="background:#FEF2F2; color:#DC2626;">Pas de cours</span>',
+            'holiday': '<span class="status-badge" style="background:#FFFBEB; color:#D97706;">Vacances / Férié</span>',
+            'event': '<span class="status-badge" style="background:#F5F3FF; color:#7C3AED;">Événement</span>',
+            'activity': '<span class="status-badge" style="background:#ECFDF5; color:#059669;">Activité / Sortie</span>'
+        };
+
+        tbody.innerHTML = list.map(item => {
+            const photoCount = (item.photos && item.photos.length) || 0;
+            return `
+                <tr>
+                    <td><strong>Semaine ${item.week}</strong></td>
+                    <td><span class="status-badge">${escapeHtml(item.day)}</span></td>
+                    <td>${item.classe === 'ALL' ? '<span style="font-weight:700; color:#4338CA;">Toutes les classes</span>' : escapeHtml(item.classe || 'Toutes')}</td>
+                    <td>${typeBadges[item.type] || item.type}</td>
+                    <td><strong>${escapeHtml(item.title)}</strong><br><small style="color:#64748B;">${escapeHtml((item.message || '').substring(0, 50))}${item.message && item.message.length > 50 ? '...' : ''}</small></td>
+                    <td>${photoCount > 0 ? `<span style="background:#EFF6FF; color:#2563EB; padding:3px 8px; border-radius:10px; font-weight:700; font-size:0.85rem;"><i class="fas fa-images"></i> ${photoCount}</span>` : '<span style="color:#CBD5E1;">0</span>'}</td>
+                    <td>
+                        <button type="button" class="pro-button" onclick="deleteAdminSpecialDay('${item._id}')" style="background:#FEF2F2; color:#DC2626; border:1px solid #FECACA; padding:6px 12px; font-size:0.85rem;" title="Supprimer">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('Erreur loadAdminSpecialDaysList:', e);
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:20px; color:#DC2626;">Erreur: ${e.message}</td></tr>`;
+    }
+}
+
+function handleSpecialDayPhotosSelected(e) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            adminSpecialPhotosList.push({
+                url: event.target.result,
+                caption: file.name.replace(/\.[^/.]+$/, "")
+            });
+            renderAdminSpecialPhotosPreview();
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function addSpecialDayPhotoFromUrl() {
+    const input = document.getElementById('specialPhotoUrlInput');
+    const url = input ? input.value.trim() : '';
+    if (!url) return;
+
+    adminSpecialPhotosList.push({
+        url: url,
+        caption: 'Photo'
+    });
+    if (input) input.value = '';
+    renderAdminSpecialPhotosPreview();
+}
+
+function removeAdminSpecialPhoto(index) {
+    adminSpecialPhotosList.splice(index, 1);
+    renderAdminSpecialPhotosPreview();
+}
+
+function renderAdminSpecialPhotosPreview() {
+    const container = document.getElementById('specialPhotosPreviewContainer');
+    if (!container) return;
+
+    if (adminSpecialPhotosList.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = adminSpecialPhotosList.map((p, idx) => `
+        <div style="position:relative; width:100px; height:100px; border-radius:10px; overflow:hidden; border:2px solid #CBD5E1; background:#F8FAFC;">
+            <img src="${escapeHtml(p.url)}" alt="Photo ${idx + 1}" style="width:100%; height:100%; object-fit:cover;">
+            <button type="button" onclick="removeAdminSpecialPhoto(${idx})" style="position:absolute; top:3px; right:3px; background:rgba(220,38,38,0.85); color:white; border:none; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; cursor:pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+async function saveAdminSpecialDay() {
+    const week = document.getElementById('specialDayWeek')?.value;
+    const day = document.getElementById('specialDayJour')?.value;
+    const classe = document.getElementById('specialDayClasse')?.value || 'ALL';
+    const type = document.getElementById('specialDayType')?.value || 'no_courses';
+    const title = document.getElementById('specialDayTitle')?.value?.trim();
+    const message = document.getElementById('specialDayMessage')?.value?.trim();
+    const section = currentSection || 'garcons';
+
+    if (!week || !day || !title) {
+        alert('Veuillez renseigner la semaine, le jour et le titre de la fusion.');
+        return;
+    }
+
+    const payload = {
+        week: Number(week),
+        day: day,
+        classe: classe,
+        type: type,
+        title: title,
+        message: message,
+        photos: adminSpecialPhotosList,
+        section: section
+    };
+
+    try {
+        const res = await fetch('/api/special-days', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || 'Erreur lors de l\\'enregistrement');
+        }
+
+        displayAlert('✅ Journée spéciale / fusion enregistrée avec succès !', false);
+        adminSpecialPhotosList = [];
+        renderAdminSpecialPhotosPreview();
+        if (document.getElementById('specialDayTitle')) document.getElementById('specialDayTitle').value = '';
+        if (document.getElementById('specialDayMessage')) document.getElementById('specialDayMessage').value = '';
+        loadAdminSpecialDaysList();
+        if (typeof loadParentWeeklyPlan === 'function') loadParentWeeklyPlan();
+    } catch (e) {
+        console.error('Erreur saveAdminSpecialDay:', e);
+        alert('Erreur: ' + e.message);
+    }
+}
+
+async function deleteAdminSpecialDay(id) {
+    if (!confirm('Voulez-vous vraiment supprimer cette fusion de jour / journée spéciale ?')) return;
+
+    try {
+        const res = await fetch(`/api/special-days/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Erreur lors de la suppression');
+        displayAlert('Fusion supprimée avec succès.', false);
+        loadAdminSpecialDaysList();
+        if (typeof loadParentWeeklyPlan === 'function') loadParentWeeklyPlan();
+    } catch (e) {
+        console.error('Erreur deleteAdminSpecialDay:', e);
+        alert('Erreur: ' + e.message);
+    }
+}
+
+// Quick Modal de fusion depuis la vue des parents
+function openSpecialDayQuickModal(day, classe) {
+    const modal = document.getElementById('specialDayQuickModal');
+    if (!modal) return;
+
+    const curWeek = document.getElementById('parentWeekSelector')?.value || (currentWeek || 1);
+    const curClass = classe || document.getElementById('parentClassSelector')?.value || 'PEI1';
+    const curDay = day || parentActiveDay || 'Dimanche';
+
+    const weekInput = document.getElementById('quickSpecialWeek');
+    const dayInput = document.getElementById('quickSpecialDay');
+    const classInput = document.getElementById('quickSpecialClass');
+    const titleInput = document.getElementById('quickSpecialTitle');
+    const msgInput = document.getElementById('quickSpecialMessage');
+
+    if (weekInput) weekInput.value = curWeek;
+    if (dayInput) dayInput.value = curDay;
+    if (classInput) classInput.value = curClass;
+    if (titleInput) titleInput.value = `Pas de cours - ${curDay}`;
+    if (msgInput) msgInput.value = `Chers parents, il n'y a pas de cours réguliers le ${curDay}.`;
+
+    quickSpecialPhotosList = [];
+    renderQuickSpecialPhotosPreview();
+    modal.style.display = 'flex';
+}
+
+function closeSpecialDayQuickModal() {
+    const modal = document.getElementById('specialDayQuickModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function handleQuickSpecialPhotosSelected(e) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            quickSpecialPhotosList.push({
+                url: event.target.result,
+                caption: file.name.replace(/\.[^/.]+$/, "")
+            });
+            renderQuickSpecialPhotosPreview();
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function removeQuickSpecialPhoto(index) {
+    quickSpecialPhotosList.splice(index, 1);
+    renderQuickSpecialPhotosPreview();
+}
+
+function renderQuickSpecialPhotosPreview() {
+    const container = document.getElementById('quickSpecialPhotosPreview');
+    if (!container) return;
+
+    if (quickSpecialPhotosList.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = quickSpecialPhotosList.map((p, idx) => `
+        <div style="position:relative; width:90px; height:90px; border-radius:10px; overflow:hidden; border:2px solid #CBD5E1; background:#F8FAFC;">
+            <img src="${escapeHtml(p.url)}" alt="Photo ${idx + 1}" style="width:100%; height:100%; object-fit:cover;">
+            <button type="button" onclick="removeQuickSpecialPhoto(${idx})" style="position:absolute; top:3px; right:3px; background:rgba(220,38,38,0.85); color:white; border:none; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; cursor:pointer;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+async function saveQuickSpecialDay() {
+    const week = document.getElementById('quickSpecialWeek')?.value;
+    const day = document.getElementById('quickSpecialDay')?.value;
+    const classe = document.getElementById('quickSpecialClass')?.value || 'ALL';
+    const type = document.getElementById('quickSpecialType')?.value || 'no_courses';
+    const title = document.getElementById('quickSpecialTitle')?.value?.trim();
+    const message = document.getElementById('quickSpecialMessage')?.value?.trim();
+    const section = currentSection || 'garcons';
+
+    if (!week || !day || !title) {
+        alert('Veuillez renseigner le titre.');
+        return;
+    }
+
+    const payload = {
+        week: Number(week),
+        day: day,
+        classe: classe,
+        type: type,
+        title: title,
+        message: message,
+        photos: quickSpecialPhotosList,
+        section: section
+    };
+
+    try {
+        const res = await fetch('/api/special-days', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || 'Erreur lors de l\\'enregistrement');
+        }
+
+        displayAlert('✅ Journée fusionnée avec succès pour les parents !', false);
+        closeSpecialDayQuickModal();
+        if (typeof loadParentWeeklyPlan === 'function') loadParentWeeklyPlan();
+    } catch (e) {
+        console.error('Erreur saveQuickSpecialDay:', e);
+        alert('Erreur: ' + e.message);
+    }
+}
+
+// Lightbox pour agrandir les photos des parents
+function openImageLightbox(src, caption) {
+    let lightbox = document.getElementById('appImageLightbox');
+    if (!lightbox) {
+        lightbox = document.createElement('div');
+        lightbox.id = 'appImageLightbox';
+        lightbox.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:99999; padding:20px; box-sizing:border-box;';
+        lightbox.innerHTML = `
+            <div style="position:relative; max-width:90vw; max-height:85vh; text-align:center;">
+                <button type="button" onclick="closeImageLightbox()" style="position:absolute; top:-40px; right:0; background:white; color:#1E1B4B; border:none; width:36px; height:36px; border-radius:50%; font-size:1.2rem; cursor:pointer; font-weight:800; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.3);">✕</button>
+                <img id="lightboxImg" src="" alt="Photo" style="max-width:100%; max-height:75vh; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.5); object-fit:contain;">
+                <div id="lightboxCaption" style="color:white; font-size:1.1rem; font-weight:700; margin-top:14px; text-shadow:0 2px 4px rgba(0,0,0,0.8);"></div>
+            </div>
+        `;
+        document.body.appendChild(lightbox);
+        lightbox.onclick = (e) => {
+            if (e.target === lightbox) closeImageLightbox();
+        };
+    }
+    const imgEl = document.getElementById('lightboxImg');
+    const capEl = document.getElementById('lightboxCaption');
+    if (imgEl) imgEl.src = src;
+    if (capEl) capEl.textContent = caption || '';
+    lightbox.style.display = 'flex';
+}
+
+function closeImageLightbox() {
+    const lightbox = document.getElementById('appImageLightbox');
+    if (lightbox) lightbox.style.display = 'none';
 }
 
 function filterParentPlanByDay() {

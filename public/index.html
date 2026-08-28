@@ -281,33 +281,89 @@
                  <button type="button" class="admin-tab-btn" onclick="switchAdminTab('publication')" id="tabBtn_publication">
                      <i class="fas fa-bullhorn"></i> <span>7. Publication Plans aux Parents</span>
                  </button>
+                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('special_days')" id="tabBtn_special_days">
+                     <i class="fas fa-layer-group" style="color:#8B5CF6;"></i> <span>8. Fusion Jours & Photos</span>
+                 </button>
              </div>
 
              <!-- ONGLET 1 : IMPORT EXCEL DES PLANS HEBDOMADAIRES -->
              <div id="adminTab_upload" class="admin-tab-content" style="display:block; width:100%;">
                  <div class="admin-card-inner">
                      <h4><i class="fas fa-file-excel" style="color:#10B981;"></i> Chargement & Import des Plans Hebdomadaires (Excel)</h4>
-                     <p class="admin-subtext">L'administrateur peut importer et enregistrer les plans pour la <strong>Section Garçons</strong> ou la <strong>Section Filles</strong> séparément sans changer sa propre section de travail.</p>
+                     <p class="admin-subtext">L'administrateur peut importer et enregistrer les plans pour chaque section séparément (<strong>Section Garçons</strong>, <strong>Section Filles</strong> ou <strong>Section Primaire & Maternelle</strong>) et les appliquer à une ou <strong>plusieurs semaines</strong> simultanément.</p>
                      
                      <div class="admin-grid-2col" style="margin-top:15px; margin-bottom:15px;">
                          <div>
                              <label for="adminUploadSectionSelect" style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
                                  <i class="fas fa-venus-mars" style="color:#2563EB;"></i> Section Cible d'Enregistrement :
                              </label>
-                             <select id="adminUploadSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:2px solid #3B82F6; font-weight:700; background:#EFF6FF;">
+                             <select id="adminUploadSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:2px solid #3B82F6; font-weight:700; background:#EFF6FF;" onchange="updateUploadTargetInfo()">
                                  <option value="garcons">👦 Section Garçons</option>
                                  <option value="filles">👧 Section Filles</option>
                                  <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
-                                 <option value="current">🔄 Section Active en cours</option>
                              </select>
                          </div>
                          <div>
-                             <label for="adminUploadWeekSelect" style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
-                                 <i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine Cible :
+                             <label style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                                 <i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Mode d'Application des Semaines :
                              </label>
-                             <select id="adminUploadWeekSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;">
-                                 <!-- Rempli dynamiquement avec les 38 semaines -->
-                             </select>
+                             <div style="display:flex; gap:6px; background:#F8FAFC; padding:6px; border-radius:8px; border:1px solid #CBD5E1; flex-wrap:wrap;">
+                                 <label style="font-weight:600; font-size:0.84rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                     <input type="radio" name="uploadWeekMode" value="single" checked onchange="toggleUploadWeekMode('single')"> Semaine Unique
+                                 </label>
+                                 <label style="font-weight:600; font-size:0.84rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                     <input type="radio" name="uploadWeekMode" value="multiple" onchange="toggleUploadWeekMode('multiple')"> Multi-Semaines
+                                 </label>
+                                 <label style="font-weight:600; font-size:0.84rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                                     <input type="radio" name="uploadWeekMode" value="range" onchange="toggleUploadWeekMode('range')"> Plage (De... à...)
+                                 </label>
+                             </div>
+                         </div>
+                     </div>
+
+                     <!-- Zone Mode Semaine Unique -->
+                     <div id="uploadModeSingleContainer" style="margin-bottom:15px;">
+                         <label for="adminUploadWeekSelect" style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                             <i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine Cible :
+                         </label>
+                         <select id="adminUploadWeekSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;" onchange="updateUploadTargetInfo()">
+                             <!-- Rempli dynamiquement avec les 38 semaines -->
+                         </select>
+                     </div>
+
+                     <!-- Zone Mode Multi-Semaines (Cases à cocher) -->
+                     <div id="uploadModeMultipleContainer" style="display:none; margin-bottom:15px; background:#F8FAFC; border:1.5px solid #CBD5E1; border-radius:12px; padding:14px;">
+                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                             <span style="font-weight:700; color:#1E293B; font-size:0.92rem;">
+                                 <i class="fas fa-check-square" style="color:#2563EB;"></i> Cochez les semaines cibles :
+                             </span>
+                             <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                 <button type="button" class="pro-button" onclick="selectUploadWeeksPreset('all')" style="padding:4px 8px; font-size:0.78rem; font-weight:700; background:#EEF2FF; color:#1E40AF; border:1px solid #C7D2FE;">Toutes (S1-S38)</button>
+                                 <button type="button" class="pro-button" onclick="selectUploadWeeksPreset('p1')" style="padding:4px 8px; font-size:0.78rem; font-weight:700; background:#F0FDF4; color:#065F46; border:1px solid #BBF7D0;">P1 (S1-S12)</button>
+                                 <button type="button" class="pro-button" onclick="selectUploadWeeksPreset('p2')" style="padding:4px 8px; font-size:0.78rem; font-weight:700; background:#FEF3C7; color:#92400E; border:1px solid #FDE68A;">P2 (S13-S24)</button>
+                                 <button type="button" class="pro-button" onclick="selectUploadWeeksPreset('p3')" style="padding:4px 8px; font-size:0.78rem; font-weight:700; background:#FDF2F8; color:#9D174D; border:1px solid #FBCFE8;">P3 (S25-S38)</button>
+                                 <button type="button" class="pro-button" onclick="selectUploadWeeksPreset('none')" style="padding:4px 8px; font-size:0.78rem; font-weight:700; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1;">Décocher</button>
+                             </div>
+                         </div>
+                         <div id="uploadWeeksCheckboxesGrid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap:6px; max-height:160px; overflow-y:auto; padding:6px; background:white; border-radius:8px; border:1px solid #E2E8F0;">
+                             <!-- Rempli dynamiquement avec 38 cases à cocher -->
+                         </div>
+                         <div id="uploadMultiSelectedCount" style="margin-top:8px; font-size:0.85rem; font-weight:700; color:#2563EB;">
+                             0 semaine(s) sélectionnée(s)
+                         </div>
+                     </div>
+
+                     <!-- Zone Mode Plage (De S... à S...) -->
+                     <div id="uploadModeRangeContainer" style="display:none; margin-bottom:15px; background:#F8FAFC; border:1.5px solid #CBD5E1; border-radius:12px; padding:14px;">
+                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                             <div>
+                                 <label style="font-weight:700; color:#334155; display:block; margin-bottom:4px; font-size:0.88rem;">De la Semaine :</label>
+                                 <select id="uploadRangeFromWeek" style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;" onchange="updateUploadTargetInfo()"></select>
+                             </div>
+                             <div>
+                                 <label style="font-weight:700; color:#334155; display:block; margin-bottom:4px; font-size:0.88rem;">À la Semaine :</label>
+                                 <select id="uploadRangeToWeek" style="width:100%; padding:8px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;" onchange="updateUploadTargetInfo()"></select>
+                             </div>
                          </div>
                      </div>
 
@@ -681,6 +737,115 @@
                      </div>
                  </div>
              </div>
+
+             <!-- ONGLET 8 : FUSION DES JOURS, ABSENCE DE COURS & PHOTOS PARENTS -->
+             <div id="adminTab_special_days" class="admin-tab-content" style="display:none; width:100%;">
+                 <div class="admin-card-inner">
+                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                         <div>
+                             <h4 style="margin:0; color:#6D28D9; display:flex; align-items:center; gap:8px;">
+                                 <i class="fas fa-layer-group" style="color:#8B5CF6;"></i> Fusion des Jours & Inclusion de Photos (Plans Parents)
+                             </h4>
+                             <p class="admin-subtext" style="margin:4px 0 0 0;">Fusionnez les cases d'une journée (ex: Vacances, Journée Pédagogique, Fête Nationale, Sortie) et ajoutez des photos qui s'afficheront directement chez les parents.</p>
+                         </div>
+                     </div>
+
+                     <!-- FORMULAIRE DE CRÉATION DE JOURNÉE FUSIONNÉE -->
+                     <div style="background:#F5F3FF; border:1.5px solid #DDD6FE; border-radius:14px; padding:18px; margin-bottom:20px;">
+                         <div style="font-weight:800; color:#5B21B6; font-size:1.05rem; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                             <i class="fas fa-plus-circle"></i> Configurer une Journée Spéciale / Fusionner les cases
+                         </div>
+
+                         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:14px;">
+                             <div>
+                                 <label style="font-weight:700; color:#374151; font-size:0.88rem; display:block; margin-bottom:4px;">
+                                     <i class="fas fa-venus-mars" style="color:#8B5CF6;"></i> Section :
+                                 </label>
+                                 <select id="specialDaySection" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;" onchange="loadAdminSpecialDaysList()">
+                                     <option value="garcons">👦 Section Garçons</option>
+                                     <option value="filles">👧 Section Filles</option>
+                                     <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
+                                 </select>
+                             </div>
+                             <div>
+                                 <label style="font-weight:700; color:#374151; font-size:0.88rem; display:block; margin-bottom:4px;">
+                                     <i class="fas fa-calendar-week" style="color:#8B5CF6;"></i> Semaine Cible :
+                                 </label>
+                                 <select id="specialDayWeek" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;" onchange="loadAdminSpecialDaysList()"></select>
+                             </div>
+                             <div>
+                                 <label style="font-weight:700; color:#374151; font-size:0.88rem; display:block; margin-bottom:4px;">
+                                     <i class="fas fa-calendar-day" style="color:#8B5CF6;"></i> Jour :
+                                 </label>
+                                 <select id="specialDayDay" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;">
+                                     <option value="Dimanche">Dimanche</option>
+                                     <option value="Lundi">Lundi</option>
+                                     <option value="Mardi">Mardi</option>
+                                     <option value="Mercredi">Mercredi</option>
+                                     <option value="Jeudi">Jeudi</option>
+                                 </select>
+                             </div>
+                             <div>
+                                 <label style="font-weight:700; color:#374151; font-size:0.88rem; display:block; margin-bottom:4px;">
+                                     <i class="fas fa-chalkboard-user" style="color:#8B5CF6;"></i> Classe Cible :
+                                 </label>
+                                 <select id="specialDayClass" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;">
+                                     <option value="all">🌟 Toutes les classes de la section</option>
+                                 </select>
+                             </div>
+                         </div>
+
+                         <div style="display:grid; grid-template-columns: 1fr 2fr; gap:12px; margin-bottom:14px;">
+                             <div>
+                                 <label style="font-weight:700; color:#374151; font-size:0.88rem; display:block; margin-bottom:4px;">
+                                     <i class="fas fa-tag" style="color:#8B5CF6;"></i> Titre de l'Événement :
+                                 </label>
+                                 <input type="text" id="specialDayTitle" placeholder="Ex: 🎉 Célébration Fête Nationale / Pas de cours" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-size:0.92rem; font-weight:600; box-sizing:border-box;">
+                             </div>
+                             <div>
+                                 <label style="font-weight:700; color:#374151; font-size:0.88rem; display:block; margin-bottom:4px;">
+                                     <i class="fas fa-comment-dots" style="color:#8B5CF6;"></i> Message / Note pour les Parents :
+                                 </label>
+                                 <input type="text" id="specialDayDescription" placeholder="Ex: Chers parents, aucun cours aujourd'hui en raison des activités scolaires..." style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-size:0.92rem; box-sizing:border-box;">
+                             </div>
+                         </div>
+
+                         <!-- GESTION DES PHOTOS / IMAGES -->
+                         <div style="background:white; border:1px solid #E2E8F0; border-radius:10px; padding:14px; margin-bottom:16px;">
+                             <label style="font-weight:700; color:#1E293B; font-size:0.9rem; display:block; margin-bottom:8px;">
+                                 <i class="fas fa-camera-retro" style="color:#8B5CF6;"></i> Ajouter des Photos / Affiches pour ce Jour :
+                             </label>
+                             <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                                 <input type="file" id="specialDayPhotoFileInput" accept="image/*" multiple onchange="handleSpecialDayPhotosSelected(event)" style="font-size:0.85rem;">
+                                 <span style="font-size:0.85rem; color:#64748B;">Ou URL Image / Google Drive :</span>
+                                 <input type="url" id="specialDayPhotoUrlInput" placeholder="https://..." style="flex:1; min-width:180px; padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1; font-size:0.85rem;">
+                                 <button type="button" class="pro-button" onclick="addSpecialDayPhotoFromUrl()" style="padding:6px 12px; font-size:0.82rem; background:#EDE9FE; color:#5B21B6; border:1px solid #C4B5FD; font-weight:700;">
+                                     <i class="fas fa-plus"></i> Ajouter URL
+                                 </button>
+                             </div>
+                             
+                             <!-- Prévisualisation des photos ajoutées -->
+                             <div id="specialDayPhotosPreviewContainer" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
+                                 <!-- Rempli dynamiquement -->
+                             </div>
+                         </div>
+
+                         <div style="display:flex; justify-content:flex-end; gap:10px;">
+                             <button type="button" class="pro-button primary-button" onclick="saveAdminSpecialDay()" style="background:linear-gradient(135deg, #7C3AED, #6D28D9); border:none; padding:10px 20px; font-weight:700; font-size:0.95rem; box-shadow:0 4px 12px rgba(109,40,217,0.3);">
+                                 <i class="fas fa-check-circle"></i> Enregistrer et Fusionner ce Jour
+                             </button>
+                         </div>
+                     </div>
+
+                     <!-- LISTE DES JOURNÉES FUSIONNÉES ACTIVES -->
+                     <h5 style="color:#1E293B; font-weight:800; margin:20px 0 10px 0; font-size:1rem; display:flex; align-items:center; gap:8px;">
+                         <i class="fas fa-list-check" style="color:#8B5CF6;"></i> Journées Fusionnées Enregistrées (Semaine en cours & Section)
+                     </h5>
+                     <div id="adminSpecialDaysListContainer" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px;">
+                         <!-- Rempli dynamiquement -->
+                     </div>
+                 </div>
+             </div>
         </div>
         <div class="filter-container main-actions-container">
             <!-- BOUTON PRINCIPAL POUR TOUS LES ENSEIGNANTS : TÉLÉCHARGER LE PLAN COMPLET PAR CLASSE (TOUTES MATIÈRES & TOUS ENSEIGNANTS) -->
@@ -693,6 +858,10 @@
             </button>
             <button id="generateExcelBtn" onclick="generateExcelWorkbook()" class="action-button pro-button" disabled style="display: inline-flex; align-items: center; gap: 6px;">
                  <i class="fas fa-file-excel"></i> <span class="btn-text">Générer Excel (1 Fichier)</span>
+            </button>
+            <!-- BOUTON POUR L'ADMIN MED01 / DIRECTION : FUSIONNER UNE JOURNÉE SANS COURS & PHOTOS -->
+            <button id="btnOpenSpecialDaysQuickModal" onclick="openSpecialDayQuickModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #7C3AED, #6D28D9); color: white; border: none; font-weight: 700; padding: 10px 16px; border-radius: 10px; box-shadow: 0 4px 12px rgba(124,58,237,0.25); display: inline-flex; align-items: center; gap: 6px;">
+                 <i class="fas fa-layer-group"></i> <span>⚡ Fusionner un Jour (Pas de cours & Photos)</span>
             </button>
             <a id="downloadLink" style="display:none;"></a>
         </div>
@@ -1461,6 +1630,100 @@
                     <i class="fas fa-download"></i> <span id="btnExecuteWordText">Télécharger Word (.docx)</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL FUSION RAPIDE D'UN JOUR SANS COURS & PHOTOS -->
+    <div id="specialDayQuickModal" class="hw-modal" style="display:none; z-index:99999;">
+        <div class="hw-modal-content" style="max-width:580px; border-radius:20px; padding:26px; background:white; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+            <span class="hw-close-modal" onclick="closeSpecialDayQuickModal()">&times;</span>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                <div style="width:46px; height:46px; background:#F5F3FF; color:#7C3AED; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">
+                    <i class="fas fa-layer-group"></i>
+                </div>
+                <div>
+                    <h3 style="margin:0; color:#1E1B4B; font-size:1.25rem; font-weight:800;">
+                        Fusionner un Jour (Pas de cours & Photos)
+                    </h3>
+                    <div style="color:#64748B; font-size:0.85rem; font-weight:600;">
+                        Fusionne toutes les périodes pour la journée dans le plan des parents
+                    </div>
+                </div>
+            </div>
+
+            <div style="background:#F5F3FF; border:1px solid #DDD6FE; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:0.85rem; color:#5B21B6;">
+                <i class="fas fa-info-circle"></i> Cette action remplace les cases des cours du jour par une grande case fusionnée affichant le titre, le message et les photos de l'événement.
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div>
+                    <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Section :</label>
+                    <select id="quickSpecialSection" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;">
+                        <option value="garcons">👦 Section Garçons</option>
+                        <option value="filles">👧 Section Filles</option>
+                        <option value="primaire">👶🎒 Section Primaire</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Semaine :</label>
+                    <select id="quickSpecialWeek" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;"></select>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div>
+                    <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Jour :</label>
+                    <select id="quickSpecialDay" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;">
+                        <option value="Dimanche">Dimanche</option>
+                        <option value="Lundi">Lundi</option>
+                        <option value="Mardi">Mardi</option>
+                        <option value="Mercredi">Mercredi</option>
+                        <option value="Jeudi">Jeudi</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Classe :</label>
+                    <select id="quickSpecialClass" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;">
+                        <option value="all">🌟 Toutes les classes</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Titre de l'Événement :</label>
+                <input type="text" id="quickSpecialTitle" placeholder="Ex: 🎉 Fête Nationale / Journée sans cours" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:600; box-sizing:border-box;">
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:4px;">Description / Message aux Parents :</label>
+                <textarea id="quickSpecialDesc" rows="2" placeholder="Chers parents, aucun cours aujourd'hui..." style="width:100%; padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.9rem; box-sizing:border-box;"></textarea>
+            </div>
+
+            <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px; margin-bottom:16px;">
+                <label style="font-weight:700; color:#334155; font-size:0.85rem; display:block; margin-bottom:6px;">
+                    <i class="fas fa-camera"></i> Ajouter des Photos / Affiches :
+                </label>
+                <input type="file" id="quickSpecialFileInput" accept="image/*" multiple onchange="handleQuickSpecialPhotosSelected(event)" style="font-size:0.82rem; margin-bottom:6px; display:block;">
+                <div id="quickSpecialPhotosPreview" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            </div>
+
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button type="button" class="pro-button secondary-button" onclick="closeSpecialDayQuickModal()" style="padding:9px 16px;">
+                    Annuler
+                </button>
+                <button type="button" class="pro-button primary-button" onclick="saveQuickSpecialDay()" style="background:linear-gradient(135deg, #7C3AED, #6D28D9); border:none; padding:9px 20px; font-weight:700; box-shadow:0 4px 12px rgba(124,58,237,0.3);">
+                    <i class="fas fa-check"></i> Enregistrer et Fusionner
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LIGHTBOX / ZOOM PHOTO POUR LES PARENTS ET ENSEIGNANTS -->
+    <div id="imageLightboxModal" class="hw-modal" style="display:none; z-index:999999; background:rgba(0,0,0,0.85);" onclick="closeImageLightbox()">
+        <div style="position:relative; max-width:90vw; max-height:90vh; margin:auto; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;" onclick="event.stopPropagation()">
+            <span class="hw-close-modal" onclick="closeImageLightbox()" style="position:absolute; top:20px; right:20px; color:white; font-size:2.5rem; cursor:pointer;">&times;</span>
+            <img id="lightboxImg" src="" alt="Agrandissement" style="max-width:85vw; max-height:80vh; object-fit:contain; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+            <div id="lightboxCaption" style="color:white; font-size:1rem; font-weight:600; margin-top:12px; text-align:center; max-width:800px;"></div>
         </div>
     </div>
     <script src="notifications.js"></script>
