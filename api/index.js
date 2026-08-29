@@ -2298,17 +2298,25 @@ app.get('/api/plan-publication-status', async (req, res) => {
       query.section = section;
     }
     const list = await db.collection('published_plans').find(query).toArray();
-    res.status(200).json({ success: true, publishedPlans: list });
+    const statusMap = {};
+    list.forEach(item => {
+      statusMap[item.week] = Boolean(item.published ?? item.isPublishedToParents);
+    });
+    res.status(200).json({ success: true, publishedPlans: list, statusMap });
   } catch (error) {
     console.error('Erreur GET /api/plan-publication-status:', error);
-    res.status(500).json({ success: false, publishedPlans: [] });
+    res.status(500).json({ success: false, error: error.message, publishedPlans: [], statusMap: {} });
   }
 });
 
 app.post('/api/admin/toggle-plan-publication', async (req, res) => {
   try {
-    const { week, section, published, updatedBy } = req.body;
-    const weekNumber = parseInt(week, 10);
+    const rawWeek = req.body.week ?? req.body.weekNumber;
+    const section = req.body.section || 'garcons';
+    const published = req.body.published ?? req.body.isPublishedToParents;
+    const updatedBy = req.body.updatedBy || req.body.adminUser || 'Admin';
+
+    const weekNumber = parseInt(rawWeek, 10);
     if (isNaN(weekNumber) || !section) {
       return res.status(400).json({ success: false, error: 'Semaine ou section invalide.' });
     }
@@ -2323,18 +2331,19 @@ app.post('/api/admin/toggle-plan-publication', async (req, res) => {
           week: weekNumber,
           section: section,
           published: isPub,
+          isPublishedToParents: isPub,
           updatedAt: new Date(),
-          updatedBy: updatedBy || 'Admin'
+          updatedBy: updatedBy
         }
       },
       { upsert: true }
     );
     
     console.log(`📢 [PUBLICATION] Semaine S${weekNumber} (${section}) -> ${isPub ? 'PUBLIÉE AUX PARENTS' : 'MASQUÉE'}`);
-    res.status(200).json({ success: true, week: weekNumber, section, published: isPub });
+    res.status(200).json({ success: true, week: weekNumber, weekNumber, section, published: isPub, isPublishedToParents: isPub });
   } catch (error) {
     console.error('Erreur POST /api/admin/toggle-plan-publication:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message, message: error.message });
   }
 });
 

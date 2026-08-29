@@ -708,14 +708,22 @@
              <!-- ONGLET 7 : AUTORISATION & PUBLICATION DES PLANS AUX PARENTS -->
              <div id="adminTab_publication" class="admin-tab-content" style="display:none; width:100%;">
                  <div class="admin-card-inner">
-                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:15px;">
                          <div>
                              <h4 style="margin:0; color:#065F46; display:flex; align-items:center; gap:8px;">
                                  <i class="fas fa-bullhorn" style="color:#10B981;"></i> Autorisation & Publication des Plans aux Parents
                              </h4>
                              <p class="admin-subtext" style="margin:4px 0 0 0;">Le plan hebdomadaire n'est affiché aux parents que lorsque vous l'autorisez explicitement.</p>
                          </div>
-                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                             <div style="display:flex; align-items:center; gap:6px;">
+                                 <label style="font-weight:700; color:#065F46; font-size:0.88rem;">Section :</label>
+                                 <select id="adminPublicationSectionSelector" onchange="loadAdminPublicationStatus()" style="padding:8px 12px; border-radius:8px; border:1.5px solid #10B981; font-weight:700; background:white; color:#065F46;">
+                                     <option value="garcons">👦 Section Garçons</option>
+                                     <option value="filles">👧 Section Filles</option>
+                                     <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
+                                 </select>
+                             </div>
                              <button type="button" class="pro-button success-button" onclick="bulkPublishAllWeeks(true)" style="padding:8px 14px; font-size:0.88rem;">
                                  <i class="fas fa-check-double"></i> Tout Publier (S1-S38)
                              </button>

@@ -1739,7 +1739,7 @@
             } else if (tabName === 'messages') {
                 if (typeof loadAdminAllMessages === 'function') loadAdminAllMessages();
             } else if (tabName === 'publication') {
-                if (typeof loadWeeklyPermissionsMatrix === 'function') loadWeeklyPermissionsMatrix();
+                if (typeof loadAdminPublicationStatus === 'function') loadAdminPublicationStatus();
             } else if (tabName === 'special_days') {
                 if (typeof populateAdminSpecialDaysForm === 'function') populateAdminSpecialDaysForm();
                 if (typeof loadAdminSpecialDaysList === 'function') loadAdminSpecialDaysList();
@@ -5370,24 +5370,37 @@ async function loadAdminPublicationStatus() {
     const grid = document.getElementById('adminPlanPublicationGrid');
     if (!grid) return;
 
+    const sectionSel = document.getElementById('adminPublicationSectionSelector');
+    let section = sectionSel ? sectionSel.value : (currentSection || 'garcons');
+    if (sectionSel && !sectionSel.value) {
+        sectionSel.value = section;
+    }
+
     grid.innerHTML = `
         <div style="grid-column:1/-1; text-align:center; padding:35px; color:#64748B;">
             <i class="fas fa-spinner fa-spin fa-2x" style="color:#10B981; margin-bottom:10px;"></i>
-            <p style="font-weight:600; margin:0;">Chargement des statuts d'autorisation et de publication...</p>
+            <p style="font-weight:600; margin:0;">Chargement des statuts d'autorisation et de publication (${section === 'garcons' ? 'Garçons' : (section === 'filles' ? 'Filles' : 'Primaire')})...</p>
         </div>
     `;
 
     try {
-        const section = currentSection || 'garcons';
-        const res = await fetch(`/api/plan-publication-status?section=${section}`);
-        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+        const res = await fetch(`/api/plan-publication-status?section=${encodeURIComponent(section)}`);
+        if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
         const data = await res.json();
+        
         adminPublicationStatusMap = data.statusMap || {};
+        if (Array.isArray(data.publishedPlans)) {
+            data.publishedPlans.forEach(p => {
+                if (p.week !== undefined) {
+                    adminPublicationStatusMap[p.week] = Boolean(p.published ?? p.isPublishedToParents);
+                }
+            });
+        }
 
         renderAdminPublicationGrid(section);
     } catch (err) {
         console.error('Erreur loadAdminPublicationStatus:', err);
-        grid.innerHTML = `<div style="grid-column:1/-1; color:red; padding:15px; text-align:center;">Erreur: ${err.message}</div>`;
+        grid.innerHTML = `<div style="grid-column:1/-1; color:#DC2626; background:#FEF2F2; border:1px solid #FECACA; border-radius:10px; padding:15px; text-align:center; font-weight:600;">Erreur: ${escapeHtml(err.message)}</div>`;
     }
 }
 
@@ -5396,11 +5409,11 @@ function renderAdminPublicationGrid(section) {
     if (!grid) return;
 
     let html = '';
-    const currentW = getCurrentWeekNumber() || 1;
+    const currentW = (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : (currentWeek || 1));
 
     for (let w = 1; w <= 38; w++) {
         const isPublished = (adminPublicationStatusMap[w] !== false);
-        const isCurrent = (w === currentW);
+        const isCurrent = (Number(w) === Number(currentW));
 
         const cardBg = isPublished ? '#F0FDF4' : '#FEF2F2';
         const borderColor = isPublished ? '#86EFAC' : '#FECACA';
@@ -5433,24 +5446,27 @@ function renderAdminPublicationGrid(section) {
 }
 
 async function togglePlanPublication(weekNumber, section, newStatus) {
+    const sec = section || document.getElementById('adminPublicationSectionSelector')?.value || currentSection || 'garcons';
     try {
         const res = await fetch('/api/admin/toggle-plan-publication', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                weekNumber,
-                section,
-                isPublishedToParents: newStatus,
+                week: Number(weekNumber),
+                weekNumber: Number(weekNumber),
+                section: sec,
+                published: Boolean(newStatus),
+                isPublishedToParents: Boolean(newStatus),
                 adminUser: loggedInUser || 'Admin'
             })
         });
         const result = await res.json();
-        if (res.ok && result.success) {
-            adminPublicationStatusMap[weekNumber] = newStatus;
-            renderAdminPublicationGrid(section);
+        if (res.ok && (result.success || result.published !== undefined)) {
+            adminPublicationStatusMap[weekNumber] = Boolean(newStatus);
+            renderAdminPublicationGrid(sec);
             displayAlert(`Semaine ${weekNumber} : ${newStatus ? 'Publiée aux parents avec succès !' : 'Masquée aux parents avec succès.'}`, false);
         } else {
-            throw new Error(result.message || "Erreur mise à jour statut");
+            throw new Error(result.error || result.message || "Erreur mise à jour statut");
         }
     } catch (err) {
         console.error("Erreur togglePlanPublication:", err);
@@ -5459,30 +5475,35 @@ async function togglePlanPublication(weekNumber, section, newStatus) {
 }
 
 async function bulkPublishAllWeeks(status) {
+    const sec = document.getElementById('adminPublicationSectionSelector')?.value || currentSection || 'garcons';
+    const sectionLabel = (sec === 'garcons' ? 'Section Garçons' : (sec === 'filles' ? 'Section Filles' : 'Section Primaire'));
     const confirmMsg = status
-        ? "Voulez-vous autoriser et publier toutes les semaines (1 à 38) pour les parents ?"
-        : "Voulez-vous masquer toutes les semaines (1 à 38) pour les parents ?";
+        ? `Voulez-vous autoriser et publier toutes les semaines (1 à 38) pour les parents (${sectionLabel}) ?`
+        : `Voulez-vous masquer toutes les semaines (1 à 38) pour les parents (${sectionLabel}) ?`;
     if (!confirm(confirmMsg)) return;
 
     showProgressBar();
     updateProgressBar(0);
-    const section = currentSection || 'garcons';
     let count = 0;
 
     for (let w = 1; w <= 38; w++) {
         try {
-            await fetch('/api/admin/toggle-plan-publication', {
+            const res = await fetch('/api/admin/toggle-plan-publication', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    weekNumber: w,
-                    section,
-                    isPublishedToParents: status,
+                    week: Number(w),
+                    weekNumber: Number(w),
+                    section: sec,
+                    published: Boolean(status),
+                    isPublishedToParents: Boolean(status),
                     adminUser: loggedInUser || 'Admin'
                 })
             });
-            adminPublicationStatusMap[w] = status;
-            count++;
+            if (res.ok) {
+                adminPublicationStatusMap[w] = Boolean(status);
+                count++;
+            }
         } catch (e) {
             console.error(`Erreur publication semaine ${w}:`, e);
         }
@@ -5490,8 +5511,8 @@ async function bulkPublishAllWeeks(status) {
     }
 
     hideProgressBar();
-    renderAdminPublicationGrid(section);
-    displayAlert(`Opération terminée : ${count}/38 semaines ${status ? 'publiées' : 'masquées'}.`, false);
+    renderAdminPublicationGrid(sec);
+    displayAlert(`Opération terminée : ${count}/38 semaines ${status ? 'publiées' : 'masquées'} (${sectionLabel}).`, false);
 }
 
 // =========================================================
