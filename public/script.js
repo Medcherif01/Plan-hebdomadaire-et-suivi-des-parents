@@ -162,17 +162,40 @@
             updateDualTeacherSectionButtons();
         }
 
-        // Mettre à jour l'affichage du commutateur de section pour l'enseignante de musique
+        // Mettre à jour l'affichage du commutateur de section pour l'enseignante de musique (Farah)
         function updateDualTeacherSectionButtons() {
             const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
             const dualSecSwitch = document.getElementById('dualTeacherSectionSwitch');
+            const dualBanner = document.getElementById('dualTeacherNoticeBanner');
+            
             if (dualSecSwitch) {
                 dualSecSwitch.style.display = isDual ? 'inline-flex' : 'none';
             }
+            if (dualBanner) {
+                dualBanner.style.display = isDual ? 'flex' : 'none';
+            }
+
+            // Mise à jour des boutons dans l'en-tête
             const btnFilles = document.getElementById('teacherSecBtn_filles');
             const btnPrimaire = document.getElementById('teacherSecBtn_primaire');
             if (btnFilles) btnFilles.classList.toggle('active', currentSection === 'filles');
             if (btnPrimaire) btnPrimaire.classList.toggle('active', currentSection === 'primaire');
+
+            // Mise à jour des boutons dans la bannière
+            const bannerBtnFilles = document.getElementById('dualBannerBtn_filles');
+            const bannerBtnPrimaire = document.getElementById('dualBannerBtn_primaire');
+            if (bannerBtnFilles) bannerBtnFilles.classList.toggle('active', currentSection === 'filles');
+            if (bannerBtnPrimaire) bannerBtnPrimaire.classList.toggle('active', currentSection === 'primaire');
+
+            // Mise à jour du texte de statut dans la bannière
+            const statusText = document.getElementById('dualCurrentSectionText');
+            if (statusText) {
+                if (currentSection === 'primaire') {
+                    statusText.innerHTML = `Section active : <span class="active-sec-pill pill-primaire">Section Primaire & Maternelle 👶🎒</span>`;
+                } else {
+                    statusText.innerHTML = `Section active : <span class="active-sec-pill pill-filles">Section Filles 👧</span>`;
+                }
+            }
         }
 
         // Permet à l'enseignante de musique de basculer instantanément entre Section Filles et Section Primaire & Maternelle
@@ -1006,7 +1029,16 @@
             let teacherData = planData;
             if (loggedInUser && loggedInUser !== 'Med01' && ensK) {
                 const uE = String(loggedInUser).trim().toLowerCase();
-                teacherData = planData.filter(i => i && i[ensK] && String(i[ensK]).trim().toLowerCase() === uE);
+                const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
+                const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
+                teacherData = planData.filter(i => {
+                    if (!i || !i[ensK]) return false;
+                    const iE = String(i[ensK]).trim().toLowerCase();
+                    if (isDual) {
+                        return isDualSectionTeacher(iE) || iE === uE || (uTable && iE === uTable);
+                    }
+                    return iE === uE || (uTable && iE === uTable);
+                });
             }
             const uniqueCls = [...new Set(teacherData.map(i => i[clsK]).filter(Boolean))].sort(compareClasses);
             uniqueCls.forEach(cls => {
@@ -1223,8 +1255,12 @@
             if (loggedInUser && loggedInUser !== 'Med01' && ensK) { 
                 const uE = String(loggedInUser).trim().toLowerCase(); 
                 const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
+                const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
                 data = allData.filter(i => { 
                     const iE = i && i[ensK] ? String(i[ensK]).trim().toLowerCase() : ''; 
+                    if (isDual) {
+                        return isDualSectionTeacher(iE) || iE === uE || (uTable && iE === uTable);
+                    }
                     return iE === uE || (uTable && iE === uTable); 
                 }); 
             } 
@@ -1298,9 +1334,11 @@
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
                 if (loggedInUser && loggedInUser !== 'Med01') { 
+                    const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
                     const matchingOption = Array.from(filterEnsSelect.options).find(o => 
                         (loggedInTeacherTable && o.value.toLowerCase() === loggedInTeacherTable.toLowerCase()) ||
-                        (o.value.toLowerCase() === loggedInUser.toLowerCase())
+                        (o.value.toLowerCase() === loggedInUser.toLowerCase()) ||
+                        (isDual && isDualSectionTeacher(o.value))
                     );
                     if (matchingOption) {
                         filterEnsSelect.value = matchingOption.value;
@@ -1336,12 +1374,19 @@
                     const uE = String(loggedInUser).trim().toLowerCase();
                     const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
                     const iETight = iE ? String(iE).trim().toLowerCase() : '';
-                    if (iETight !== uE && (!uTable || iETight !== uTable)) {
-                        return false;
+                    const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
+                    if (isDual) {
+                        if (!isDualSectionTeacher(iE) && iETight !== uE && (!uTable || iETight !== uTable)) {
+                            return false;
+                        }
+                    } else {
+                        if (iETight !== uE && (!uTable || iETight !== uTable)) {
+                            return false;
+                        }
                     }
                 }
                 
-                const pE = !ensF || iE === ensF; 
+                const pE = !ensF || iE === ensF || ((typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser) && isDualSectionTeacher(iE)); 
                 const pC = !clsF || iC === clsF; 
                 const pM = !matF || iM === matF; 
                 const pP = !perF || iP === perF; 

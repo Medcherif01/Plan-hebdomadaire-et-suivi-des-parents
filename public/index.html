@@ -197,7 +197,7 @@
                     <h1 id="main-title">Plans Hebdomadaires</h1>
                     <span id="mainSectionBadge" class="section-badge badge-garcons">Section Garçons</span>
                     <div id="dualTeacherSectionSwitch" class="dual-teacher-sec-switch" style="display:none;" title="Basculer entre la Section Filles et la Section Primaire & Maternelle">
-                        <span class="dual-sec-label"><i class="fas fa-music"></i> Farah (Musique) :</span>
+                        <span class="dual-sec-label"><i class="fas fa-music"></i> Farah :</span>
                         <button type="button" class="teacher-sec-toggle-btn" id="teacherSecBtn_filles" onclick="switchDualTeacherSection('filles')">
                             👧 Section Filles
                         </button>
@@ -229,6 +229,26 @@
 
         <!-- ONGLET 1: PLANS HEBDOMADAIRES -->
         <div id="plans-tab-content">
+         <!-- BANNIÈRE SPÉCIALE ENSEIGNANTE DE MUSIQUE (FARAH) -->
+         <div id="dualTeacherNoticeBanner" class="dual-teacher-notice-banner" style="display:none;">
+             <div class="dual-banner-left">
+                 <div class="dual-banner-icon"><i class="fas fa-music"></i></div>
+                 <div class="dual-banner-info">
+                     <span class="dual-banner-name"><i class="fas fa-user-check"></i> Enseignante : <strong>Farah</strong></span>
+                     <span class="dual-banner-status" id="dualCurrentSectionText">Section active : <span class="active-sec-pill pill-filles">Section Filles 👧</span></span>
+                 </div>
+             </div>
+             <div class="dual-banner-actions">
+                 <span class="dual-banner-action-label"><i class="fas fa-exchange-alt"></i> Changer de section :</span>
+                 <button type="button" class="dual-switch-pill btn-filles active" id="dualBannerBtn_filles" onclick="switchDualTeacherSection('filles')">
+                     👧 Section Filles
+                 </button>
+                 <button type="button" class="dual-switch-pill btn-primaire" id="dualBannerBtn_primaire" onclick="switchDualTeacherSection('primaire')">
+                     👶🎒 Primaire & Maternelle
+                 </button>
+             </div>
+         </div>
+
          <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn">
              <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
         </button>

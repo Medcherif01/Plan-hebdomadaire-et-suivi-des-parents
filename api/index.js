@@ -901,13 +901,26 @@ app.post('/api/login', async (req, res) => {
     }
 
     // 3. Recherche de l'utilisateur dans la base de données (par nom d'utilisateur d'accès ou nom d'enseignant dans le tableau)
-    const userDoc = await db.collection('users').findOne({ 
-      section: section,
-      $or: [
-        { username: trimmedUsername },
-        { tableTeacherName: trimmedUsername }
-      ]
-    });
+    const isDual = isDualMusicTeacher(trimmedUsername);
+    const userDoc = await db.collection('users').findOne(
+      isDual 
+        ? {
+            section: { $in: ['filles', 'primaire'] },
+            $or: [
+              { username: trimmedUsername },
+              { tableTeacherName: trimmedUsername },
+              { username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } },
+              { tableTeacherName: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } }
+            ]
+          }
+        : { 
+            section: section,
+            $or: [
+              { username: trimmedUsername },
+              { tableTeacherName: trimmedUsername }
+            ]
+          }
+    );
 
     if (userDoc && userDoc.password) {
       if (userDoc.password === password) {
