@@ -252,18 +252,18 @@ const maleTeachers = [
 
 const femaleTeachers = [
   'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-  'Leila', 'Sarah', 'Zohra', 'Music', 'Musique'
+  'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique'
 ];
 
 const primaireTeachers = [
   'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-  'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Music', 'Musique'
+  'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique'
 ];
 
 const isDualMusicTeacher = (name) => {
   if (!name) return false;
   const n = String(name).trim().toLowerCase();
-  return n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique');
+  return n === 'farah' || n.includes('farah') || n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique');
 };
 
 const defaultWeeksConfig = {
@@ -322,7 +322,7 @@ const validUsers = {
   "Salma": "Salma", "Zainab": "Zainab", "Nour": "Nour", "Houda": "Houda",
   "Leila": "Leila", "Sarah": "Sarah", "Zohra": "Zohra",
   // Musique (Filles & Primaire)
-  "Music": "Music", "Musique": "Musique", "music": "music", "musique": "musique",
+  "Farah": "Farah", "farah": "farah", "Music": "Music", "Musique": "Musique", "music": "music", "musique": "musique",
   // Primaire & Maternelle
   "Nadia": "Nadia", "Samira": "Samira", "Imane": "Imane", "Fatima Zahra": "Fatima Zahra",
   "Mouna": "Mouna", "Siham": "Siham", "Hajar": "Hajar", "Meriem": "Meriem",

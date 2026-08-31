@@ -23,19 +23,21 @@
 
         const femaleTeachersList = [
             'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-            'Leila', 'Sarah', 'Zohra', 'Music', 'Musique'
+            'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique'
         ];
 
         const primaireTeachersList = [
             'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-            'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Music', 'Musique'
+            'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique'
         ];
 
         const isDualSectionTeacher = (username) => {
             if (!username) return false;
             const u = String(username).trim().toLowerCase();
             const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
-            return u === 'music' || u === 'musique' || u.includes('music') || u.includes('musique') ||
+            return u === 'farah' || u.includes('farah') ||
+                   u === 'music' || u === 'musique' || u.includes('music') || u.includes('musique') ||
+                   uTable === 'farah' || uTable.includes('farah') ||
                    uTable === 'music' || uTable === 'musique' || uTable.includes('music') || uTable.includes('musique');
         };
 
