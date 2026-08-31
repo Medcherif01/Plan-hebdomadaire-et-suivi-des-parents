@@ -252,13 +252,19 @@ const maleTeachers = [
 
 const femaleTeachers = [
   'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-  'Leila', 'Sarah', 'Zohra'
+  'Leila', 'Sarah', 'Zohra', 'Music', 'Musique'
 ];
 
 const primaireTeachers = [
   'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-  'Salma P', 'Khadija P', 'Aicha', 'Hanane'
+  'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Music', 'Musique'
 ];
+
+const isDualMusicTeacher = (name) => {
+  if (!name) return false;
+  const n = String(name).trim().toLowerCase();
+  return n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique');
+};
 
 const defaultWeeksConfig = {
   1: { title: "Semaine 1", titleAr: "الأسبوع 1", start: "2026-08-30", end: "2026-09-03" },
@@ -314,7 +320,13 @@ const validUsers = {
   // Filles
   "Amina": "Amina", "Fatima": "Fatima", "Khadija": "Khadija", "Mariam": "Mariam",
   "Salma": "Salma", "Zainab": "Zainab", "Nour": "Nour", "Houda": "Houda",
-  "Leila": "Leila", "Sarah": "Sarah", "Zohra": "Zohra"
+  "Leila": "Leila", "Sarah": "Sarah", "Zohra": "Zohra",
+  // Musique (Filles & Primaire)
+  "Music": "Music", "Musique": "Musique", "music": "music", "musique": "musique",
+  // Primaire & Maternelle
+  "Nadia": "Nadia", "Samira": "Samira", "Imane": "Imane", "Fatima Zahra": "Fatima Zahra",
+  "Mouna": "Mouna", "Siham": "Siham", "Hajar": "Hajar", "Meriem": "Meriem",
+  "Salma P": "Salma P", "Khadija P": "Khadija P", "Aicha": "Aicha", "Hanane": "Hanane"
 };
 
 let cachedDb = null;
@@ -727,8 +739,8 @@ function getCurrentWeekNumber() {
   return sortedWeeks[0] || 1;
 }
 
-// Fonction utilitaire pour déterminer la semaine prochaine par défaut (bascule chaque dimanche)
-function getDefaultDisplayWeekNumber() {
+// Fonction utilitaire pour déterminer la semaine prochaine pour les enseignants (bascule chaque dimanche)
+function getTeacherDefaultWeekNumber() {
   const currentW = getCurrentWeekNumber();
   const maxWeek = 38;
   if (typeof currentW === 'number' && !isNaN(currentW)) {
@@ -871,14 +883,21 @@ app.post('/api/login', async (req, res) => {
     }
 
     // 2. Contrôle de section strict (enseignantes / enseignants / primaire)
-    if (section === 'garcons' && (femaleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername))) {
-      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Garçons.` });
-    }
-    if (section === 'filles' && (maleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername))) {
-      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Filles.` });
-    }
-    if (section === 'primaire' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername))) {
-      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Primaire & Maternelle.` });
+    if (isDualMusicTeacher(trimmedUsername)) {
+      if (section === 'garcons') {
+        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignante '${trimmedUsername}' n'appartient qu'aux sections Filles et Primaire & Maternelle.` });
+      }
+      // Autorisé pour la Section Filles et la Section Primaire & Maternelle
+    } else {
+      if (section === 'garcons' && (femaleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername))) {
+        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Garçons.` });
+      }
+      if (section === 'filles' && (maleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername))) {
+        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Filles.` });
+      }
+      if (section === 'primaire' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername))) {
+        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Primaire & Maternelle.` });
+      }
     }
 
     // 3. Recherche de l'utilisateur dans la base de données (par nom d'utilisateur d'accès ou nom d'enseignant dans le tableau)
@@ -909,6 +928,17 @@ app.post('/api/login', async (req, res) => {
         console.log('[LOGIN] Mot de passe incorrect pour:', trimmedUsername);
         return res.status(401).json({ success: false, message: 'Mot de passe incorrect.' });
       }
+    } else if (validUsers[trimmedUsername] && (password === trimmedUsername || password.toLowerCase() === trimmedUsername.toLowerCase())) {
+      console.log('[LOGIN] Authentification par défaut réussie pour enseignant:', trimmedUsername);
+      let userLang = arabicTeachers.includes(trimmedUsername) ? 'ar' : (englishTeachers.includes(trimmedUsername) ? 'en' : 'fr');
+      return res.status(200).json({ 
+        success: true, 
+        username: trimmedUsername, 
+        tableTeacherName: trimmedUsername,
+        role: 'teacher', 
+        section, 
+        language: userLang 
+      });
     }
 
     console.log('[LOGIN] Compte non configuré pour:', trimmedUsername);
@@ -964,20 +994,20 @@ app.get('/api/admin/users', async (req, res) => {
     // Ajouter les utilisateurs personnalisés ajoutés par l'admin qui ne sont pas dans defaultList
     for (const u of users) {
       if (!deletedUserIds.has(u._id) && !defaultList.includes(u.username)) {
-        if (section === 'garcons' && (femaleTeachers.includes(u.username) || primaireTeachers.includes(u.username))) continue;
-        if (section === 'filles' && (maleTeachers.includes(u.username) || primaireTeachers.includes(u.username))) continue;
-        if (section === 'primaire' && (maleTeachers.includes(u.username) || femaleTeachers.includes(u.username))) continue;
+        if (section === 'garcons' && (femaleTeachers.includes(u.username) || primaireTeachers.includes(u.username) || isDualMusicTeacher(u.username))) continue;
+        if (section === 'filles' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || primaireTeachers.includes(u.username))) continue;
+        if (section === 'primaire' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || femaleTeachers.includes(u.username))) continue;
         completeList.push(u);
       }
     }
 
     // Filtre de sécurité strict par section
     if (section === 'garcons') {
-      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()));
+      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()) && !isDualMusicTeacher(u.username));
     } else if (section === 'filles') {
-      completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()));
+      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase())));
     } else if (section === 'primaire') {
-      completeList = completeList.filter(u => !maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()));
+      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase())));
     }
 
     res.status(200).json(completeList);
@@ -1753,10 +1783,28 @@ app.get('/api/evaluations', async (req, res) => {
     const db = await connectToDatabase();
 
     // 1. EXTRACTION AUTOMATIQUE DES DEVOIRS DEPUIS 'plans'
-    const planDocs = await db.collection('plans').find({ section: section }).toArray();
+    let planDocs = await db.collection('plans').find({ section: section }).toArray();
     if ((!planDocs || planDocs.length === 0) && section === 'garcons') {
       const fallbackDocs = await db.collection('plans').find({}).toArray();
       if (fallbackDocs) planDocs.push(...fallbackDocs);
+    }
+
+    // Filtrer par la semaine exacte de la date si disponible
+    let targetWeekNumber = null;
+    if (specificWeekDateRangesNode && typeof specificWeekDateRangesNode === 'object') {
+      for (const [wStr, dates] of Object.entries(specificWeekDateRangesNode)) {
+        if (dates.start && dates.end && dateQuery >= dates.start && dateQuery <= dates.end) {
+          targetWeekNumber = parseInt(wStr, 10);
+          break;
+        }
+      }
+    }
+
+    if (targetWeekNumber) {
+      const filteredByWeek = planDocs.filter(doc => Number(doc.week) === Number(targetWeekNumber));
+      if (filteredByWeek.length > 0) {
+        planDocs = filteredByWeek;
+      }
     }
 
     const dayName = getDayNameFr(dateQuery);
@@ -2511,17 +2559,20 @@ app.get('/api/plans/:week', async (req, res) => {
         rawData = rawData.filter(row => {
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
           return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase()) &&
-                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase());
+                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
+                 !isDualMusicTeacher(enseignant);
         });
       } else if (section === 'filles') {
         rawData = rawData.filter(row => {
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
+          if (isDualMusicTeacher(enseignant)) return true;
           return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
                  !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase());
         });
       } else if (section === 'primaire') {
         rawData = rawData.filter(row => {
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
+          if (isDualMusicTeacher(enseignant)) return true;
           return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
                  !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
         });

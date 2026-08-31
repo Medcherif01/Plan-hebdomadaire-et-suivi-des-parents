@@ -23,13 +23,21 @@
 
         const femaleTeachersList = [
             'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-            'Leila', 'Sarah', 'Zohra'
+            'Leila', 'Sarah', 'Zohra', 'Music', 'Musique'
         ];
 
         const primaireTeachersList = [
             'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-            'Salma P', 'Khadija P', 'Aicha', 'Hanane'
+            'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Music', 'Musique'
         ];
+
+        const isDualSectionTeacher = (username) => {
+            if (!username) return false;
+            const u = String(username).trim().toLowerCase();
+            const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
+            return u === 'music' || u === 'musique' || u.includes('music') || u.includes('musique') ||
+                   uTable === 'music' || uTable === 'musique' || uTable.includes('music') || uTable.includes('musique');
+        };
 
         const teachersSectionMap = {
             garcons: maleTeachersList,
@@ -149,6 +157,48 @@
             // Mettre à jour les sélecteurs de classe pour la section active
             if (typeof renderParentClassButtons === 'function') renderParentClassButtons();
             if (typeof updateClassDropdowns === 'function') updateClassDropdowns();
+            updateDualTeacherSectionButtons();
+        }
+
+        // Mettre à jour l'affichage du commutateur de section pour l'enseignante de musique
+        function updateDualTeacherSectionButtons() {
+            const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
+            const dualSecSwitch = document.getElementById('dualTeacherSectionSwitch');
+            if (dualSecSwitch) {
+                dualSecSwitch.style.display = isDual ? 'inline-flex' : 'none';
+            }
+            const btnFilles = document.getElementById('teacherSecBtn_filles');
+            const btnPrimaire = document.getElementById('teacherSecBtn_primaire');
+            if (btnFilles) btnFilles.classList.toggle('active', currentSection === 'filles');
+            if (btnPrimaire) btnPrimaire.classList.toggle('active', currentSection === 'primaire');
+        }
+
+        // Permet à l'enseignante de musique de basculer instantanément entre Section Filles et Section Primaire & Maternelle
+        async function switchDualTeacherSection(newSection) {
+            if (!newSection) return;
+            if (newSection !== 'filles' && newSection !== 'primaire') {
+                newSection = 'filles';
+            }
+            if (newSection === currentSection) return;
+            
+            console.log(`🔄 Enseignante Musique - Basculement de section: ${currentSection} ➔ ${newSection}`);
+            currentSection = newSection;
+            localStorage.setItem('selectedSection', newSection);
+            localStorage.setItem('currentSection', newSection);
+            
+            updateSectionBadges();
+            updateDualTeacherSectionButtons();
+            
+            if (typeof updateClassDropdowns === 'function') updateClassDropdowns();
+            if (typeof populateNotesClassSelector === 'function') populateNotesClassSelector();
+            
+            // Recharger le plan de travail de la nouvelle section sélectionnée
+            if (currentWeek) {
+                await fetchPlanData(currentWeek);
+            }
+            
+            const secLabel = newSection === 'primaire' ? 'Section Primaire & Maternelle 👶🎒' : 'Section Filles 👧';
+            displayAlert(`Section active : <strong>${secLabel}</strong>. Vous pouvez maintenant remplir et modifier le plan de cette section.`, false);
         }
 
         // Basculer la section de travail de l'administrateur sans déconnexion
@@ -1014,16 +1064,27 @@
             return sortedWeeks[0] || 1;
         }
 
-        // Détermine la semaine à afficher par défaut : toujours la SEMAINE PROCHAINE (bascule automatique chaque dimanche)
-        function getDefaultDisplayWeekNumber() {
-            const currentWINTEGER = getCurrentWeekNumber();
+        // Pour les enseignants : sélectionne automatiquement par défaut la SEMAINE PROCHAINE (N+1) pour préparer les cours
+        function getTeacherDefaultWeekNumber() {
+            const currentW = getCurrentWeekNumber();
             const maxWeek = (typeof weeksConfig !== 'undefined' && Object.keys(weeksConfig).length > 0)
                 ? Math.max(...Object.keys(weeksConfig).map(Number))
                 : 38;
-            if (typeof currentWINTEGER === 'number' && !isNaN(currentWINTEGER)) {
-                return Math.min(currentWINTEGER + 1, maxWeek);
+            if (typeof currentW === 'number' && !isNaN(currentW)) {
+                return Math.min(currentW + 1, maxWeek);
             }
             return 1;
+        }
+
+        // Détermine le jour scolaire actif d'aujourd'hui (Dimanche à Jeudi) pour les parents
+        function getTodaySchoolDayName() {
+            const today = new Date();
+            const dayIdx = today.getDay(); // 0=Dimanche, 1=Lundi, 2=Mardi, 3=Mercredi, 4=Jeudi, 5=Vendredi, 6=Samedi
+            const schoolDays = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
+            if (dayIdx >= 0 && dayIdx <= 4) {
+                return schoolDays[dayIdx];
+            }
+            return "Dimanche";
         }
 
         // Fonction pour envoyer des notifications push aux enseignants incomplets
@@ -1878,6 +1939,14 @@
                 }
             }
             
+            if (isDualSectionTeacher(loggedInUser)) {
+                if (currentSection !== 'filles' && currentSection !== 'primaire') {
+                    currentSection = 'filles';
+                    localStorage.setItem('selectedSection', 'filles');
+                    localStorage.setItem('currentSection', 'filles');
+                }
+            }
+
             console.log(`Initialisation pour ${loggedInUser} (Role: ${currentUserRole}, Section: ${currentSection}, Lang: ${currentUserLanguage})`);
             
             // Mode enseignant/admin actif (verrouillage de la section choisie et restriction espace parent)
@@ -1889,6 +1958,7 @@
             document.getElementById('main-content').style.display = 'block';
             
             updateSectionBadges();
+            updateDualTeacherSectionButtons();
             applyLanguageSettings();
             
             const roleBadge = currentUserRole === 'admin' ? ' [Administrateur Principal]' : (currentUserRole === 'supervisor' ? ' [Superviseur Direction]' : '');
@@ -1960,12 +2030,12 @@
             
             displayAlert('welcome_user', false, { user: loggedInUser });
             
-            // Charger automatiquement la SEMAINE PROCHAINE par défaut (bascule chaque dimanche)
-            const defaultWeekNum = getDefaultDisplayWeekNumber();
+            // Charger automatiquement la SEMAINE PROCHAINE par défaut pour les enseignants (pour qu'ils préparent les cours à l'avance)
+            const defaultWeekNum = getTeacherDefaultWeekNumber();
             if (defaultWeekNum) {
                 const weekToLoad = defaultWeekNum;
                 
-                console.log(`📅 Semaine par défaut (Semaine prochaine): Semaine ${weekToLoad} (Bascule chaque dimanche)`);
+                console.log(`📅 Espace Enseignant - Semaine par défaut (Semaine prochaine): Semaine ${weekToLoad} (L'enseignant peut toujours changer de semaine)`);
                 document.getElementById('weekSelector').value = weekToLoad;
                 setTimeout(async () => {
                     await loadPlanForWeek();
@@ -2721,7 +2791,8 @@ function populateParentWeekSelector() {
     if (!select) return;
     
     const currentVal = select.value;
-    const activeWeek = currentVal ? parseInt(currentVal, 10) : (getDefaultDisplayWeekNumber() || 1);
+    // Pour les parents : la semaine par défaut est TOUJOURS la SEMAINE COURANTE
+    const activeWeek = currentVal ? parseInt(currentVal, 10) : (getCurrentWeekNumber() || 1);
     select.innerHTML = '';
     
     const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
@@ -2740,7 +2811,7 @@ function populateParentWeekSelector() {
 
 let parentRawPlanData = [];
 let parentRawClassNotes = {};
-let parentActiveDay = 'Dimanche';
+let parentActiveDay = (typeof getTodaySchoolDayName === 'function') ? getTodaySchoolDayName() : 'Dimanche';
 const schoolDaysList = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
 
 function setParentActiveDay(dayName) {
@@ -2779,7 +2850,13 @@ async function loadParentWeeklyPlan() {
         
         if (!weekSelect || !classSelect || !container) return;
         
-        const selectedWeek = weekSelect.value || (getDefaultDisplayWeekNumber() || 1);
+        // Par défaut pour les parents : la semaine courante
+        const selectedWeek = weekSelect.value || (getCurrentWeekNumber() || 1);
+        const curW = getCurrentWeekNumber();
+        // Si les parents consultent la semaine courante, positionner automatiquement sur le jour d'aujourd'hui
+        if (Number(selectedWeek) === Number(curW) && typeof getTodaySchoolDayName === 'function') {
+            parentActiveDay = getTodaySchoolDayName();
+        }
         const classes = getSectionClasses(currentSection);
         const selectedClass = classSelect.value || classes[0];
         const section = currentSection || 'garcons';
@@ -2845,17 +2922,20 @@ async function loadParentWeeklyPlan() {
             fetchedData = fetchedData.filter(row => {
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
                 return !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase()) &&
-                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase());
+                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase()) &&
+                       !isDualSectionTeacher(ens);
             });
         } else if (section === 'filles') {
             fetchedData = fetchedData.filter(row => {
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
+                if (isDualSectionTeacher(ens)) return true;
                 return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
                        !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase());
             });
         } else if (section === 'primaire') {
             fetchedData = fetchedData.filter(row => {
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
+                if (isDualSectionTeacher(ens)) return true;
                 return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
                        !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase());
             });
@@ -4640,11 +4720,11 @@ async function loadTeachersContactGrid() {
 
         // Filtre de sécurité frontend strict pour empêcher tout mélange entre sections
         if (currentSection === 'garcons') {
-            teachers = teachers.filter(t => !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()));
+            teachers = teachers.filter(t => !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()) && !isDualSectionTeacher(t));
         } else if (currentSection === 'filles') {
-            teachers = teachers.filter(t => !maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()));
+            teachers = teachers.filter(t => isDualSectionTeacher(t) || (!maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase())));
         } else if (currentSection === 'primaire') {
-            teachers = teachers.filter(t => !maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()));
+            teachers = teachers.filter(t => isDualSectionTeacher(t) || (!maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase())));
         }
 
         const t = parentI18n[currentUserLanguage] || parentI18n.fr;
@@ -5659,7 +5739,7 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
     const chipsContainer = document.getElementById('modalWordQuickClassChips');
     if (!modal) return;
 
-    const curWeek = preselectedWeek || currentWeek || getDefaultDisplayWeekNumber() || 1;
+    const curWeek = preselectedWeek || currentWeek || getCurrentWeekNumber() || 1;
     if (weekSel) {
         weekSel.innerHTML = '';
         for (let i = 1; i <= 38; i++) {
@@ -5757,7 +5837,7 @@ function closeFullClassWordModal() {
 async function downloadSelectedClassFullWord() {
     const selClass = document.getElementById('filterClasse')?.value;
     if (selClass) {
-        const week = currentWeek || getDefaultDisplayWeekNumber() || 1;
+        const week = currentWeek || getCurrentWeekNumber() || 1;
         await downloadFullClassWord(week, selClass);
     } else {
         openFullClassWordModal();
@@ -5767,7 +5847,7 @@ async function downloadSelectedClassFullWord() {
 async function downloadSelectedNotesClassFullWord() {
     const selClass = document.getElementById('notesClassSelector')?.value;
     if (selClass) {
-        const week = currentWeek || getDefaultDisplayWeekNumber() || 1;
+        const week = currentWeek || getCurrentWeekNumber() || 1;
         await downloadFullClassWord(week, selClass);
     } else {
         openFullClassWordModal();
@@ -5777,7 +5857,7 @@ async function downloadSelectedNotesClassFullWord() {
 async function downloadSelectedClassFullExcel() {
     const selClass = document.getElementById('filterClasse')?.value;
     if (selClass) {
-        const week = currentWeek || getDefaultDisplayWeekNumber() || 1;
+        const week = currentWeek || getCurrentWeekNumber() || 1;
         await downloadFullClassExcel(week, selClass);
     } else {
         openFullClassWordModal();

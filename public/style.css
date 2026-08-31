@@ -2192,4 +2192,66 @@ body[dir="rtl"] .hw-close-modal {
     font-weight: 800;
 }
 
+/* --- COMMUTATEUR SECTION SPÉCIAL POUR ENSEIGNANTE DE MUSIQUE (FILLES <-> PRIMAIRE) --- */
+.dual-teacher-sec-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(255, 255, 255, 0.4);
+    margin: 0 10px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dual-sec-label {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #FFFFFF;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.teacher-sec-toggle-btn {
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    outline: none;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.86rem;
+    font-weight: 700;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.22);
+    color: #FFFFFF;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.teacher-sec-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.38);
+    transform: translateY(-1px);
+}
+
+.teacher-sec-toggle-btn.active {
+    background: #FFFFFF !important;
+    color: #0F172A !important;
+    border-color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+    font-weight: 800;
+}
+
+.teacher-sec-toggle-btn#teacherSecBtn_filles.active {
+    color: #DB2777 !important;
+}
+
+.teacher-sec-toggle-btn#teacherSecBtn_primaire.active {
+    color: #059669 !important;
+}
+
+
 

@@ -196,6 +196,15 @@
                  <div class="header-title-flex">
                     <h1 id="main-title">Plans Hebdomadaires</h1>
                     <span id="mainSectionBadge" class="section-badge badge-garcons">Section Garçons</span>
+                    <div id="dualTeacherSectionSwitch" class="dual-teacher-sec-switch" style="display:none;" title="Basculer entre la Section Filles et la Section Primaire & Maternelle">
+                        <span class="dual-sec-label"><i class="fas fa-arrows-rotate"></i> Section Musique :</span>
+                        <button type="button" class="teacher-sec-toggle-btn" id="teacherSecBtn_filles" onclick="switchDualTeacherSection('filles')">
+                            👧 Section Filles
+                        </button>
+                        <button type="button" class="teacher-sec-toggle-btn" id="teacherSecBtn_primaire" onclick="switchDualTeacherSection('primaire')">
+                            👶🎒 Primaire & Maternelle
+                        </button>
+                    </div>
                     <button type="button" class="switch-section-btn" onclick="resetSectionChoice()"><i class="fas fa-exchange-alt"></i> Changer</button>
                  </div>
                  <h2 id="weekDateRange"></h2>
