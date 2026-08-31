@@ -34,12 +34,23 @@
         const isDualSectionTeacher = (username) => {
             if (!username) return false;
             const u = String(username).trim().toLowerCase();
-            const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
             return u === 'farah' || u.includes('farah') ||
-                   u === 'music' || u === 'musique' || u.includes('music') || u.includes('musique') ||
-                   uTable === 'farah' || uTable.includes('farah') ||
-                   uTable === 'music' || uTable === 'musique' || uTable.includes('music') || uTable.includes('musique');
+                   u === 'music' || u === 'musique' || u.includes('music') || u.includes('musique');
         };
+
+        function isRowForLoggedInTeacher(rowTeacher, user, tableTeacher) {
+            if (!user || user === 'Med01') return true;
+            if (!rowTeacher) return false;
+            const rT = String(rowTeacher).trim().toLowerCase();
+            const u = String(user).trim().toLowerCase();
+            const tT = tableTeacher ? String(tableTeacher).trim().toLowerCase() : '';
+            
+            if (isDualSectionTeacher(u) || (tT && isDualSectionTeacher(tT))) {
+                return isDualSectionTeacher(rT) || rT === u || (tT && rT === tT);
+            }
+            
+            return rT === u || (tT && rT === tT);
+        }
 
         const teachersSectionMap = {
             garcons: maleTeachersList,
@@ -1028,16 +1039,9 @@
             }
             let teacherData = planData;
             if (loggedInUser && loggedInUser !== 'Med01' && ensK) {
-                const uE = String(loggedInUser).trim().toLowerCase();
-                const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
-                const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
                 teacherData = planData.filter(i => {
                     if (!i || !i[ensK]) return false;
-                    const iE = String(i[ensK]).trim().toLowerCase();
-                    if (isDual) {
-                        return isDualSectionTeacher(iE) || iE === uE || (uTable && iE === uTable);
-                    }
-                    return iE === uE || (uTable && iE === uTable);
+                    return isRowForLoggedInTeacher(i[ensK], loggedInUser, loggedInTeacherTable);
                 });
             }
             const uniqueCls = [...new Set(teacherData.map(i => i[clsK]).filter(Boolean))].sort(compareClasses);
@@ -1158,7 +1162,7 @@
 
         function checkAndDisplayIncompleteTeachers() { console.log("checkIncomplete"); incompleteTeachersInfo={}; const list=document.getElementById('incompleteList'); list.innerHTML=''; if(!planData||planData.length===0){list.innerHTML=`<li>${t('no_data')}</li>`; return;} const teacherKey=findHKey('Enseignant'); const classKey=findHKey('Classe'); const leconKey=findHKey('Leçon'); const taskKey=findHKey('Travaux de classe'); const supportKey=findHKey('Support'); const devoirsKey=findHKey('Devoirs'); if(!teacherKey||!classKey){console.warn("Manque cols Ens/Cls"); list.innerHTML=`<li>${t('error_config_columns')}</li>`; return;} planData.forEach(item=>{const teacher=item[teacherKey]; const clsName=item[classKey]; if(!teacher||!clsName) return; const leconVal=item[leconKey]; const taskVal=item[taskKey]; const supportVal=item[supportKey]; const devoirsVal=item[devoirsKey]; const isLeconEmpty=(leconVal==null||String(leconVal).trim()===''); const isTaskEmpty=(taskVal==null||String(taskVal).trim()===''); const isSupportEmpty=(supportVal==null||String(supportVal).trim()===''); const isDevoirsEmpty=(devoirsVal==null||String(devoirsVal).trim()===''); if(isLeconEmpty&&isTaskEmpty&&isSupportEmpty&&isDevoirsEmpty){if(!incompleteTeachersInfo[teacher]){incompleteTeachersInfo[teacher]=new Set();} incompleteTeachersInfo[teacher].add(clsName);}}); let teachers=Object.keys(incompleteTeachersInfo); const isAdmin=(loggedInUser==='Mohamed'||loggedInUser==='Zohra'||loggedInUser==='Imad'); if(!isAdmin&&loggedInUser){teachers=teachers.filter(t=>t===loggedInUser);} if(teachers.length===0){list.innerHTML=`<li>${t('all_complete')}</li>`;} else { teachers.sort().forEach(teacher=>{ const classes=[...incompleteTeachersInfo[teacher]].sort().join(', '); const li=document.createElement('li'); li.innerHTML = `<span class="incomplete-teacher-name">${teacher}</span> (<span class="incomplete-class-list">${classes}</span>)`; list.appendChild(li); }); } }
         function toggleIncompleteList() { const listDiv=document.getElementById('incompleteTeachersDisplay'); const btn=document.getElementById('toggleIncompleteBtn'); const btnTextSpan = btn.querySelector('.btn-text'); if(listDiv.style.display==='none'||listDiv.style.display===''){ listDiv.style.display='block'; btn.querySelector('i').className = 'fas fa-xmark'; if(btnTextSpan) btnTextSpan.textContent = t('hide_incomplete'); } else { listDiv.style.display='none'; btn.querySelector('i').className = 'fas fa-list-check'; if(btnTextSpan) btnTextSpan.textContent = t('display_incomplete'); } }
-        async function fetchPlanData(week) { if (!week || isNaN(parseInt(week, 10))) { console.warn("fetchPlanData sans semaine valide."); displayPlanTable([]); document.getElementById('weekDateRange').textContent = t('please_select_week'); return; } if (!loggedInUser) { console.warn("Tentative chargement non connecté."); displayAlert("login_title", true); return; } console.log(`fetchPlanData S${week} (${currentSection}) pour ${loggedInUser}`); displayAlert('loading_data_week', false, { week: week }); showProgressBar(); updateProgressBar(10); currentWeek = week; const weekNum=parseInt(week,10); const dateRangeEl=document.getElementById('weekDateRange'); weekStartDate=null; planData=[]; headers=[]; weeklyClassNotes={}; dateRangeEl.textContent=`${t('week_label')} ${week}: ${t('loading')}`; displayPlanTable([]); updateActionButtonsState(false); const dates=specificWeekDateRanges[weekNum]; if(dates?.start&&dates?.end){try{const s=new Date(dates.start+'T00:00:00Z'); const e=new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ weekStartDate=s; dateRangeEl.textContent = `${t('week_label')} ${week} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'from' : 'du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;} else throw new Error();}catch(e){dateRangeEl.textContent=`S ${week} (Err dates)`; weekStartDate=null;}} else {dateRangeEl.textContent=`${t('week_label')} ${week} (${t('no_data')}: dates non définies)`; weekStartDate=null;} updateProgressBar(30); try{const r=await fetch(`/api/plans/${week}?section=${currentSection}`); updateProgressBar(70); if(!r.ok){const d=await r.json().catch(()=>null); throw new Error(d?.message || `Err ${r.status}`);} const fetched=await r.json(); if(fetched&&typeof fetched==='object'){planData=fetched.planData||[]; weeklyClassNotes=fetched.classNotes||{}; window.availableWeeklyPlans = fetched.availableWeeklyPlans || [];} else {planData=[]; weeklyClassNotes={}; window.availableWeeklyPlans = [];} updateProgressBar(90); if(planData.length>0){headers=Object.keys(planData[0]).filter(h=>h!=='_id'&&h!=='id'); if(loggedInUser==='Imad'){const enseignantKey=findHKey('Enseignant');const originalCount=planData.length;if(enseignantKey){planData=planData.filter(row=>arabicTeachers.includes(row[enseignantKey]));console.log(`[Imad Admin] Data filtered for Arabic teachers. ${planData.length}/${originalCount} rows remain.`)}} displayAlert('data_loaded_week', false, { week: week });} else {headers=[]; displayAlert('no_data_found_week', false, { week: week });} createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateActionButtonsState(planData.length > 0); updateProgressBar(100); } catch(e){ console.error("Err fetchPlanData:",e); displayAlert('error_loading_week', true, { week: week, error: e.message }); planData=[]; headers=[]; weeklyClassNotes={}; createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateProgressBar(0); updateActionButtonsState(false); } finally{hideProgressBar();} }
+        async function fetchPlanData(week) { if (!week || isNaN(parseInt(week, 10))) { console.warn("fetchPlanData sans semaine valide."); displayPlanTable([]); document.getElementById('weekDateRange').textContent = t('please_select_week'); return; } if (!loggedInUser) { console.warn("Tentative chargement non connecté."); displayAlert("login_title", true); return; } console.log(`fetchPlanData S${week} (${currentSection}) pour ${loggedInUser}`); displayAlert('loading_data_week', false, { week: week }); showProgressBar(); updateProgressBar(10); currentWeek = week; const weekNum=parseInt(week,10); const dateRangeEl=document.getElementById('weekDateRange'); weekStartDate=null; planData=[]; headers=[]; weeklyClassNotes={}; dateRangeEl.textContent=`${t('week_label')} ${week}: ${t('loading')}`; displayPlanTable([]); updateActionButtonsState(false); const dates=specificWeekDateRanges[weekNum]; if(dates?.start&&dates?.end){try{const s=new Date(dates.start+'T00:00:00Z'); const e=new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ weekStartDate=s; dateRangeEl.textContent = `${t('week_label')} ${week} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'from' : 'du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;} else throw new Error();}catch(e){dateRangeEl.textContent=`S ${week} (Err dates)`; weekStartDate=null;}} else {dateRangeEl.textContent=`${t('week_label')} ${week} (${t('no_data')}: dates non définies)`; weekStartDate=null;} updateProgressBar(30); try{const r=await fetch(`/api/plans/${week}?section=${currentSection}`); updateProgressBar(70); if(!r.ok){const d=await r.json().catch(()=>null); throw new Error(d?.message || `Err ${r.status}`);} const fetched=await r.json(); if(fetched&&typeof fetched==='object'){planData=fetched.planData||[]; weeklyClassNotes=fetched.classNotes||{}; window.availableWeeklyPlans = fetched.availableWeeklyPlans || [];} else {planData=[]; weeklyClassNotes={}; window.availableWeeklyPlans = [];} updateProgressBar(90); if(planData.length>0){headers=Object.keys(planData[0]).filter(h=>h!=='_id'&&h!=='id'&&h!=='_originalCopy'&&h!=='lessonPlanId'&&h!=='__v'&&!h.startsWith('_')); if(loggedInUser==='Imad'){const enseignantKey=findHKey('Enseignant');const originalCount=planData.length;if(enseignantKey){planData=planData.filter(row=>arabicTeachers.includes(row[enseignantKey]));console.log(`[Imad Admin] Data filtered for Arabic teachers. ${planData.length}/${originalCount} rows remain.`)}} displayAlert('data_loaded_week', false, { week: week });} else {headers=[]; displayAlert('no_data_found_week', false, { week: week });} createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateActionButtonsState(planData.length > 0); updateProgressBar(100); } catch(e){ console.error("Err fetchPlanData:",e); displayAlert('error_loading_week', true, { week: week, error: e.message }); planData=[]; headers=[]; weeklyClassNotes={}; createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateProgressBar(0); updateActionButtonsState(false); } finally{hideProgressBar();} }
         
         function makeTableColumnsResizable() {
             const table = document.getElementById('planTable');
@@ -1206,7 +1210,7 @@
             const tHead = document.querySelector('#planTable thead tr');
             tHead.innerHTML = '';
             const curH = headers || [];
-            const hDisp = curH.filter(h => h !== '_id' && h !== 'id' && h.toLowerCase() !== 'updatedat');
+            const hDisp = curH.filter(h => h !== '_id' && h !== 'id' && h.toLowerCase() !== 'updatedat' && h !== '_originalCopy' && h !== 'lessonPlanId' && h !== '__v' && !h.startsWith('_'));
             const headerTranslations = translations[currentUserLanguage].headers || translations.fr.headers;
             
             const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
@@ -1253,15 +1257,9 @@
 
             // Si l'utilisateur est un enseignant connecté (non Med01), n'extraire les options (matières, classes, etc.) QUE de ses propres séances
             if (loggedInUser && loggedInUser !== 'Med01' && ensK) { 
-                const uE = String(loggedInUser).trim().toLowerCase(); 
-                const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
-                const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
                 data = allData.filter(i => { 
-                    const iE = i && i[ensK] ? String(i[ensK]).trim().toLowerCase() : ''; 
-                    if (isDual) {
-                        return isDualSectionTeacher(iE) || iE === uE || (uTable && iE === uTable);
-                    }
-                    return iE === uE || (uTable && iE === uTable); 
+                    const iE = i && i[ensK] ? String(i[ensK]) : ''; 
+                    return isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable);
                 }); 
             } 
 
@@ -1279,7 +1277,12 @@
                 } 
             }; 
 
-            const ens = ensK ? getUniq(ensK) : []; 
+            let ens = ensK ? getUniq(ensK) : []; 
+            if (loggedInUser && loggedInUser !== 'Med01') {
+                if (ens.length === 0) {
+                    ens = [loggedInTeacherTable || loggedInUser];
+                }
+            }
             const cls = clsK ? getUniq(clsK) : []; 
             const per = perK ? getUniq(perK) : []; 
             const mat = matK ? getUniq(matK) : []; 
@@ -1315,13 +1318,18 @@
             if (filterEnsSelect) {
                 if (loggedInUser && loggedInUser !== 'Med01') { 
                     const matchingOption = Array.from(filterEnsSelect.options).find(o => 
-                        (loggedInTeacherTable && o.value.toLowerCase() === loggedInTeacherTable.toLowerCase()) ||
-                        (o.value.toLowerCase() === loggedInUser.toLowerCase())
+                        (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
                     );
                     if (matchingOption) {
                         filterEnsSelect.value = matchingOption.value;
+                    } else if (filterEnsSelect.options.length > 1) {
+                        filterEnsSelect.selectedIndex = 1;
                     } else {
-                        filterEnsSelect.value = loggedInTeacherTable || loggedInUser; 
+                        const opt = document.createElement('option');
+                        opt.value = loggedInTeacherTable || loggedInUser;
+                        opt.textContent = loggedInTeacherTable || loggedInUser;
+                        filterEnsSelect.appendChild(opt);
+                        filterEnsSelect.value = opt.value;
                     }
                     filterEnsSelect.disabled = true; 
                 } else { 
@@ -1334,14 +1342,13 @@
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
                 if (loggedInUser && loggedInUser !== 'Med01') { 
-                    const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
                     const matchingOption = Array.from(filterEnsSelect.options).find(o => 
-                        (loggedInTeacherTable && o.value.toLowerCase() === loggedInTeacherTable.toLowerCase()) ||
-                        (o.value.toLowerCase() === loggedInUser.toLowerCase()) ||
-                        (isDual && isDualSectionTeacher(o.value))
+                        (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
                     );
                     if (matchingOption) {
                         filterEnsSelect.value = matchingOption.value;
+                    } else if (filterEnsSelect.options.length > 1) {
+                        filterEnsSelect.selectedIndex = 1;
                     } else {
                         filterEnsSelect.value = loggedInTeacherTable || loggedInUser; 
                     }
@@ -1369,24 +1376,14 @@
                 const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]) : null; 
                 const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]) : null; 
                 
-                // Si l'utilisateur est un enseignant (non Med01), n'afficher STRICTEMENT que ses matières et séances
+                // Si l'utilisateur est un enseignant (non Med01), n'afficher STRICTEMENT que ses séances
                 if (loggedInUser && loggedInUser !== 'Med01') {
-                    const uE = String(loggedInUser).trim().toLowerCase();
-                    const uTable = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? String(loggedInTeacherTable).trim().toLowerCase() : '';
-                    const iETight = iE ? String(iE).trim().toLowerCase() : '';
-                    const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
-                    if (isDual) {
-                        if (!isDualSectionTeacher(iE) && iETight !== uE && (!uTable || iETight !== uTable)) {
-                            return false;
-                        }
-                    } else {
-                        if (iETight !== uE && (!uTable || iETight !== uTable)) {
-                            return false;
-                        }
+                    if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
+                        return false;
                     }
                 }
                 
-                const pE = !ensF || iE === ensF || ((typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser) && isDualSectionTeacher(iE)); 
+                const pE = !ensF || iE === ensF || isRowForLoggedInTeacher(iE, ensF, null); 
                 const pC = !clsF || iC === clsF; 
                 const pM = !matF || iM === matF; 
                 const pP = !perF || iP === perF; 
@@ -1430,7 +1427,7 @@
             const actualHdrCount = tHead ? tHead.querySelectorAll('th').length : 0;
             const colspanVal = actualHdrCount > 0 ? actualHdrCount : 10;
             const curH = headers || [];
-            const hDisp = curH.filter(h => h !== '_id' && h.toLowerCase() !== 'updatedat' && h !== 'id');
+            const hDisp = curH.filter(h => h !== '_id' && h.toLowerCase() !== 'updatedat' && h !== 'id' && h !== '_originalCopy' && h !== 'lessonPlanId' && h !== '__v' && !h.startsWith('_'));
             const jK = findHKey('Jour');
             const clsK = findHKey('Classe');
             const updK = findHKey('updatedAt');
