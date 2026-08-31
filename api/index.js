@@ -727,6 +727,16 @@ function getCurrentWeekNumber() {
   return sortedWeeks[0] || 1;
 }
 
+// Fonction utilitaire pour déterminer la semaine prochaine par défaut (bascule chaque dimanche)
+function getDefaultDisplayWeekNumber() {
+  const currentW = getCurrentWeekNumber();
+  const maxWeek = 38;
+  if (typeof currentW === 'number' && !isNaN(currentW)) {
+    return Math.min(currentW + 1, maxWeek);
+  }
+  return 1;
+}
+
 app.get('/api/send-reminders', async (req, res) => {
   try {
     const weekNumber = getCurrentWeekNumber();

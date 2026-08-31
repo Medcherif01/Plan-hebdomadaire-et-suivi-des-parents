@@ -1014,6 +1014,18 @@
             return sortedWeeks[0] || 1;
         }
 
+        // Détermine la semaine à afficher par défaut : toujours la SEMAINE PROCHAINE (bascule automatique chaque dimanche)
+        function getDefaultDisplayWeekNumber() {
+            const currentWINTEGER = getCurrentWeekNumber();
+            const maxWeek = (typeof weeksConfig !== 'undefined' && Object.keys(weeksConfig).length > 0)
+                ? Math.max(...Object.keys(weeksConfig).map(Number))
+                : 38;
+            if (typeof currentWINTEGER === 'number' && !isNaN(currentWINTEGER)) {
+                return Math.min(currentWINTEGER + 1, maxWeek);
+            }
+            return 1;
+        }
+
         // Fonction pour envoyer des notifications push aux enseignants incomplets
         async function notifyIncompleteTeachers(week, incompleteTeachersInfo) {
             if (!week || !incompleteTeachersInfo || Object.keys(incompleteTeachersInfo).length === 0) {
@@ -1948,12 +1960,12 @@
             
             displayAlert('welcome_user', false, { user: loggedInUser });
             
-            // Charger automatiquement la semaine COURANTE par défaut
-            const currentWeekNum = getCurrentWeekNumber();
-            if (currentWeekNum) {
-                const weekToLoad = currentWeekNum;
+            // Charger automatiquement la SEMAINE PROCHAINE par défaut (bascule chaque dimanche)
+            const defaultWeekNum = getDefaultDisplayWeekNumber();
+            if (defaultWeekNum) {
+                const weekToLoad = defaultWeekNum;
                 
-                console.log(`📅 Semaine courante: ${currentWeekNum}, Chargement automatique: Semaine ${weekToLoad}`);
+                console.log(`📅 Semaine par défaut (Semaine prochaine): Semaine ${weekToLoad} (Bascule chaque dimanche)`);
                 document.getElementById('weekSelector').value = weekToLoad;
                 setTimeout(async () => {
                     await loadPlanForWeek();
@@ -2709,7 +2721,7 @@ function populateParentWeekSelector() {
     if (!select) return;
     
     const currentVal = select.value;
-    const activeWeek = currentVal ? parseInt(currentVal, 10) : (getCurrentWeekNumber() || 1);
+    const activeWeek = currentVal ? parseInt(currentVal, 10) : (getDefaultDisplayWeekNumber() || 1);
     select.innerHTML = '';
     
     const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
@@ -2767,7 +2779,7 @@ async function loadParentWeeklyPlan() {
         
         if (!weekSelect || !classSelect || !container) return;
         
-        const selectedWeek = weekSelect.value || (getCurrentWeekNumber() || 1);
+        const selectedWeek = weekSelect.value || (getDefaultDisplayWeekNumber() || 1);
         const classes = getSectionClasses(currentSection);
         const selectedClass = classSelect.value || classes[0];
         const section = currentSection || 'garcons';
@@ -5647,7 +5659,7 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
     const chipsContainer = document.getElementById('modalWordQuickClassChips');
     if (!modal) return;
 
-    const curWeek = preselectedWeek || currentWeek || getCurrentWeekNumber() || 1;
+    const curWeek = preselectedWeek || currentWeek || getDefaultDisplayWeekNumber() || 1;
     if (weekSel) {
         weekSel.innerHTML = '';
         for (let i = 1; i <= 38; i++) {
@@ -5745,7 +5757,7 @@ function closeFullClassWordModal() {
 async function downloadSelectedClassFullWord() {
     const selClass = document.getElementById('filterClasse')?.value;
     if (selClass) {
-        const week = currentWeek || getCurrentWeekNumber() || 1;
+        const week = currentWeek || getDefaultDisplayWeekNumber() || 1;
         await downloadFullClassWord(week, selClass);
     } else {
         openFullClassWordModal();
@@ -5755,7 +5767,7 @@ async function downloadSelectedClassFullWord() {
 async function downloadSelectedNotesClassFullWord() {
     const selClass = document.getElementById('notesClassSelector')?.value;
     if (selClass) {
-        const week = currentWeek || getCurrentWeekNumber() || 1;
+        const week = currentWeek || getDefaultDisplayWeekNumber() || 1;
         await downloadFullClassWord(week, selClass);
     } else {
         openFullClassWordModal();
@@ -5765,7 +5777,7 @@ async function downloadSelectedNotesClassFullWord() {
 async function downloadSelectedClassFullExcel() {
     const selClass = document.getElementById('filterClasse')?.value;
     if (selClass) {
-        const week = currentWeek || getCurrentWeekNumber() || 1;
+        const week = currentWeek || getDefaultDisplayWeekNumber() || 1;
         await downloadFullClassExcel(week, selClass);
     } else {
         openFullClassWordModal();
