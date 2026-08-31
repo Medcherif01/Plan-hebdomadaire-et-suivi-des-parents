@@ -971,25 +971,47 @@
         async function saveNotes() { const statusEl=document.getElementById('notes-save-status'); const classSel=document.getElementById('notesClassSelector'); const selCls=classSel.value; if(!selCls){displayAlert("select_class",true); return;} if(!currentWeek){displayAlert("please_select_week",true); return;} statusEl.textContent = t('saving'); displayAlert(''); setButtonLoading('saveNotesBtn',true,'fas fa-save'); const notesVal=document.getElementById('notesInput').value; console.log(t('saving_notes_for', { class: selCls, week: currentWeek })); try{ const response=await fetch('/api/save-notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({week:currentWeek,classe:selCls,notes:notesVal,section:currentSection})}); const result=await response.json(); if(!response.ok){throw new Error(result.message||`Erreur ${response.status}`);} weeklyClassNotes[selCls]=notesVal; displayAlert('notes_saved_success', false, { class: selCls, week: currentWeek }); statusEl.textContent = t('saved'); setTimeout(()=>{statusEl.textContent='';},3000); } catch(error){ console.error('Err saveNotes:',error); displayAlert('error_saving_notes', true, { error: error.message }); statusEl.textContent=`${t('error_saving_notes',{error:''}).replace(': {error}','')}: ${error.message}`; } finally{setButtonLoading('saveNotesBtn',false,'fas fa-save');} }
         function getCurrentWeekNumber() {
             const today = new Date();
-            for (const [weekNum, dates] of Object.entries(specificWeekDateRanges)) {
-                const startDate = new Date(dates.start + 'T00:00:00Z');
-                const endDate = new Date(dates.end + 'T23:59:59Z');
-                if (today >= startDate && today <= endDate) {
-                    return parseInt(weekNum, 10);
+            const y = today.getFullYear();
+            const m = String(today.getMonth() + 1).padStart(2, '0');
+            const d = String(today.getDate()).padStart(2, '0');
+            const todayStr = `${y}-${m}-${d}`;
+
+            const config = (typeof weeksConfig !== 'undefined' && weeksConfig && Object.keys(weeksConfig).length > 0)
+                ? weeksConfig
+                : (typeof specificWeekDateRanges !== 'undefined' ? specificWeekDateRanges : {});
+
+            const sortedWeeks = Object.keys(config)
+                .map(k => parseInt(k, 10))
+                .filter(n => !isNaN(n))
+                .sort((a, b) => a - b);
+
+            if (sortedWeeks.length === 0) return 1;
+
+            const firstWeekStart = config[sortedWeeks[0]]?.start;
+            if (firstWeekStart && todayStr < firstWeekStart) {
+                return sortedWeeks[0];
+            }
+
+            for (let i = 0; i < sortedWeeks.length; i++) {
+                const currentWeekNum = sortedWeeks[i];
+                const nextWeekNum = sortedWeeks[i + 1];
+                const currentStart = config[currentWeekNum]?.start;
+                const nextStart = nextWeekNum ? config[nextWeekNum]?.start : null;
+
+                if (currentStart) {
+                    if (nextStart) {
+                        if (todayStr >= currentStart && todayStr < nextStart) {
+                            return currentWeekNum;
+                        }
+                    } else {
+                        if (todayStr >= currentStart) {
+                            return currentWeekNum;
+                        }
+                    }
                 }
             }
-            // Si la date du jour est en dehors de la plage, trouver la semaine la plus proche
-            let closestWeek = 1;
-            let minDiff = Infinity;
-            for (const [weekNum, dates] of Object.entries(specificWeekDateRanges)) {
-                const startDate = new Date(dates.start + 'T00:00:00Z');
-                const diff = Math.abs(today.getTime() - startDate.getTime());
-                if (diff < minDiff) {
-                    minDiff = diff;
-                    closestWeek = parseInt(weekNum, 10);
-                }
-            }
-            return closestWeek;
+
+            return sortedWeeks[0] || 1;
         }
 
         // Fonction pour envoyer des notifications push aux enseignants incomplets
@@ -1710,7 +1732,79 @@
             checkAndDisplayIncompleteTeachers(); 
         }
         async function generateWordByClasse() { const dataGen = filteredAndSortedData; if(!dataGen || dataGen.length === 0){ displayAlert("no_data_to_display_filters", true); return; } if(!currentWeek){displayAlert("please_select_week",true); return;} setButtonLoading('generateWordBtn', true, 'fas fa-file-word'); const dataCls = {}; const clsK = findHKey('Classe'); if (!clsK) { displayAlert("error_config_columns", true); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); return; } dataGen.forEach(i => { if (!i || !i[clsK]) return; const cl = i[clsK]; if (!dataCls[cl]) { dataCls[cl] = []; } dataCls[cl].push(i); }); const clsGen = Object.keys(dataCls); if (clsGen.length === 0) { displayAlert("no_data", true); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); return; } displayAlert('generating_word', false, { count: clsGen.length }); showProgressBar(); updateProgressBar(0); let ok = 0, err = 0; const total = clsGen.length; for (let i = 0; i < total; i++) { const cl = clsGen[i]; const clData = dataCls[cl]; const clNote = weeklyClassNotes[cl] || ""; updateProgressBar(Math.round(((i + 1) / total) * 100)); try { const payload = { week: currentWeek, classe: cl, data: clData, notes: clNote }; const r = await fetch('/api/generate-word', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (r.ok) { const blob = await r.blob(); const cd = r.headers.get('content-disposition'); let filename = `plan_s${currentWeek}_${cl.replace(/[^a-z0-9]/gi, '_')}.docx`; if (cd) { const m = cd.match(/filename="?(.+?)"?(;|$)/i); if (m && m[1]) filename = m[1]; } if (typeof saveAs === 'function') { try { saveAs(blob, filename); ok++; } catch (e) { err++; console.error(`SaveAs ${cl}:`, e); displayAlert(t('error', {error: `Err sauvegarde ${cl}: ${e.message}`}), true); } } else { err++; console.error("saveAs non défini!"); displayAlert(t('error', {error: "saveAs non trouvé."}), true); break; } } else { const d = await r.json().catch(() => ({ message: `Erreur ${r.status}` })); console.error(`Err Word ${cl}:`, r.status, d); if (d.message && d.message.includes('Dates non trouvées côté serveur')) { displayAlert('no_word_dates', true, {week: currentWeek}); err++; } else { displayAlert('error_generating_word_for', true, {classe: cl, error: (d.message || 'Inconnue')}); err++; } } } catch (e) { err++; console.error(`Err Fetch Word ${cl}:`, e); displayAlert('error', true, { error: `Erreur réseau Word ${cl}: ${e.message}` }); } } hideProgressBar(); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); if (ok > 0 && err === 0) { displayAlert('generating_word_success', false, { count: ok }); } else if (ok > 0 && err > 0) { displayAlert('generating_word_partial', true, { ok: ok, err: err }); } else if (ok === 0 && err > 0) { if (err > 1) { displayAlert('generating_word_failed', true, {err: err}); } } else if (ok === 0 && err === 0) { displayAlert("no_data", true); } }
-        async function generateExcelWorkbook() { if (!currentWeek) { displayAlert("please_select_week", true); return; } setButtonLoading('generateExcelBtn',true,'fas fa-file-excel'); displayAlert('generating_excel', false, { week: currentWeek }); showProgressBar(); updateProgressBar(10); let err=0; try{ const payload = { week: currentWeek }; const r = await fetch('/api/generate-excel-workbook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); updateProgressBar(70); if(r.ok){const blob=await r.blob(); const cd=r.headers.get('content-disposition'); let filename=`plan_s${currentWeek}_complet.xlsx`; if(cd){const m=cd.match(/filename="?(.+?)"?(;|$)/i); if(m&&m[1]) filename=m[1];} if(typeof saveAs==='function'){try{saveAs(blob,filename); updateProgressBar(100); displayAlert('generating_excel_success', false, { filename: filename });} catch(e){err++; console.error(`SaveAs Excel:`,e); displayAlert(t('error', { error: `Err sauvegarde Excel: ${e.message}` }), true); updateProgressBar(0);}} else {err++; console.error("saveAs non défini!"); displayAlert(t('error', { error: "saveAs non trouvé." }), true); updateProgressBar(0);}} else { const d=await r.json().catch(()=>({message:`Err ${r.status}`})); console.error(`Err Excel Wb:`,r.status,d); displayAlert('error_generating_excel', true, { error: (d.message || 'Inconnue') }); updateProgressBar(0); err++;} } catch(e){err++; console.error(`Err Fetch Excel Wb:`,e); displayAlert('error', { error: `Err réseau Excel: ${e.message}` }, true); updateProgressBar(0);} finally{hideProgressBar(); setButtonLoading('generateExcelBtn',false,'fas fa-file-excel');} }
+        async function generateExcelWorkbook() {
+            if (!currentWeek) { displayAlert("please_select_week", true); return; }
+            const section = currentSection || 'garcons';
+            const selClass = document.getElementById('filterClasse')?.value || '';
+
+            setButtonLoading('generateExcelBtn', true, 'fas fa-file-excel');
+            displayAlert('generating_excel', false, { week: currentWeek });
+            showProgressBar();
+            updateProgressBar(10);
+            let err = 0;
+            try {
+                const payload = {
+                    week: Number(currentWeek),
+                    section: section,
+                    classe: selClass || undefined,
+                    data: (filteredAndSortedData && filteredAndSortedData.length > 0) ? filteredAndSortedData : undefined,
+                    notes: weeklyClassNotes
+                };
+                const r = await fetch('/api/generate-excel-workbook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                updateProgressBar(70);
+                if (r.ok) {
+                    const blob = await r.blob();
+                    const cd = r.headers.get('content-disposition');
+                    let filename = `Plan_Hebdomadaire_S${currentWeek}_${section}${selClass ? '_' + selClass : '_Complet'}.xlsx`;
+                    if (cd) {
+                        const m = cd.match(/filename="?(.+?)"?(;|$)/i);
+                        if (m && m[1]) filename = m[1];
+                    }
+                    if (typeof saveAs === 'function') {
+                        try {
+                            saveAs(blob, filename);
+                            updateProgressBar(100);
+                            displayAlert('generating_excel_success', false, { filename: filename });
+                        } catch (e) {
+                            err++;
+                            console.error(`SaveAs Excel:`, e);
+                            displayAlert(t('error', { error: `Err sauvegarde Excel: ${e.message}` }), true);
+                            updateProgressBar(0);
+                        }
+                    } else {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        updateProgressBar(100);
+                        displayAlert('generating_excel_success', false, { filename: filename });
+                    }
+                } else {
+                    const d = await r.json().catch(() => ({ message: `Err ${r.status}` }));
+                    console.error(`Err Excel Wb:`, r.status, d);
+                    displayAlert('error_generating_excel', true, { error: (d.message || 'Inconnue') });
+                    updateProgressBar(0);
+                    err++;
+                }
+            } catch (e) {
+                err++;
+                console.error(`Err Fetch Excel Wb:`, e);
+                displayAlert('error', { error: `Err réseau Excel: ${e.message}` }, true);
+                updateProgressBar(0);
+            } finally {
+                hideProgressBar();
+                setButtonLoading('generateExcelBtn', false, 'fas fa-file-excel');
+            }
+        }
         async function loadPlanForWeek() { const sel = document.getElementById('weekSelector'); if (sel) { const wk = sel.value; if (wk) { await fetchPlanData(wk); } else { currentWeek = null; planData = []; headers = []; weeklyClassNotes = {}; filteredAndSortedData = []; createTableHeader(); displayPlanTable([]); document.getElementById('weekDateRange').textContent = ""; updateActionButtonsState(false); populateFilterOptions(); populateNotesClassSelector(); checkAndDisplayIncompleteTeachers(); displayAlert(''); } } else { console.error("#weekSelector absent"); displayAlert("error_structure", true); } }
         function applyLanguageSettings() { console.log(`Applying language: ${currentUserLanguage}`); document.documentElement.lang = currentUserLanguage; document.body.dir = (currentUserLanguage === 'ar') ? 'rtl' : 'ltr'; updateStaticUIElements(); if (currentWeek) { updateDynamicUIElements(); } else { document.getElementById('weekDateRange').textContent = ""; const initialTableMsg = document.getElementById('initial-table-message'); if (initialTableMsg) { initialTableMsg.textContent = t('select_week_to_display'); } else { const tBody = document.querySelector('#planTable tbody'); const colspanVal = document.querySelector('#planTable thead tr')?.querySelectorAll('th').length || 10; if (tBody) { tBody.innerHTML = `<tr id="initial-table-row"><td colspan="${colspanVal}" class="table-message">${t('select_week_to_display')}</td></tr>`; } } } if (document.getElementById('login-form').style.display !== 'none') { updateLoginUIElements(); } }
         function updateStaticUIElements() { console.log("Updating static UI for lang:", currentUserLanguage); if (document.getElementById('main-content').style.display !== 'none') { document.title = t('main_page_title'); } else { document.title = t('login_title'); } updateLoginUIElements(); const mainTitle = document.getElementById('main-title'); if(mainTitle) mainTitle.textContent = t('main_page_title'); const logoutBtnText = document.querySelector('#logout-button .btn-text'); if(logoutBtnText) logoutBtnText.textContent = t('logout_button'); const toggleBtn = document.getElementById('toggleIncompleteBtn'); if (toggleBtn) { const btnTextSpan = toggleBtn.querySelector('.btn-text'); const listDiv=document.getElementById('incompleteTeachersDisplay'); if (btnTextSpan) { btnTextSpan.textContent = (listDiv && listDiv.style.display !== 'none') ? t('hide_incomplete') : t('display_incomplete'); } } const incompleteH4 = document.querySelector('#incompleteTeachersDisplay h4'); if(incompleteH4) incompleteH4.textContent = t('incomplete_teachers_title'); const incompleteLi = document.querySelector('#incompleteList li'); if(incompleteLi && incompleteLi.textContent.match(/(Chargement|Loading|جاري التحميل)/)) incompleteLi.textContent = t('loading'); const weekLabel = document.querySelector('label[for="weekSelector"]'); if(weekLabel) weekLabel.innerHTML = `<i class="fas fa-calendar-week"></i> ${t('week_label')}`; const adminTitle = document.getElementById('admin-title'); if(adminTitle) adminTitle.textContent = t('admin_actions_title'); const adminExcelLabel = document.getElementById('admin-excel-label'); if(adminExcelLabel) adminExcelLabel.innerHTML = `<i class="fas fa-file-excel"></i> ${t('admin_excel_label')}`; const saveUploadedDataBtnText = document.querySelector('#saveUploadedDataBtn .btn-text'); if(saveUploadedDataBtnText) saveUploadedDataBtnText.textContent = t('admin_save_button'); const genWordBtnText = document.querySelector('#generateWordBtn .btn-text'); if(genWordBtnText) genWordBtnText.textContent = t('generate_word_button'); const genExcelBtnText = document.querySelector('#generateExcelBtn .btn-text'); if(genExcelBtnText) genExcelBtnText.textContent = t('generate_excel_button'); const saveAllBtnText = document.querySelector('#saveAllDisplayedBtn .btn-text'); if(saveAllBtnText) saveAllBtnText.textContent = t('save_all_button'); const weeklyLessonsBtnText = document.querySelector('#generateWeeklyLessonsBtn .btn-text'); if(weeklyLessonsBtnText) weeklyLessonsBtnText.textContent = t('generate_weekly_lessons_button'); const filterEnsLabel = document.getElementById('filter-enseignant-label'); if(filterEnsLabel) filterEnsLabel.innerHTML = `<i class="fas fa-user-tie"></i> ${t('filter_teacher_label')}`; const filterClsLabel = document.getElementById('filter-classe-label'); if(filterClsLabel) filterClsLabel.innerHTML = `<i class="fas fa-chalkboard-user"></i> ${t('filter_class_label')}`; const filterMatLabel = document.getElementById('filter-matiere-label'); if(filterMatLabel) filterMatLabel.innerHTML = `<i class="fas fa-book"></i> ${t('filter_material_label')}`; const filterPerLabel = document.getElementById('filter-periode-label'); if(filterPerLabel) filterPerLabel.innerHTML = `<i class="fas fa-clock"></i> ${t('filter_period_label')}`; const filterJourLabel = document.getElementById('filter-jour-label'); if(filterJourLabel) filterJourLabel.innerHTML = `<i class="fas fa-calendar-day"></i> ${t('filter_day_label')}`; const notesClsLabel = document.getElementById('notes-class-label'); if(notesClsLabel) notesClsLabel.innerHTML = `<i class="fas fa-sticky-note"></i> ${t('notes_for_class')}`; const notesInput = document.getElementById('notesInput'); if(notesInput && notesInput.placeholder.match(/(Sélectionnez|اختر|Select)/)){ notesInput.placeholder = t('select_class_placeholder'); } const saveNotesBtnText = document.querySelector('#saveNotesBtn .btn-text'); if(saveNotesBtnText) saveNotesBtnText.textContent = t('save_notes_button'); updateFilterOptionDefaultTexts(); const adminReportLabel = document.getElementById('admin-report-class-label'); if (adminReportLabel) adminReportLabel.innerHTML = `<i class="fas fa-school"></i> ${t('admin_report_class_label')}`; const adminReportBtnText = document.querySelector('#generateFullReportBtn .btn-text'); if (adminReportBtnText) adminReportBtnText.textContent = t('generate_full_report_button'); }
@@ -5516,22 +5610,32 @@ async function bulkPublishAllWeeks(status) {
 }
 
 // =========================================================
-// 3. MODULE TÉLÉCHARGEMENT PLAN COMPLET PAR CLASSE (WORD)
+// 3. MODULE TÉLÉCHARGEMENT PLAN COMPLET PAR CLASSE (WORD & EXCEL)
 //    (Accessible à TOUS les enseignants & enseignantes pour
-//     toutes les matières et tous les professeurs)
+//     toutes les matières et tous les professeurs, totalement indépendant)
 // =========================================================
 
 function handleClassFilterChange() {
     sortAndDisplay();
     const selClass = document.getElementById('filterClasse')?.value;
-    const btnQuick = document.getElementById('btnQuickClassFullWord');
-    if (btnQuick) {
+    const btnQuickWord = document.getElementById('btnQuickClassFullWord');
+    const btnQuickExcel = document.getElementById('btnQuickClassFullExcel');
+    if (btnQuickWord) {
         if (selClass) {
-            btnQuick.innerHTML = `<i class="fas fa-file-word" style="color:#2563EB;"></i> <span>📄 Plan Complet (${escapeHtml(selClass)})</span>`;
-            btnQuick.title = `Télécharger le document Word complet pour la classe ${selClass} (Toutes les matières & Tous les professeurs)`;
+            btnQuickWord.innerHTML = `<i class="fas fa-file-word" style="color:#2563EB;"></i> <span>Word (${escapeHtml(selClass)})</span>`;
+            btnQuickWord.title = `Télécharger le document Word complet pour la classe ${selClass}`;
         } else {
-            btnQuick.innerHTML = `<i class="fas fa-file-word" style="color:#2563EB;"></i> <span>📄 Plan Complet Word</span>`;
-            btnQuick.title = `Choisir une classe pour télécharger le plan complet (toutes les matières et tous les enseignants)`;
+            btnQuickWord.innerHTML = `<i class="fas fa-file-word" style="color:#2563EB;"></i> <span>Word Classe</span>`;
+            btnQuickWord.title = `Choisir une classe pour télécharger le plan complet Word`;
+        }
+    }
+    if (btnQuickExcel) {
+        if (selClass) {
+            btnQuickExcel.innerHTML = `<i class="fas fa-file-excel" style="color:#10B981;"></i> <span>Excel (${escapeHtml(selClass)})</span>`;
+            btnQuickExcel.title = `Télécharger le fichier Excel complet pour la classe ${selClass}`;
+        } else {
+            btnQuickExcel.innerHTML = `<i class="fas fa-file-excel" style="color:#10B981;"></i> <span>Excel Classe</span>`;
+            btnQuickExcel.title = `Choisir une classe pour télécharger le plan complet Excel`;
         }
     }
 }
@@ -5610,18 +5714,20 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
                 chipBtn.style.border = '1.5px solid #3B82F6';
                 chipBtn.style.color = '#1D4ED8';
                 chipBtn.innerHTML = `<span>⭐ ${escapeHtml(c)}</span> <i class="fas fa-arrow-down" style="font-size:0.75rem;"></i>`;
-                chipBtn.title = `Télécharger en 1 clic le plan complet pour votre classe ${c}`;
+                chipBtn.title = `Sélectionner votre classe ${c}`;
             } else {
                 chipBtn.style.background = '#F8FAFC';
                 chipBtn.style.border = '1px solid #CBD5E1';
                 chipBtn.style.color = '#334155';
-                chipBtn.innerHTML = `<span>${escapeHtml(c)}</span> <i class="fas fa-download" style="font-size:0.75rem; opacity:0.6;"></i>`;
-                chipBtn.title = `Télécharger en 1 clic le plan complet pour ${c}`;
+                chipBtn.innerHTML = `<span>${escapeHtml(c)}</span>`;
+                chipBtn.title = `Sélectionner ${c}`;
             }
 
             chipBtn.onclick = () => {
                 if (classSel) classSel.value = c;
-                executeFullClassWordDownload(c);
+                // Highlighting selected chip
+                Array.from(chipsContainer.children).forEach(ch => ch.style.outline = 'none');
+                chipBtn.style.outline = '2px solid #2563EB';
             };
 
             chipsContainer.appendChild(chipBtn);
@@ -5656,6 +5762,16 @@ async function downloadSelectedNotesClassFullWord() {
     }
 }
 
+async function downloadSelectedClassFullExcel() {
+    const selClass = document.getElementById('filterClasse')?.value;
+    if (selClass) {
+        const week = currentWeek || getCurrentWeekNumber() || 1;
+        await downloadFullClassExcel(week, selClass);
+    } else {
+        openFullClassWordModal();
+    }
+}
+
 async function downloadFullClassWord(weekNum, className) {
     if (!className) {
         openFullClassWordModal();
@@ -5664,7 +5780,7 @@ async function downloadFullClassWord(weekNum, className) {
 
     showProgressBar();
     updateProgressBar(15);
-    displayAlert(`Préparation du plan complet de la Semaine ${weekNum} pour la classe ${className} (Toutes les matières & Tous les professeurs)...`, false);
+    displayAlert(`Préparation du plan complet Word de la Semaine ${weekNum} pour la classe ${className}...`, false);
 
     try {
         const section = currentSection || 'garcons';
@@ -5677,7 +5793,7 @@ async function downloadFullClassWord(weekNum, className) {
 
         if (fullPlanData.length === 0) {
             hideProgressBar();
-            displayAlert(`Aucune donnée de plan enregistrée pour la Semaine ${weekNum}.`, true);
+            displayAlert(`Aucune donnée de plan enregistrée pour la Semaine ${weekNum} (${section}).`, true);
             return;
         }
 
@@ -5688,6 +5804,71 @@ async function downloadFullClassWord(weekNum, className) {
     } catch (err) {
         console.error("Erreur downloadFullClassWord:", err);
         displayAlert("Erreur lors de la génération du plan complet: " + err.message, true);
+    } finally {
+        setTimeout(hideProgressBar, 800);
+    }
+}
+
+async function downloadFullClassExcel(weekNum, className) {
+    if (!className) {
+        openFullClassWordModal();
+        return;
+    }
+
+    showProgressBar();
+    updateProgressBar(15);
+    displayAlert(`Préparation du fichier Excel de la Semaine ${weekNum} pour la classe ${className}...`, false);
+
+    try {
+        const section = currentSection || 'garcons';
+        updateProgressBar(40);
+
+        const payload = {
+            week: Number(weekNum),
+            section: section,
+            classe: className,
+            notes: weeklyClassNotes
+        };
+
+        const res = await fetch('/api/generate-excel-workbook', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const errJson = await res.json().catch(() => ({ message: `Erreur ${res.status}` }));
+            throw new Error(errJson.message || `Erreur serveur (${res.status})`);
+        }
+
+        updateProgressBar(80);
+        const blob = await res.blob();
+        const cd = res.headers.get('content-disposition');
+        let filename = `Plan_Hebdomadaire_S${weekNum}_${section}_${className.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
+        if (cd) {
+            const m = cd.match(/filename="?(.+?)"?(;|$)/i);
+            if (m && m[1]) filename = m[1];
+        }
+
+        if (typeof saveAs === 'function') {
+            saveAs(blob, filename);
+        } else {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        updateProgressBar(100);
+        displayAlert(`✅ Téléchargement réussi du plan Excel complet pour ${className} !`, false);
+    } catch (err) {
+        console.error("Erreur downloadFullClassExcel:", err);
+        displayAlert("Erreur lors de la génération du plan Excel: " + err.message, true);
     } finally {
         setTimeout(hideProgressBar, 800);
     }
@@ -5710,7 +5891,8 @@ async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, secti
         week: Number(weekNum),
         classe: selectedClass,
         data: classRows,
-        notes: notes
+        notes: notes,
+        section: section || currentSection || 'garcons'
     };
 
     const res = await fetch('/api/generate-word', {
@@ -5763,7 +5945,7 @@ async function executeFullClassWordDownload(explicitClass) {
 
     if (btn) {
         btn.disabled = true;
-        if (btnText) btnText.textContent = "Génération Word en cours...";
+        if (btnText) btnText.textContent = "Génération Word...";
     }
 
     try {
@@ -5776,7 +5958,7 @@ async function executeFullClassWordDownload(explicitClass) {
         const fullPlanData = data.planData || [];
 
         if (fullPlanData.length === 0) {
-            alert(`Aucune donnée de plan enregistrée pour la Semaine ${selectedWeek}.`);
+            alert(`Aucune donnée de plan enregistrée pour la Semaine ${selectedWeek} (${section}).`);
             return;
         }
 
@@ -5792,6 +5974,39 @@ async function executeFullClassWordDownload(explicitClass) {
         if (btn) {
             btn.disabled = false;
             if (btnText) btnText.textContent = "Télécharger Word (.docx)";
+        }
+    }
+}
+
+async function executeFullClassExcelDownload(explicitClass) {
+    const weekSel = document.getElementById('modalWordWeekSelector');
+    const classSel = document.getElementById('modalWordClassSelector');
+    const btn = document.getElementById('btnExecuteExcelDownload');
+    const btnText = document.getElementById('btnExecuteExcelText');
+
+    const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
+    const selectedClass = explicitClass || (classSel ? classSel.value : '');
+
+    if (!selectedClass) {
+        alert("Veuillez sélectionner une classe.");
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        if (btnText) btnText.textContent = "Génération Excel...";
+    }
+
+    try {
+        await downloadFullClassExcel(selectedWeek, selectedClass);
+        closeFullClassWordModal();
+    } catch (err) {
+        console.error("Erreur executeFullClassExcelDownload:", err);
+        alert("Erreur lors du téléchargement Excel: " + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            if (btnText) btnText.textContent = "Télécharger Excel (.xlsx)";
         }
     }
 }

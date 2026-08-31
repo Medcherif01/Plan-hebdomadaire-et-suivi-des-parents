@@ -880,8 +880,11 @@
              <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
              <div style="display:inline-flex; align-items:center; gap:6px;">
                  <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
-                 <button type="button" id="btnQuickClassFullWord" onclick="downloadSelectedClassFullWord()" class="pro-button" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 700; background: #EEF2FF; color: #1E40AF; border: 1.5px solid #BFDBFE; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger le document Word complet pour la classe sélectionnée (avec toutes les matières et tous les enseignants)">
-                     <i class="fas fa-file-word" style="color:#2563EB;"></i> <span>📄 Plan Complet Word</span>
+                 <button type="button" id="btnQuickClassFullWord" onclick="downloadSelectedClassFullWord()" class="pro-button" style="padding: 6px 10px; font-size: 0.82rem; font-weight: 700; background: #EEF2FF; color: #1E40AF; border: 1.5px solid #BFDBFE; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger le document Word complet pour la classe sélectionnée">
+                     <i class="fas fa-file-word" style="color:#2563EB;"></i> <span>Word Classe</span>
+                 </button>
+                 <button type="button" id="btnQuickClassFullExcel" onclick="downloadSelectedClassFullExcel()" class="pro-button" style="padding: 6px 10px; font-size: 0.82rem; font-weight: 700; background: #ECFDF5; color: #047857; border: 1.5px solid #A7F3D0; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger le fichier Excel complet pour la classe sélectionnée">
+                     <i class="fas fa-file-excel" style="color:#10B981;"></i> <span>Excel Classe</span>
                  </button>
              </div>
 
@@ -1580,26 +1583,26 @@
         </div>
     </div>
 
-    <!-- MODAL TÉLÉCHARGEMENT PLAN COMPLET WORD PAR CLASSE (POUR TOUS LES ENSEIGNANTS) -->
+    <!-- MODAL TÉLÉCHARGEMENT PLAN COMPLET WORD & EXCEL PAR CLASSE (POUR TOUS LES ENSEIGNANTS) -->
     <div id="fullClassWordModal" class="hw-modal" style="display:none; z-index:99999;">
-        <div class="hw-modal-content" style="max-width:580px; border-radius:20px; padding:28px; background:white; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+        <div class="hw-modal-content" style="max-width:620px; border-radius:20px; padding:28px; background:white; box-shadow:0 20px 40px rgba(0,0,0,0.2);">
             <span class="hw-close-modal" onclick="closeFullClassWordModal()">&times;</span>
             <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
                 <div style="width:46px; height:46px; background:#EFF6FF; color:#2563EB; border-radius:12px; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">
-                    <i class="fas fa-file-word"></i>
+                    <i class="fas fa-file-export"></i>
                 </div>
                 <div>
                     <h3 style="margin:0; color:#1E1B4B; font-size:1.25rem; font-weight:800;">
-                        Plan Hebdomadaire Complet par Classe
+                        Plan Hebdomadaire Complet par Classe (Word & Excel)
                     </h3>
                     <div style="color:#64748B; font-size:0.85rem; font-weight:600;">
-                        Document Word officiel (.docx) multi-matières
+                        Documents officiels indépendants (.docx & .xlsx) multi-matières & multi-enseignants
                     </div>
                 </div>
             </div>
 
             <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px; padding:12px 14px; margin-bottom:18px; font-size:0.88rem; color:#1E40AF; line-height:1.5;">
-                <i class="fas fa-info-circle" style="color:#2563EB;"></i> <strong>Complet & Intégral :</strong> Ce document regroupe <strong>toutes les matières</strong> (Arabe, Français, Maths, Sciences, Anglais, etc.) et <strong>tous les enseignants</strong> de la classe sélectionnée.
+                <i class="fas fa-info-circle" style="color:#2563EB;"></i> <strong>Indépendant & Intégral :</strong> Vous pouvez télécharger le plan complet de chaque classe au format <strong>Word (.docx)</strong> ou <strong>Excel (.xlsx)</strong>, avec toutes les matières, enseignants et devoirs isolés pour cette classe et section.
             </div>
 
             <div style="margin-bottom:16px;">
@@ -1614,7 +1617,7 @@
             <!-- CHIPS D'ACCÈS RAPIDE PAR CLASSE -->
             <div style="margin-bottom:16px;">
                 <label style="font-weight:700; color:#334155; display:block; margin-bottom:8px; font-size:0.9rem;">
-                    <i class="fas fa-bolt" style="color:#F59E0B;"></i> Téléchargement Rapide en 1 Clic :
+                    <i class="fas fa-bolt" style="color:#F59E0B;"></i> Sélection Rapide de Classe :
                 </label>
                 <div id="modalWordQuickClassChips" style="display:flex; flex-wrap:wrap; gap:8px;">
                     <!-- Rempli dynamiquement avec les boutons de classes -->
@@ -1630,12 +1633,15 @@
                 </select>
             </div>
 
-            <div style="display:flex; gap:12px; justify-content:flex-end;">
-                <button type="button" class="pro-button secondary-button" onclick="closeFullClassWordModal()" style="padding:10px 18px;">
+            <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+                <button type="button" class="pro-button secondary-button" onclick="closeFullClassWordModal()" style="padding:10px 16px;">
                     Annuler
                 </button>
-                <button type="button" id="btnExecuteWordDownload" class="pro-button primary-button" onclick="executeFullClassWordDownload()" style="padding:10px 24px; font-weight:700; background:linear-gradient(135deg, #1E40AF, #2563EB); border:none; box-shadow:0 4px 12px rgba(37,99,235,0.3);">
-                    <i class="fas fa-download"></i> <span id="btnExecuteWordText">Télécharger Word (.docx)</span>
+                <button type="button" id="btnExecuteExcelDownload" class="pro-button" onclick="executeFullClassExcelDownload()" style="padding:10px 20px; font-weight:700; background:linear-gradient(135deg, #059669, #10B981); color:white; border:none; border-radius:10px; box-shadow:0 4px 12px rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-file-excel"></i> <span id="btnExecuteExcelText">Télécharger Excel (.xlsx)</span>
+                </button>
+                <button type="button" id="btnExecuteWordDownload" class="pro-button primary-button" onclick="executeFullClassWordDownload()" style="padding:10px 20px; font-weight:700; background:linear-gradient(135deg, #1E40AF, #2563EB); border:none; border-radius:10px; box-shadow:0 4px 12px rgba(37,99,235,0.3); display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-file-word"></i> <span id="btnExecuteWordText">Télécharger Word (.docx)</span>
                 </button>
             </div>
         </div>

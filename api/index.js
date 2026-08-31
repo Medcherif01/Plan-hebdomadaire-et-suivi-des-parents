@@ -684,24 +684,47 @@ app.post('/api/unsubscribe', async (req, res) => {
 
 // ------------------------- Rappels Automatiques (Cron) -------------------------
 
-// Fonction utilitaire pour déterminer la semaine actuelle
+// Fonction utilitaire pour déterminer la semaine actuelle (commence le dimanche et bascule automatiquement chaque dimanche)
 function getCurrentWeekNumber() {
   const today = new Date();
-  today.setUTCHours(0, 0, 0, 0); // Utiliser UTC pour la comparaison avec les dates stockées
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  const todayStr = `${y}-${m}-${d}`;
 
-  for (const week in specificWeekDateRangesNode) {
-    const dates = specificWeekDateRangesNode[week];
-    const startDate = new Date(dates.start + 'T00:00:00Z');
-    const endDate = new Date(dates.end + 'T00:00:00Z');
+  const config = specificWeekDateRangesNode;
+  const sortedWeeks = Object.keys(config)
+    .map(k => parseInt(k, 10))
+    .filter(n => !isNaN(n))
+    .sort((a, b) => a - b);
 
-    // Ajouter un jour à la date de fin pour inclure le dernier jour
-    endDate.setUTCDate(endDate.getUTCDate() + 1);
+  if (sortedWeeks.length === 0) return 1;
 
-    if (today >= startDate && today <= endDate) {
-      return parseInt(week, 10);
+  const firstWeekStart = config[sortedWeeks[0]]?.start;
+  if (firstWeekStart && todayStr < firstWeekStart) {
+    return sortedWeeks[0];
+  }
+
+  for (let i = 0; i < sortedWeeks.length; i++) {
+    const currentWeekNum = sortedWeeks[i];
+    const nextWeekNum = sortedWeeks[i + 1];
+    const currentStart = config[currentWeekNum]?.start;
+    const nextStart = nextWeekNum ? config[nextWeekNum]?.start : null;
+
+    if (currentStart) {
+      if (nextStart) {
+        if (todayStr >= currentStart && todayStr < nextStart) {
+          return currentWeekNum;
+        }
+      } else {
+        if (todayStr >= currentStart) {
+          return currentWeekNum;
+        }
+      }
     }
   }
-  return null; // Semaine non trouvée
+
+  return sortedWeeks[0] || 1;
 }
 
 app.get('/api/send-reminders', async (req, res) => {
@@ -3101,35 +3124,122 @@ app.post('/api/generate-word', async (req, res) => {
 app.post('/api/generate-excel-workbook', async (req, res) => {
   try {
     const weekNumber = Number(req.body.week);
+    const section = (req.body.section || 'garcons').toLowerCase().trim();
+    const requestedClass = req.body.classe ? String(req.body.classe).trim() : null;
+    const customData = req.body.data;
+    const customNotes = req.body.notes;
+
     if (!Number.isInteger(weekNumber)) return res.status(400).json({ message: 'Semaine invalide.' });
 
     const db = await connectToDatabase();
-    const planDocument = await db.collection('plans').findOne({ week: weekNumber });
-    if (!planDocument?.data?.length) return res.status(404).json({ message: `Aucune donnée pour S${weekNumber}.` });
+    let planData = [];
+    let classNotes = {};
+
+    if (Array.isArray(customData) && customData.length > 0) {
+      planData = customData;
+      if (customNotes && typeof customNotes === 'object') classNotes = customNotes;
+    } else {
+      const docId = `${section}_${weekNumber}`;
+      let planDocument = await db.collection('plans').findOne({ _id: docId });
+      if (!planDocument) {
+        planDocument = await db.collection('plans').findOne({ week: weekNumber, section: section });
+      }
+      if (!planDocument && section === 'garcons') {
+        planDocument = await db.collection('plans').findOne({ week: weekNumber });
+      }
+
+      if (!planDocument?.data?.length) {
+        return res.status(404).json({ message: `Aucune donnée pour la Semaine ${weekNumber} (${section}).` });
+      }
+      planData = planDocument.data;
+      classNotes = planDocument.classNotes || {};
+    }
 
     const finalHeaders = [ 'Enseignant', 'Jour', 'Période', 'Classe', 'Matière', 'Leçon', 'Travaux de classe', 'Support', 'Devoirs' ];
-    const formattedData = planDocument.data.map(item => {
-      const row = {};
-      finalHeaders.forEach(header => {
-        const itemKey = findKey(item, header);
-        row[header] = itemKey ? item[itemKey] : '';
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+
+    const formatRows = (rows) => {
+      return rows.map(item => {
+        const row = {};
+        finalHeaders.forEach(header => {
+          const itemKey = findKey(item, header);
+          row[header] = itemKey ? (item[itemKey] || '') : '';
+        });
+        return row;
       });
-      return row;
-    });
+    };
 
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(formattedData, { header: finalHeaders });
-    worksheet['!cols'] = [
-      { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 12 }, { wch: 20 },
-      { wch: 45 }, { wch: 45 }, { wch: 25 }, { wch: 45 }
-    ];
-    XLSX.utils.book_append_sheet(workbook, worksheet, `Plan S${weekNumber}`);
 
-    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
-    const filename = `Plan_Hebdomadaire_S${weekNumber}_Complet.xlsx`;
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buffer);
+    if (requestedClass && requestedClass !== 'ALL') {
+      // 1. Export INDÉPENDANT d'une classe unique
+      const classRows = planData.filter(row => {
+        const clsVal = row[findKey(row, 'Classe')];
+        return clsVal && norm(clsVal) === norm(requestedClass);
+      });
+
+      if (classRows.length === 0) {
+        return res.status(404).json({ message: `Aucune séance trouvée pour la classe '${requestedClass}' en Semaine ${weekNumber}.` });
+      }
+
+      const formatted = formatRows(classRows);
+      const worksheet = XLSX.utils.json_to_sheet(formatted, { header: finalHeaders });
+      worksheet['!cols'] = [
+        { wch: 22 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 22 },
+        { wch: 45 }, { wch: 45 }, { wch: 25 }, { wch: 45 }
+      ];
+      const safeSheetName = requestedClass.substring(0, 30).replace(/[*?:/\\\[\]]/g, '_');
+      XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName);
+
+      const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+      const filename = `Plan_Hebdomadaire_S${weekNumber}_${section}_${requestedClass.replace(/[^a-z0-9]/gi, '_')}.xlsx`;
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buffer);
+    } else {
+      // 2. Export COMPLET de la section : onglets par classe + onglet Global
+      const distinctClasses = [];
+      planData.forEach(row => {
+        const clsVal = row[findKey(row, 'Classe')];
+        if (clsVal && !distinctClasses.includes(clsVal.trim())) {
+          distinctClasses.push(clsVal.trim());
+        }
+      });
+      distinctClasses.sort();
+
+      // Onglet Global
+      const formattedGlobal = formatRows(planData);
+      const wsGlobal = XLSX.utils.json_to_sheet(formattedGlobal, { header: finalHeaders });
+      wsGlobal['!cols'] = [
+        { wch: 22 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 22 },
+        { wch: 45 }, { wch: 45 }, { wch: 25 }, { wch: 45 }
+      ];
+      XLSX.utils.book_append_sheet(workbook, wsGlobal, `Global_${section}`);
+
+      // Onglets dédiés par classe
+      distinctClasses.forEach(clsName => {
+        const cRows = planData.filter(row => {
+          const clsVal = row[findKey(row, 'Classe')];
+          return clsVal && norm(clsVal) === norm(clsName);
+        });
+        if (cRows.length > 0) {
+          const formattedCls = formatRows(cRows);
+          const wsCls = XLSX.utils.json_to_sheet(formattedCls, { header: finalHeaders });
+          wsCls['!cols'] = [
+            { wch: 22 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 22 },
+            { wch: 45 }, { wch: 45 }, { wch: 25 }, { wch: 45 }
+          ];
+          const safeSheetName = clsName.substring(0, 30).replace(/[*?:/\\\[\]]/g, '_');
+          XLSX.utils.book_append_sheet(workbook, wsCls, safeSheetName);
+        }
+      });
+
+      const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+      const filename = `Plan_Hebdomadaire_S${weekNumber}_${section}_Complet.xlsx`;
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      return res.send(buffer);
+    }
   } catch (error) {
     console.error('❌ Erreur serveur /generate-excel-workbook:', error);
     if (!res.headersSent) res.status(500).json({ message: 'Erreur interne Excel.' });
@@ -3140,11 +3250,14 @@ app.post('/api/generate-excel-workbook', async (req, res) => {
 
 app.post('/api/full-report-by-class', async (req, res) => {
   try {
-    const { classe: requestedClass } = req.body;
+    const { classe: requestedClass, section = 'garcons' } = req.body;
     if (!requestedClass) return res.status(400).json({ message: 'Classe requise.' });
 
     const db = await connectToDatabase();
-    const allPlans = await db.collection('plans').find({}).sort({ week: 1 }).toArray();
+    let allPlans = await db.collection('plans').find({ section: section }).sort({ week: 1 }).toArray();
+    if ((!allPlans || allPlans.length === 0) && section === 'garcons') {
+      allPlans = await db.collection('plans').find({}).sort({ week: 1 }).toArray();
+    }
     if (!allPlans || allPlans.length === 0) return res.status(404).json({ message: 'Aucune donnée.' });
 
     const dataBySubject = {};
@@ -3197,7 +3310,7 @@ app.post('/api/full-report-by-class', async (req, res) => {
     });
 
     const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
-    const filename = `Rapport_Complet_${requestedClass.replace(/[^a-z0-9]/gi, '_')}.xlsx`;
+    const filename = `Rapport_Complet_${section}_${requestedClass.replace(/[^a-z0-9]/gi, '_')}.xlsx`;
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buffer);
