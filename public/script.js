@@ -1806,11 +1806,11 @@
                 
                 // Filtre Enseignant (robuste pour Admin et Enseignant)
                 const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF); 
-                const pC = !clsF || iC === clsF; 
-                const pM = !matF || iM === matF; 
-                const pP = !perF || iP === perF; 
+                const pC = !clsF || (iC === clsF) || isClassMatch(iC, clsF); 
+                const pM = !matF || (iM === matF) || (iM.toLowerCase() === matF.toLowerCase()); 
+                const pP = !perF || (iP === perF) || (String(iP).trim() === String(perF).trim()); 
                 const dayNameFromData = iJ ? extractDayName(iJ) : null; 
-                const pJ = !jF || dayNameFromData === jF; 
+                const pJ = !jF || dayNameFromData === jF || (iJ && iJ.includes(jF)); 
                 return pE && pC && pM && pP && pJ; 
             }); 
             

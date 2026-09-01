@@ -3154,7 +3154,10 @@ app.post('/api/generate-word', async (req, res) => {
 	          devoirsKey = findKey(sampleRow, 'Devoirs');
 
 	    for (const classe of classes) {
-	      const classData = data.filter(item => item[findKey(item, 'Classe')] === classe);
+	      const classData = data.filter(item => {
+	        const itemClass = item[findKey(item, 'Classe')] || item.Classe || item.classe;
+	        return itemClass && (itemClass === classe || isClassMatchServer(itemClass, classe));
+	      });
 	      const classNotes = notes[classe] || '';
 
 	      if (classData.length === 0) {
