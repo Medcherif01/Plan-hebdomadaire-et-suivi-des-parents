@@ -23,30 +23,50 @@
 
         const femaleTeachersList = [
             'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-            'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique'
+            'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe'
         ];
 
         const primaireTeachersList = [
             'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-            'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique'
+            'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe'
         ];
+
+        const isMusicTeacher = (name) => {
+            if (!name) return false;
+            const n = String(name).trim().toLowerCase();
+            return n === 'farah' || n.includes('farah') || n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique');
+        };
+
+        const isAmalTeacher = (name) => {
+            if (!name) return false;
+            const n = String(name).trim().toLowerCase();
+            return n === 'amal' || n === 'amal arabe' || n.startsWith('amal') || n.includes('amal');
+        };
 
         const isDualSectionTeacher = (username) => {
             if (!username) return false;
-            const u = String(username).trim().toLowerCase();
-            return u === 'farah' || u.includes('farah') ||
-                   u === 'music' || u === 'musique' || u.includes('music') || u.includes('musique');
+            return isMusicTeacher(username) || isAmalTeacher(username);
         };
 
+        function isUserAdminOrSupervisor(user, role) {
+            const u = String(user || (typeof loggedInUser !== 'undefined' ? loggedInUser : '')).trim().toLowerCase();
+            const r = String(role || (typeof currentUserRole !== 'undefined' ? currentUserRole : '')).trim().toLowerCase();
+            return u === 'med01' || u === 'racha' || r === 'admin' || r === 'supervisor';
+        }
+
         function isRowForLoggedInTeacher(rowTeacher, user, tableTeacher) {
-            if (!user || user === 'Med01') return true;
+            if (!user || isUserAdminOrSupervisor(user)) return true;
             if (!rowTeacher) return false;
             const rT = String(rowTeacher).trim().toLowerCase();
             const u = String(user).trim().toLowerCase();
             const tT = tableTeacher ? String(tableTeacher).trim().toLowerCase() : '';
             
-            if (isDualSectionTeacher(u) || (tT && isDualSectionTeacher(tT))) {
-                return isDualSectionTeacher(rT) || rT === u || (tT && rT === tT);
+            if (isMusicTeacher(u) || (tT && isMusicTeacher(tT))) {
+                return isMusicTeacher(rT) || rT === u || (tT && rT === tT);
+            }
+
+            if (isAmalTeacher(u) || (tT && isAmalTeacher(tT))) {
+                return isAmalTeacher(rT) || rT === u || (tT && rT === tT);
             }
             
             return rT === u || (tT && rT === tT);
@@ -173,7 +193,7 @@
             updateDualTeacherSectionButtons();
         }
 
-        // Mettre à jour l'affichage du commutateur de section pour l'enseignante de musique (Farah)
+        // Mettre à jour l'affichage du commutateur de section pour les enseignantes multi-sections (Farah, Amal)
         function updateDualTeacherSectionButtons() {
             const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
             const dualSecSwitch = document.getElementById('dualTeacherSectionSwitch');
@@ -184,6 +204,27 @@
             }
             if (dualBanner) {
                 dualBanner.style.display = isDual ? 'flex' : 'none';
+            }
+
+            if (isDual) {
+                const teacherDisplayName = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? loggedInTeacherTable : loggedInUser;
+                const isMusic = (typeof isMusicTeacher === 'function') && isMusicTeacher(loggedInUser);
+                const teacherIcon = isMusic ? 'fas fa-music' : 'fas fa-chalkboard-teacher';
+                
+                const secLabel = document.getElementById('dualSecTeacherLabel');
+                if (secLabel) {
+                    secLabel.innerHTML = `<i class="${teacherIcon}"></i> <span>${teacherDisplayName}</span> :`;
+                }
+
+                const bannerTeacherName = document.getElementById('dualBannerTeacherName');
+                if (bannerTeacherName) {
+                    bannerTeacherName.textContent = teacherDisplayName;
+                }
+
+                const bannerIcon = document.getElementById('dualBannerIcon');
+                if (bannerIcon) {
+                    bannerIcon.innerHTML = `<i class="${teacherIcon}"></i>`;
+                }
             }
 
             // Mise à jour des boutons dans l'en-tête
@@ -209,7 +250,7 @@
             }
         }
 
-        // Permet à l'enseignante de musique de basculer instantanément entre Section Filles et Section Primaire & Maternelle
+        // Permet aux enseignantes multi-sections (Farah, Amal) de basculer instantanément entre Section Filles et Section Primaire & Maternelle
         async function switchDualTeacherSection(newSection) {
             if (!newSection) return;
             if (newSection !== 'filles' && newSection !== 'primaire') {
@@ -217,7 +258,7 @@
             }
             if (newSection === currentSection) return;
             
-            console.log(`🔄 Enseignante Musique - Basculement de section: ${currentSection} ➔ ${newSection}`);
+            console.log(`🔄 Enseignante Multi-sections (${loggedInUser}) - Basculement de section: ${currentSection} ➔ ${newSection}`);
             currentSection = newSection;
             localStorage.setItem('selectedSection', newSection);
             localStorage.setItem('currentSection', newSection);
@@ -1038,7 +1079,8 @@
                 return;
             }
             let teacherData = planData;
-            if (loggedInUser && loggedInUser !== 'Med01' && ensK) {
+            const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
+            if (isTeacherOnly && ensK) {
                 teacherData = planData.filter(i => {
                     if (!i || !i[ensK]) return false;
                     return isRowForLoggedInTeacher(i[ensK], loggedInUser, loggedInTeacherTable);
@@ -1160,7 +1202,7 @@
             }
         }
 
-        function checkAndDisplayIncompleteTeachers() { console.log("checkIncomplete"); incompleteTeachersInfo={}; const list=document.getElementById('incompleteList'); list.innerHTML=''; if(!planData||planData.length===0){list.innerHTML=`<li>${t('no_data')}</li>`; return;} const teacherKey=findHKey('Enseignant'); const classKey=findHKey('Classe'); const leconKey=findHKey('Leçon'); const taskKey=findHKey('Travaux de classe'); const supportKey=findHKey('Support'); const devoirsKey=findHKey('Devoirs'); if(!teacherKey||!classKey){console.warn("Manque cols Ens/Cls"); list.innerHTML=`<li>${t('error_config_columns')}</li>`; return;} planData.forEach(item=>{const teacher=item[teacherKey]; const clsName=item[classKey]; if(!teacher||!clsName) return; const leconVal=item[leconKey]; const taskVal=item[taskKey]; const supportVal=item[supportKey]; const devoirsVal=item[devoirsKey]; const isLeconEmpty=(leconVal==null||String(leconVal).trim()===''); const isTaskEmpty=(taskVal==null||String(taskVal).trim()===''); const isSupportEmpty=(supportVal==null||String(supportVal).trim()===''); const isDevoirsEmpty=(devoirsVal==null||String(devoirsVal).trim()===''); if(isLeconEmpty&&isTaskEmpty&&isSupportEmpty&&isDevoirsEmpty){if(!incompleteTeachersInfo[teacher]){incompleteTeachersInfo[teacher]=new Set();} incompleteTeachersInfo[teacher].add(clsName);}}); let teachers=Object.keys(incompleteTeachersInfo); const isAdmin=(loggedInUser==='Mohamed'||loggedInUser==='Zohra'||loggedInUser==='Imad'); if(!isAdmin&&loggedInUser){teachers=teachers.filter(t=>t===loggedInUser);} if(teachers.length===0){list.innerHTML=`<li>${t('all_complete')}</li>`;} else { teachers.sort().forEach(teacher=>{ const classes=[...incompleteTeachersInfo[teacher]].sort().join(', '); const li=document.createElement('li'); li.innerHTML = `<span class="incomplete-teacher-name">${teacher}</span> (<span class="incomplete-class-list">${classes}</span>)`; list.appendChild(li); }); } }
+        function checkAndDisplayIncompleteTeachers() { console.log("checkIncomplete"); incompleteTeachersInfo={}; const list=document.getElementById('incompleteList'); list.innerHTML=''; if(!planData||planData.length===0){list.innerHTML=`<li>${t('no_data')}</li>`; return;} const teacherKey=findHKey('Enseignant'); const classKey=findHKey('Classe'); const leconKey=findHKey('Leçon'); const taskKey=findHKey('Travaux de classe'); const supportKey=findHKey('Support'); const devoirsKey=findHKey('Devoirs'); if(!teacherKey||!classKey){console.warn("Manque cols Ens/Cls"); list.innerHTML=`<li>${t('error_config_columns')}</li>`; return;} planData.forEach(item=>{const teacher=item[teacherKey]; const clsName=item[classKey]; if(!teacher||!clsName) return; const leconVal=item[leconKey]; const taskVal=item[taskKey]; const supportVal=item[supportKey]; const devoirsVal=item[devoirsKey]; const isLeconEmpty=(leconVal==null||String(leconVal).trim()===''); const isTaskEmpty=(taskVal==null||String(taskVal).trim()===''); const isSupportEmpty=(supportVal==null||String(supportVal).trim()===''); const isDevoirsEmpty=(devoirsVal==null||String(devoirsVal).trim()===''); if(isLeconEmpty&&isTaskEmpty&&isSupportEmpty&&isDevoirsEmpty){if(!incompleteTeachersInfo[teacher]){incompleteTeachersInfo[teacher]=new Set();} incompleteTeachersInfo[teacher].add(clsName);}}); let teachers=Object.keys(incompleteTeachersInfo); const isAdmin=(isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser==='Mohamed'||loggedInUser==='Zohra'||loggedInUser==='Imad'); if(!isAdmin&&loggedInUser){teachers=teachers.filter(t=>t===loggedInUser);} if(teachers.length===0){list.innerHTML=`<li>${t('all_complete')}</li>`;} else { teachers.sort().forEach(teacher=>{ const classes=[...incompleteTeachersInfo[teacher]].sort().join(', '); const li=document.createElement('li'); li.innerHTML = `<span class="incomplete-teacher-name">${teacher}</span> (<span class="incomplete-class-list">${classes}</span>)`; list.appendChild(li); }); } }
         function toggleIncompleteList() { const listDiv=document.getElementById('incompleteTeachersDisplay'); const btn=document.getElementById('toggleIncompleteBtn'); const btnTextSpan = btn.querySelector('.btn-text'); if(listDiv.style.display==='none'||listDiv.style.display===''){ listDiv.style.display='block'; btn.querySelector('i').className = 'fas fa-xmark'; if(btnTextSpan) btnTextSpan.textContent = t('hide_incomplete'); } else { listDiv.style.display='none'; btn.querySelector('i').className = 'fas fa-list-check'; if(btnTextSpan) btnTextSpan.textContent = t('display_incomplete'); } }
         async function fetchPlanData(week) { if (!week || isNaN(parseInt(week, 10))) { console.warn("fetchPlanData sans semaine valide."); displayPlanTable([]); document.getElementById('weekDateRange').textContent = t('please_select_week'); return; } if (!loggedInUser) { console.warn("Tentative chargement non connecté."); displayAlert("login_title", true); return; } console.log(`fetchPlanData S${week} (${currentSection}) pour ${loggedInUser}`); displayAlert('loading_data_week', false, { week: week }); showProgressBar(); updateProgressBar(10); currentWeek = week; const weekNum=parseInt(week,10); const dateRangeEl=document.getElementById('weekDateRange'); weekStartDate=null; planData=[]; headers=[]; weeklyClassNotes={}; dateRangeEl.textContent=`${t('week_label')} ${week}: ${t('loading')}`; displayPlanTable([]); updateActionButtonsState(false); const dates=specificWeekDateRanges[weekNum]; if(dates?.start&&dates?.end){try{const s=new Date(dates.start+'T00:00:00Z'); const e=new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ weekStartDate=s; dateRangeEl.textContent = `${t('week_label')} ${week} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'from' : 'du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;} else throw new Error();}catch(e){dateRangeEl.textContent=`S ${week} (Err dates)`; weekStartDate=null;}} else {dateRangeEl.textContent=`${t('week_label')} ${week} (${t('no_data')}: dates non définies)`; weekStartDate=null;} updateProgressBar(30); try{const r=await fetch(`/api/plans/${week}?section=${currentSection}`); updateProgressBar(70); if(!r.ok){const d=await r.json().catch(()=>null); throw new Error(d?.message || `Err ${r.status}`);} const fetched=await r.json(); if(fetched&&typeof fetched==='object'){planData=fetched.planData||[]; weeklyClassNotes=fetched.classNotes||{}; window.availableWeeklyPlans = fetched.availableWeeklyPlans || [];} else {planData=[]; weeklyClassNotes={}; window.availableWeeklyPlans = [];} updateProgressBar(90); if(planData.length>0){headers=Object.keys(planData[0]).filter(h=>h!=='_id'&&h!=='id'&&h!=='_originalCopy'&&h!=='lessonPlanId'&&h!=='__v'&&!h.startsWith('_')); if(loggedInUser==='Imad'){const enseignantKey=findHKey('Enseignant');const originalCount=planData.length;if(enseignantKey){planData=planData.filter(row=>arabicTeachers.includes(row[enseignantKey]));console.log(`[Imad Admin] Data filtered for Arabic teachers. ${planData.length}/${originalCount} rows remain.`)}} displayAlert('data_loaded_week', false, { week: week });} else {headers=[]; displayAlert('no_data_found_week', false, { week: week });} createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateActionButtonsState(planData.length > 0); updateProgressBar(100); } catch(e){ console.error("Err fetchPlanData:",e); displayAlert('error_loading_week', true, { week: week, error: e.message }); planData=[]; headers=[]; weeklyClassNotes={}; createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateProgressBar(0); updateActionButtonsState(false); } finally{hideProgressBar();} }
         
@@ -1254,9 +1296,10 @@
             const clsK = findHKey('Classe'); 
             const perK = findHKey('Période'); 
             const matK = findHKey('Matière'); 
+            const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
 
-            // Si l'utilisateur est un enseignant connecté (non Med01), n'extraire les options (matières, classes, etc.) QUE de ses propres séances
-            if (loggedInUser && loggedInUser !== 'Med01' && ensK) { 
+            // Si l'utilisateur est un enseignant connecté (non admin/superviseur), n'extraire les options (matières, classes, etc.) QUE de ses propres séances
+            if (isTeacherOnly && ensK) { 
                 data = allData.filter(i => { 
                     const iE = i && i[ensK] ? String(i[ensK]) : ''; 
                     return isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable);
@@ -1278,7 +1321,7 @@
             }; 
 
             let ens = ensK ? getUniq(ensK) : []; 
-            if (loggedInUser && loggedInUser !== 'Med01') {
+            if (isTeacherOnly) {
                 if (ens.length === 0) {
                     ens = [loggedInTeacherTable || loggedInUser];
                 }
@@ -1316,7 +1359,7 @@
             updateFilterOptionDefaultTexts(); 
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
-                if (loggedInUser && loggedInUser !== 'Med01') { 
+                if (isTeacherOnly) { 
                     const matchingOption = Array.from(filterEnsSelect.options).find(o => 
                         (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
                     );
@@ -1339,9 +1382,10 @@
         }
 
         function sortAndDisplay() { 
+            const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
-                if (loggedInUser && loggedInUser !== 'Med01') { 
+                if (isTeacherOnly) { 
                     const matchingOption = Array.from(filterEnsSelect.options).find(o => 
                         (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
                     );
@@ -1376,8 +1420,8 @@
                 const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]) : null; 
                 const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]) : null; 
                 
-                // Si l'utilisateur est un enseignant (non Med01), n'afficher STRICTEMENT que ses séances
-                if (loggedInUser && loggedInUser !== 'Med01') {
+                // Si l'utilisateur est un enseignant (non admin/superviseur), n'afficher STRICTEMENT que ses séances
+                if (isTeacherOnly) {
                     if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
                         return false;
                     }
@@ -1432,7 +1476,7 @@
             const clsK = findHKey('Classe');
             const updK = findHKey('updatedAt');
             
-            const isAdmin = (loggedInUser === 'Med01' || currentUserRole === 'admin');
+            const isAdmin = isUserAdminOrSupervisor(loggedInUser, currentUserRole);
             let allowedEditNames = ['Leçon', 'Travaux de classe', 'Support', 'Devoirs'];
             if (isAdmin) {
                 allowedEditNames = ['Enseignant', 'Jour', 'Période', 'Classe', 'Matière', 'Leçon', 'Travaux de classe', 'Support', 'Devoirs'];
@@ -1525,7 +1569,7 @@
                 // Bouton disquette pour générer le plan de leçon IA pour cette ligne
                 const teacherKey = findHKey('Enseignant');
                 const rowTeacher = teacherKey ? rowObj[teacherKey] : null;
-                const canGenerate = (loggedInUser === 'Med01' || loggedInUser === rowTeacher);
+                const canGenerate = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
                 
                 if (canGenerate) {
                     const aiGenBtn = document.createElement('button');
@@ -1547,7 +1591,7 @@
                 if (rowObj && rowObj.lessonPlanId) {
                     const teacherKey = findHKey('Enseignant');
                     const rowTeacher = teacherKey ? rowObj[teacherKey] : null;
-                    const canDownload = (loggedInUser === 'Med01' || loggedInUser === rowTeacher);
+                    const canDownload = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
                     
                     if (canDownload) {
                         const lessonBtn = document.createElement('button');
@@ -2662,7 +2706,7 @@ function applyParentUIMode(enabled) {
         if (goToTeacherBtn) goToTeacherBtn.style.display = 'inline-flex';
         if (goToParentBtn) goToParentBtn.style.display = 'none'; // L'enseignant ne voit pas l'espace parent
         if (switchSecBtn) {
-            if (loggedInUser === 'Med01') {
+            if (isUserAdminOrSupervisor(loggedInUser, currentUserRole)) {
                 switchSecBtn.style.display = 'inline-flex';
                 switchSecBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Changer Section';
                 switchSecBtn.onclick = cycleAdminSection;
@@ -4902,7 +4946,7 @@ async function loadTeacherHomeworksDashboard() {
     `;
 
     try {
-        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && loggedInUser !== 'Med01') ? loggedInUser : 'all';
+        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? loggedInUser : 'all';
         const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
 
         const nameEl = document.getElementById('teacherEvalActiveName');

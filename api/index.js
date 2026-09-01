@@ -252,19 +252,32 @@ const maleTeachers = [
 
 const femaleTeachers = [
   'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-  'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique'
+  'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe'
 ];
 
 const primaireTeachers = [
   'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-  'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique'
+  'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe'
 ];
 
-const isDualMusicTeacher = (name) => {
+const isMusicTeacher = (name) => {
   if (!name) return false;
   const n = String(name).trim().toLowerCase();
   return n === 'farah' || n.includes('farah') || n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique');
 };
+
+const isAmalTeacher = (name) => {
+  if (!name) return false;
+  const n = String(name).trim().toLowerCase();
+  return n === 'amal' || n === 'amal arabe' || n.startsWith('amal') || n.includes('amal');
+};
+
+const isDualSectionTeacher = (name) => {
+  if (!name) return false;
+  return isMusicTeacher(name) || isAmalTeacher(name);
+};
+
+const isDualMusicTeacher = isDualSectionTeacher;
 
 const defaultWeeksConfig = {
   1: { title: "Semaine 1", titleAr: "الأسبوع 1", start: "2026-08-30", end: "2026-09-03" },
@@ -321,8 +334,9 @@ const validUsers = {
   "Amina": "Amina", "Fatima": "Fatima", "Khadija": "Khadija", "Mariam": "Mariam",
   "Salma": "Salma", "Zainab": "Zainab", "Nour": "Nour", "Houda": "Houda",
   "Leila": "Leila", "Sarah": "Sarah", "Zohra": "Zohra",
-  // Musique (Filles & Primaire)
+  // Enseignantes multi-sections (Filles & Primaire/Maternelle)
   "Farah": "Farah", "farah": "farah", "Music": "Music", "Musique": "Musique", "music": "music", "musique": "musique",
+  "Amal": "Amal", "amal": "amal", "Amal Arabe": "Amal Arabe", "amal arabe": "amal arabe",
   // Primaire & Maternelle
   "Nadia": "Nadia", "Samira": "Samira", "Imane": "Imane", "Fatima Zahra": "Fatima Zahra",
   "Mouna": "Mouna", "Siham": "Siham", "Hajar": "Hajar", "Meriem": "Meriem",

@@ -197,7 +197,7 @@
                     <h1 id="main-title">Plans Hebdomadaires</h1>
                     <span id="mainSectionBadge" class="section-badge badge-garcons">Section Garçons</span>
                     <div id="dualTeacherSectionSwitch" class="dual-teacher-sec-switch" style="display:none;" title="Basculer entre la Section Filles et la Section Primaire & Maternelle">
-                        <span class="dual-sec-label"><i class="fas fa-music"></i> Farah :</span>
+                        <span class="dual-sec-label" id="dualSecTeacherLabel"><i class="fas fa-chalkboard-teacher"></i> <span id="dualSecTeacherName">Enseignante</span> :</span>
                         <button type="button" class="teacher-sec-toggle-btn" id="teacherSecBtn_filles" onclick="switchDualTeacherSection('filles')">
                             👧 Section Filles
                         </button>
@@ -229,12 +229,12 @@
 
         <!-- ONGLET 1: PLANS HEBDOMADAIRES -->
         <div id="plans-tab-content">
-         <!-- BANNIÈRE SPÉCIALE ENSEIGNANTE DE MUSIQUE (FARAH) -->
+         <!-- BANNIÈRE SPÉCIALE ENSEIGNANTE MULTI-SECTIONS (FARAH / AMAL) -->
          <div id="dualTeacherNoticeBanner" class="dual-teacher-notice-banner" style="display:none;">
              <div class="dual-banner-left">
-                 <div class="dual-banner-icon"><i class="fas fa-music"></i></div>
+                 <div class="dual-banner-icon" id="dualBannerIcon"><i class="fas fa-chalkboard-teacher"></i></div>
                  <div class="dual-banner-info">
-                     <span class="dual-banner-name"><i class="fas fa-user-check"></i> Enseignante : <strong>Farah</strong></span>
+                     <span class="dual-banner-name"><i class="fas fa-user-check"></i> Enseignante : <strong id="dualBannerTeacherName">Enseignante</strong></span>
                      <span class="dual-banner-status" id="dualCurrentSectionText">Section active : <span class="active-sec-pill pill-filles">Section Filles 👧</span></span>
                  </div>
              </div>
