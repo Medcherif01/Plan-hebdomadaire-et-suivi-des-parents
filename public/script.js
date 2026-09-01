@@ -452,6 +452,65 @@
         }
         function compareClasses(a, b) { const indexA = classOrder.indexOf(a); const indexB = classOrder.indexOf(b); if (indexA !== -1 && indexB !== -1) return indexA - indexB; if (indexA !== -1) return -1; if (indexB !== -1) return 1; return String(a).localeCompare(String(b)); }
 
+        const canonicalClassEquivalents = [
+            { code: 'pei1', names: ['pei1', 'pei 1', 'السادس', 'سادس', '6eme', '6', 'classe6', 'classe 6'] },
+            { code: 'pei2', names: ['pei2', 'pei 2', 'الاول متوسط', 'اول متوسط', '1am', '7eme', '7', 'classe7'] },
+            { code: 'pei3', names: ['pei3', 'pei 3', 'الثاني متوسط', 'ثاني متوسط', '2am', '8eme', '8', 'classe8'] },
+            { code: 'pei4', names: ['pei4', 'pei 4', 'الثالث متوسط', 'ثالث متوسط', '3am', '9eme', '9', 'classe9'] },
+            { code: 'pei5', names: ['pei5', 'pei 5', 'الاول ثانوي', 'اول ثانوي', '1as', '10eme', '10', 'seconde'] },
+            { code: 'dp1', names: ['dp1', 'dp 1', 'الثاني ثانوي', 'ثاني ثانوي', '2as', '11eme', '11', 'premiere'] },
+            { code: 'dp2', names: ['dp2', 'dp 2', 'الثالث ثانوي', 'ثالث ثانوي', '3as', '12eme', '12', 'terminale'] },
+            { code: 'ps', names: ['ps', 'الروضه الصغري', 'الروضة الصغرى', 'petite section', 'maternelle 1', 'ps1'] },
+            { code: 'ms', names: ['ms', 'الروضه المتوسطه', 'الروضة المتوسطة', 'moyenne section', 'maternelle 2', 'ms1'] },
+            { code: 'gs', names: ['gs', 'الروضه الكبري', 'الروضة الكبرى', 'grande section', 'maternelle 3', 'gs1'] },
+            { code: 'pp1', names: ['pp1', 'pp 1', 'الابتدائي الاول', 'الابتدائي 1', 'cp', 'primaire 1'] },
+            { code: 'pp2', names: ['pp2', 'pp 2', 'الابتدائي الثاني', 'الابتدائي 2', 'ce1', 'primaire 2'] },
+            { code: 'pp3', names: ['pp3', 'pp 3', 'الابتدائي الثالث', 'الابتدائي 3', 'ce2', 'primaire 3'] },
+            { code: 'pp4', names: ['pp4', 'pp 4', 'الابتدائي الرابع', 'الابتدائي 4', 'cm1', 'primaire 4'] },
+            { code: 'pp5', names: ['pp5', 'pp 5', 'الابتدائي الخامس', 'الابتدائي 5', 'cm2', 'primaire 5'] }
+        ];
+
+        function normalizeClassString(str) {
+            if (!str) return '';
+            return String(str)
+                .trim()
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[\u064B-\u065F\u0670]/g, '')
+                .replace(/[أإآ]/g, 'ا')
+                .replace(/ة/g, 'ه')
+                .replace(/ى/g, 'ي')
+                .replace(/[\s\-_()[\]{}:/.,]/g, '');
+        }
+
+        function isClassMatch(classA, classB) {
+            if (!classA || !classB) return false;
+            const a = String(classA).trim();
+            const b = String(classB).trim();
+            if (a.toLowerCase() === b.toLowerCase()) return true;
+
+            const normA = normalizeClassString(a);
+            const normB = normalizeClassString(b);
+            if (!normA || !normB) return false;
+            if (normA === normB) return true;
+
+            if (normA.includes(normB) || normB.includes(normA)) return true;
+
+            for (const group of canonicalClassEquivalents) {
+                const matchA = (normA === group.code) || group.names.some(n => {
+                    const nNorm = normalizeClassString(n);
+                    return normA === nNorm || normA.includes(nNorm) || nNorm.includes(normA);
+                });
+                const matchB = (normB === group.code) || group.names.some(n => {
+                    const nNorm = normalizeClassString(n);
+                    return normB === nNorm || normB.includes(nNorm) || nNorm.includes(normB);
+                });
+                if (matchA && matchB) return true;
+            }
+            return false;
+        }
+
         function renderParentClassButtons() {
             const container = document.getElementById('parent-class-buttons');
             if (!container) return;
@@ -6206,6 +6265,16 @@ function handleClassFilterChange() {
             btnQuickExcel.title = `Choisir une classe pour télécharger le plan complet Excel`;
         }
     }
+
+    // Synchroniser automatiquement avec le sélecteur de notes si une classe correspondante existe
+    const notesSel = document.getElementById('notesClassSelector');
+    if (notesSel && selClass) {
+        const matchOpt = Array.from(notesSel.options).find(opt => opt.value === selClass || isClassMatch(opt.value, selClass));
+        if (matchOpt && matchOpt.value) {
+            notesSel.value = matchOpt.value;
+            displayClassNotes();
+        }
+    }
 }
 
 function openFullClassWordModal(preselectedClass, preselectedWeek) {
@@ -6311,7 +6380,7 @@ function closeFullClassWordModal() {
 }
 
 async function downloadSelectedClassFullWord() {
-    const selClass = document.getElementById('filterClasse')?.value;
+    const selClass = document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value;
     if (selClass) {
         const week = currentWeek || getCurrentWeekNumber() || 1;
         await downloadFullClassWord(week, selClass);
@@ -6321,7 +6390,7 @@ async function downloadSelectedClassFullWord() {
 }
 
 async function downloadSelectedNotesClassFullWord() {
-    const selClass = document.getElementById('notesClassSelector')?.value;
+    const selClass = document.getElementById('notesClassSelector')?.value || document.getElementById('filterClasse')?.value;
     if (selClass) {
         const week = currentWeek || getCurrentWeekNumber() || 1;
         await downloadFullClassWord(week, selClass);
@@ -6331,7 +6400,7 @@ async function downloadSelectedNotesClassFullWord() {
 }
 
 async function downloadSelectedClassFullExcel() {
-    const selClass = document.getElementById('filterClasse')?.value;
+    const selClass = document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value;
     if (selClass) {
         const week = currentWeek || getCurrentWeekNumber() || 1;
         await downloadFullClassExcel(week, selClass);
@@ -6352,16 +6421,39 @@ async function downloadFullClassWord(weekNum, className) {
 
     try {
         const section = currentSection || 'garcons';
-        updateProgressBar(40);
+        updateProgressBar(35);
 
-        const res = await fetch(`/api/plans/${weekNum}?section=${section}`);
-        if (!res.ok) throw new Error(`Erreur réseau (${res.status})`);
-        const data = await res.json();
-        const fullPlanData = data.planData || [];
+        let fullPlanData = [];
+        try {
+            const res = await fetch(`/api/plans/${weekNum}?section=${section}`);
+            if (res.ok) {
+                const data = await res.json();
+                fullPlanData = data.planData || [];
+            }
+        } catch (e) {
+            console.warn("Erreur fetch plan section:", e);
+        }
+
+        // Si vide, tenter sans filtre de section ou utiliser les données en mémoire
+        if (fullPlanData.length === 0 && weekNum == currentWeek && planData && planData.length > 0) {
+            fullPlanData = planData;
+        }
+
+        if (fullPlanData.length === 0) {
+            try {
+                const resAlt = await fetch(`/api/plans/${weekNum}`);
+                if (resAlt.ok) {
+                    const dataAlt = await resAlt.json();
+                    fullPlanData = dataAlt.planData || [];
+                }
+            } catch (e) {
+                console.warn("Erreur fetch plan sans section:", e);
+            }
+        }
 
         if (fullPlanData.length === 0) {
             hideProgressBar();
-            displayAlert(`Aucune donnée de plan enregistrée pour la Semaine ${weekNum} (${section}).`, true);
+            displayAlert(`Aucune donnée de plan enregistrée pour la Semaine ${weekNum}.`, true);
             return;
         }
 
@@ -6395,6 +6487,7 @@ async function downloadFullClassExcel(weekNum, className) {
             week: Number(weekNum),
             section: section,
             classe: className,
+            data: (planData && planData.length > 0 && weekNum == currentWeek) ? planData : undefined,
             notes: weeklyClassNotes
         };
 
@@ -6443,17 +6536,34 @@ async function downloadFullClassExcel(weekNum, className) {
 }
 
 async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, section) {
-    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
-    const classRows = (rawPlanData || []).filter(row => {
-        const classVal = getRowField(row, 'Classe') || row['Classe'] || row['classe'];
-        return classVal && norm(classVal) === norm(selectedClass);
-    });
-
-    if (classRows.length === 0) {
-        throw new Error(`Aucune séance trouvée pour la classe ${selectedClass} en Semaine ${weekNum}.`);
+    if (!rawPlanData || rawPlanData.length === 0) {
+        throw new Error(`Aucune donnée disponible pour la Semaine ${weekNum}.`);
     }
 
-    const notes = (weeklyClassNotes && weeklyClassNotes[selectedClass]) || "";
+    // 1. Filtrer les séances de la classe avec isClassMatch
+    let classRows = rawPlanData.filter(row => {
+        if (!row) return false;
+        const classVal = getRowField(row, 'Classe') || row['Classe'] || row['classe'] || row[findHKey('Classe')];
+        return classVal && isClassMatch(classVal, selectedClass);
+    });
+
+    // 2. Si aucune séance avec isClassMatch direct, essayer avec normalisation souple
+    if (classRows.length === 0) {
+        const targetClean = normalizeClassString(selectedClass);
+        classRows = rawPlanData.filter(row => {
+            if (!row) return false;
+            const classVal = getRowField(row, 'Classe') || row['Classe'] || row['classe'] || row[findHKey('Classe')];
+            if (!classVal) return false;
+            const cClean = normalizeClassString(classVal);
+            return cClean === targetClean || cClean.includes(targetClean) || targetClean.includes(cClean);
+        });
+    }
+
+    if (classRows.length === 0) {
+        throw new Error(`Aucune séance trouvée pour la classe '${selectedClass}' en Semaine ${weekNum}.`);
+    }
+
+    const notes = (weeklyClassNotes && (weeklyClassNotes[selectedClass] || (classRows[0] && weeklyClassNotes[classRows[0].Classe]))) || "";
 
     const payload = {
         week: Number(weekNum),
@@ -6520,10 +6630,32 @@ async function executeFullClassWordDownload(explicitClass) {
         const section = currentSection || 'garcons';
         displayAlert(`Chargement du plan complet de la Semaine ${selectedWeek} pour la classe ${selectedClass}...`, false);
 
-        const res = await fetch(`/api/plans/${selectedWeek}?section=${section}`);
-        if (!res.ok) throw new Error(`Erreur lors du chargement (${res.status})`);
-        const data = await res.json();
-        const fullPlanData = data.planData || [];
+        let fullPlanData = [];
+        try {
+            const res = await fetch(`/api/plans/${selectedWeek}?section=${section}`);
+            if (res.ok) {
+                const data = await res.json();
+                fullPlanData = data.planData || [];
+            }
+        } catch (e) {
+            console.warn("Erreur fetch plan section:", e);
+        }
+
+        if (fullPlanData.length === 0 && selectedWeek == currentWeek && planData && planData.length > 0) {
+            fullPlanData = planData;
+        }
+
+        if (fullPlanData.length === 0) {
+            try {
+                const resAlt = await fetch(`/api/plans/${selectedWeek}`);
+                if (resAlt.ok) {
+                    const dataAlt = await resAlt.json();
+                    fullPlanData = dataAlt.planData || [];
+                }
+            } catch (e) {
+                console.warn("Erreur fetch plan sans section:", e);
+            }
+        }
 
         if (fullPlanData.length === 0) {
             alert(`Aucune donnée de plan enregistrée pour la Semaine ${selectedWeek} (${section}).`);

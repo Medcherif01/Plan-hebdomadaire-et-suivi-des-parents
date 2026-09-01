@@ -627,6 +627,66 @@ const sanitizeForFilename = (str) => {
     .replace(/__+/g, '_');
 };
 
+// ======================= Normalisation & Comparaison des Classes =========
+const canonicalClassEquivalentsServer = [
+  { code: 'pei1', names: ['pei1', 'pei 1', 'السادس', 'سادس', '6eme', '6', 'classe6', 'classe 6'] },
+  { code: 'pei2', names: ['pei2', 'pei 2', 'الاول متوسط', 'اول متوسط', '1am', '7eme', '7', 'classe7'] },
+  { code: 'pei3', names: ['pei3', 'pei 3', 'الثاني متوسط', 'ثاني متوسط', '2am', '8eme', '8', 'classe8'] },
+  { code: 'pei4', names: ['pei4', 'pei 4', 'الثالث متوسط', 'ثالث متوسط', '3am', '9eme', '9', 'classe9'] },
+  { code: 'pei5', names: ['pei5', 'pei 5', 'الاول ثانوي', 'اول ثانوي', '1as', '10eme', '10', 'seconde'] },
+  { code: 'dp1', names: ['dp1', 'dp 1', 'الثاني ثانوي', 'ثاني ثانوي', '2as', '11eme', '11', 'premiere'] },
+  { code: 'dp2', names: ['dp2', 'dp 2', 'الثالث ثانوي', 'ثالث ثانوي', '3as', '12eme', '12', 'terminale'] },
+  { code: 'ps', names: ['ps', 'الروضه الصغري', 'الروضة الصغرى', 'petite section', 'maternelle 1', 'ps1'] },
+  { code: 'ms', names: ['ms', 'الروضه المتوسطه', 'الروضة المتوسطة', 'moyenne section', 'maternelle 2', 'ms1'] },
+  { code: 'gs', names: ['gs', 'الروضه الكبري', 'الروضة الكبرى', 'grande section', 'maternelle 3', 'gs1'] },
+  { code: 'pp1', names: ['pp1', 'pp 1', 'الابتدائي الاول', 'الابتدائي 1', 'cp', 'primaire 1'] },
+  { code: 'pp2', names: ['pp2', 'pp 2', 'الابتدائي الثاني', 'الابتدائي 2', 'ce1', 'primaire 2'] },
+  { code: 'pp3', names: ['pp3', 'pp 3', 'الابتدائي الثالث', 'الابتدائي 3', 'ce2', 'primaire 3'] },
+  { code: 'pp4', names: ['pp4', 'pp 4', 'الابتدائي الرابع', 'الابتدائي 4', 'cm1', 'primaire 4'] },
+  { code: 'pp5', names: ['pp5', 'pp 5', 'الابتدائي الخامس', 'الابتدائي 5', 'cm2', 'primaire 5'] }
+];
+
+function normalizeClassStringServer(str) {
+  if (!str) return '';
+  return String(str)
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[\s\-_()[\]{}:/.,]/g, '');
+}
+
+function isClassMatchServer(classA, classB) {
+  if (!classA || !classB) return false;
+  const a = String(classA).trim();
+  const b = String(classB).trim();
+  if (a.toLowerCase() === b.toLowerCase()) return true;
+
+  const normA = normalizeClassStringServer(a);
+  const normB = normalizeClassStringServer(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+
+  if (normA.includes(normB) || normB.includes(normA)) return true;
+
+  for (const group of canonicalClassEquivalentsServer) {
+    const matchA = (normA === group.code) || group.names.some(n => {
+      const nNorm = normalizeClassStringServer(n);
+      return normA === nNorm || normA.includes(nNorm) || nNorm.includes(normA);
+    });
+    const matchB = (normB === group.code) || group.names.some(n => {
+      const nNorm = normalizeClassStringServer(n);
+      return normB === nNorm || normB.includes(nNorm) || nNorm.includes(normB);
+    });
+    if (matchA && matchB) return true;
+  }
+  return false;
+}
+
 // ======================= Sélection dynamique du modèle ==================
 
 /**
@@ -2939,16 +2999,17 @@ app.post('/api/generate-word', async (req, res) => {
     }
 
     const sampleRow = data[0] || {};
-    const jourKey = findKey(sampleRow, 'Jour'),
-          periodeKey = findKey(sampleRow, 'Période'),
-          matiereKey = findKey(sampleRow, 'Matière'),
-          leconKey = findKey(sampleRow, 'Leçon'),
-          travauxKey = findKey(sampleRow, 'Travaux de classe'),
-          supportKey = findKey(sampleRow, 'Support'),
-          devoirsKey = findKey(sampleRow, 'Devoirs');
+    const defaultJourKey = findKey(sampleRow, 'Jour') || 'Jour',
+          defaultPeriodeKey = findKey(sampleRow, 'Période') || 'Période',
+          defaultMatiereKey = findKey(sampleRow, 'Matière') || 'Matière',
+          defaultLeconKey = findKey(sampleRow, 'Leçon') || 'Leçon',
+          defaultTravauxKey = findKey(sampleRow, 'Travaux de classe') || 'Travaux de classe',
+          defaultSupportKey = findKey(sampleRow, 'Support') || 'Support',
+          defaultDevoirsKey = findKey(sampleRow, 'Devoirs') || 'Devoirs';
 
     data.forEach(item => {
-      const day = item[jourKey];
+      const rawDay = item[findKey(item, 'Jour')] || item[defaultJourKey] || '';
+      const day = extractDayNameFromString(rawDay) || rawDay;
       if (day && dayOrder.includes(day)) {
         if (!groupedByDay[day]) groupedByDay[day] = [];
         groupedByDay[day].push(item);
@@ -2960,14 +3021,18 @@ app.post('/api/generate-word', async (req, res) => {
 
       const dateOfDay = getDateForDayNameNode(weekStartDateNode, dayName);
       const formattedDate = dateOfDay ? formatDateFrenchNode(dateOfDay) : dayName;
-      const sortedEntries = groupedByDay[dayName].sort((a, b) => (parseInt(a[periodeKey], 10) || 0) - (parseInt(b[periodeKey], 10) || 0));
+      const sortedEntries = groupedByDay[dayName].sort((a, b) => {
+        const pA = a[findKey(a, 'Période')] || a[defaultPeriodeKey] || 0;
+        const pB = b[findKey(b, 'Période')] || b[defaultPeriodeKey] || 0;
+        return (parseInt(pA, 10) || 0) - (parseInt(pB, 10) || 0);
+      });
 
       const matieres = sortedEntries.map(item => ({
-        matiere: item[matiereKey] ?? "",
-        Lecon: formatTextForWord(item[leconKey], { color: 'FF0000' }),
-        travailDeClasse: formatTextForWord(item[travauxKey]),
-        Support: formatTextForWord(item[supportKey], { color: 'FF0000', italic: true }),
-        devoirs: formatTextForWord(item[devoirsKey], { color: '0000FF', italic: true })
+        matiere: item[findKey(item, 'Matière')] || item[defaultMatiereKey] || "",
+        Lecon: formatTextForWord(item[findKey(item, 'Leçon')] || item[defaultLeconKey], { color: 'FF0000' }),
+        travailDeClasse: formatTextForWord(item[findKey(item, 'Travaux de classe')] || item[defaultTravauxKey]),
+        Support: formatTextForWord(item[findKey(item, 'Support')] || item[defaultSupportKey], { color: 'FF0000', italic: true }),
+        devoirs: formatTextForWord(item[findKey(item, 'Devoirs')] || item[defaultDevoirsKey], { color: '0000FF', italic: true })
       }));
 
       return { jourDateComplete: formattedDate, matieres: matieres };
@@ -3269,8 +3334,8 @@ app.post('/api/generate-excel-workbook', async (req, res) => {
     if (requestedClass && requestedClass !== 'ALL') {
       // 1. Export INDÉPENDANT d'une classe unique
       const classRows = planData.filter(row => {
-        const clsVal = row[findKey(row, 'Classe')];
-        return clsVal && norm(clsVal) === norm(requestedClass);
+        const clsVal = row[findKey(row, 'Classe')] || row['Classe'] || row['classe'];
+        return clsVal && isClassMatchServer(clsVal, requestedClass);
       });
 
       if (classRows.length === 0) {
