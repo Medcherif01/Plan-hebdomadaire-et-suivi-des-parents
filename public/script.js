@@ -15,6 +15,9 @@
         let weeklyClassNotes = {};
         let alertTimeoutId = null;
         let incompleteTeachersInfo = {};
+        let currentSortColumn = null;
+        let currentSortOrder = 'asc';
+        let showCrossSectionView = false;
 
         // Listes strictes des enseignants par section
         const maleTeachersList = [
@@ -85,6 +88,56 @@
             }
             
             return rT === u || (tT && rT === tT);
+        }
+
+        function isTeacherMatch(rowTeacher, filterTeacher) {
+            if (!filterTeacher) return true;
+            if (!rowTeacher) return false;
+            const r = String(rowTeacher).trim().toLowerCase();
+            const f = String(filterTeacher).trim().toLowerCase();
+            if (r === f) return true;
+            if (isMusicTeacher(f)) return isMusicTeacher(r);
+            if (isAmalArabeTeacher(f)) return isAmalArabeTeacher(r);
+            if (isAmalSoleTeacher(f)) return isAmalSoleTeacher(r);
+            return r.includes(f) || f.includes(r);
+        }
+
+        function setSortColumn(colName) {
+            if (currentSortColumn === colName) {
+                currentSortOrder = (currentSortOrder === 'asc') ? 'desc' : 'asc';
+            } else {
+                currentSortColumn = colName;
+                currentSortOrder = 'asc';
+            }
+            sortAndDisplay();
+        }
+
+        async function handleCrossSectionToggle(isChecked) {
+            showCrossSectionView = !!isChecked;
+            if (currentWeek) {
+                await fetchPlanData(currentWeek);
+            }
+        }
+
+        function updateCrossSectionToggleUI() {
+            const toggleContainer = document.getElementById('crossSectionToggleContainer');
+            const toggleCheckbox = document.getElementById('crossSectionToggle');
+            const toggleLabelText = document.getElementById('crossSectionToggleText');
+            if (!toggleContainer || !toggleCheckbox) return;
+
+            // Afficher le commutateur pour les enseignants et administrateurs
+            toggleContainer.style.display = 'inline-flex';
+            toggleCheckbox.checked = !!showCrossSectionView;
+
+            let otherSectionLabel = (currentSection === 'garcons') ? 'Section Filles' : 'Section Garçons';
+            if (currentUserLanguage === 'ar') {
+                otherSectionLabel = (currentSection === 'garcons') ? 'قسم البنات (للاطلاع)' : 'قسم البنين (للاطلاع)';
+            }
+            if (toggleLabelText) {
+                toggleLabelText.textContent = currentUserLanguage === 'ar' 
+                    ? `عرض مساهمات ${otherSectionLabel} (قراءة فقط)` 
+                    : `Afficher contributions ${otherSectionLabel} (lecture seule)`;
+            }
         }
 
         const teachersSectionMap = {
@@ -206,6 +259,7 @@
             if (typeof renderParentClassButtons === 'function') renderParentClassButtons();
             if (typeof updateClassDropdowns === 'function') updateClassDropdowns();
             updateDualTeacherSectionButtons();
+            if (typeof updateCrossSectionToggleUI === 'function') updateCrossSectionToggleUI();
         }
 
         // Mettre à jour l'affichage du commutateur de section pour les enseignantes multi-sections (Farah, Amal)
@@ -1219,7 +1273,149 @@
 
         function checkAndDisplayIncompleteTeachers() { console.log("checkIncomplete"); incompleteTeachersInfo={}; const list=document.getElementById('incompleteList'); list.innerHTML=''; if(!planData||planData.length===0){list.innerHTML=`<li>${t('no_data')}</li>`; return;} const teacherKey=findHKey('Enseignant'); const classKey=findHKey('Classe'); const leconKey=findHKey('Leçon'); const taskKey=findHKey('Travaux de classe'); const supportKey=findHKey('Support'); const devoirsKey=findHKey('Devoirs'); if(!teacherKey||!classKey){console.warn("Manque cols Ens/Cls"); list.innerHTML=`<li>${t('error_config_columns')}</li>`; return;} planData.forEach(item=>{const teacher=item[teacherKey]; const clsName=item[classKey]; if(!teacher||!clsName) return; const leconVal=item[leconKey]; const taskVal=item[taskKey]; const supportVal=item[supportKey]; const devoirsVal=item[devoirsKey]; const isLeconEmpty=(leconVal==null||String(leconVal).trim()===''); const isTaskEmpty=(taskVal==null||String(taskVal).trim()===''); const isSupportEmpty=(supportVal==null||String(supportVal).trim()===''); const isDevoirsEmpty=(devoirsVal==null||String(devoirsVal).trim()===''); if(isLeconEmpty&&isTaskEmpty&&isSupportEmpty&&isDevoirsEmpty){if(!incompleteTeachersInfo[teacher]){incompleteTeachersInfo[teacher]=new Set();} incompleteTeachersInfo[teacher].add(clsName);}}); let teachers=Object.keys(incompleteTeachersInfo); const isAdmin=(isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser==='Mohamed'||loggedInUser==='Zohra'||loggedInUser==='Imad'); if(!isAdmin&&loggedInUser){teachers=teachers.filter(t=>t===loggedInUser);} if(teachers.length===0){list.innerHTML=`<li>${t('all_complete')}</li>`;} else { teachers.sort().forEach(teacher=>{ const classes=[...incompleteTeachersInfo[teacher]].sort().join(', '); const li=document.createElement('li'); li.innerHTML = `<span class="incomplete-teacher-name">${teacher}</span> (<span class="incomplete-class-list">${classes}</span>)`; list.appendChild(li); }); } }
         function toggleIncompleteList() { const listDiv=document.getElementById('incompleteTeachersDisplay'); const btn=document.getElementById('toggleIncompleteBtn'); const btnTextSpan = btn.querySelector('.btn-text'); if(listDiv.style.display==='none'||listDiv.style.display===''){ listDiv.style.display='block'; btn.querySelector('i').className = 'fas fa-xmark'; if(btnTextSpan) btnTextSpan.textContent = t('hide_incomplete'); } else { listDiv.style.display='none'; btn.querySelector('i').className = 'fas fa-list-check'; if(btnTextSpan) btnTextSpan.textContent = t('display_incomplete'); } }
-        async function fetchPlanData(week) { if (!week || isNaN(parseInt(week, 10))) { console.warn("fetchPlanData sans semaine valide."); displayPlanTable([]); document.getElementById('weekDateRange').textContent = t('please_select_week'); return; } if (!loggedInUser) { console.warn("Tentative chargement non connecté."); displayAlert("login_title", true); return; } console.log(`fetchPlanData S${week} (${currentSection}) pour ${loggedInUser}`); displayAlert('loading_data_week', false, { week: week }); showProgressBar(); updateProgressBar(10); currentWeek = week; const weekNum=parseInt(week,10); const dateRangeEl=document.getElementById('weekDateRange'); weekStartDate=null; planData=[]; headers=[]; weeklyClassNotes={}; dateRangeEl.textContent=`${t('week_label')} ${week}: ${t('loading')}`; displayPlanTable([]); updateActionButtonsState(false); const dates=specificWeekDateRanges[weekNum]; if(dates?.start&&dates?.end){try{const s=new Date(dates.start+'T00:00:00Z'); const e=new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ weekStartDate=s; dateRangeEl.textContent = `${t('week_label')} ${week} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'from' : 'du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;} else throw new Error();}catch(e){dateRangeEl.textContent=`S ${week} (Err dates)`; weekStartDate=null;}} else {dateRangeEl.textContent=`${t('week_label')} ${week} (${t('no_data')}: dates non définies)`; weekStartDate=null;} updateProgressBar(30); try{const r=await fetch(`/api/plans/${week}?section=${currentSection}`); updateProgressBar(70); if(!r.ok){const d=await r.json().catch(()=>null); throw new Error(d?.message || `Err ${r.status}`);} const fetched=await r.json(); if(fetched&&typeof fetched==='object'){planData=fetched.planData||[]; weeklyClassNotes=fetched.classNotes||{}; window.availableWeeklyPlans = fetched.availableWeeklyPlans || [];} else {planData=[]; weeklyClassNotes={}; window.availableWeeklyPlans = [];} updateProgressBar(90); if(planData.length>0){headers=Object.keys(planData[0]).filter(h=>h!=='_id'&&h!=='id'&&h!=='_originalCopy'&&h!=='lessonPlanId'&&h!=='__v'&&!h.startsWith('_')); if(loggedInUser==='Imad'){const enseignantKey=findHKey('Enseignant');const originalCount=planData.length;if(enseignantKey){planData=planData.filter(row=>arabicTeachers.includes(row[enseignantKey]));console.log(`[Imad Admin] Data filtered for Arabic teachers. ${planData.length}/${originalCount} rows remain.`)}} displayAlert('data_loaded_week', false, { week: week });} else {headers=[]; displayAlert('no_data_found_week', false, { week: week });} createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateActionButtonsState(planData.length > 0); updateProgressBar(100); } catch(e){ console.error("Err fetchPlanData:",e); displayAlert('error_loading_week', true, { week: week, error: e.message }); planData=[]; headers=[]; weeklyClassNotes={}; createTableHeader(); populateFilterOptions(); populateNotesClassSelector(); sortAndDisplay(); displayClassNotes(); checkAndDisplayIncompleteTeachers(); updateProgressBar(0); updateActionButtonsState(false); } finally{hideProgressBar();} }
+        async function fetchPlanData(week) { 
+            if (!week || isNaN(parseInt(week, 10))) { 
+                console.warn("fetchPlanData sans semaine valide."); 
+                displayPlanTable([]); 
+                document.getElementById('weekDateRange').textContent = t('please_select_week'); 
+                return; 
+            } 
+            if (!loggedInUser) { 
+                console.warn("Tentative chargement non connecté."); 
+                displayAlert("login_title", true); 
+                return; 
+            } 
+            console.log(`fetchPlanData S${week} (${currentSection}) pour ${loggedInUser}, crossSection=${showCrossSectionView}`); 
+            displayAlert('loading_data_week', false, { week: week }); 
+            showProgressBar(); 
+            updateProgressBar(10); 
+            currentWeek = week; 
+            const weekNum = parseInt(week, 10); 
+            const dateRangeEl = document.getElementById('weekDateRange'); 
+            weekStartDate = null; 
+            planData = []; 
+            headers = []; 
+            weeklyClassNotes = {}; 
+            dateRangeEl.textContent = `${t('week_label')} ${week}: ${t('loading')}`; 
+            displayPlanTable([]); 
+            updateActionButtonsState(false); 
+            updateCrossSectionToggleUI();
+
+            const dates = specificWeekDateRanges[weekNum]; 
+            if (dates?.start && dates?.end) {
+                try {
+                    const s = new Date(dates.start + 'T00:00:00Z'); 
+                    const e = new Date(dates.end + 'T00:00:00Z'); 
+                    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) { 
+                        weekStartDate = s; 
+                        dateRangeEl.textContent = `${t('week_label')} ${week} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'from' : 'du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;
+                    } else throw new Error();
+                } catch(e) {
+                    dateRangeEl.textContent = `S ${week} (Err dates)`; 
+                    weekStartDate = null;
+                }
+            } else {
+                dateRangeEl.textContent = `${t('week_label')} ${week} (${t('no_data')}: dates non définies)`; 
+                weekStartDate = null;
+            } 
+            updateProgressBar(30); 
+
+            try {
+                // 1. Charger les données de la section active
+                const r = await fetch(`/api/plans/${week}?section=${currentSection}`); 
+                updateProgressBar(60); 
+                if (!r.ok) {
+                    const d = await r.json().catch(() => null); 
+                    throw new Error(d?.message || `Err ${r.status}`);
+                } 
+                const fetched = await r.json(); 
+                let primaryRows = [];
+                if (fetched && typeof fetched === 'object') {
+                    primaryRows = fetched.planData || []; 
+                    weeklyClassNotes = fetched.classNotes || {}; 
+                    window.availableWeeklyPlans = fetched.availableWeeklyPlans || [];
+                } 
+
+                primaryRows.forEach(row => {
+                    if (row) {
+                        row._section = currentSection;
+                        row.isReadOnlyCrossSection = false;
+                    }
+                });
+
+                let combinedRows = [...primaryRows];
+
+                // 2. Si la vue inter-section est activée, charger les données de l'autre section en lecture seule
+                if (showCrossSectionView) {
+                    const otherSection = (currentSection === 'garcons') ? 'filles' : 'garcons';
+                    try {
+                        const rOther = await fetch(`/api/plans/${week}?section=${otherSection}`);
+                        if (rOther.ok) {
+                            const fetchedOther = await rOther.json();
+                            const otherRows = (fetchedOther && fetchedOther.planData) || [];
+                            otherRows.forEach(row => {
+                                if (row) {
+                                    row._section = otherSection;
+                                    row.isReadOnlyCrossSection = true;
+                                }
+                            });
+                            combinedRows = combinedRows.concat(otherRows);
+                        }
+                    } catch (errOther) {
+                        console.warn("Erreur chargement cross-section:", errOther);
+                    }
+                }
+
+                planData = combinedRows;
+                updateProgressBar(90); 
+
+                if (planData.length > 0) {
+                    const sample = planData.find(r => r && typeof r === 'object') || {};
+                    headers = Object.keys(sample).filter(h => 
+                        h !== '_id' && h !== 'id' && h !== '_originalCopy' && h !== 'lessonPlanId' && 
+                        h !== '__v' && h !== '_section' && h !== 'isReadOnlyCrossSection' && !h.startsWith('_')
+                    ); 
+                    
+                    if (loggedInUser === 'Imad') {
+                        const enseignantKey = findHKey('Enseignant');
+                        const originalCount = planData.length;
+                        if (enseignantKey) {
+                            planData = planData.filter(row => arabicTeachers.includes(row[enseignantKey]));
+                            console.log(`[Imad Admin] Data filtered for Arabic teachers. ${planData.length}/${originalCount} rows remain.`);
+                        }
+                    } 
+                    displayAlert('data_loaded_week', false, { week: week });
+                } else {
+                    headers = []; 
+                    displayAlert('no_data_found_week', false, { week: week });
+                } 
+
+                createTableHeader(); 
+                populateFilterOptions(); 
+                populateNotesClassSelector(); 
+                sortAndDisplay(); 
+                displayClassNotes(); 
+                checkAndDisplayIncompleteTeachers(); 
+                updateActionButtonsState(planData.length > 0); 
+                updateProgressBar(100); 
+            } catch(e) { 
+                console.error("Err fetchPlanData:", e); 
+                displayAlert('error_loading_week', true, { week: week, error: e.message }); 
+                planData = []; 
+                headers = []; 
+                weeklyClassNotes = {}; 
+                createTableHeader(); 
+                populateFilterOptions(); 
+                populateNotesClassSelector(); 
+                sortAndDisplay(); 
+                displayClassNotes(); 
+                checkAndDisplayIncompleteTeachers(); 
+                updateProgressBar(0); 
+                updateActionButtonsState(false); 
+            } finally {
+                hideProgressBar();
+            } 
+        }
         
         function makeTableColumnsResizable() {
             const table = document.getElementById('planTable');
@@ -1265,23 +1461,51 @@
 
         function createTableHeader() {
             const tHead = document.querySelector('#planTable thead tr');
+            if (!tHead) return;
             tHead.innerHTML = '';
             const curH = headers || [];
-            const hDisp = curH.filter(h => h !== '_id' && h !== 'id' && h.toLowerCase() !== 'updatedat' && h !== '_originalCopy' && h !== 'lessonPlanId' && h !== '__v' && !h.startsWith('_'));
-            const headerTranslations = translations[currentUserLanguage].headers || translations.fr.headers;
+            const hDisp = curH.filter(h => 
+                h !== '_id' && h !== 'id' && h.toLowerCase() !== 'updatedat' && 
+                h !== '_originalCopy' && h !== 'lessonPlanId' && h !== '__v' && 
+                h !== '_section' && h !== 'isReadOnlyCrossSection' && !h.startsWith('_')
+            );
+            const headerTranslations = translations[currentUserLanguage]?.headers || translations.fr.headers;
             
             const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
             const supportKey = findHKey('Support');
 
             if (hDisp.length > 0) {
                 hDisp.forEach(h => {
-                    // Pour l'Arabe : afficher uniquement Leçon, Travaux de classe et Devoirs pour la saisie (masquer Support)
                     if (isAr && h === supportKey) {
                         return;
                     }
                     
                     const th = document.createElement('th');
-                    th.textContent = headerTranslations[h] || h;
+                    th.className = 'sortable-th';
+                    th.style.cursor = 'pointer';
+                    th.title = 'Cliquer pour trier par cette colonne';
+                    
+                    const textSpan = document.createElement('span');
+                    textSpan.textContent = headerTranslations[h] || h;
+                    th.appendChild(textSpan);
+
+                    const sortIcon = document.createElement('i');
+                    if (currentSortColumn === h) {
+                        sortIcon.className = (currentSortOrder === 'asc') ? 'fas fa-sort-up' : 'fas fa-sort-down';
+                        sortIcon.style.marginLeft = '6px';
+                        sortIcon.style.color = '#2563eb';
+                    } else {
+                        sortIcon.className = 'fas fa-sort';
+                        sortIcon.style.marginLeft = '6px';
+                        sortIcon.style.opacity = '0.35';
+                    }
+                    th.appendChild(sortIcon);
+
+                    th.onclick = (e) => {
+                        if (e.target.classList.contains('col-resizer')) return;
+                        setSortColumn(h);
+                    };
+
                     tHead.appendChild(th);
                 });
                 
@@ -1298,32 +1522,89 @@
                 }
             }
             const tBody = document.querySelector('#planTable tbody');
-            tBody.innerHTML = '';
+            if (tBody) tBody.innerHTML = '';
             makeTableColumnsResizable();
         }
 
-        function updateFilterOptionDefaultTexts() { const filters = [ { selId: 'filterEnseignant', defaultKey: 'all' }, { selId: 'filterClasse', defaultKey: 'all_f' }, { selId: 'filterMatiere', defaultKey: 'all_f' }, { selId: 'filterPeriode', defaultKey: 'all_f' }, { selId: 'filterJour', defaultKey: 'all' }, { selId: 'weekSelector', defaultKey: 'select_week' }, { selId: 'notesClassSelector', defaultKey: 'select_class' } ]; filters.forEach(f => { const select = document.getElementById(f.selId); if (select) { const defaultOption = select.querySelector('option[value=""]'); if (defaultOption) { defaultOption.textContent = t(f.defaultKey); } } }); const jSel = document.getElementById('filterJour'); if (jSel) { const dayOptions = jSel.querySelectorAll('option'); const dayValues = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]; const dayTransKeys = ["day_sun", "day_mon", "day_tue", "day_wed", "day_thu"]; dayOptions.forEach(opt => { if (opt.value !== "") { const idx = dayValues.indexOf(opt.value); if (idx !== -1) opt.textContent = t(dayTransKeys[idx]); } }); } const weekSel = document.getElementById('weekSelector'); if (weekSel) { const weekOptions = weekSel.querySelectorAll('option'); weekOptions.forEach(opt => { if (opt.value && opt.value.match(/^\d+$/)) { const weekLabel = t('week_label'); opt.textContent = `${weekLabel.replace(':', '')} ${opt.value}`; } }); } }
+        function updateFilterOptionDefaultTexts() { 
+            const filters = [ 
+                { selId: 'filterEnseignant', defaultKey: 'all' }, 
+                { selId: 'filterClasse', defaultKey: 'all_f' }, 
+                { selId: 'filterMatiere', defaultKey: 'all_f' }, 
+                { selId: 'filterPeriode', defaultKey: 'all_f' }, 
+                { selId: 'filterJour', defaultKey: 'all' }, 
+                { selId: 'weekSelector', defaultKey: 'select_week' }, 
+                { selId: 'notesClassSelector', defaultKey: 'select_class' } 
+            ]; 
+            filters.forEach(f => { 
+                const select = document.getElementById(f.selId); 
+                if (select) { 
+                    const defaultOption = select.querySelector('option[value=""]'); 
+                    if (defaultOption) { 
+                        defaultOption.textContent = t(f.defaultKey); 
+                    } 
+                } 
+            }); 
+            const jSel = document.getElementById('filterJour'); 
+            if (jSel) { 
+                const dayOptions = jSel.querySelectorAll('option'); 
+                const dayValues = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]; 
+                const dayTransKeys = ["day_sun", "day_mon", "day_tue", "day_wed", "day_thu"]; 
+                dayOptions.forEach(opt => { 
+                    if (opt.value !== "") { 
+                        const idx = dayValues.indexOf(opt.value); 
+                        if (idx !== -1) opt.textContent = t(dayTransKeys[idx]); 
+                    } 
+                }); 
+            } 
+            const weekSel = document.getElementById('weekSelector'); 
+            if (weekSel) { 
+                const weekOptions = weekSel.querySelectorAll('option'); 
+                weekOptions.forEach(opt => { 
+                    if (opt.value && opt.value.match(/^\d+$/)) { 
+                        const weekLabel = t('week_label'); 
+                        opt.textContent = `${weekLabel.replace(':', '')} ${opt.value}`; 
+                    } 
+                }); 
+            } 
+        }
         
         function populateFilterOptions() { 
             const allData = planData || []; 
-            let data = allData;
             const ensK = findHKey('Enseignant'); 
             const clsK = findHKey('Classe'); 
             const perK = findHKey('Période'); 
             const matK = findHKey('Matière'); 
             const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
 
-            // Si l'utilisateur est un enseignant connecté (non admin/superviseur), n'extraire les options (matières, classes, etc.) QUE de ses propres séances
+            // Déterminer les matières enseignées par l'utilisateur connecté
+            const mySubjects = new Set();
+            if (isTeacherOnly && ensK && matK) {
+                allData.forEach(row => {
+                    if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], loggedInUser, loggedInTeacherTable)) {
+                        if (row[matK]) mySubjects.add(String(row[matK]).trim().toLowerCase());
+                    }
+                });
+            }
+
+            let filterScopeData = allData;
             if (isTeacherOnly && ensK) { 
-                data = allData.filter(i => { 
-                    const iE = i && i[ensK] ? String(i[ensK]) : ''; 
-                    return isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable);
+                filterScopeData = allData.filter(i => { 
+                    if (!i) return false;
+                    const iE = i[ensK] ? String(i[ensK]) : ''; 
+                    const iM = matK && i[matK] ? String(i[matK]).trim().toLowerCase() : '';
+                    if (!i.isReadOnlyCrossSection) {
+                        return isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable);
+                    } else if (showCrossSectionView && mySubjects.size > 0) {
+                        return mySubjects.has(iM);
+                    }
+                    return false;
                 }); 
             } 
 
             const getUniq = (k) => { 
                 const uniq = new Set(); 
-                data.forEach(i => { 
+                filterScopeData.forEach(i => { 
                     if (i && i[k] != null && String(i[k]).trim() !== '') { 
                         uniq.add(String(i[k]).trim()); 
                     } 
@@ -1331,7 +1612,7 @@
                 if (k?.trim().toLowerCase() === 'classe') { 
                     return [...uniq].sort(compareClasses); 
                 } else { 
-                    return [...uniq].sort((a, b) => String(a).localeCompare(String(b))); 
+                    return [...uniq].sort((a, b) => String(a).localeCompare(String(b), 'fr', { sensitivity: 'base' })); 
                 } 
             }; 
 
@@ -1344,6 +1625,7 @@
             const cls = clsK ? getUniq(clsK) : []; 
             const per = perK ? getUniq(perK) : []; 
             const mat = matK ? getUniq(matK) : []; 
+            
             const updateSel = (id, opts, isCls = false) => { 
                 const sel = document.getElementById(id); 
                 if (!sel) return;
@@ -1367,11 +1649,13 @@
                     sel.value = ""; 
                 } 
             }; 
+
             updateSel('filterEnseignant', ens); 
             updateSel('filterClasse', cls, true); 
             updateSel('filterPeriode', per); 
             updateSel('filterMatiere', mat); 
             updateFilterOptionDefaultTexts(); 
+
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
                 if (isTeacherOnly) { 
@@ -1416,7 +1700,8 @@
                     filterEnsSelect.disabled = false; 
                 } 
             }
-            const ensF = filterEnsSelect ? filterEnsSelect.value : ''; 
+
+            const ensF = filterEnsSelect ? filterEnsSelect.value.trim() : ''; 
             const clsF = document.getElementById('filterClasse')?.value || ''; 
             const matF = document.getElementById('filterMatiere')?.value || ''; 
             const perF = document.getElementById('filterPeriode')?.value || ''; 
@@ -1426,23 +1711,42 @@
             const matK = findHKey('Matière'); 
             const perK = findHKey('Période'); 
             const jK = findHKey('Jour'); 
+
+            // Identifier les matières de l'enseignant connecté
+            const mySubjects = new Set();
+            if (isTeacherOnly && ensK && matK) {
+                planData.forEach(row => {
+                    if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], loggedInUser, loggedInTeacherTable)) {
+                        if (row[matK]) mySubjects.add(String(row[matK]).trim().toLowerCase());
+                    }
+                });
+            }
             
             filteredAndSortedData = planData.filter(i => { 
                 if (!i) return false; 
-                const iE = ensK && i.hasOwnProperty(ensK) ? String(i[ensK]) : null; 
-                const iC = clsK && i.hasOwnProperty(clsK) ? String(i[clsK]) : null; 
-                const iM = matK && i.hasOwnProperty(matK) ? String(i[matK]) : null; 
-                const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]) : null; 
-                const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]) : null; 
+                const iE = ensK && i.hasOwnProperty(ensK) ? String(i[ensK]).trim() : ''; 
+                const iC = clsK && i.hasOwnProperty(clsK) ? String(i[clsK]).trim() : ''; 
+                const iM = matK && i.hasOwnProperty(matK) ? String(i[matK]).trim() : ''; 
+                const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]).trim() : ''; 
+                const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]).trim() : ''; 
                 
-                // Si l'utilisateur est un enseignant (non admin/superviseur), n'afficher STRICTEMENT que ses séances
+                // Si enseignant connecté (non admin)
                 if (isTeacherOnly) {
-                    if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
-                        return false;
+                    if (!i.isReadOnlyCrossSection) {
+                        // Section propre: n'afficher que les séances de l'enseignant
+                        if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
+                            return false;
+                        }
+                    } else {
+                        // Autre section (cross-section): afficher uniquement les séances de la MÊME matière
+                        if (!showCrossSectionView) return false;
+                        const subjectMatch = mySubjects.has(iM.toLowerCase()) || (matF && iM.toLowerCase() === matF.toLowerCase());
+                        if (!subjectMatch) return false;
                     }
                 }
                 
-                const pE = !ensF || iE === ensF || isRowForLoggedInTeacher(iE, ensF, null); 
+                // Filtre Enseignant (robuste pour Admin et Enseignant)
+                const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF); 
                 const pC = !clsF || iC === clsF; 
                 const pM = !matF || iM === matF; 
                 const pP = !perF || iP === perF; 
@@ -1452,17 +1756,46 @@
             }); 
             
             const dayValuesFr = { "Dimanche": 1, "Lundi": 2, "Mardi": 3, "Mercredi": 4, "Jeudi": 5 }; 
+            
             filteredAndSortedData.sort((a, b) => { 
+                // 1. Si une colonne spécifique a été cliquée pour le tri
+                if (currentSortColumn) {
+                    const colA = a ? a[currentSortColumn] : null;
+                    const colB = b ? b[currentSortColumn] : null;
+                    let primaryComp = 0;
+
+                    if (currentSortColumn === clsK) {
+                        primaryComp = compareClasses(colA, colB);
+                    } else if (currentSortColumn === jK) {
+                        const jA = colA ? extractDayName(String(colA)) : null;
+                        const jB = colB ? extractDayName(String(colB)) : null;
+                        primaryComp = (dayValuesFr[jA] || 99) - (dayValuesFr[jB] || 99);
+                    } else if (currentSortColumn === perK) {
+                        const piA = parseInt(colA, 10);
+                        const piB = parseInt(colB, 10);
+                        primaryComp = (!isNaN(piA) && !isNaN(piB)) ? (piA - piB) : String(colA || '').localeCompare(String(colB || ''));
+                    } else {
+                        primaryComp = String(colA || '').localeCompare(String(colB || ''), 'fr', { sensitivity: 'base' });
+                    }
+
+                    if (primaryComp !== 0) {
+                        return (currentSortOrder === 'asc') ? primaryComp : -primaryComp;
+                    }
+                }
+
+                // 2. Tri secondaire standard : Classe -> Jour -> Période
                 const classA = (clsK && a.hasOwnProperty(clsK)) ? a[clsK] : null; 
                 const classB = (clsK && b.hasOwnProperty(clsK)) ? b[clsK] : null; 
                 const classComp = compareClasses(classA, classB); 
                 if (classComp !== 0) return classComp; 
+                
                 const jA_fr = (jK && a.hasOwnProperty(jK)) ? extractDayName(String(a[jK])) : null; 
                 const jB_fr = (jK && b.hasOwnProperty(jK)) ? extractDayName(String(b[jK])) : null; 
                 const dayOrdA = dayValuesFr[jA_fr] || 99; 
                 const dayOrdB = dayValuesFr[jB_fr] || 99; 
                 const dC = dayOrdA - dayOrdB; 
                 if (dC !== 0) return dC; 
+                
                 const pA = (perK && a.hasOwnProperty(perK)) ? a[perK] : null; 
                 const pB = (perK && b.hasOwnProperty(perK)) ? b[perK] : null; 
                 const piA = parseInt(pA, 10); 
@@ -1475,6 +1808,7 @@
                     return sA.localeCompare(sB); 
                 } 
             }); 
+
             displayPlanTable(filteredAndSortedData); 
             updateActionButtonsState(filteredAndSortedData.length > 0); 
         }
@@ -1482,13 +1816,19 @@
         function displayPlanTable(data) {
             const tBody = document.querySelector('#planTable tbody');
             const tHead = document.querySelector('#planTable thead tr');
+            if (!tBody) return;
             tBody.innerHTML = '';
             const actualHdrCount = tHead ? tHead.querySelectorAll('th').length : 0;
             const colspanVal = actualHdrCount > 0 ? actualHdrCount : 10;
             const curH = headers || [];
-            const hDisp = curH.filter(h => h !== '_id' && h.toLowerCase() !== 'updatedat' && h !== 'id' && h !== '_originalCopy' && h !== 'lessonPlanId' && h !== '__v' && !h.startsWith('_'));
+            const hDisp = curH.filter(h => 
+                h !== '_id' && h.toLowerCase() !== 'updatedat' && h !== 'id' && 
+                h !== '_originalCopy' && h !== 'lessonPlanId' && h !== '__v' && 
+                h !== '_section' && h !== 'isReadOnlyCrossSection' && !h.startsWith('_')
+            );
             const jK = findHKey('Jour');
             const clsK = findHKey('Classe');
+            const ensK = findHKey('Enseignant');
             const updK = findHKey('updatedAt');
             
             const isAdmin = isUserAdminOrSupervisor(loggedInUser, currentUserRole);
@@ -1501,7 +1841,7 @@
             const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
             const supportKey = findHKey('Support');
             const initialRow = document.getElementById('initial-table-row');
-            if(initialRow) initialRow.remove();
+            if (initialRow) initialRow.remove();
             if (!currentWeek) {
                 tBody.innerHTML = `<tr id="initial-table-row"><td colspan="${colspanVal}" class="table-message">${t('select_week_to_display')}</td></tr>`;
                 return;
@@ -1514,12 +1854,24 @@
                 tBody.innerHTML = `<tr id="initial-table-row"><td colspan="${colspanVal}" class="table-message">${t('no_data_to_display_filters')}</td></tr>`;
                 return;
             }
+
             data.forEach((rowObj, rIdx) => {
                 if (rowObj && !rowObj._originalCopy) {
                     rowObj._originalCopy = { ...rowObj };
                 }
                 const tr = document.createElement('tr');
                 tr.dataset.rowIndex = rIdx;
+
+                const isCrossReadOnly = !!(rowObj && rowObj.isReadOnlyCrossSection);
+                if (isCrossReadOnly) {
+                    tr.classList.add('cross-section-row');
+                    if (rowObj._section === 'filles') {
+                        tr.classList.add('cross-section-row-filles');
+                    } else {
+                        tr.classList.add('cross-section-row-garcons');
+                    }
+                }
+
                 hDisp.forEach(header => {
                     if (isAr && header === supportKey) {
                         return;
@@ -1528,9 +1880,15 @@
                     const td = document.createElement('td');
                     let content = rowObj ? (rowObj[header] ?? '') : '';
                     td.setAttribute('dir', 'auto');
-                    const isEditable = editHdrKeys.includes(header);
+                    
+                    // Une ligne d'une autre section est TOUJOURS en lecture seule (non éditable)
+                    const isEditable = !isCrossReadOnly && editHdrKeys.includes(header);
 
-                    if (header === jK && content && !isAdmin) {
+                    if (header === ensK && isCrossReadOnly) {
+                        const secLabel = (rowObj._section === 'filles') ? '👧 Filles' : '👦 Garçons';
+                        const badgeClass = (rowObj._section === 'filles') ? 'badge-filles' : 'badge-garcons';
+                        td.innerHTML = `<span class="cross-sec-badge ${badgeClass}">${secLabel}</span> ${escapeHTML(content)}`;
+                    } else if (header === jK && content && !isAdmin) {
                         const dt = parseDateFromJourColumn(content);
                         td.textContent = dt ? formatDateForDisplay(dt) : content;
                     } else if (header === clsK && content && !isAdmin) {
@@ -1567,57 +1925,67 @@
                     }
                     tr.appendChild(td);
                 });
+
                 const actTd = document.createElement('td');
                 actTd.classList.add('actions-column');
-                const saveBtn = document.createElement('button');
-                saveBtn.innerHTML = '<i class="fas fa-check"></i>';
-                saveBtn.title = t('save_row_title');
-                saveBtn.classList.add('save-row-button');
-                saveBtn.onclick = () => saveRow(rowObj, tr);
-                actTd.appendChild(saveBtn);
-                const indicatorSpan = document.createElement('span');
-                indicatorSpan.className = 'save-indicator';
-                indicatorSpan.innerHTML = '<i class="fas fa-check-circle"></i>';
-                indicatorSpan.style.display = rowObj && updK && rowObj[updK] ? 'inline-block' : 'none';
-                actTd.appendChild(indicatorSpan);
-                
-                // Bouton disquette pour générer le plan de leçon IA pour cette ligne
-                const teacherKey = findHKey('Enseignant');
-                const rowTeacher = teacherKey ? rowObj[teacherKey] : null;
-                const canGenerate = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
-                
-                if (canGenerate) {
-                    const aiGenBtn = document.createElement('button');
-                    aiGenBtn.innerHTML = '<i class="fas fa-save"></i>';
-                    aiGenBtn.title = 'Générer Plan de Leçon de cette séance';
-                    aiGenBtn.classList.add('ai-lesson-plan-button');
-                    aiGenBtn.style.marginLeft = '5px';
+
+                if (isCrossReadOnly) {
+                    // Badge indicatif lecture seule pour les lignes de l'autre section
+                    const readOnlyBadge = document.createElement('span');
+                    readOnlyBadge.className = 'badge-readonly-lock';
+                    readOnlyBadge.innerHTML = `<i class="fas fa-lock"></i> ${currentUserLanguage === 'ar' ? 'للاطلاع' : 'Lecture seule'}`;
+                    readOnlyBadge.title = 'Contribution de l\'autre section (non modifiable)';
+                    actTd.appendChild(readOnlyBadge);
+                } else {
+                    const saveBtn = document.createElement('button');
+                    saveBtn.innerHTML = '<i class="fas fa-check"></i>';
+                    saveBtn.title = t('save_row_title');
+                    saveBtn.classList.add('save-row-button');
+                    saveBtn.onclick = () => saveRow(rowObj, tr);
+                    actTd.appendChild(saveBtn);
+
+                    const indicatorSpan = document.createElement('span');
+                    indicatorSpan.className = 'save-indicator';
+                    indicatorSpan.innerHTML = '<i class="fas fa-check-circle"></i>';
+                    indicatorSpan.style.display = rowObj && updK && rowObj[updK] ? 'inline-block' : 'none';
+                    actTd.appendChild(indicatorSpan);
                     
-                    if (rowObj && rowObj.lessonPlanId) {
-                        aiGenBtn.classList.add('lesson-plan-exists');
-                        aiGenBtn.title = 'Plan de Leçon déjà généré - Régénérer';
-                    }
-                    
-                    aiGenBtn.onclick = () => generateAILessonPlan(rowObj, tr);
-                    actTd.appendChild(aiGenBtn);
-                }
-                
-                // Bouton pour télécharger le plan de leçon
-                if (rowObj && rowObj.lessonPlanId) {
+                    // Bouton disquette pour générer le plan de leçon IA pour cette ligne
                     const teacherKey = findHKey('Enseignant');
                     const rowTeacher = teacherKey ? rowObj[teacherKey] : null;
-                    const canDownload = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
+                    const canGenerate = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
                     
-                    if (canDownload) {
-                        const lessonBtn = document.createElement('button');
-                        lessonBtn.innerHTML = '<i class="fas fa-file-download"></i>';
-                        lessonBtn.title = 'Télécharger Plan de Leçon';
-                        lessonBtn.classList.add('lesson-plan-button');
-                        lessonBtn.style.marginLeft = '5px';
-                        lessonBtn.onclick = () => downloadLessonPlan(rowObj);
-                        actTd.appendChild(lessonBtn);
+                    if (canGenerate) {
+                        const aiGenBtn = document.createElement('button');
+                        aiGenBtn.innerHTML = '<i class="fas fa-save"></i>';
+                        aiGenBtn.title = 'Générer Plan de Leçon de cette séance';
+                        aiGenBtn.classList.add('ai-lesson-plan-button');
+                        aiGenBtn.style.marginLeft = '5px';
+                        
+                        if (rowObj && rowObj.lessonPlanId) {
+                            aiGenBtn.classList.add('lesson-plan-exists');
+                            aiGenBtn.title = 'Plan de Leçon déjà généré - Régénérer';
+                        }
+                        
+                        aiGenBtn.onclick = () => generateAILessonPlan(rowObj, tr);
+                        actTd.appendChild(aiGenBtn);
+                    }
+                    
+                    // Bouton pour télécharger le plan de leçon
+                    if (rowObj && rowObj.lessonPlanId) {
+                        const canDownload = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
+                        if (canDownload) {
+                            const lessonBtn = document.createElement('button');
+                            lessonBtn.innerHTML = '<i class="fas fa-file-download"></i>';
+                            lessonBtn.title = 'Télécharger Plan de Leçon';
+                            lessonBtn.classList.add('lesson-plan-button');
+                            lessonBtn.style.marginLeft = '5px';
+                            lessonBtn.onclick = () => downloadLessonPlan(rowObj);
+                            actTd.appendChild(lessonBtn);
+                        }
                     }
                 }
+
                 tr.appendChild(actTd);
                 if (updK && tHead && tHead.querySelector('.updated-at-column')) {
                     const updTd = document.createElement('td');
@@ -1801,6 +2169,10 @@
         function updateActionButtonsState(isEnabled) { document.getElementById('generateWordBtn').disabled = !isEnabled; document.getElementById('generateExcelBtn').disabled = !isEnabled; const saveAllBtn = document.getElementById('saveAllDisplayedBtn'); if (saveAllBtn) { saveAllBtn.disabled = !isEnabled || !filteredAndSortedData || filteredAndSortedData.length === 0; } const generateAllDisplayedPlansBtn = document.getElementById('generateAllDisplayedPlansBtn'); if (generateAllDisplayedPlansBtn) { generateAllDisplayedPlansBtn.disabled = !isEnabled || !filteredAndSortedData || filteredAndSortedData.length === 0; generateAllDisplayedPlansBtn.style.display = ''; } }
         async function saveRow(rowData, tableRowElement) { 
             if(!rowData||typeof rowData!=='object'){displayAlert('invalid_row',true); return;} 
+            if(rowData.isReadOnlyCrossSection) {
+                displayAlert(currentUserLanguage === 'ar' ? 'لا يمكن تعديل بيانات القسم الآخر (للاطلاع فقط)' : 'Impossible de modifier une ligne appartenant à l\'autre section (lecture seule).', true);
+                return;
+            }
             console.log("saveRow:",JSON.stringify(rowData).substring(0,100)+'...'); 
             displayAlert(''); 
             const btn=tableRowElement?.querySelector('.save-row-button'); 
@@ -1817,7 +2189,7 @@
                         week:currentWeek,
                         data:rowData,
                         originalData: rowData._originalCopy || null,
-                        section:currentSection
+                        section: rowData._section || currentSection
                     })
                 }); 
                 const result=await response.json(); 
@@ -1843,9 +2215,10 @@
             } 
         }
         async function saveAllDisplayedRows() { 
-            if (!filteredAndSortedData || filteredAndSortedData.length === 0) { displayAlert('no_rows_to_save', true); return; } 
+            const rowsToSave = (filteredAndSortedData || []).filter(r => r && !r.isReadOnlyCrossSection);
+            if (!rowsToSave || rowsToSave.length === 0) { displayAlert('no_rows_to_save', true); return; } 
             if (!currentWeek) { displayAlert("please_select_week", true); return; } 
-            const totalRows = filteredAndSortedData.length; 
+            const totalRows = rowsToSave.length; 
             const confirmation = confirm(t('confirm_save_all', { count: totalRows, week: currentWeek })); 
             if (!confirmation) { displayAlert('save_all_cancelled', false); return; } 
             displayAlert('saving_all_displayed', false, { count: totalRows }); 
@@ -1856,7 +2229,7 @@
             let errorCount = 0; 
             const tableBody = document.querySelector('#planTable tbody'); 
             for (let i = 0; i < totalRows; i++) { 
-                const rowData = filteredAndSortedData[i]; 
+                const rowData = rowsToSave[i]; 
                 const rowIndex = i; 
                 updateProgressBar(Math.round(((i + 1) / totalRows) * 95)); 
                 try { 
@@ -1867,7 +2240,7 @@
                             week: currentWeek, 
                             data: rowData, 
                             originalData: rowData._originalCopy || null,
-                            section: currentSection 
+                            section: rowData._section || currentSection 
                         }) 
                     }); 
                     const result = await response.json(); 
