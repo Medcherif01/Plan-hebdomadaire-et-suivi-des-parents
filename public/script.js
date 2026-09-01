@@ -2,6 +2,7 @@
 
         // Variables globales
         let loggedInUser = null;
+        let currentUserRole = localStorage.getItem('userRole') || null;
         let loggedInTeacherTable = localStorage.getItem('tableTeacherName') || '';
         let currentUserLanguage = 'fr';
         let currentSection = localStorage.getItem('selectedSection') || localStorage.getItem('currentSection') || 'garcons';
@@ -47,7 +48,7 @@
             if (!name) return false;
             const n = String(name).trim().toLowerCase();
             if (isAmalArabeTeacher(n)) return false;
-            return n === 'amal' || n === 'amal sole' || n === 'amal (seul)' || n === 'amal seul';
+            return n.includes('amal') || n.startsWith('amal');
         };
 
         const isDualSectionTeacher = (username) => {
@@ -75,12 +76,12 @@
 
             // 2. Amal (Seule / non arabe)
             if (isAmalSoleTeacher(u) || (tT && isAmalSoleTeacher(tT))) {
-                return isAmalSoleTeacher(rT) || (tT && isAmalSoleTeacher(tT) && isAmalSoleTeacher(rT));
+                return isAmalSoleTeacher(rT);
             }
 
             // 3. Amal Arabe
             if (isAmalArabeTeacher(u) || (tT && isAmalArabeTeacher(tT))) {
-                return isAmalArabeTeacher(rT) || (tT && isAmalArabeTeacher(tT) && isAmalArabeTeacher(rT));
+                return isAmalArabeTeacher(rT);
             }
             
             return rT === u || (tT && rT === tT);

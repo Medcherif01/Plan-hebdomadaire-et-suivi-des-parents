@@ -276,7 +276,7 @@ const isAmalSoleTeacher = (name) => {
   if (!name) return false;
   const n = String(name).trim().toLowerCase();
   if (isAmalArabeTeacher(n)) return false;
-  return n === 'amal' || n === 'amal sole' || n === 'amal (seul)' || n === 'amal seul';
+  return n.includes('amal') || n.startsWith('amal');
 };
 
 const isDualSectionTeacher = (name) => {
