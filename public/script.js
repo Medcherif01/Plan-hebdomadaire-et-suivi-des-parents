@@ -28,7 +28,7 @@
 
         const primaireTeachersList = [
             'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-            'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe'
+            'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal'
         ];
 
         const isMusicTeacher = (name) => {
@@ -37,15 +37,22 @@
             return n === 'farah' || n.includes('farah') || n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique');
         };
 
-        const isAmalTeacher = (name) => {
+        const isAmalArabeTeacher = (name) => {
             if (!name) return false;
             const n = String(name).trim().toLowerCase();
-            return n === 'amal' || n === 'amal arabe' || n.startsWith('amal') || n.includes('amal');
+            return (n.includes('amal') || n.startsWith('amal')) && (n.includes('arabe') || n.includes('arab') || n.includes('عرب'));
+        };
+
+        const isAmalSoleTeacher = (name) => {
+            if (!name) return false;
+            const n = String(name).trim().toLowerCase();
+            if (isAmalArabeTeacher(n)) return false;
+            return n === 'amal' || n === 'amal sole' || n === 'amal (seul)' || n === 'amal seul';
         };
 
         const isDualSectionTeacher = (username) => {
             if (!username) return false;
-            return isMusicTeacher(username) || isAmalTeacher(username);
+            return isMusicTeacher(username) || isAmalSoleTeacher(username);
         };
 
         function isUserAdminOrSupervisor(user, role) {
@@ -61,12 +68,19 @@
             const u = String(user).trim().toLowerCase();
             const tT = tableTeacher ? String(tableTeacher).trim().toLowerCase() : '';
             
+            // 1. Enseignante Musique (Farah)
             if (isMusicTeacher(u) || (tT && isMusicTeacher(tT))) {
                 return isMusicTeacher(rT) || rT === u || (tT && rT === tT);
             }
 
-            if (isAmalTeacher(u) || (tT && isAmalTeacher(tT))) {
-                return isAmalTeacher(rT) || rT === u || (tT && rT === tT);
+            // 2. Amal (Seule / non arabe)
+            if (isAmalSoleTeacher(u) || (tT && isAmalSoleTeacher(tT))) {
+                return isAmalSoleTeacher(rT) || (tT && isAmalSoleTeacher(tT) && isAmalSoleTeacher(rT));
+            }
+
+            // 3. Amal Arabe
+            if (isAmalArabeTeacher(u) || (tT && isAmalArabeTeacher(tT))) {
+                return isAmalArabeTeacher(rT) || (tT && isAmalArabeTeacher(tT) && isAmalArabeTeacher(rT));
             }
             
             return rT === u || (tT && rT === tT);

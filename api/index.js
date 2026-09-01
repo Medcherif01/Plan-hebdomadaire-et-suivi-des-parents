@@ -257,7 +257,7 @@ const femaleTeachers = [
 
 const primaireTeachers = [
   'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-  'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe'
+  'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal'
 ];
 
 const isMusicTeacher = (name) => {
@@ -266,15 +266,22 @@ const isMusicTeacher = (name) => {
   return n === 'farah' || n.includes('farah') || n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique');
 };
 
-const isAmalTeacher = (name) => {
+const isAmalArabeTeacher = (name) => {
   if (!name) return false;
   const n = String(name).trim().toLowerCase();
-  return n === 'amal' || n === 'amal arabe' || n.startsWith('amal') || n.includes('amal');
+  return (n.includes('amal') || n.startsWith('amal')) && (n.includes('arabe') || n.includes('arab') || n.includes('عرب'));
+};
+
+const isAmalSoleTeacher = (name) => {
+  if (!name) return false;
+  const n = String(name).trim().toLowerCase();
+  if (isAmalArabeTeacher(n)) return false;
+  return n === 'amal' || n === 'amal sole' || n === 'amal (seul)' || n === 'amal seul';
 };
 
 const isDualSectionTeacher = (name) => {
   if (!name) return false;
-  return isMusicTeacher(name) || isAmalTeacher(name);
+  return isMusicTeacher(name) || isAmalSoleTeacher(name);
 };
 
 const isDualMusicTeacher = isDualSectionTeacher;
