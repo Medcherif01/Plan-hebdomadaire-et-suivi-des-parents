@@ -87,7 +87,10 @@
                 return isAmalArabeTeacher(rT);
             }
             
-            return rT === u || (tT && rT === tT);
+            if (rT === u || (tT && rT === tT)) return true;
+            if (u && (rT.includes(u) || u.includes(rT))) return true;
+            if (tT && (rT.includes(tT) || tT.includes(rT))) return true;
+            return false;
         }
 
         function isTeacherMatch(rowTeacher, filterTeacher) {
@@ -114,27 +117,27 @@
 
         const subjectEquivalenceGroups = [
             // 1. Français
-            ['français', 'francais', 'french', 'langue française', 'langue francaise', 'fr'],
+            ['français', 'francais', 'french', 'langue française', 'langue francaise', 'fr', 'لغة فرنسية', 'فرنسي', 'فرنسية', 'الفرنسية', 'اللغة الفرنسية'],
             // 2. Mathématiques
-            ['mathématiques', 'mathematiques', 'maths', 'math', 'mathématique', 'mathematique', 'mathematics', 'الرياضيات', 'رياضيات'],
+            ['mathématiques', 'mathematiques', 'maths', 'math', 'mathématique', 'mathematique', 'mathematics', 'الرياضيات', 'رياضيات', 'حساب'],
             // 3. Anglais
-            ['anglais', 'english', 'langue anglaise', 'eng', 'اللغة الإنجليزية', 'اللغة الانجليزية', 'الانجليزية', 'انجليزي'],
+            ['anglais', 'english', 'langue anglaise', 'eng', 'اللغة الإنجليزية', 'اللغة الانجليزية', 'الانجليزية', 'الانكليزية', 'انجليزي', 'انكليزي'],
             // 4. Arabe
-            ['arabe', 'arabic', 'اللغة العربية', 'عربي', 'لغة عربية', 'قراءة', 'نصوص', 'تعبير', 'املاء', 'قواعد'],
+            ['arabe', 'arabic', 'اللغة العربية', 'عربي', 'لغة عربية', 'قراءة', 'نصوص', 'تعبير', 'املاء', 'قواعد', 'العربية'],
             // 5. Éducation Islamique
-            ['islamique', 'education islamique', 'éducation islamique', 'التربية الإسلامية', 'تربية إسلامية', 'إسلاميات', 'قرآن', 'حديث', 'فقه', 'توحيد', 'تجويد', 'سيرة'],
+            ['islamique', 'education islamique', 'éducation islamique', 'التربية الإسلامية', 'تربية إسلامية', 'إسلاميات', 'اسلاميات', 'قرآن', 'القرآن', 'حديث', 'الحديث', 'فقه', 'الفقه', 'توحيد', 'التوحيد', 'تجويد', 'التجويد', 'سيرة', 'السيرة', 'الدراسات الإسلامية', 'الدراسات الاسلامية', 'دراسات إسلامية', 'دراسات اسلامية', 'التربية الدينية', 'تربية دينية', 'دين', 'الدين'],
             // 6. Histoire-Géo / Social Studies
-            ['histoire-géo', 'histoire-geo', 'histoire - géographie', 'histoire - geographie', 'histoire', 'géographie', 'geographie', 'social studies', 'اجتماعيات', 'الدراسات الاجتماعية', 'تاريخ', 'جغرافيا'],
+            ['histoire-géo', 'histoire-geo', 'histoire - géographie', 'histoire - geographie', 'histoire', 'géographie', 'geographie', 'social studies', 'اجتماعيات', 'الاجتماعيات', 'الدراسات الاجتماعية', 'دراسات اجتماعية', 'تاريخ', 'التاريخ', 'جغرافيا', 'الجغرافيا'],
             // 7. Sciences / Physique / Chimie / SVT
-            ['sciences', 'science', 'physique', 'chimie', 'physique - chimie', 'physique-chimie', 'svt', 'biologie', 'علوم', 'فيزياء', 'كيمياء', 'أحياء'],
+            ['sciences', 'science', 'physique', 'chimie', 'physique - chimie', 'physique-chimie', 'svt', 'biologie', 'علوم', 'العلوم', 'فيزياء', 'الفيزياء', 'كيمياء', 'الكيمياء', 'أحياء', 'الأحياء', 'ايقاظ علمي', 'إيقاظ علمي'],
             // 8. Arts Plastiques
-            ['arts plastiques', 'art', 'arts', 'visual arts', 'فنون', 'تربية فنية', 'رسم'],
+            ['arts plastiques', 'art', 'arts', 'visual arts', 'فنون', 'الفنون', 'تربية فنية', 'التربية الفنية', 'رسم', 'الرسم'],
             // 9. Musique
-            ['musique', 'music', 'موسيقى', 'تربية موسيقية'],
+            ['musique', 'music', 'موسيقى', 'الموسيقى', 'تربية موسيقية', 'التربية الموسيقية'],
             // 10. EPS / Sport
-            ['eps', 'sport', 'education physique', 'éducation physique', 'éducation physique et sportive', 'تربية بدنية', 'رياضة'],
+            ['eps', 'sport', 'education physique', 'éducation physique', 'éducation physique et sportive', 'تربية بدنية', 'التربية البدنية', 'رياضة', 'الرياضة'],
             // 11. Informatique / Design
-            ['design', 'informatique', 'technologie', 'computer science', 'it', 'تكنولوجيا', 'حاسوب']
+            ['design', 'informatique', 'technologie', 'computer science', 'it', 'تكنولوجيا', 'التكنولوجيا', 'حاسوب', 'الحاسوب', 'اعلام آلي', 'إعلام آلي']
         ];
 
         function normalizeSubjectStr(s) {
@@ -1072,6 +1075,8 @@
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
         }
+        window.escapeHtml = escapeHtml;
+        window.escapeHTML = escapeHtml;
         function showProgressBar() { document.getElementById('progress-bar-container').style.display='block'; document.getElementById('progress-bar').style.width='0%'; document.getElementById('progress-bar').textContent='0%'; }
         function updateProgressBar(p) { const clampedP = Math.min(100, Math.max(0, p)); document.getElementById('progress-bar').style.width=clampedP+'%'; document.getElementById('progress-bar').textContent=clampedP+'%'; }
         function hideProgressBar() { setTimeout(() => { document.getElementById('progress-bar-container').style.display='none'; }, 500); }
@@ -2018,7 +2023,7 @@
                     if (header === ensK && isCrossReadOnly) {
                         const secLabel = (rowObj._section === 'filles') ? '👧 Filles' : '👦 Garçons';
                         const badgeClass = (rowObj._section === 'filles') ? 'badge-filles' : 'badge-garcons';
-                        td.innerHTML = `<span class="cross-sec-badge ${badgeClass}">${secLabel}</span> ${escapeHTML(content)}`;
+                        td.innerHTML = `<span class="cross-sec-badge ${badgeClass}">${secLabel}</span> ${escapeHtml(content)}`;
                     } else if (header === jK && content && !isAdmin) {
                         const dt = parseDateFromJourColumn(content);
                         td.textContent = dt ? formatDateForDisplay(dt) : content;
