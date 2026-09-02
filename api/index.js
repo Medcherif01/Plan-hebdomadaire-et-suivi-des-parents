@@ -3522,46 +3522,107 @@ function getAllGeminiApiKeys() {
   addKeyStr(process.env.GEMINI_API_KEYS);
   addKeyStr(process.env.GEMINI_API_KEY);
   addKeyStr(process.env.GEMINI_API_KEY_BACKUP);
+  addKeyStr(process.env.GOOGLE_API_KEY);
+  addKeyStr(process.env.GEMINI_KEY);
   for (let i = 1; i <= 30; i++) {
     addKeyStr(process.env[`GEMINI_API_KEY_${i}`]);
     addKeyStr(process.env[`GEMINI_API_KEY_${i}_BACKUP`]);
+    addKeyStr(process.env[`GOOGLE_API_KEY_${i}`]);
   }
   return Array.from(new Set(keys));
 }
 
 let globalGroqKeyIndex = 0;
 let globalGeminiKeyIndex = 0;
-let cachedGeminiModel = null;
-
-async function getSafeGeminiModel(apiKey) {
-  if (cachedGeminiModel) return cachedGeminiModel;
-  try {
-    const resolved = await resolveGeminiModel(apiKey);
-    if (resolved) {
-      cachedGeminiModel = resolved;
-      return resolved;
-    }
-  } catch (err) {
-    console.warn(`[Gemini Model Discovery] Avertissement: ${err.message}, repli sur gemini-2.5-flash`);
-  }
-  return 'gemini-2.5-flash';
-}
 
 /**
  * Appelle les APIs IA avec rotation circulaire infinie entre toutes les clés configurées
- * (GROQ 1..N puis GEMINI 1..N, boucle continue avec basculement automatique)
+ * (GEMINI 1..N et GROQ 1..N, boucle continue avec basculement automatique et repli multi-modèles)
  */
 async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
   const groqKeys = getAllGroqApiKeys();
   const geminiKeys = getAllGeminiApiKeys();
 
   if (groqKeys.length === 0 && geminiKeys.length === 0) {
-    throw new Error("Aucune clé API IA (GROQ ou GEMINI) n'est configurée sur le serveur. Veuillez ajouter vos clés dans les variables d'environnement.");
+    throw new Error("Aucune clé API IA (GEMINI ou GROQ) n'est configurée sur le serveur. Veuillez ajouter vos clés dans les variables d'environnement.");
   }
 
   let lastError = null;
 
-  // 1. Tenter les clés GROQ disponibles en boucle circulaire
+  // 1. Tenter les clés GEMINI configurées en boucle circulaire
+  if (geminiKeys.length > 0) {
+    const totalGemini = geminiKeys.length;
+    for (let attempt = 0; attempt < totalGemini; attempt++) {
+      const gIdx = (globalGeminiKeyIndex + attempt) % totalGemini;
+      const currentGeminiKey = geminiKeys[gIdx];
+      const keyDisplay = `GEMINI #${gIdx + 1}/${totalGemini} (...${currentGeminiKey.slice(-4)})`;
+
+      console.log(`🤖 [${contextLog}] Tentative avec ${keyDisplay}`);
+
+      // Essayer les modèles standard les plus fiables sur Generative Language API
+      const geminiConfigs = [
+        { model: 'gemini-2.0-flash', apiVersion: 'v1beta' },
+        { model: 'gemini-1.5-flash', apiVersion: 'v1beta' },
+        { model: 'gemini-1.5-flash', apiVersion: 'v1' },
+        { model: 'gemini-1.5-pro', apiVersion: 'v1beta' },
+        { model: 'gemini-2.5-flash', apiVersion: 'v1beta' }
+      ];
+
+      let keyHasQuotaError = false;
+
+      for (const cfg of geminiConfigs) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/${cfg.apiVersion}/models/${cfg.model}:generateContent?key=${currentGeminiKey}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }]
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            let content = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (!content && Array.isArray(data?.candidates?.[0]?.content?.parts)) {
+              content = data.candidates[0].content.parts.map(p => p.text || '').join('').trim();
+            }
+            if (content) {
+              globalGeminiKeyIndex = (gIdx + 1) % totalGemini;
+              console.log(`✅ [${contextLog}] Succès avec ${keyDisplay} (modèle: ${cfg.model})`);
+              return { content, provider: `GEMINI (clé ${gIdx + 1}/${totalGemini})`, model: cfg.model };
+            }
+          }
+
+          const status = response.status;
+          const errBody = await response.json().catch(() => ({}));
+          console.warn(`⚠️ [${contextLog}] ${keyDisplay} [${cfg.model}] - HTTP ${status}: ${errBody.error?.message || response.statusText}`);
+
+          if (status === 429) {
+            lastError = new Error(`Quota GEMINI clé #${gIdx + 1} épuisé (429)`);
+            keyHasQuotaError = true;
+            break; // Passer directement à la clé suivante
+          } else if (status === 404) {
+            // Modèle non trouvé pour cette version, tester le modèle suivant sur cette clé
+            continue;
+          } else {
+            lastError = new Error(errBody.error?.message || `Erreur GEMINI ${status}`);
+          }
+        } catch (geminiErr) {
+          console.error(`❌ [${contextLog}] Erreur réseau ${keyDisplay}:`, geminiErr.message);
+          lastError = geminiErr;
+        }
+      }
+
+      if (!keyHasQuotaError && geminiConfigs.length > 0) {
+        // Passer à la clé suivante si tous les modèles de cette clé ont échoué
+        continue;
+      }
+    }
+    console.warn(`⚠️ [${contextLog}] Toutes les clés GEMINI (${totalGemini}) ont été testées. Test des clés GROQ de secours si disponibles...`);
+  }
+
+  // 2. Tenter les clés GROQ disponibles en boucle circulaire
   if (groqKeys.length > 0) {
     const totalGroq = groqKeys.length;
     for (let attempt = 0; attempt < totalGroq; attempt++) {
@@ -3593,7 +3654,6 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
             const data = await response.json();
             const content = data?.choices?.[0]?.message?.content?.trim();
             if (content) {
-              // Avancer l'index global pour la prochaine requête (rotation circulaire équilibrée)
               globalGroqKeyIndex = (keyIdx + 1) % totalGroq;
               console.log(`✅ [${contextLog}] Succès avec ${keyDisplay} (modèle: ${model})`);
               return { content, provider: `GROQ (clé ${keyIdx + 1}/${totalGroq})`, model };
@@ -3606,73 +3666,21 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
 
           if (status === 429) {
             lastError = new Error(`Quota GROQ clé #${keyIdx + 1} épuisé (429)`);
-            // Continuer vers le modèle léger ou la clé suivante
             continue;
           } else {
             lastError = new Error(errBody.error?.message || `Erreur GROQ ${status}`);
-            break; // Passer à la clé suivante
+            break;
           }
         } catch (fetchErr) {
           console.error(`❌ [${contextLog}] Erreur réseau ${keyDisplay}:`, fetchErr.message);
           lastError = fetchErr;
-          break; // Passer à la clé suivante
+          break;
         }
-      }
-    }
-    console.warn(`⚠️ [${contextLog}] Toutes les clés GROQ (${totalGroq}) ont été testées. Basculement vers le pool GEMINI...`);
-  }
-
-  // 2. Tenter les clés GEMINI en boucle circulaire
-  if (geminiKeys.length > 0) {
-    const totalGemini = geminiKeys.length;
-    for (let attempt = 0; attempt < totalGemini; attempt++) {
-      const gIdx = (globalGeminiKeyIndex + attempt) % totalGemini;
-      const currentGeminiKey = geminiKeys[gIdx];
-      const keyDisplay = `GEMINI #${gIdx + 1}/${totalGemini} (...${currentGeminiKey.slice(-4)})`;
-
-      console.log(`🤖 [${contextLog}] Tentative avec ${keyDisplay}`);
-
-      try {
-        const modelName = await getSafeGeminiModel(currentGeminiKey);
-        const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${currentGeminiKey}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }]
-          })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          let content = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (!content && Array.isArray(data?.candidates?.[0]?.content?.parts)) {
-            content = data.candidates[0].content.parts.map(p => p.text || '').join('').trim();
-          }
-          if (content) {
-            globalGeminiKeyIndex = (gIdx + 1) % totalGemini;
-            console.log(`✅ [${contextLog}] Succès avec ${keyDisplay} (modèle: ${modelName})`);
-            return { content, provider: `GEMINI (clé ${gIdx + 1}/${totalGemini})`, model: modelName };
-          }
-        }
-
-        const status = response.status;
-        const errBody = await response.json().catch(() => ({}));
-        console.warn(`⚠️ [${contextLog}] ${keyDisplay} - HTTP ${status}: ${errBody.error?.message || response.statusText}`);
-
-        if (status === 429) {
-          lastError = new Error(`Quota GEMINI clé #${gIdx + 1} épuisé (429)`);
-        } else {
-          lastError = new Error(errBody.error?.message || `Erreur GEMINI ${status}`);
-        }
-      } catch (geminiErr) {
-        console.error(`❌ [${contextLog}] Erreur réseau ${keyDisplay}:`, geminiErr.message);
-        lastError = geminiErr;
       }
     }
   }
 
-  throw new Error(`⚠️ QUOTA API ÉPUISÉ : Toutes les clés API (${groqKeys.length} GROQ + ${geminiKeys.length} GEMINI) ont atteint leur limite quotidienne. Veuillez ajouter des clés supplémentaires ou réessayer demain. Détails: ${lastError?.message || ''}`);
+  throw new Error(`⚠️ QUOTA API ÉPUISÉ : Toutes les clés API (${geminiKeys.length} GEMINI + ${groqKeys.length} GROQ) ont atteint leur limite. Veuillez vérifier vos clés ou réessayer. Détails: ${lastError?.message || ''}`);
 }
 
 // --------------------- Génération IA (REST, v1, modèle dynamique) ------
@@ -3743,6 +3751,8 @@ app.post('/api/generate-ai-lesson-plan', async (req, res) => {
     if (englishTeachers.includes(enseignant)) {
       prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.
 
+CRITICAL INSTRUCTION: You MUST strictly generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}]. DO NOT invent, substitute, or drift to any other topic or chapter.
+
 As an expert pedagogical assistant, create a detailed 45-minute lesson plan in English. Structure the lesson into timed phases and integrate the teacher's existing notes:
 - Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}
 - Planned Classwork: ${travaux}
@@ -3754,6 +3764,8 @@ ${jsonStructure}`;
     } else if (arabicTeachers.includes(enseignant)) {
       prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.
 
+تعليمات صارمة وأساسية: يجب عليك حصراً بناء خطة الدرس للموضوع المطلوب تحديداً: [${lecon}] في مادة [${matiere}] وفصل [${classe}]. يُمنع تماماً تغيير الموضوع أو توليد درس مختلف أو عام.
+
 بصفتك مساعدًا تربويًا خبيرًا، أنشئ خطة درس مفصلة باللغة العربية مدتها 45 دقيقة. قم ببناء الدرس في مراحل محددة زمنياً وادمج ملاحظات المعلم:
 - المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}
 - أعمال الصف المخطط لها: ${travaux}
@@ -3764,6 +3776,8 @@ ${jsonStructure}`;
 ${jsonStructure}`;
     } else {
       prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.
+
+INSTRUCTION CRITIQUE : Vous DEVEZ impérativement et fidèlement concevoir la fiche de préparation pour le Thème de leçon spécifié : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ». Ne changez JAMAIS de sujet et n'extrapolez pas vers une autre leçon.
 
 En tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :
 - Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}
@@ -4006,11 +4020,11 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
 
         let prompt;
         if (englishTeachers.includes(enseignant)) {
-          prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.\n\nAs an expert pedagogical assistant, create a detailed 45-minute lesson plan in English. Structure the lesson into timed phases and integrate the teacher's existing notes:\n- Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}\n- Planned Classwork: ${travaux}\n- Mentioned Support/Materials: ${support}\n- Planned Homework: ${devoirsPrevus}\n\nUse the following JSON structure with professional, concrete values in English (keys exactly as specified):\n${jsonStructure}`;
+          prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.\n\nCRITICAL INSTRUCTION: You MUST strictly generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}]. DO NOT invent, substitute, or drift to any other topic.\n\nAs an expert pedagogical assistant, create a detailed 45-minute lesson plan in English. Structure the lesson into timed phases and integrate the teacher's existing notes:\n- Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}\n- Planned Classwork: ${travaux}\n- Mentioned Support/Materials: ${support}\n- Planned Homework: ${devoirsPrevus}\n\nUse the following JSON structure with professional, concrete values in English (keys exactly as specified):\n${jsonStructure}`;
         } else if (arabicTeachers.includes(enseignant)) {
-          prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.\n\nبصفتك مساعدًا تربويًا خبيرًا، أنشئ خطة درس مفصلة باللغة العربية مدتها 45 دقيقة. قم ببناء الدرس في مراحل محددة زمنياً وادمج ملاحظات المعلم:\n- المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}\n- أعمال الصف المخطط لها: ${travaux}\n- الدعم/المواد: ${support}\n- الواجبات المخطط لها: ${devoirsPrevus}\n\nاستخدم البنية التالية بالقيم المهنية والملموسة (المفاتيح كما هي بالإنجليزية):\n${jsonStructure}`;
+          prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.\n\nتعليمات صارمة وأساسية: يجب عليك حصراً بناء خطة الدرس للموضوع المطلوب تحديداً: [${lecon}] في مادة [${matiere}] وفصل [${classe}]. يُمنع تماماً تغيير الموضوع أو توليد درس مختلف أو عام.\n\nبصفتك مساعدًا تربويًا خبيرًا، أنشئ خطة درس مفصلة باللغة العربية مدتها 45 دقيقة. قم ببناء الدرس في مراحل محددة زمنياً وادمج ملاحظات المعلم:\n- المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}\n- أعمال الصف المخطط لها: ${travaux}\n- الدعم/المواد: ${support}\n- الواجبات المخطط لها: ${devoirsPrevus}\n\nاستخدم البنية التالية بالقيم المهنية والملموسة (المفاتيح كما هي بالإنجليزية):\n${jsonStructure}`;
         } else {
-          prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.\n\nEn tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :\n- Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}\n- Travaux de classe : ${travaux}\n- Support/Matériel : ${support}\n- Devoirs prévus : ${devoirsPrevus}\n\nUtilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :\n${jsonStructure}`;
+          prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.\n\nINSTRUCTION CRITIQUE : Vous DEVEZ impérativement et fidèlement concevoir la fiche de préparation pour le Thème de leçon spécifié : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ». Ne changez JAMAIS de sujet et n'extrapolez pas vers une autre leçon.\n\nEn tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :\n- Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}\n- Travaux de classe : ${travaux}\n- Support/Matériel : ${support}\n- Devoirs prévus : ${devoirsPrevus}\n\nUtilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :\n${jsonStructure}`;
         }
 
         // Appel IA avec rotation séquentielle / circulaire

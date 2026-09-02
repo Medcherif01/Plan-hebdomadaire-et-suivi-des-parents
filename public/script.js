@@ -129,9 +129,9 @@
             // 6. Histoire-Géo / Social Studies
             ['histoire-géo', 'histoire-geo', 'histoire - géographie', 'histoire - geographie', 'histoire', 'géographie', 'geographie', 'social studies', 'اجتماعيات', 'الاجتماعيات', 'الدراسات الاجتماعية', 'دراسات اجتماعية', 'تاريخ', 'التاريخ', 'جغرافيا', 'الجغرافيا'],
             // 7. Physique / Chimie (Strictement distinct de SVT)
-            ['physique', 'chimie', 'physique - chimie', 'physique-chimie', 'physics', 'chemistry', 'فيزياء', 'الفيزياء', 'كيمياء', 'الكيمياء', 'الفيزياء والكيمياء', 'فيزياء وكيمياء', 'علوم فيزيائية', 'العلوم الفيزيائية', 'sciences physiques'],
-            // 8. SVT / Biologie / Sciences Naturelles
-            ['svt', 'sciences de la vie et de la terre', 'biologie', 'sciences', 'science', 'sciences naturelles', 'علوم', 'العلوم', 'علوم طبيعية', 'العلوم الطبيعية', 'علوم الحياة والأرض', 'علوم الحياة والارض', 'علوم الطبيعة والحياة', 'أحياء', 'الأحياء', 'ايقاظ علمي', 'إيقاظ علمي'],
+            ['physique', 'chimie', 'physique - chimie', 'physique-chimie', 'physics', 'chemistry', 'فيزياء', 'الفيزياء', 'كيمياء', 'الكيمياء', 'الفيزياء والكيمياء', 'فيزياء وكيمياء', 'علوم فيزيائية', 'العلوم الفيزيائية', 'sciences physiques', 'sciences physique', 'spc'],
+            // 8. SVT / Biologie / Sciences Naturelles (Strictement distinct de Physique-Chimie)
+            ['svt', 'sciences de la vie et de la terre', 'biologie', 'biology', 'sciences naturelles', 'sciences de la vie', 'علوم طبيعية', 'العلوم الطبيعية', 'علوم الحياة والأرض', 'علوم الحياة والارض', 'علوم الطبيعة والحياة', 'أحياء', 'الأحياء', 'احياء', 'ايقاظ علمي', 'إيقاظ علمي'],
             // 9. Arts Plastiques
             ['arts plastiques', 'art', 'arts', 'visual arts', 'فنون', 'الفنون', 'تربية فنية', 'التربية الفنية', 'رسم', 'الرسم'],
             // 10. Musique
@@ -158,29 +158,70 @@
                 .replace(/[\s\-_()[\]{}:/.,+&]/g, '');
         }
 
+        function isPhysicalScienceSubject(s) {
+            if (!s) return false;
+            const norm = normalizeSubjectStr(s);
+            if (!norm) return false;
+            const physKeywords = ['physique', 'chimie', 'physics', 'chemistry', 'فيزياء', 'فيزيائ', 'كيمياء', 'كيميائ', 'spc'];
+            return physKeywords.some(k => norm.includes(normalizeSubjectStr(k)));
+        }
+
+        function isLifeScienceSubject(s) {
+            if (!s) return false;
+            if (isPhysicalScienceSubject(s)) return false; // Strictement exclusif
+            const norm = normalizeSubjectStr(s);
+            if (!norm) return false;
+            const lifeKeywords = ['svt', 'biologie', 'biology', 'احياء', 'حياه', 'طبيعيه', 'طبيعه', 'ايقاظ', 'life'];
+            return lifeKeywords.some(k => norm.includes(normalizeSubjectStr(k))) || (norm === 'sciences' || norm === 'science' || norm === 'علوم');
+        }
+
+        function getSubjectCategoryCode(sub) {
+            if (!sub) return '';
+            const norm = normalizeSubjectStr(sub);
+            if (isPhysicalScienceSubject(sub)) return 'physique_chimie';
+            if (isLifeScienceSubject(sub)) return 'svt_biologie';
+            for (let i = 0; i < subjectEquivalenceGroups.length; i++) {
+                const group = subjectEquivalenceGroups[i];
+                if (group.some(item => {
+                    const ni = normalizeSubjectStr(item);
+                    return norm === ni || (norm.length > 3 && norm.includes(ni)) || (ni.length > 3 && ni.includes(norm));
+                })) {
+                    return `group_${i}`;
+                }
+            }
+            return norm;
+        }
+
         function isEquivalentSubject(sub1, sub2) {
             if (!sub1 || !sub2) return false;
             const a = String(sub1).trim();
             const b = String(sub2).trim();
             if (a.toLowerCase() === b.toLowerCase()) return true;
 
+            // Règle d'or: Séparer formellement Physique/Chimie de Biologie/SVT
+            const isPhys1 = isPhysicalScienceSubject(a);
+            const isPhys2 = isPhysicalScienceSubject(b);
+            if (isPhys1 !== isPhys2) {
+                // L'un est Physique/Chimie et l'autre non -> JAMAIS équivalents
+                return false;
+            }
+            if (isPhys1 && isPhys2) return true; // Tous deux Physique/Chimie
+
+            const isBio1 = isLifeScienceSubject(a);
+            const isBio2 = isLifeScienceSubject(b);
+            if (isBio1 !== isBio2) {
+                // L'un est SVT/Biologie et l'autre non -> JAMAIS équivalents
+                return false;
+            }
+            if (isBio1 && isBio2) return true; // Tous deux SVT/Biologie
+
+            const cat1 = getSubjectCategoryCode(a);
+            const cat2 = getSubjectCategoryCode(b);
+            if (cat1 && cat2 && cat1 === cat2) return true;
+
             const n1 = normalizeSubjectStr(a);
             const n2 = normalizeSubjectStr(b);
-            if (!n1 || !n2) return false;
             if (n1 === n2) return true;
-            if (n1.length > 2 && n2.length > 2 && (n1.includes(n2) || n2.includes(n1))) return true;
-
-            for (const group of subjectEquivalenceGroups) {
-                const in1 = group.some(item => {
-                    const ni = normalizeSubjectStr(item);
-                    return n1 === ni || (n1.length > 3 && n1.includes(ni)) || (ni.length > 3 && ni.includes(n1));
-                });
-                const in2 = group.some(item => {
-                    const ni = normalizeSubjectStr(item);
-                    return n2 === ni || (n2.length > 3 && n2.includes(ni)) || (ni.length > 3 && ni.includes(n2));
-                });
-                if (in1 && in2) return true;
-            }
             return false;
         }
 
@@ -565,7 +606,38 @@
             const ar = classTranslations[cls];
             return ar ? `${ar} (${cls})` : cls;
         }
-        function compareClasses(a, b) { const indexA = classOrder.indexOf(a); const indexB = classOrder.indexOf(b); if (indexA !== -1 && indexB !== -1) return indexA - indexB; if (indexA !== -1) return -1; if (indexB !== -1) return 1; return String(a).localeCompare(String(b)); }
+        function getClassCanonicalIndex(cls) {
+            if (!cls) return 999;
+            const norm = normalizeClassString(cls);
+            if (!norm) return 999;
+            const orderCodes = ["ps", "ms", "gs", "pp1", "pp2", "pp3", "pp4", "pp5", "pei1", "pei2", "pei3", "pei4", "pei5", "dp1", "dp2"];
+            const directIdx = orderCodes.indexOf(norm);
+            if (directIdx !== -1) return directIdx;
+            for (let i = 0; i < canonicalClassEquivalents.length; i++) {
+                const grp = canonicalClassEquivalents[i];
+                if (norm === grp.code || grp.names.some(n => {
+                    const nNorm = normalizeClassString(n);
+                    return norm === nNorm || (nNorm.length > 1 && (norm.includes(nNorm) || nNorm.includes(norm)));
+                })) {
+                    const idx = orderCodes.indexOf(grp.code);
+                    return idx !== -1 ? idx : i;
+                }
+            }
+            return 999;
+        }
+
+        function compareClasses(a, b) {
+            const idxA = getClassCanonicalIndex(a);
+            const idxB = getClassCanonicalIndex(b);
+            if (idxA !== 999 && idxB !== 999) {
+                if (idxA !== idxB) return idxA - idxB;
+            } else if (idxA !== 999) {
+                return -1;
+            } else if (idxB !== 999) {
+                return 1;
+            }
+            return String(a || '').localeCompare(String(b || ''), 'fr', { sensitivity: 'base' });
+        }
 
         const canonicalClassEquivalents = [
             { code: 'pei1', names: ['pei1', 'pei 1', 'السادس', 'سادس', '6eme', '6', 'classe6', 'classe 6'] },
@@ -1974,7 +2046,7 @@
                     }
                 }
 
-                // 2. Tri secondaire standard : Classe -> Jour -> Période
+                // 2. Tri hiérarchique standard : Classe -> Jour -> Période -> Matière -> Enseignant
                 const classA = (clsK && a.hasOwnProperty(clsK)) ? a[clsK] : null; 
                 const classB = (clsK && b.hasOwnProperty(clsK)) ? b[clsK] : null; 
                 const classComp = compareClasses(classA, classB); 
@@ -1991,13 +2063,23 @@
                 const pB = (perK && b.hasOwnProperty(perK)) ? b[perK] : null; 
                 const piA = parseInt(pA, 10); 
                 const piB = parseInt(pB, 10); 
-                if (!isNaN(piA) && !isNaN(piB)) { 
+                if (!isNaN(piA) && !isNaN(piB) && piA !== piB) { 
                     return piA - piB; 
-                } else { 
+                } else if (isNaN(piA) || isNaN(piB)) { 
                     const sA = pA == null ? '' : String(pA); 
                     const sB = pB == null ? '' : String(pB); 
-                    return sA.localeCompare(sB); 
-                } 
+                    const pComp = sA.localeCompare(sB);
+                    if (pComp !== 0) return pComp;
+                }
+
+                const matA = (matK && a.hasOwnProperty(matK)) ? String(a[matK] || '') : '';
+                const matB = (matK && b.hasOwnProperty(matK)) ? String(b[matK] || '') : '';
+                const matComp = matA.localeCompare(matB, 'fr', { sensitivity: 'base' });
+                if (matComp !== 0) return matComp;
+
+                const ensA = (ensK && a.hasOwnProperty(ensK)) ? String(a[ensK] || '') : '';
+                const ensB = (ensK && b.hasOwnProperty(ensK)) ? String(b[ensK] || '') : '';
+                return ensA.localeCompare(ensB, 'fr', { sensitivity: 'base' });
             }); 
 
             displayPlanTable(filteredAndSortedData); 
@@ -2198,6 +2280,19 @@
             if (!currentWeek) {
                 displayAlert("please_select_week", true);
                 return;
+            }
+
+            // Synchroniser les valeurs actuelles affichées dans la ligne du tableau
+            if (tableRowElement) {
+                const cells = tableRowElement.querySelectorAll('td');
+                const curHeaders = headers || [];
+                cells.forEach((cell, idx) => {
+                    const hName = curHeaders[idx];
+                    if (hName && cell && cell.classList.contains('editable')) {
+                        const cellText = (cell.textContent || '').trim();
+                        rowData[hName] = cellText;
+                    }
+                });
             }
             
             console.log("Generating AI Lesson Plan for:", rowData);
