@@ -123,32 +123,50 @@
             // 3. Anglais
             ['anglais', 'english', 'langue anglaise', 'eng', 'اللغة الإنجليزية', 'اللغة الانجليزية', 'الانجليزية', 'الانكليزية', 'انجليزي', 'انكليزي'],
             // 4. Arabe
-            ['arabe', 'arabic', 'اللغة العربية', 'عربي', 'لغة عربية', 'قراءة', 'نصوص', 'تعبير', 'املاء', 'قواعد', 'العربية'],
+            ['arabe', 'arabic', 'اللغة العربية', 'عربي', 'عربية', 'لغة عربية', 'قراءة', 'نصوص', 'تعبير', 'املاء', 'قواعد', 'العربية'],
             // 5. Éducation Islamique
             ['islamique', 'education islamique', 'éducation islamique', 'التربية الإسلامية', 'تربية إسلامية', 'إسلاميات', 'اسلاميات', 'قرآن', 'القرآن', 'حديث', 'الحديث', 'فقه', 'الفقه', 'توحيد', 'التوحيد', 'تجويد', 'التجويد', 'سيرة', 'السيرة', 'الدراسات الإسلامية', 'الدراسات الاسلامية', 'دراسات إسلامية', 'دراسات اسلامية', 'التربية الدينية', 'تربية دينية', 'دين', 'الدين'],
             // 6. Histoire-Géo / Social Studies
             ['histoire-géo', 'histoire-geo', 'histoire - géographie', 'histoire - geographie', 'histoire', 'géographie', 'geographie', 'social studies', 'اجتماعيات', 'الاجتماعيات', 'الدراسات الاجتماعية', 'دراسات اجتماعية', 'تاريخ', 'التاريخ', 'جغرافيا', 'الجغرافيا'],
-            // 7. Sciences / Physique / Chimie / SVT
-            ['sciences', 'science', 'physique', 'chimie', 'physique - chimie', 'physique-chimie', 'svt', 'biologie', 'علوم', 'العلوم', 'فيزياء', 'الفيزياء', 'كيمياء', 'الكيمياء', 'أحياء', 'الأحياء', 'ايقاظ علمي', 'إيقاظ علمي'],
-            // 8. Arts Plastiques
+            // 7. Physique / Chimie (Strictement distinct de SVT)
+            ['physique', 'chimie', 'physique - chimie', 'physique-chimie', 'physics', 'chemistry', 'فيزياء', 'الفيزياء', 'كيمياء', 'الكيمياء', 'الفيزياء والكيمياء', 'فيزياء وكيمياء', 'علوم فيزيائية', 'العلوم الفيزيائية', 'sciences physiques'],
+            // 8. SVT / Biologie / Sciences Naturelles
+            ['svt', 'sciences de la vie et de la terre', 'biologie', 'sciences', 'science', 'sciences naturelles', 'علوم', 'العلوم', 'علوم طبيعية', 'العلوم الطبيعية', 'علوم الحياة والأرض', 'علوم الحياة والارض', 'علوم الطبيعة والحياة', 'أحياء', 'الأحياء', 'ايقاظ علمي', 'إيقاظ علمي'],
+            // 9. Arts Plastiques
             ['arts plastiques', 'art', 'arts', 'visual arts', 'فنون', 'الفنون', 'تربية فنية', 'التربية الفنية', 'رسم', 'الرسم'],
-            // 9. Musique
+            // 10. Musique
             ['musique', 'music', 'موسيقى', 'الموسيقى', 'تربية موسيقية', 'التربية الموسيقية'],
-            // 10. EPS / Sport
+            // 11. EPS / Sport
             ['eps', 'sport', 'education physique', 'éducation physique', 'éducation physique et sportive', 'تربية بدنية', 'التربية البدنية', 'رياضة', 'الرياضة'],
-            // 11. Informatique / Design
-            ['design', 'informatique', 'technologie', 'computer science', 'it', 'تكنولوجيا', 'التكنولوجيا', 'حاسوب', 'الحاسوب', 'اعلام آلي', 'إعلام آلي']
+            // 12. Informatique / Design
+            ['design', 'informatique', 'technologie', 'computer science', 'it', 'تكنولوجيا', 'التكنولوجيا', 'حاسوب', 'الحاسوب', 'اعلام آلي', 'إعلام آلي'],
+            // 13. Philosophie
+            ['philosophie', 'philo', 'philosophy', 'فلسفة', 'الفلسفة']
         ];
 
         function normalizeSubjectStr(s) {
             if (!s) return '';
-            return String(s).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return String(s)
+                .trim()
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[\u064B-\u065F\u0670]/g, '')
+                .replace(/[أإآ]/g, 'ا')
+                .replace(/ة/g, 'ه')
+                .replace(/ى/g, 'ي')
+                .replace(/[\s\-_()[\]{}:/.,+&]/g, '');
         }
 
         function isEquivalentSubject(sub1, sub2) {
             if (!sub1 || !sub2) return false;
-            const n1 = normalizeSubjectStr(sub1);
-            const n2 = normalizeSubjectStr(sub2);
+            const a = String(sub1).trim();
+            const b = String(sub2).trim();
+            if (a.toLowerCase() === b.toLowerCase()) return true;
+
+            const n1 = normalizeSubjectStr(a);
+            const n2 = normalizeSubjectStr(b);
+            if (!n1 || !n2) return false;
             if (n1 === n2) return true;
             if (n1.length > 2 && n2.length > 2 && (n1.includes(n2) || n2.includes(n1))) return true;
 
@@ -164,6 +182,45 @@
                 if (in1 && in2) return true;
             }
             return false;
+        }
+
+        // Récupère les couples (Matière, Classe) enseignés par l'enseignant connecté
+        function getTeacherTeachingAssignments(allData, user, teacherTable) {
+            const ensK = findHKey('Enseignant');
+            const matK = findHKey('Matière');
+            const clsK = findHKey('Classe');
+            const assignments = [];
+            if (!allData || !ensK || !matK || !clsK) return assignments;
+            
+            allData.forEach(row => {
+                if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], user, teacherTable)) {
+                    const s = row[matK] ? String(row[matK]).trim() : '';
+                    const c = row[clsK] ? String(row[clsK]).trim() : '';
+                    if (s && c) {
+                        const exists = assignments.some(a => isEquivalentSubject(a.subject, s) && isClassMatch(a.classe, c));
+                        if (!exists) {
+                            assignments.push({ subject: s, classe: c });
+                        }
+                    }
+                }
+            });
+            return assignments;
+        }
+
+        // Vérifie si une ligne de l'autre section correspond STRICTEMENT à l'un des couples (Matière, Classe) enseignés ensemble par l'enseignant
+        function isCrossSectionRowMatchingTeacherAssignments(row, assignments) {
+            if (!row || !assignments || assignments.length === 0) return true;
+            const matK = findHKey('Matière');
+            const clsK = findHKey('Classe');
+            const rowMat = matK && row[matK] ? String(row[matK]).trim() : '';
+            const rowCls = clsK && row[clsK] ? String(row[clsK]).trim() : '';
+            if (!rowMat || !rowCls) return false;
+
+            return assignments.some(assign => {
+                const matchSubject = isEquivalentSubject(assign.subject, rowMat);
+                const matchClass = isClassMatch(assign.classe, rowCls);
+                return matchSubject && matchClass;
+            });
         }
 
         async function handleCrossSectionToggle(isChecked) {
@@ -1696,28 +1753,19 @@
             const matK = findHKey('Matière'); 
             const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
 
-            // Déterminer les matières enseignées par l'utilisateur connecté
-            const mySubjects = new Set();
-            if (isTeacherOnly && ensK && matK) {
-                allData.forEach(row => {
-                    if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], loggedInUser, loggedInTeacherTable)) {
-                        const s = row[matK];
-                        if (s && String(s).trim()) mySubjects.add(String(s).trim());
-                    }
-                });
-            }
+            // Déterminer les assignations (Matière + Classe) de l'enseignant connecté
+            const myAssignments = isTeacherOnly ? getTeacherTeachingAssignments(allData, loggedInUser, loggedInTeacherTable) : [];
 
             let filterScopeData = allData;
             if (isTeacherOnly && ensK) { 
                 filterScopeData = allData.filter(i => { 
                     if (!i) return false;
                     const iE = i[ensK] ? String(i[ensK]) : ''; 
-                    const iM = matK && i[matK] ? String(i[matK]).trim() : '';
                     if (!i.isReadOnlyCrossSection) {
                         return isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable);
                     } else if (showCrossSectionView) {
-                        if (mySubjects.size === 0) return true;
-                        return Array.from(mySubjects).some(mySub => isEquivalentSubject(mySub, iM));
+                        if (myAssignments.length === 0) return true;
+                        return isCrossSectionRowMatchingTeacherAssignments(i, myAssignments);
                     }
                     return false;
                 }); 
@@ -1780,21 +1828,26 @@
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
                 if (isTeacherOnly) { 
-                    const matchingOption = Array.from(filterEnsSelect.options).find(o => 
-                        (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
-                    );
-                    if (matchingOption) {
-                        filterEnsSelect.value = matchingOption.value;
-                    } else if (filterEnsSelect.options.length > 1) {
-                        filterEnsSelect.selectedIndex = 1;
+                    if (showCrossSectionView) {
+                        // Lorsque la consultation inter-section est activée, l'enseignant peut choisir "Tous" (pour voir son travail et celui de son homologue) ou filtrer
+                        filterEnsSelect.disabled = false;
                     } else {
-                        const opt = document.createElement('option');
-                        opt.value = loggedInTeacherTable || loggedInUser;
-                        opt.textContent = loggedInTeacherTable || loggedInUser;
-                        filterEnsSelect.appendChild(opt);
-                        filterEnsSelect.value = opt.value;
+                        const matchingOption = Array.from(filterEnsSelect.options).find(o => 
+                            (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
+                        );
+                        if (matchingOption) {
+                            filterEnsSelect.value = matchingOption.value;
+                        } else if (filterEnsSelect.options.length > 1) {
+                            filterEnsSelect.selectedIndex = 1;
+                        } else {
+                            const opt = document.createElement('option');
+                            opt.value = loggedInTeacherTable || loggedInUser;
+                            opt.textContent = loggedInTeacherTable || loggedInUser;
+                            filterEnsSelect.appendChild(opt);
+                            filterEnsSelect.value = opt.value;
+                        }
+                        filterEnsSelect.disabled = true; 
                     }
-                    filterEnsSelect.disabled = true; 
                 } else { 
                     filterEnsSelect.disabled = false; 
                 } 
@@ -1805,7 +1858,7 @@
             const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
-                if (isTeacherOnly) { 
+                if (isTeacherOnly && !showCrossSectionView) { 
                     const matchingOption = Array.from(filterEnsSelect.options).find(o => 
                         (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
                     );
@@ -1833,16 +1886,8 @@
             const perK = findHKey('Période'); 
             const jK = findHKey('Jour'); 
 
-            // Identifier les matières de l'enseignant connecté
-            const mySubjects = new Set();
-            if (isTeacherOnly && ensK && matK) {
-                planData.forEach(row => {
-                    if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], loggedInUser, loggedInTeacherTable)) {
-                        const s = row[matK];
-                        if (s && String(s).trim()) mySubjects.add(String(s).trim());
-                    }
-                });
-            }
+            // Identifier les assignations (Matière + Classe) de l'enseignant connecté
+            const myAssignments = isTeacherOnly ? getTeacherTeachingAssignments(planData, loggedInUser, loggedInTeacherTable) : [];
             
             filteredAndSortedData = planData.filter(i => { 
                 if (!i) return false; 
@@ -1860,12 +1905,12 @@
                             return false;
                         }
                     } else {
-                        // Autre section (cross-section): afficher uniquement les séances de la MÊME matière
+                        // Autre section (cross-section): afficher UNIQUEMENT les séances correspondant
+                        // STRICTEMENT à la matière ET à la classe enseignées ensemble par l'enseignant
                         if (!showCrossSectionView) return false;
-                        const subjectMatch = (mySubjects.size === 0) 
-                            || Array.from(mySubjects).some(mySub => isEquivalentSubject(mySub, iM))
-                            || (matF && isEquivalentSubject(matF, iM));
-                        if (!subjectMatch) return false;
+                        if (myAssignments.length > 0 && !isCrossSectionRowMatchingTeacherAssignments(i, myAssignments)) {
+                            return false;
+                        }
                     }
                 } else {
                     // Si mode Admin / Superviseur
@@ -1875,12 +1920,22 @@
                 }
                 
                 // Filtre Enseignant :
-                // Pour une ligne cross-section d'un enseignant connecté, ne pas bloquer par le filtre ensF de l'enseignant
                 let pE = true;
                 if (!i.isReadOnlyCrossSection) {
+                    // Pour ses propres cours
                     pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF);
                 } else {
-                    pE = !ensF || isTeacherOnly || (iE === ensF) || isTeacherMatch(iE, ensF);
+                    // Pour les cours de l'autre section
+                    if (!ensF) {
+                        // "Tous" sélectionné -> afficher
+                        pE = true;
+                    } else if (isRowForLoggedInTeacher(ensF, loggedInUser, loggedInTeacherTable)) {
+                        // L'enseignant a sélectionné son propre nom -> ne pas afficher les lignes du collègue
+                        pE = false;
+                    } else {
+                        // Un enseignant spécifique a été choisi dans le filtre
+                        pE = (iE === ensF) || isTeacherMatch(iE, ensF);
+                    }
                 }
 
                 const pC = !clsF || (iC === clsF) || isClassMatch(iC, clsF); 
