@@ -112,6 +112,57 @@
             sortAndDisplay();
         }
 
+        const subjectEquivalenceGroups = [
+            // 1. Français
+            ['français', 'francais', 'french', 'langue française', 'langue francaise', 'fr'],
+            // 2. Mathématiques
+            ['mathématiques', 'mathematiques', 'maths', 'math', 'mathématique', 'mathematique', 'mathematics', 'الرياضيات', 'رياضيات'],
+            // 3. Anglais
+            ['anglais', 'english', 'langue anglaise', 'eng', 'اللغة الإنجليزية', 'اللغة الانجليزية', 'الانجليزية', 'انجليزي'],
+            // 4. Arabe
+            ['arabe', 'arabic', 'اللغة العربية', 'عربي', 'لغة عربية', 'قراءة', 'نصوص', 'تعبير', 'املاء', 'قواعد'],
+            // 5. Éducation Islamique
+            ['islamique', 'education islamique', 'éducation islamique', 'التربية الإسلامية', 'تربية إسلامية', 'إسلاميات', 'قرآن', 'حديث', 'فقه', 'توحيد', 'تجويد', 'سيرة'],
+            // 6. Histoire-Géo / Social Studies
+            ['histoire-géo', 'histoire-geo', 'histoire - géographie', 'histoire - geographie', 'histoire', 'géographie', 'geographie', 'social studies', 'اجتماعيات', 'الدراسات الاجتماعية', 'تاريخ', 'جغرافيا'],
+            // 7. Sciences / Physique / Chimie / SVT
+            ['sciences', 'science', 'physique', 'chimie', 'physique - chimie', 'physique-chimie', 'svt', 'biologie', 'علوم', 'فيزياء', 'كيمياء', 'أحياء'],
+            // 8. Arts Plastiques
+            ['arts plastiques', 'art', 'arts', 'visual arts', 'فنون', 'تربية فنية', 'رسم'],
+            // 9. Musique
+            ['musique', 'music', 'موسيقى', 'تربية موسيقية'],
+            // 10. EPS / Sport
+            ['eps', 'sport', 'education physique', 'éducation physique', 'éducation physique et sportive', 'تربية بدنية', 'رياضة'],
+            // 11. Informatique / Design
+            ['design', 'informatique', 'technologie', 'computer science', 'it', 'تكنولوجيا', 'حاسوب']
+        ];
+
+        function normalizeSubjectStr(s) {
+            if (!s) return '';
+            return String(s).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        }
+
+        function isEquivalentSubject(sub1, sub2) {
+            if (!sub1 || !sub2) return false;
+            const n1 = normalizeSubjectStr(sub1);
+            const n2 = normalizeSubjectStr(sub2);
+            if (n1 === n2) return true;
+            if (n1.length > 2 && n2.length > 2 && (n1.includes(n2) || n2.includes(n1))) return true;
+
+            for (const group of subjectEquivalenceGroups) {
+                const in1 = group.some(item => {
+                    const ni = normalizeSubjectStr(item);
+                    return n1 === ni || (n1.length > 3 && n1.includes(ni)) || (ni.length > 3 && ni.includes(n1));
+                });
+                const in2 = group.some(item => {
+                    const ni = normalizeSubjectStr(item);
+                    return n2 === ni || (n2.length > 3 && n2.includes(ni)) || (ni.length > 3 && ni.includes(n2));
+                });
+                if (in1 && in2) return true;
+            }
+            return false;
+        }
+
         async function handleCrossSectionToggle(isChecked) {
             showCrossSectionView = !!isChecked;
             if (currentWeek) {
@@ -120,23 +171,27 @@
         }
 
         function updateCrossSectionToggleUI() {
-            const toggleContainer = document.getElementById('crossSectionToggleContainer');
-            const toggleCheckbox = document.getElementById('crossSectionToggle');
-            const toggleLabelText = document.getElementById('crossSectionToggleText');
+            const toggleContainer = document.getElementById('crossSectionToggleWrapper') || document.getElementById('crossSectionToggleContainer');
+            const toggleCheckbox = document.getElementById('toggleCrossSectionView') || document.getElementById('crossSectionToggle');
+            const toggleLabelText = document.getElementById('crossSectionToggleText') || document.querySelector('#crossSectionToggleLabel span') || document.getElementById('crossSectionToggleLabel');
             if (!toggleContainer || !toggleCheckbox) return;
 
             // Afficher le commutateur pour les enseignants et administrateurs
             toggleContainer.style.display = 'inline-flex';
             toggleCheckbox.checked = !!showCrossSectionView;
 
-            let otherSectionLabel = (currentSection === 'garcons') ? 'Section Filles' : 'Section Garçons';
-            if (currentUserLanguage === 'ar') {
-                otherSectionLabel = (currentSection === 'garcons') ? 'قسم البنات (للاطلاع)' : 'قسم البنين (للاطلاع)';
-            }
+            let otherSectionLabelFr = (currentSection === 'garcons') ? 'Section Filles' : (currentSection === 'filles' ? 'Section Garçons' : 'Section Secondaire');
+            let otherSectionLabelAr = (currentSection === 'garcons') ? 'قسم البنات' : (currentSection === 'filles' ? 'قسم البنين' : 'القسم الثانوي');
+            let otherSectionLabelEn = (currentSection === 'garcons') ? 'Girls Section' : (currentSection === 'filles' ? 'Boys Section' : 'Secondary Section');
+
             if (toggleLabelText) {
-                toggleLabelText.textContent = currentUserLanguage === 'ar' 
-                    ? `عرض مساهمات ${otherSectionLabel} (قراءة فقط)` 
-                    : `Afficher contributions ${otherSectionLabel} (lecture seule)`;
+                if (currentUserLanguage === 'ar') {
+                    toggleLabelText.textContent = `👁️ عرض مساهمات ${otherSectionLabelAr} (قراءة فقط)`;
+                } else if (currentUserLanguage === 'en') {
+                    toggleLabelText.textContent = `👁️ View ${otherSectionLabelEn} entries (Read-only)`;
+                } else {
+                    toggleLabelText.textContent = `👁️ Voir les saisies de la ${otherSectionLabelFr} (Lecture seule)`;
+                }
             }
         }
 
@@ -1641,7 +1696,8 @@
             if (isTeacherOnly && ensK && matK) {
                 allData.forEach(row => {
                     if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], loggedInUser, loggedInTeacherTable)) {
-                        if (row[matK]) mySubjects.add(String(row[matK]).trim().toLowerCase());
+                        const s = row[matK];
+                        if (s && String(s).trim()) mySubjects.add(String(s).trim());
                     }
                 });
             }
@@ -1651,11 +1707,12 @@
                 filterScopeData = allData.filter(i => { 
                     if (!i) return false;
                     const iE = i[ensK] ? String(i[ensK]) : ''; 
-                    const iM = matK && i[matK] ? String(i[matK]).trim().toLowerCase() : '';
+                    const iM = matK && i[matK] ? String(i[matK]).trim() : '';
                     if (!i.isReadOnlyCrossSection) {
                         return isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable);
-                    } else if (showCrossSectionView && mySubjects.size > 0) {
-                        return mySubjects.has(iM);
+                    } else if (showCrossSectionView) {
+                        if (mySubjects.size === 0) return true;
+                        return Array.from(mySubjects).some(mySub => isEquivalentSubject(mySub, iM));
                     }
                     return false;
                 }); 
@@ -1776,7 +1833,8 @@
             if (isTeacherOnly && ensK && matK) {
                 planData.forEach(row => {
                     if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], loggedInUser, loggedInTeacherTable)) {
-                        if (row[matK]) mySubjects.add(String(row[matK]).trim().toLowerCase());
+                        const s = row[matK];
+                        if (s && String(s).trim()) mySubjects.add(String(s).trim());
                     }
                 });
             }
@@ -1799,15 +1857,29 @@
                     } else {
                         // Autre section (cross-section): afficher uniquement les séances de la MÊME matière
                         if (!showCrossSectionView) return false;
-                        const subjectMatch = mySubjects.has(iM.toLowerCase()) || (matF && iM.toLowerCase() === matF.toLowerCase());
+                        const subjectMatch = (mySubjects.size === 0) 
+                            || Array.from(mySubjects).some(mySub => isEquivalentSubject(mySub, iM))
+                            || (matF && isEquivalentSubject(matF, iM));
                         if (!subjectMatch) return false;
+                    }
+                } else {
+                    // Si mode Admin / Superviseur
+                    if (i.isReadOnlyCrossSection && !showCrossSectionView) {
+                        return false;
                     }
                 }
                 
-                // Filtre Enseignant (robuste pour Admin et Enseignant)
-                const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF); 
+                // Filtre Enseignant :
+                // Pour une ligne cross-section d'un enseignant connecté, ne pas bloquer par le filtre ensF de l'enseignant
+                let pE = true;
+                if (!i.isReadOnlyCrossSection) {
+                    pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF);
+                } else {
+                    pE = !ensF || isTeacherOnly || (iE === ensF) || isTeacherMatch(iE, ensF);
+                }
+
                 const pC = !clsF || (iC === clsF) || isClassMatch(iC, clsF); 
-                const pM = !matF || (iM === matF) || (iM.toLowerCase() === matF.toLowerCase()); 
+                const pM = !matF || (iM === matF) || (iM.toLowerCase() === matF.toLowerCase()) || isEquivalentSubject(iM, matF); 
                 const pP = !perF || (iP === perF) || (String(iP).trim() === String(perF).trim()); 
                 const dayNameFromData = iJ ? extractDayName(iJ) : null; 
                 const pJ = !jF || dayNameFromData === jF || (iJ && iJ.includes(jF)); 
@@ -2339,11 +2411,84 @@
             else { displayAlert('save_all_partial', true, { success: successCount, error: errorCount }); } 
             checkAndDisplayIncompleteTeachers(); 
         }
-        async function generateWordByClasse() { const dataGen = filteredAndSortedData; if(!dataGen || dataGen.length === 0){ displayAlert("no_data_to_display_filters", true); return; } if(!currentWeek){displayAlert("please_select_week",true); return;} setButtonLoading('generateWordBtn', true, 'fas fa-file-word'); const dataCls = {}; const clsK = findHKey('Classe'); if (!clsK) { displayAlert("error_config_columns", true); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); return; } dataGen.forEach(i => { if (!i || !i[clsK]) return; const cl = i[clsK]; if (!dataCls[cl]) { dataCls[cl] = []; } dataCls[cl].push(i); }); const clsGen = Object.keys(dataCls); if (clsGen.length === 0) { displayAlert("no_data", true); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); return; } displayAlert('generating_word', false, { count: clsGen.length }); showProgressBar(); updateProgressBar(0); let ok = 0, err = 0; const total = clsGen.length; for (let i = 0; i < total; i++) { const cl = clsGen[i]; const clData = dataCls[cl]; const clNote = weeklyClassNotes[cl] || ""; updateProgressBar(Math.round(((i + 1) / total) * 100)); try { const payload = { week: currentWeek, classe: cl, data: clData, notes: clNote }; const r = await fetch('/api/generate-word', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (r.ok) { const blob = await r.blob(); const cd = r.headers.get('content-disposition'); let filename = `plan_s${currentWeek}_${cl.replace(/[^a-z0-9]/gi, '_')}.docx`; if (cd) { const m = cd.match(/filename="?(.+?)"?(;|$)/i); if (m && m[1]) filename = m[1]; } if (typeof saveAs === 'function') { try { saveAs(blob, filename); ok++; } catch (e) { err++; console.error(`SaveAs ${cl}:`, e); displayAlert(t('error', {error: `Err sauvegarde ${cl}: ${e.message}`}), true); } } else { err++; console.error("saveAs non défini!"); displayAlert(t('error', {error: "saveAs non trouvé."}), true); break; } } else { const d = await r.json().catch(() => ({ message: `Erreur ${r.status}` })); console.error(`Err Word ${cl}:`, r.status, d); if (d.message && d.message.includes('Dates non trouvées côté serveur')) { displayAlert('no_word_dates', true, {week: currentWeek}); err++; } else { displayAlert('error_generating_word_for', true, {classe: cl, error: (d.message || 'Inconnue')}); err++; } } } catch (e) { err++; console.error(`Err Fetch Word ${cl}:`, e); displayAlert('error', true, { error: `Erreur réseau Word ${cl}: ${e.message}` }); } } hideProgressBar(); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); if (ok > 0 && err === 0) { displayAlert('generating_word_success', false, { count: ok }); } else if (ok > 0 && err > 0) { displayAlert('generating_word_partial', true, { ok: ok, err: err }); } else if (ok === 0 && err > 0) { if (err > 1) { displayAlert('generating_word_failed', true, {err: err}); } } else if (ok === 0 && err === 0) { displayAlert("no_data", true); } }
+        async function generateWordByClasse() { 
+            const dataGen = (filteredAndSortedData || []).filter(i => i && !i.isReadOnlyCrossSection); 
+            if(!dataGen || dataGen.length === 0){ displayAlert("no_data_to_display_filters", true); return; } 
+            if(!currentWeek){displayAlert("please_select_week",true); return;} 
+            setButtonLoading('generateWordBtn', true, 'fas fa-file-word'); 
+            const dataCls = {}; 
+            const clsK = findHKey('Classe'); 
+            if (!clsK) { displayAlert("error_config_columns", true); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); return; } 
+            dataGen.forEach(i => { if (!i || !i[clsK]) return; const cl = i[clsK]; if (!dataCls[cl]) { dataCls[cl] = []; } dataCls[cl].push(i); }); 
+            const clsGen = Object.keys(dataCls); 
+            if (clsGen.length === 0) { displayAlert("no_data", true); setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); return; } 
+            displayAlert('generating_word', false, { count: clsGen.length }); 
+            showProgressBar(); 
+            updateProgressBar(0); 
+            let ok = 0, err = 0; 
+            const total = clsGen.length; 
+            for (let i = 0; i < total; i++) { 
+                const cl = clsGen[i]; 
+                const clData = dataCls[cl]; 
+                const clNote = weeklyClassNotes[cl] || ""; 
+                updateProgressBar(Math.round(((i + 1) / total) * 100)); 
+                try { 
+                    const payload = { week: currentWeek, classe: cl, data: clData, notes: clNote, section: currentSection }; 
+                    const r = await fetch('/api/generate-word', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); 
+                    if (r.ok) { 
+                        const blob = await r.blob(); 
+                        const cd = r.headers.get('content-disposition'); 
+                        let filename = `plan_s${currentWeek}_${cl.replace(/[^a-z0-9]/gi, '_')}.docx`; 
+                        if (cd) { 
+                            const m = cd.match(/filename="?(.+?)"?(;|$)/i); 
+                            if (m && m[1]) filename = m[1]; 
+                        } 
+                        if (typeof saveAs === 'function') { 
+                            try { 
+                                saveAs(blob, filename); 
+                                ok++; 
+                            } catch (e) { 
+                                err++; 
+                                console.error(`SaveAs ${cl}:`, e); 
+                                displayAlert(t('error', {error: `Err sauvegarde ${cl}: ${e.message}`}), true); 
+                            } 
+                        } else { 
+                            err++; 
+                            console.error("saveAs non défini!"); 
+                            displayAlert(t('error', {error: "saveAs non trouvé."}), true); 
+                            break; 
+                        } 
+                    } else { 
+                        const d = await r.json().catch(() => ({ message: `Erreur ${r.status}` })); 
+                        console.error(`Err Word ${cl}:`, r.status, d); 
+                        if (d.message && d.message.includes('Dates non trouvées côté serveur')) { 
+                            displayAlert('no_word_dates', true, {week: currentWeek}); 
+                            err++; 
+                        } else { 
+                            displayAlert('error_generating_word_for', true, {classe: cl, error: (d.message || 'Inconnue')}); 
+                            err++; 
+                        } 
+                    } 
+                } catch (e) { 
+                    err++; 
+                    console.error(`Err Fetch Word ${cl}:`, e); 
+                    displayAlert('error', true, { error: `Erreur réseau Word ${cl}: ${e.message}` }); 
+                } 
+            } 
+            hideProgressBar(); 
+            setButtonLoading('generateWordBtn', false, 'fas fa-file-word'); 
+            if (ok > 0 && err === 0) { displayAlert('generating_word_success', false, { count: ok }); } 
+            else if (ok > 0 && err > 0) { displayAlert('generating_word_partial', true, { ok: ok, err: err }); } 
+            else if (ok === 0 && err > 0) { if (err > 1) { displayAlert('generating_word_failed', true, {err: err}); } } 
+            else if (ok === 0 && err === 0) { displayAlert("no_data", true); } 
+        }
         async function generateExcelWorkbook() {
             if (!currentWeek) { displayAlert("please_select_week", true); return; }
             const section = currentSection || 'garcons';
             const selClass = document.getElementById('filterClasse')?.value || '';
+            const dataToExport = (filteredAndSortedData && filteredAndSortedData.length > 0) 
+                ? filteredAndSortedData.filter(i => i && !i.isReadOnlyCrossSection) 
+                : undefined;
 
             setButtonLoading('generateExcelBtn', true, 'fas fa-file-excel');
             displayAlert('generating_excel', false, { week: currentWeek });
@@ -2355,7 +2500,7 @@
                     week: Number(currentWeek),
                     section: section,
                     classe: selClass || undefined,
-                    data: (filteredAndSortedData && filteredAndSortedData.length > 0) ? filteredAndSortedData : undefined,
+                    data: dataToExport,
                     notes: weeklyClassNotes
                 };
                 const r = await fetch('/api/generate-excel-workbook', {
