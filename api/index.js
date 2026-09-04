@@ -575,7 +575,7 @@ function extractDayNameFromString(dayString) {
   const lower = trimmed.toLowerCase();
   if (dayMap[lower]) return dayMap[lower];
   for (const [k, v] of Object.entries(dayMap)) {
-    if (lower.startsWith(k.toLowerCase())) return v;
+    if (lower.includes(k.toLowerCase())) return v;
   }
   return null;
 }
@@ -777,13 +777,29 @@ app.post('/api/unsubscribe', async (req, res) => {
 
 // ------------------------- Rappels Automatiques (Cron) -------------------------
 
-// Fonction utilitaire pour déterminer la semaine actuelle (commence le dimanche et bascule automatiquement chaque dimanche)
-function getCurrentWeekNumber() {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = String(today.getMonth() + 1).padStart(2, '0');
-  const d = String(today.getDate()).padStart(2, '0');
-  const todayStr = `${y}-${m}-${d}`;
+// Fonction utilitaire pour déterminer la semaine actuelle :
+// L'affichage de plan hebdo de la semaine courante commence toujours du jeudi à 15:00 (pour le dimanche prochain à jeudi prochain)
+function getCurrentWeekNumber(refDate = new Date()) {
+  const d = new Date(refDate);
+  const day = d.getDay(); // 0: Dimanche, 1: Lundi, 2: Mardi, 3: Mercredi, 4: Jeudi, 5: Vendredi, 6: Samedi
+  const hour = d.getHours();
+
+  let daysToSunday = 0;
+  if ((day === 4 && hour >= 15) || day === 5 || day === 6) {
+    // À partir du jeudi 15:00, vendredi et samedi : bascule vers le dimanche prochain
+    daysToSunday = (7 - day) % 7;
+    if (daysToSunday === 0) daysToSunday = 7;
+  } else {
+    // Du dimanche au jeudi avant 15:00 : semaine active en cours (dimanche passé à jeudi)
+    daysToSunday = -day;
+  }
+
+  const targetSunday = new Date(d);
+  targetSunday.setDate(d.getDate() + daysToSunday);
+  const y = targetSunday.getFullYear();
+  const m = String(targetSunday.getMonth() + 1).padStart(2, '0');
+  const dayNum = String(targetSunday.getDate()).padStart(2, '0');
+  const targetSundayStr = `${y}-${m}-${dayNum}`;
 
   const config = specificWeekDateRangesNode;
   const sortedWeeks = Object.keys(config)
@@ -793,11 +809,23 @@ function getCurrentWeekNumber() {
 
   if (sortedWeeks.length === 0) return 1;
 
-  const firstWeekStart = config[sortedWeeks[0]]?.start;
-  if (firstWeekStart && todayStr < firstWeekStart) {
-    return sortedWeeks[0];
+  // 1. Recherche par date de début exacte (dimanche)
+  for (const w of sortedWeeks) {
+    if (config[w]?.start === targetSundayStr) {
+      return w;
+    }
   }
 
+  // 2. Recherche par inclusion dans l'intervalle de la semaine
+  for (const w of sortedWeeks) {
+    const start = config[w]?.start;
+    const end = config[w]?.end;
+    if (start && end && targetSundayStr >= start && targetSundayStr <= end) {
+      return w;
+    }
+  }
+
+  // 3. Recherche de la semaine la plus proche
   for (let i = 0; i < sortedWeeks.length; i++) {
     const currentWeekNum = sortedWeeks[i];
     const nextWeekNum = sortedWeeks[i + 1];
@@ -806,11 +834,11 @@ function getCurrentWeekNumber() {
 
     if (currentStart) {
       if (nextStart) {
-        if (todayStr >= currentStart && todayStr < nextStart) {
+        if (targetSundayStr >= currentStart && targetSundayStr < nextStart) {
           return currentWeekNum;
         }
       } else {
-        if (todayStr >= currentStart) {
+        if (targetSundayStr >= currentStart) {
           return currentWeekNum;
         }
       }
@@ -1876,14 +1904,21 @@ app.get('/api/evaluations', async (req, res) => {
 
     const db = await connectToDatabase();
 
-    // 1. EXTRACTION AUTOMATIQUE DES DEVOIRS DEPUIS 'plans'
-    let planDocs = await db.collection('plans').find({ section: section }).toArray();
+    // 1. EXTRACTION AUTOMATIQUE DES DEVOIRS DEPUIS 'plans' DE LA SECTION
+    let planDocs = await db.collection('plans').find({
+      $or: [
+        { section: section },
+        { _id: new RegExp(`^${section}_`) },
+        { _id: section }
+      ]
+    }).toArray();
+
     if ((!planDocs || planDocs.length === 0) && section === 'garcons') {
       const fallbackDocs = await db.collection('plans').find({}).toArray();
       if (fallbackDocs) planDocs.push(...fallbackDocs);
     }
 
-    // Filtrer par la semaine exacte de la date si disponible
+    // Déterminer la semaine cible pour la date demandée
     let targetWeekNumber = null;
     if (specificWeekDateRangesNode && typeof specificWeekDateRangesNode === 'object') {
       for (const [wStr, dates] of Object.entries(specificWeekDateRangesNode)) {
@@ -1892,52 +1927,161 @@ app.get('/api/evaluations', async (req, res) => {
           break;
         }
       }
-    }
-
-    if (targetWeekNumber) {
-      const filteredByWeek = planDocs.filter(doc => Number(doc.week) === Number(targetWeekNumber));
-      if (filteredByWeek.length > 0) {
-        planDocs = filteredByWeek;
+      if (!targetWeekNumber) {
+        // Si dateQuery tombe un vendredi ou samedi (week-end), rattacher à la semaine scolaire correspondante
+        const qDate = new Date(dateQuery + 'T00:00:00Z');
+        if (!isNaN(qDate.getTime())) {
+          const qDay = qDate.getUTCDay();
+          if (qDay === 5 || qDay === 6) {
+            const prevThu = new Date(qDate);
+            prevThu.setUTCDate(qDate.getUTCDate() - (qDay === 5 ? 1 : 2));
+            const prevThuStr = prevThu.toISOString().split('T')[0];
+            for (const [wStr, dates] of Object.entries(specificWeekDateRangesNode)) {
+              if (dates.start && dates.end && prevThuStr >= dates.start && prevThuStr <= dates.end) {
+                targetWeekNumber = parseInt(wStr, 10);
+                break;
+              }
+            }
+          }
+        }
       }
     }
 
-    const dayName = getDayNameFr(dateQuery);
-    const homeworks = [];
-    const seenAssignments = new Set();
+    if (!targetWeekNumber) {
+      targetWeekNumber = getCurrentWeekNumber(new Date(dateQuery));
+    }
 
-    planDocs.forEach(doc => {
+    const targetWeekConfig = (specificWeekDateRangesNode && specificWeekDateRangesNode[targetWeekNumber]) || {};
+    const weekStartDate = targetWeekConfig.start ? new Date(targetWeekConfig.start + 'T00:00:00Z') : null;
+
+    // Préparer la liste des 5 jours d'école (Dimanche à Jeudi) avec leurs dates précises
+    const schoolDays = [
+      { day: "Dimanche", dayAr: "الأحد", offset: 0 },
+      { day: "Lundi", dayAr: "الإثنين", offset: 1 },
+      { day: "Mardi", dayAr: "الثلاثاء", offset: 2 },
+      { day: "Mercredi", dayAr: "الأربعاء", offset: 3 },
+      { day: "Jeudi", dayAr: "الخميس", offset: 4 }
+    ].map(sd => {
+      let dStr = '';
+      if (weekStartDate && !isNaN(weekStartDate.getTime())) {
+        const d = new Date(weekStartDate);
+        d.setUTCDate(d.getUTCDate() + sd.offset);
+        dStr = d.toISOString().split('T')[0];
+      }
+      return {
+        day: sd.day,
+        dayAr: sd.dayAr,
+        date: dStr,
+        count: 0
+      };
+    });
+
+    // Prioriser le plan de la semaine ciblée
+    let targetPlanDoc = planDocs.find(doc => Number(doc.week) === Number(targetWeekNumber));
+    if (!targetPlanDoc && planDocs.length > 0) {
+      targetPlanDoc = planDocs[0];
+    }
+
+    const dayNameFr = getDayNameFr(dateQuery);
+    const dayNameParsed = extractDayNameFromString(dateQuery) || extractDayNameFromString(dayNameFr) || dayNameFr;
+    const cleanDateQuery = String(dateQuery).trim().toLowerCase();
+
+    const normClass = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const targetNormClass = normClass(className);
+
+    const homeworks = [];
+    const weeklyHomeworks = [];
+    const seenAssignments = new Set();
+    const seenWeekly = new Set();
+
+    // Parcourir les documents de plans de la section (en commençant par la semaine cible)
+    const docsToProcess = targetPlanDoc ? [targetPlanDoc, ...planDocs.filter(d => d !== targetPlanDoc)] : planDocs;
+
+    docsToProcess.forEach(doc => {
       if (Array.isArray(doc.data)) {
+        const isTargetWeek = Number(doc.week) === Number(targetWeekNumber);
+        const docWConfig = (specificWeekDateRangesNode && specificWeekDateRangesNode[doc.week]) || {};
+        const docStartDate = docWConfig.start ? new Date(docWConfig.start + 'T00:00:00Z') : null;
+
         doc.data.forEach(row => {
           const rowClass = row[findKey(row, 'Classe')];
           const rowDay = row[findKey(row, 'Jour')];
           const rowDevoirs = row[findKey(row, 'Devoirs')];
           const rowMatiere = row[findKey(row, 'Matière')];
           const rowEnseignant = row[findKey(row, 'Enseignant')];
+          const rowPeriode = row[findKey(row, 'Période')];
+          const rowLecon = row[findKey(row, 'Leçon')];
+          const rowTravaux = row[findKey(row, 'Travaux de classe')];
 
-          if (rowClass && String(rowClass).trim().toLowerCase() === String(className).trim().toLowerCase()) {
-            if (rowDevoirs && String(rowDevoirs).trim() !== '') {
-              let matchDay = false;
-              if (rowDay) {
-                const cleanRowDay = String(rowDay).trim().toLowerCase();
-                const cleanDateQuery = String(dateQuery).trim().toLowerCase();
-                const cleanDayName = dayName ? dayName.toLowerCase() : '';
+          if (rowClass && rowDevoirs && String(rowDevoirs).trim() !== '') {
+            const rNorm = normClass(rowClass);
+            const classMatch = (rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm));
 
-                if (cleanRowDay === cleanDateQuery || cleanRowDay === cleanDayName || cleanRowDay.includes(cleanDayName) || cleanRowDay.includes(cleanDateQuery)) {
-                  matchDay = true;
+            if (classMatch) {
+              const stdDay = extractDayNameFromString(rowDay) || getDayNameFr(rowDay) || String(rowDay || '').trim();
+              let exactRowDate = '';
+              let formattedDateFr = '';
+
+              if (docStartDate && stdDay) {
+                const dObj = getDateForDayNameNode(docStartDate, stdDay);
+                if (dObj && !isNaN(dObj.getTime())) {
+                  exactRowDate = dObj.toISOString().split('T')[0];
+                  formattedDateFr = formatDateFrenchNode(dObj);
                 }
-              } else {
-                matchDay = true;
               }
 
-              if (matchDay) {
-                const uniqueKey = `${rowMatiere}_${rowDevoirs}`;
+              // Mettre à jour le compteur du jour d'école pour la semaine cible
+              if (isTargetWeek && stdDay) {
+                const sDayObj = schoolDays.find(sd => sd.day === stdDay || sd.date === exactRowDate);
+                if (sDayObj) {
+                  sDayObj.count++;
+                }
+              }
+
+              // Vérifier si cette ligne correspond à la date demandée (aujourd'hui)
+              let matchToday = false;
+              if (exactRowDate && exactRowDate === dateQuery) {
+                matchToday = true;
+              } else if (rowDay) {
+                const cleanRowDay = String(rowDay).trim().toLowerCase();
+                const cleanStdDay = String(stdDay).trim().toLowerCase();
+                const cleanDayQuery = String(dayNameParsed || '').trim().toLowerCase();
+                if (
+                  cleanRowDay === cleanDateQuery ||
+                  cleanRowDay.includes(cleanDateQuery) ||
+                  (isTargetWeek && cleanStdDay && cleanStdDay === cleanDayQuery) ||
+                  (isTargetWeek && cleanRowDay.includes(cleanDayQuery))
+                ) {
+                  matchToday = true;
+                }
+              }
+
+              const hwItem = {
+                week: doc.week,
+                subject: rowMatiere || 'Matière',
+                assignment: rowDevoirs,
+                teacher: rowEnseignant || 'Enseignant',
+                period: rowPeriode || '',
+                lesson: rowLecon || '',
+                classWork: rowTravaux || '',
+                day: stdDay || rowDay || '',
+                exactDate: exactRowDate,
+                formattedDateFr: formattedDateFr
+              };
+
+              const uniqueKey = `${doc.week}_${rowMatiere}_${rowDevoirs}_${stdDay}`;
+
+              if (matchToday) {
                 if (!seenAssignments.has(uniqueKey)) {
                   seenAssignments.add(uniqueKey);
-                  homeworks.push({
-                    subject: rowMatiere || 'Matière',
-                    assignment: rowDevoirs,
-                    teacher: rowEnseignant || 'Enseignant'
-                  });
+                  homeworks.push(hwItem);
+                }
+              }
+
+              if (isTargetWeek) {
+                if (!seenWeekly.has(uniqueKey)) {
+                  seenWeekly.add(uniqueKey);
+                  weeklyHomeworks.push(hwItem);
                 }
               }
             }
@@ -1958,9 +2102,17 @@ app.get('/api/evaluations', async (req, res) => {
       evaluations = await db.collection('evaluations').find(query).toArray();
     }
 
-    let responseData = { homeworks, evaluations: evaluations || [] };
+    let responseData = { 
+      homeworks, 
+      weeklyHomeworks,
+      schoolDays,
+      evaluations: evaluations || [],
+      targetWeek: targetWeekNumber,
+      weekStartDate: targetWeekConfig.start || '',
+      weekEndDate: targetWeekConfig.end || ''
+    };
 
-    // 3. ÉVALUATIONS DE LA SEMAINE (SI SOLICITÉES)
+    // 3. ÉVALUATIONS DE LA SEMAINE (SI SOLLICITÉES)
     if (week === 'true' && studentName) {
       const targetDate = moment.utc(dateQuery);
       const firstDayOfWeek = targetDate.clone().startOf('isoWeek');
@@ -2687,9 +2839,10 @@ app.get('/api/plans/:week', async (req, res) => {
         return row;
       });
       
-      // Vérifier si le plan a été explicitement autorisé / publié pour les parents par l'admin
+      // Le plan hebdomadaire chez l'espace parent est toujours en relation étroite avec les devoirs et le plan des enseignants :
+      // Si des cours/devoirs ont été renseignés par les enseignants, ils sont TOUJOURS visibles et disponibles pour les parents.
       const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
-      const isPublishedToParents = pubDoc ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents) : (enrichedData && enrichedData.length > 0 ? true : false);
+      const isPublishedToParents = (enrichedData && enrichedData.length > 0) ? true : (pubDoc ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents) : false);
 
       // Récupérer les journées spéciales / fusionnées pour cette semaine et section
       const specialDays = await db.collection('special_days').find({ 

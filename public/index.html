@@ -1193,9 +1193,9 @@
                             <button type="button" class="pro-button" onclick="toggleParentLanguage()" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
                                 <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
                             </button>
-                            <button type="button" class="parentSectionBadgeDisplay section-badge badge-garcons" onclick="toggleParentSection()" style="padding:8px 16px; font-weight:700; font-size:0.95rem; border-radius:10px; cursor:pointer; border:none;">
-                                <i class="fas fa-venus-mars"></i> <span class="parentSectionToggleText">Section Garçons 👦</span>
-                            </button>
+                            <span class="parentSectionBadgeDisplay section-badge badge-garcons" style="padding:8px 16px; font-weight:700; font-size:0.95rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px; cursor:default;">
+                                <i class="fas fa-lock" style="font-size:0.8rem; opacity:0.85;"></i> <span class="parentSectionToggleText">Section Garçons 👦</span>
+                            </span>
                         </div>
                     </div>
 
@@ -1269,9 +1269,9 @@
                             <button type="button" class="pro-button" onclick="toggleParentLanguage()" id="parentLangToggleBtn2" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
                                 <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
                             </button>
-                            <button type="button" class="parentSectionBadgeDisplay section-badge badge-garcons" onclick="toggleParentSection()" style="padding:8px 16px; font-weight:700; font-size:0.95rem; border-radius:10px; cursor:pointer; border:none;">
-                                <i class="fas fa-venus-mars"></i> <span class="parentSectionToggleText">Section Garçons 👦</span>
-                            </button>
+                            <span class="parentSectionBadgeDisplay section-badge badge-garcons" style="padding:8px 16px; font-weight:700; font-size:0.95rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px; cursor:default;">
+                                <i class="fas fa-lock" style="font-size:0.8rem; opacity:0.85;"></i> <span class="parentSectionToggleText">Section Garçons 👦</span>
+                            </span>
                         </div>
                     </div>
 
@@ -1329,9 +1329,9 @@
                             <button type="button" class="pro-button" onclick="toggleParentLanguage()" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
                                 <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
                             </button>
-                            <button type="button" class="parentSectionBadgeDisplay section-badge badge-garcons" onclick="toggleParentSection()" style="padding:8px 16px; font-weight:700; font-size:0.95rem; border-radius:10px; cursor:pointer; border:none;">
-                                <i class="fas fa-venus-mars"></i> <span class="parentSectionToggleText">Section Garçons 👦</span>
-                            </button>
+                            <span class="parentSectionBadgeDisplay section-badge badge-garcons" style="padding:8px 16px; font-weight:700; font-size:0.95rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px; cursor:default;">
+                                <i class="fas fa-lock" style="font-size:0.8rem; opacity:0.85;"></i> <span class="parentSectionToggleText">Section Garçons 👦</span>
+                            </span>
                         </div>
                     </div>
 
@@ -1390,10 +1390,22 @@
                     <div id="general-evaluations-container"></div>
 
                     <!-- SÉLECTEUR DE DATE ET DEVOIRS -->
-                    <div class="filter-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:20px; background:white; padding:16px 20px; border-radius:14px; border:1px solid #E2E8F0;">
+                    <div id="student-school-days-bar" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:15px;"></div>
+                    <div id="student-weekend-notice" style="display:none; margin-bottom:15px;"></div>
+
+                    <div class="filter-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px; background:white; padding:16px 20px; border-radius:14px; border:1px solid #E2E8F0;">
                         <button class="pro-button" onclick="changeHomeworkDate(-1)"><i class="fas fa-chevron-left"></i> <span id="btnPrevDayText">Jour Précédent</span></button>
                         <h3 id="current-homework-date-display" style="margin:0; color:#1E1B4B; font-size:1.15rem; font-weight:700;"><i class="fas fa-calendar-day"></i> </h3>
                         <button class="pro-button" onclick="changeHomeworkDate(1)"><span id="btnNextDayText">Jour Suivant</span> <i class="fas fa-chevron-right"></i></button>
+                    </div>
+
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px; justify-content:space-between;">
+                        <button type="button" id="btnToggleWeeklyHomeworks" class="pro-button" onclick="toggleWeeklyHomeworksView()" style="font-size:0.9rem; font-weight:700; background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE;">
+                            <i class="fas fa-list-ul"></i> <span id="btnToggleWeeklyHomeworksText">Voir tous les devoirs de la semaine</span>
+                        </button>
+                        <button type="button" id="btnGoToClassPlan" class="pro-button primary-button" onclick="goToCurrentStudentClassPlan()" style="font-size:0.9rem; font-weight:700;">
+                            <i class="fas fa-calendar-alt"></i> <span id="btnGoToClassPlanText">Consulter le Plan Hebdo de la classe</span>
+                        </button>
                     </div>
 
                     <!-- GRILLE DES DEVOIRS POUR LA JOURNÉE (TRANSFERT AUTOMATIQUE) -->
