@@ -1623,7 +1623,20 @@
             if (dayIdx >= 0 && dayIdx <= 4) {
                 return schoolDays[dayIdx];
             }
-            return "Dimanche";
+            // Le vendredi et samedi affiche les devoirs de jeudi précédent
+            return "Jeudi";
+        }
+
+        // Calcule la date initiale pour les devoirs (vendredi et samedi basculent automatiquement sur le jeudi précédent)
+        function getInitialHomeworkDate() {
+            const today = new Date();
+            const dayIdx = today.getDay(); // 0=Dimanche, 5=Vendredi, 6=Samedi
+            if (dayIdx === 5) { // Vendredi -> Jeudi (-1 jour)
+                today.setDate(today.getDate() - 1);
+            } else if (dayIdx === 6) { // Samedi -> Jeudi (-2 jours)
+                today.setDate(today.getDate() - 2);
+            }
+            return today.toISOString().split('T')[0];
         }
 
         // Fonction pour envoyer des notifications push aux enseignants incomplets
@@ -3736,7 +3749,7 @@
 
 let homeworkLang = 'fr';
 let selectedStudentObj = null;
-let currentHomeworkDate = new Date().toISOString().split('T')[0];
+let currentHomeworkDate = (typeof getInitialHomeworkDate === 'function') ? getInitialHomeworkDate() : new Date().toISOString().split('T')[0];
 let activeParentAccount = JSON.parse(localStorage.getItem('parentAccount') || 'null');
 
 let isParentMode = false;
@@ -3776,9 +3789,9 @@ function applyParentUIMode(enabled) {
         if (switchSecBtn) switchSecBtn.style.display = 'none';
         if (loggedInInfo) loggedInInfo.textContent = 'Espace Parent 👨‍👩‍👧‍👦';
         if (logoutBtn) {
-            logoutBtn.innerHTML = '<i class="fas fa-arrow-left"></i> <span class="btn-text">Retour Accueil</span>';
-            logoutBtn.onclick = resetSectionChoice;
+            logoutBtn.style.display = 'none'; // Enlève le bouton "Retour Accueil" dans l'espace parent
         }
+        document.querySelectorAll('.btn-copy-parent-link').forEach(btn => btn.style.display = 'none');
         if (mainTitle) mainTitle.textContent = 'Espace Parents - Portail Suivi & Devoirs';
     } else {
         if (plansTabBtn) plansTabBtn.style.display = 'inline-block';
@@ -3796,6 +3809,7 @@ function applyParentUIMode(enabled) {
         }
         if (mainTitle) mainTitle.textContent = 'Plans Hebdomadaires';
         if (logoutBtn) {
+            logoutBtn.style.display = 'inline-flex';
             logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt"></i> <span class="btn-text">Déconnecter</span>';
             logoutBtn.onclick = handleLogout;
         }
@@ -4006,10 +4020,13 @@ function setParentActiveDay(dayName) {
     if (!classSelect || !parentRawPlanData) return;
     
     const selectedClass = classSelect.value || 'PEI1';
-    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+    const norm = (s) => String(s || '').trim().toLowerCase().replace(/[\s\-_]+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const targetNormClass = norm(selectedClass);
     const classRows = parentRawPlanData.filter(row => {
         const classVal = getRowField(row, 'Classe');
-        return classVal && norm(classVal) === norm(selectedClass);
+        if (!classVal) return false;
+        const rNorm = norm(classVal);
+        return rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm);
     });
     renderParentPlanCards(classRows);
 }
@@ -4107,9 +4124,9 @@ async function loadParentWeeklyPlan() {
         if (section === 'garcons') {
             fetchedData = fetchedData.filter(row => {
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
+                if (isDualSectionTeacher(ens)) return true;
                 return !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase()) &&
-                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase()) &&
-                       !isDualSectionTeacher(ens);
+                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase());
             });
         } else if (section === 'filles') {
             fetchedData = fetchedData.filter(row => {
@@ -4134,11 +4151,14 @@ async function loadParentWeeklyPlan() {
             headers = Object.keys(parentRawPlanData[0]);
         }
         
-        // Filtrer les lignes pour la classe sélectionnée
-        const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+        // Filtrer les lignes pour la classe sélectionnée avec tolérance
+        const norm = (s) => String(s || '').trim().toLowerCase().replace(/[\s\-_]+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const targetNormClass = norm(selectedClass);
         const classRows = parentRawPlanData.filter(row => {
             const classVal = getRowField(row, 'Classe');
-            return classVal && norm(classVal) === norm(selectedClass);
+            if (!classVal) return false;
+            const rNorm = norm(classVal);
+            return rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm);
         });
         
         // Vérifier si la saisie est complète pour cette classe
@@ -4978,10 +4998,13 @@ function filterParentPlanByDay() {
     if (!classSelect || !parentRawPlanData) return;
     
     const selectedClass = classSelect.value || 'PEI1';
-    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+    const norm = (s) => String(s || '').trim().toLowerCase().replace(/[\s\-_]+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const targetNormClass = norm(selectedClass);
     const classRows = parentRawPlanData.filter(row => {
         const classVal = getRowField(row, 'Classe');
-        return classVal && norm(classVal) === norm(selectedClass);
+        if (!classVal) return false;
+        const rNorm = norm(classVal);
+        return rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm);
     });
     
     renderParentPlanCards(classRows);
@@ -5172,8 +5195,8 @@ async function openStudentDashboard(studentName, className) {
         // Évaluations 8 semaines
         loadGeneralEvaluations(studentName, className);
 
-        // Devoirs du jour (Date du jour par défaut)
-        currentHomeworkDate = new Date().toISOString().split('T')[0];
+        // Devoirs du jour (Date du jour par défaut, ou Jeudi si vendredi/samedi)
+        currentHomeworkDate = (typeof getInitialHomeworkDate === 'function') ? getInitialHomeworkDate() : new Date().toISOString().split('T')[0];
         loadStudentHomeworksForDate(studentName, className, currentHomeworkDate);
     } catch (e) {
         console.error('Erreur openStudentDashboard:', e);
@@ -5395,12 +5418,6 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                                 <div style="white-space:pre-wrap; line-height:1.5;">${escapeHtml(hw.assignment || 'Aucun devoir')}</div>
                             </div>
 
-                            ${hw.classWork ? `
-                                <div style="font-size:0.85rem; color:#334155; margin-bottom:10px; background:#F1F5F9; padding:8px 10px; border-radius:8px;">
-                                    <strong><i class="fas fa-tasks"></i> Travail en classe :</strong> ${escapeHtml(hw.classWork)}
-                                </div>
-                            ` : ''}
-
                             <div style="display:flex; gap:15px; font-size:0.85em; color:#4B5563; margin-top:8px; padding-top:8px; border-top:1px solid #F1F5F9;">
                                 <span><i class="fas fa-hands"></i> Participation: <strong>${pVal}/10</strong></span>
                                 <span><i class="fas fa-user-check"></i> Comportement: <strong>${bVal}/10</strong></span>
@@ -5486,33 +5503,219 @@ async function loadGeneralEvaluations(studentName, className) {
         const res = await fetch(`/api/general-evaluations?section=${section}`);
         if (res.ok) {
             const data = await res.json();
-            const studentData = data.find(d => d.student === studentName && d.classe === className);
+            const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const targetStudentNorm = norm(studentName);
+            const targetClassNorm = norm(className);
+
+            const studentData = data.find(d => {
+                const sNorm = norm(d.student);
+                const cNorm = norm(d.classe);
+                return (sNorm === targetStudentNorm || sNorm.includes(targetStudentNorm) || targetStudentNorm.includes(sNorm)) &&
+                       (cNorm === targetClassNorm || cNorm.includes(targetClassNorm) || targetClassNorm.includes(cNorm));
+            }) || data.find(d => norm(d.student) === targetStudentNorm);
+
             if (!studentData) {
-                container.innerHTML = '';
+                container.innerHTML = `
+                    <div class="student-progress-card" style="padding:16px 20px; text-align:center; background:#F8FAFC; border:1px dashed #CBD5E1; border-radius:14px; margin-bottom:20px;">
+                        <p style="margin:0; color:#64748B; font-size:0.92rem;">
+                            <i class="fas fa-info-circle"></i> ${currentUserLanguage === 'ar' ? 'لم يتم تسجيل تقييمات عامة بعد لهذا التلميذ.' : 'Aucune évaluation générale enregistrée pour le moment pour cet élève.'}
+                        </p>
+                    </div>
+                `;
+                const badgeEl = document.getElementById('student-progress-badge');
+                if (badgeEl) badgeEl.innerHTML = '';
                 return;
             }
 
-            const maxPB = studentData.maxPB || 20;
-            const pbScore = studentData.participationBehaviorScore || 0;
-            const hwScore = studentData.homeworkScore || 0;
-            const totalScore = studentData.totalScore || 0;
-            const totalMax = studentData.totalMax || 40;
+            const overall = Math.min(100, Math.max(0, Math.round(studentData.overallProgress ?? 100)));
+            const hwRate = Math.min(100, Math.max(0, Math.round(studentData.homeworkRate ?? 100)));
+            const partRate = Math.min(100, Math.max(0, Math.round(studentData.participationRate ?? 100)));
+            const behRate = Math.min(100, Math.max(0, Math.round(studentData.behaviorRate ?? 100)));
+
+            const avgP = studentData.avgParticipation != null ? studentData.avgParticipation : (studentData.participationBehaviorScore ? (studentData.participationBehaviorScore / 2).toFixed(1) : '10.0');
+            const avgB = studentData.avgBehavior != null ? studentData.avgBehavior : (studentData.participationBehaviorScore ? (studentData.participationBehaviorScore / 2).toFixed(1) : '10.0');
+            const totalHw = studentData.totalHomeworks || (studentData.doneCount || 0) + (studentData.partialCount || 0) + (studentData.nonFaitCount || 0);
+            const doneCount = studentData.doneCount || 0;
+            const partialCount = studentData.partialCount || 0;
+
+            // Palette et statut selon le niveau de progression
+            let progressColor = '#10B981'; // Émeraude
+            let progressBg = '#ECFDF5';
+            let statusTextFr = 'Progression Excellente';
+            let statusTextAr = 'تقدم ممتاز';
+            let statusClass = 'status-fait';
+
+            if (overall < 50) {
+                progressColor = '#EF4444'; // Rouge
+                progressBg = '#FEF2F2';
+                statusTextFr = 'Nécessite un suivi';
+                statusTextAr = 'يحتاج إلى متابعة';
+                statusClass = 'status-non-fait';
+            } else if (overall < 70) {
+                progressColor = '#F59E0B'; // Orange
+                progressBg = '#FFFBEB';
+                statusTextFr = 'Progression Moyenne';
+                statusTextAr = 'تقدم متوسط';
+                statusClass = 'status-partiel';
+            } else if (overall < 85) {
+                progressColor = '#3B82F6'; // Bleu
+                progressBg = '#EFF6FF';
+                statusTextFr = 'Bonne Progression';
+                statusTextAr = 'تقدم جيد جداً';
+                statusClass = 'status-fait';
+            }
+
+            const currentStatusText = currentUserLanguage === 'ar' ? statusTextAr : statusTextFr;
+
+            // Mise à jour du badge dans l'en-tête de l'élève
+            const badgeEl = document.getElementById('student-progress-badge');
+            if (badgeEl) {
+                badgeEl.className = `status-text ${statusClass}`;
+                badgeEl.style.display = 'inline-block';
+                badgeEl.style.fontSize = '0.9rem';
+                badgeEl.innerHTML = `<i class="fas fa-chart-line"></i> ${overall}% • ${currentStatusText}`;
+            }
+
+            // Génération du détail par matière
+            const subjectScores = studentData.subjectScores || {};
+            const subjectEntries = Object.entries(subjectScores);
+            let subjectsHtml = '';
+
+            if (subjectEntries.length > 0) {
+                subjectsHtml = `
+                    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #E2E8F0;">
+                        <button type="button" onclick="toggleSubjectProgressDetails()" style="background:none; border:none; color:#2563EB; font-weight:700; font-size:0.92rem; cursor:pointer; display:flex; align-items:center; gap:8px; padding:4px 0; margin-bottom:12px;">
+                            <i id="subject-progress-toggle-icon" class="fas fa-chevron-down"></i>
+                            <span>${currentUserLanguage === 'ar' ? `تفاصيل التقدم حسب كل مادة (${subjectEntries.length} مواد)` : `Détail de progression par matière (${subjectEntries.length} matières)`}</span>
+                        </button>
+                        <div id="subject-progress-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px;">
+                            ${subjectEntries.map(([subj, sInfo]) => {
+                                const sProg = Math.min(100, Math.max(0, sInfo.overallProgress ?? 100));
+                                const sColor = sProg >= 75 ? '#10B981' : (sProg >= 50 ? '#F59E0B' : '#EF4444');
+                                return `
+                                    <div style="background:white; border:1px solid #E2E8F0; border-radius:10px; padding:12px 14px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                            <span style="font-weight:700; color:#1E293B; font-size:0.92rem;">${escapeHtml(subj)}</span>
+                                            <span style="font-weight:800; color:${sColor}; font-size:0.92rem;">${sProg}%</span>
+                                        </div>
+                                        <div style="width:100%; height:6px; background:#F1F5F9; border-radius:4px; overflow:hidden; margin-bottom:8px;">
+                                            <div style="width:${sProg}%; height:100%; background:${sColor}; border-radius:4px; transition:width 0.6s ease;"></div>
+                                        </div>
+                                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:#64748B;">
+                                            <span><i class="fas fa-pencil-alt"></i> Devoirs: <strong>${sInfo.homeworkRate ?? 100}%</strong></span>
+                                            <span><i class="fas fa-hands"></i> Part: <strong>${sInfo.avgP ?? '10'}/10</strong></span>
+                                            <span><i class="fas fa-user-check"></i> Comp: <strong>${sInfo.avgB ?? '10'}/10</strong></span>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
 
             container.innerHTML = `
-                <div class="gec-card">
-                    <div class="gec-header">
-                        <span class="gec-title"><i class="fas fa-chart-line"></i> Évaluation Générale (Dernières Semaines)</span>
+                <div class="student-progress-card" style="background:white; border-radius:16px; padding:20px 24px; box-shadow:0 4px 20px rgba(0,0,0,0.05); border:1px solid #E2E8F0; margin-bottom:20px;">
+                    <!-- En-tête de progression -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+                        <div>
+                            <div style="font-size:1.15rem; font-weight:800; color:#1E293B; display:flex; align-items:center; gap:8px;">
+                                <i class="fas fa-chart-line" style="color:#2563EB;"></i>
+                                <span>${currentUserLanguage === 'ar' ? 'مستوى تقدم التلميذ (إجمالي 100%)' : 'Niveau de Progression de l\'Élève (sur 100%)'}</span>
+                            </div>
+                            <div style="font-size:0.85rem; color:#64748B; margin-top:2px;">
+                                ${currentUserLanguage === 'ar' ? 'محسوب بناءً على إنجاز الواجبات، المشاركة في القسم، والسلوك في جميع المواد' : 'Calculé selon la réalisation des devoirs, la participation et le comportement dans toutes les matières'}
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="background:${progressBg}; color:${progressColor}; border:1px solid ${progressColor}40; padding:6px 14px; border-radius:20px; font-weight:800; font-size:0.95rem;">
+                                ${currentStatusText}
+                            </span>
+                            <span style="font-size:1.6rem; font-weight:900; color:${progressColor}; letter-spacing:-0.5px;">
+                                ${overall}%
+                            </span>
+                        </div>
                     </div>
-                    <div class="gec-global-summary">
-                        <span><strong>Participation & Comportement :</strong> ${pbScore} / ${maxPB}</span>
-                        <span><strong>Devoirs à domicile :</strong> ${hwScore} / 20</span>
-                        <span><strong>Total :</strong> <strong style="color:#10B981;">${totalScore} / ${totalMax}</strong></span>
+
+                    <!-- Grande barre de progression principale -->
+                    <div style="width:100%; height:14px; background:#F1F5F9; border-radius:10px; overflow:hidden; box-shadow:inset 0 1px 3px rgba(0,0,0,0.1); margin-bottom:18px;">
+                        <div style="width:${overall}%; height:100%; background:linear-gradient(90deg, ${progressColor}, #3B82F6); border-radius:10px; transition:width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
+
+                    <!-- 3 Piliers Clairs -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px;">
+                        <!-- Pilier 1 : Faisabilité des Devoirs -->
+                        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px 16px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-size:0.85rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:6px;">
+                                    <i class="fas fa-pencil-alt" style="color:#2563EB;"></i>
+                                    <span>${currentUserLanguage === 'ar' ? 'إنجاز الواجبات' : 'Faisabilité Devoirs'}</span>
+                                </span>
+                                <span style="font-weight:800; color:#2563EB; font-size:0.92rem;">${hwRate}%</span>
+                            </div>
+                            <div style="width:100%; height:6px; background:#E2E8F0; border-radius:4px; overflow:hidden; margin-bottom:6px;">
+                                <div style="width:${hwRate}%; height:100%; background:#2563EB; border-radius:4px;"></div>
+                            </div>
+                            <div style="font-size:0.75rem; color:#64748B;">
+                                ${currentUserLanguage === 'ar' ? `${doneCount} مكتمل • ${partialCount} جزئي من ${totalHw}` : `${doneCount} fait(s), ${partialCount} partiel(s) sur ${totalHw}`}
+                            </div>
+                        </div>
+
+                        <!-- Pilier 2 : Participation en Classe -->
+                        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px 16px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-size:0.85rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:6px;">
+                                    <i class="fas fa-hands" style="color:#10B981;"></i>
+                                    <span>${currentUserLanguage === 'ar' ? 'المشاركة بالقسم' : 'Participation'}</span>
+                                </span>
+                                <span style="font-weight:800; color:#10B981; font-size:0.92rem;">${avgP}/10</span>
+                            </div>
+                            <div style="width:100%; height:6px; background:#E2E8F0; border-radius:4px; overflow:hidden; margin-bottom:6px;">
+                                <div style="width:${partRate}%; height:100%; background:#10B981; border-radius:4px;"></div>
+                            </div>
+                            <div style="font-size:0.75rem; color:#64748B;">
+                                ${currentUserLanguage === 'ar' ? `معدل التفاعل: ${partRate}%` : `Taux de participation : ${partRate}%`}
+                            </div>
+                        </div>
+
+                        <!-- Pilier 3 : Comportement & Discipline -->
+                        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px 16px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <span style="font-size:0.85rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:6px;">
+                                    <i class="fas fa-user-check" style="color:#8B5CF6;"></i>
+                                    <span>${currentUserLanguage === 'ar' ? 'السلوك والانضباط' : 'Comportement'}</span>
+                                </span>
+                                <span style="font-weight:800; color:#8B5CF6; font-size:0.92rem;">${avgB}/10</span>
+                            </div>
+                            <div style="width:100%; height:6px; background:#E2E8F0; border-radius:4px; overflow:hidden; margin-bottom:6px;">
+                                <div style="width:${behRate}%; height:100%; background:#8B5CF6; border-radius:4px;"></div>
+                            </div>
+                            <div style="font-size:0.75rem; color:#64748B;">
+                                ${currentUserLanguage === 'ar' ? `معدل الانضباط: ${behRate}%` : `Discipline & respect : ${behRate}%`}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Détail par matière -->
+                    ${subjectsHtml}
                 </div>
             `;
         }
     } catch (e) {
         console.error('Erreur loadGeneralEvaluations:', e);
+    }
+}
+
+function toggleSubjectProgressDetails() {
+    const list = document.getElementById('subject-progress-list');
+    const icon = document.getElementById('subject-progress-toggle-icon');
+    if (!list) return;
+    if (list.style.display === 'none') {
+        list.style.display = 'grid';
+        if (icon) icon.className = 'fas fa-chevron-down';
+    } else {
+        list.style.display = 'none';
+        if (icon) icon.className = 'fas fa-chevron-right';
     }
 }
 

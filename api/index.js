@@ -1982,9 +1982,28 @@ app.get('/api/evaluations', async (req, res) => {
       targetPlanDoc = planDocs[0];
     }
 
-    const dayNameFr = getDayNameFr(dateQuery);
-    const dayNameParsed = extractDayNameFromString(dateQuery) || extractDayNameFromString(dayNameFr) || dayNameFr;
-    const cleanDateQuery = String(dateQuery).trim().toLowerCase();
+    // Détection du vendredi ou samedi -> afficher les devoirs du jeudi précédent
+    let effectiveDateQuery = dateQuery;
+    let isWeekendRedirect = false;
+    const qDate = new Date(dateQuery + 'T00:00:00Z');
+    if (!isNaN(qDate.getTime())) {
+      const qDay = qDate.getUTCDay(); // 0=Dimanche, 1=Lundi, 2=Mardi, 3=Mercredi, 4=Jeudi, 5=Vendredi, 6=Samedi
+      if (qDay === 5) { // Vendredi -> Jeudi précédent (-1 jour)
+        const prevThu = new Date(qDate);
+        prevThu.setUTCDate(qDate.getUTCDate() - 1);
+        effectiveDateQuery = prevThu.toISOString().split('T')[0];
+        isWeekendRedirect = true;
+      } else if (qDay === 6) { // Samedi -> Jeudi précédent (-2 jours)
+        const prevThu = new Date(qDate);
+        prevThu.setUTCDate(qDate.getUTCDate() - 2);
+        effectiveDateQuery = prevThu.toISOString().split('T')[0];
+        isWeekendRedirect = true;
+      }
+    }
+
+    const dayNameFr = isWeekendRedirect ? "Jeudi" : getDayNameFr(effectiveDateQuery);
+    const dayNameParsed = isWeekendRedirect ? "Jeudi" : (extractDayNameFromString(effectiveDateQuery) || extractDayNameFromString(dayNameFr) || dayNameFr);
+    const cleanDateQuery = String(effectiveDateQuery).trim().toLowerCase();
 
     const normClass = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const targetNormClass = normClass(className);
@@ -2038,9 +2057,9 @@ app.get('/api/evaluations', async (req, res) => {
                 }
               }
 
-              // Vérifier si cette ligne correspond à la date demandée (aujourd'hui)
+              // Vérifier si cette ligne correspond à la date demandée (ou au jeudi précédent en cas de vendredi/samedi)
               let matchToday = false;
-              if (exactRowDate && exactRowDate === dateQuery) {
+              if (exactRowDate && (exactRowDate === dateQuery || exactRowDate === effectiveDateQuery)) {
                 matchToday = true;
               } else if (rowDay) {
                 const cleanRowDay = String(rowDay).trim().toLowerCase();
@@ -2091,7 +2110,11 @@ app.get('/api/evaluations', async (req, res) => {
     });
 
     // 2. RÉCUPÉRER LES ÉVALUATIONS DÉJÀ ENREGISTRÉES
-    let query = { class: className, date: dateQuery, section: section };
+    let evalDates = [dateQuery];
+    if (isWeekendRedirect && effectiveDateQuery && effectiveDateQuery !== dateQuery) {
+      evalDates.push(effectiveDateQuery);
+    }
+    let query = { class: className, date: { $in: evalDates }, section: section };
     if (studentName) {
       query.studentName = studentName;
     }
@@ -2108,6 +2131,8 @@ app.get('/api/evaluations', async (req, res) => {
       schoolDays,
       evaluations: evaluations || [],
       targetWeek: targetWeekNumber,
+      isWeekendRedirect,
+      effectiveDate: effectiveDateQuery,
       weekStartDate: targetWeekConfig.start || '',
       weekEndDate: targetWeekConfig.end || ''
     };
@@ -2648,25 +2673,28 @@ app.post('/api/admin/toggle-plan-publication', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Semaine ou section invalide.' });
     }
     const db = await connectToDatabase();
-    const docId = `${section}_${weekNumber}`;
     const isPub = Boolean(published);
+    const sectionsToUpdate = (section === 'all') ? ['garcons', 'filles', 'primaire', 'all'] : [section];
+
+    for (const secKey of sectionsToUpdate) {
+      const docId = `${secKey}_${weekNumber}`;
+      await db.collection('published_plans').updateOne(
+        { _id: docId },
+        {
+          $set: {
+            week: weekNumber,
+            section: secKey,
+            published: isPub,
+            isPublishedToParents: isPub,
+            updatedAt: new Date(),
+            updatedBy: updatedBy
+          }
+        },
+        { upsert: true }
+      );
+    }
     
-    await db.collection('published_plans').updateOne(
-      { _id: docId },
-      {
-        $set: {
-          week: weekNumber,
-          section: section,
-          published: isPub,
-          isPublishedToParents: isPub,
-          updatedAt: new Date(),
-          updatedBy: updatedBy
-        }
-      },
-      { upsert: true }
-    );
-    
-    console.log(`📢 [PUBLICATION] Semaine S${weekNumber} (${section}) -> ${isPub ? 'PUBLIÉE AUX PARENTS' : 'MASQUÉE'}`);
+    console.log(`📢 [PUBLICATION] Semaine S${weekNumber} (${section} -> ${sectionsToUpdate.join(', ')}) -> ${isPub ? 'PUBLIÉE AUX PARENTS' : 'MASQUÉE'}`);
     res.status(200).json({ success: true, week: weekNumber, weekNumber, section, published: isPub, isPublishedToParents: isPub });
   } catch (error) {
     console.error('Erreur POST /api/admin/toggle-plan-publication:', error);
@@ -2705,11 +2733,14 @@ app.get('/api/general-evaluations', async (req, res) => {
 
     const studentEvaluations = {};
     evaluations.forEach(ev => {
-      const key = `${ev.class}|||${ev.studentName}`;
+      const sName = (ev.studentName || '').trim();
+      const cName = (ev.class || '').trim();
+      if (!sName || !cName) return;
+      const key = `${cName}|||${sName}`;
       if (!studentEvaluations[key]) {
         studentEvaluations[key] = {
-          classe: ev.class,
-          student: ev.studentName,
+          classe: cName,
+          student: sName,
           behaviors: [], participations: [], statuses: [],
           bySubject: {}
         };
@@ -2719,8 +2750,8 @@ app.get('/api/general-evaluations', async (req, res) => {
       if (subj && !sd.bySubject[subj]) {
         sd.bySubject[subj] = { behaviors: [], participations: [], statuses: [] };
       }
-      const bNum = parseInt(ev.behavior);
-      const pNum = parseInt(ev.participation);
+      const bNum = parseInt(ev.behavior, 10);
+      const pNum = parseInt(ev.participation, 10);
       if (!isNaN(bNum)) { sd.behaviors.push(bNum); if (subj) sd.bySubject[subj].behaviors.push(bNum); }
       if (!isNaN(pNum)) { sd.participations.push(pNum); if (subj) sd.bySubject[subj].participations.push(pNum); }
       if (ev.status) { sd.statuses.push(ev.status); if (subj) sd.bySubject[subj].statuses.push(ev.status); }
@@ -2732,12 +2763,46 @@ app.get('/api/general-evaluations', async (req, res) => {
       const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : 0;
       const rawPB = ((avgB + avgP) / 2) / 10 * maxPB;
       const participationBehaviorScore = Math.min(maxPB, parseFloat(rawPB.toFixed(2)));
+      
       const total = statuses.length;
       const done = statuses.filter(s => s === 'Fait').length;
       const partial = statuses.filter(s => s === 'Partiellement Fait').length;
-      const rate = total > 0 ? (done + partial * 0.5) / total : 0;
-      const homeworkScore = Math.min(20, parseFloat((rate * 20).toFixed(2)));
-      return { participationBehaviorScore, homeworkScore, maxPB, maxHW: 20 };
+      const nonFait = statuses.filter(s => s === 'Non Fait').length;
+      const homeworkRate = total > 0 ? Math.round(((done + partial * 0.5) / total) * 100) : 100;
+      const homeworkScore = Math.min(20, parseFloat(((homeworkRate / 100) * 20).toFixed(2)));
+
+      const participationRate = Math.round((avgP / 10) * 100);
+      const behaviorRate = Math.round((avgB / 10) * 100);
+
+      // Calcul de la progression globale sur 100% : Devoirs (40%), Participation (30%), Comportement (30%)
+      let overallProgress = 0;
+      if (total > 0 && (behaviors.length > 0 || participations.length > 0)) {
+        overallProgress = Math.round(homeworkRate * 0.40 + participationRate * 0.30 + behaviorRate * 0.30);
+      } else if (behaviors.length > 0 || participations.length > 0) {
+        overallProgress = Math.round((participationRate + behaviorRate) / 2);
+      } else if (total > 0) {
+        overallProgress = homeworkRate;
+      } else {
+        overallProgress = 100;
+      }
+      overallProgress = Math.min(100, Math.max(0, overallProgress));
+
+      return {
+        participationBehaviorScore,
+        homeworkScore,
+        maxPB,
+        maxHW: 20,
+        avgB: parseFloat(avgB.toFixed(1)),
+        avgP: parseFloat(avgP.toFixed(1)),
+        participationRate,
+        behaviorRate,
+        homeworkRate,
+        overallProgress,
+        totalHw: total,
+        doneCount: done,
+        partialCount: partial,
+        nonFaitCount: nonFait
+      };
     }
 
     const results = Object.values(studentEvaluations).map(sd => {
@@ -2756,6 +2821,16 @@ app.get('/api/general-evaluations', async (req, res) => {
         homeworkScore: global.homeworkScore,
         totalScore: parseFloat((global.participationBehaviorScore + global.homeworkScore).toFixed(2)),
         totalMax: maxPB + 20,
+        overallProgress: global.overallProgress,
+        homeworkRate: global.homeworkRate,
+        participationRate: global.participationRate,
+        behaviorRate: global.behaviorRate,
+        avgParticipation: global.avgP,
+        avgBehavior: global.avgB,
+        totalHomeworks: global.totalHw,
+        doneCount: global.doneCount,
+        partialCount: global.partialCount,
+        nonFaitCount: global.nonFaitCount,
         subjectScores
       };
     });
@@ -2774,14 +2849,34 @@ app.get('/api/plans/:week', async (req, res) => {
   try {
     const db = await connectToDatabase();
     
-    let planDocument = await db.collection('plans').findOne({ _id: `${section}_${weekNumber}` });
+    let planDocument = await db.collection('plans').findOne({
+      $or: [
+        { _id: `${section}_${weekNumber}` },
+        { _id: `${section}_${String(weekNumber)}` },
+        { week: weekNumber, section: section },
+        { week: String(weekNumber), section: section }
+      ]
+    });
     
-    if (!planDocument) {
-      planDocument = await db.collection('plans').findOne({ week: weekNumber, section: section });
+    if (!planDocument && section === 'garcons') {
+      planDocument = await db.collection('plans').findOne({
+        $or: [
+          { week: weekNumber },
+          { week: String(weekNumber) },
+          { _id: String(weekNumber) },
+          { _id: weekNumber }
+        ]
+      });
     }
 
-    if (!planDocument && section === 'garcons') {
-      planDocument = await db.collection('plans').findOne({ week: weekNumber });
+    if (!planDocument) {
+      planDocument = await db.collection('plans').findOne({
+        $or: [
+          { week: weekNumber },
+          { week: String(weekNumber) },
+          { _id: new RegExp(`_${weekNumber}$`) }
+        ]
+      });
     }
     
     if (planDocument) {
@@ -2804,9 +2899,9 @@ app.get('/api/plans/:week', async (req, res) => {
       if (section === 'garcons') {
         rawData = rawData.filter(row => {
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
+          if (isDualMusicTeacher(enseignant)) return true;
           return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase()) &&
-                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
-                 !isDualMusicTeacher(enseignant);
+                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase());
         });
       } else if (section === 'filles') {
         rawData = rawData.filter(row => {
@@ -2839,10 +2934,21 @@ app.get('/api/plans/:week', async (req, res) => {
         return row;
       });
       
-      // Le plan hebdomadaire chez l'espace parent est toujours en relation étroite avec les devoirs et le plan des enseignants :
-      // Si des cours/devoirs ont été renseignés par les enseignants, ils sont TOUJOURS visibles et disponibles pour les parents.
-      const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
-      const isPublishedToParents = (enrichedData && enrichedData.length > 0) ? true : (pubDoc ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents) : false);
+      // Statut de publication aux parents
+      const pubDoc = await db.collection('published_plans').findOne({
+        $or: [
+          { _id: `${section}_${weekNumber}` },
+          { _id: `${section}_${String(weekNumber)}` },
+          { week: weekNumber, section: section },
+          { week: String(weekNumber), section: section },
+          { week: weekNumber },
+          { week: String(weekNumber) },
+          { _id: String(weekNumber) }
+        ]
+      });
+      const isPublishedToParents = (pubDoc && (pubDoc.published !== undefined || pubDoc.isPublishedToParents !== undefined))
+        ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents)
+        : (enrichedData && enrichedData.length > 0);
 
       // Récupérer les journées spéciales / fusionnées pour cette semaine et section
       const specialDays = await db.collection('special_days').find({ 
@@ -2858,7 +2964,17 @@ app.get('/api/plans/:week', async (req, res) => {
           specialDays: specialDays || []
       });
     } else {
-      const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
+      const pubDoc = await db.collection('published_plans').findOne({
+        $or: [
+          { _id: `${section}_${weekNumber}` },
+          { _id: `${section}_${String(weekNumber)}` },
+          { week: weekNumber, section: section },
+          { week: String(weekNumber), section: section },
+          { week: weekNumber },
+          { week: String(weekNumber) },
+          { _id: String(weekNumber) }
+        ]
+      });
       const isPublishedToParents = pubDoc ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents) : false;
       const specialDays = await db.collection('special_days').find({ 
         section: section, 
