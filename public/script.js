@@ -345,7 +345,115 @@
             }
         }
 
+        // ============================================================================
+        // GESTION DU DEEP LINKING (LIENS DIRECTS PARENTS) & NOTIFICATIONS
+        // ============================================================================
+        function updateParentURL(section, viewName) {
+            try {
+                const sec = section || currentSection || 'garcons';
+                const url = new URL(window.location.href);
+                url.searchParams.set('space', 'parent');
+                url.searchParams.set('section', sec);
+                if (viewName && viewName !== 'parent-selection') {
+                    url.searchParams.set('view', viewName);
+                } else {
+                    url.searchParams.delete('view');
+                }
+                window.history.replaceState({ space: 'parent', section: sec, view: viewName }, '', url.toString());
+            } catch (e) {
+                console.warn('Impossible de mettre à jour l\'URL:', e);
+            }
+        }
+
+        function clearParentURL() {
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('space');
+                url.searchParams.delete('section');
+                url.searchParams.delete('view');
+                url.searchParams.delete('espace');
+                window.history.replaceState({}, '', url.pathname);
+            } catch (e) {
+                console.warn('Impossible de nettoyer l\'URL:', e);
+            }
+        }
+
+        function showToastNotification(message, type = 'success') {
+            let toastContainer = document.getElementById('app-toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'app-toast-container';
+                toastContainer.style.cssText = 'position:fixed; bottom:25px; right:25px; z-index:100000; display:flex; flex-direction:column; gap:10px; pointer-events:none; max-width:420px;';
+                document.body.appendChild(toastContainer);
+            }
+            const toast = document.createElement('div');
+            const isAr = currentUserLanguage === 'ar' || (typeof containsArabic === 'function' && containsArabic(message));
+            const bg = type === 'error' ? 'linear-gradient(135deg, #DC2626, #B91C1C)' : (type === 'warning' ? 'linear-gradient(135deg, #D97706, #B45309)' : 'linear-gradient(135deg, #059669, #047857)');
+            const icon = type === 'error' ? 'fas fa-exclamation-circle' : (type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-check-circle');
+            
+            toast.style.cssText = `background:${bg}; color:white; padding:14px 20px; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.25); font-weight:600; font-size:0.95rem; display:flex; align-items:center; gap:12px; pointer-events:auto; direction:${isAr ? 'rtl' : 'ltr'}; opacity:0; transform:translateY(20px); transition:all 0.3s ease;`;
+            toast.innerHTML = `<i class="${icon}" style="font-size:1.3rem;"></i><span style="flex:1;">${escapeHtml(message)}</span>`;
+            
+            toastContainer.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateY(0)';
+            });
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(20px)';
+                setTimeout(() => toast.remove(), 350);
+            }, 4500);
+        }
+
+        function copyParentDirectLink(explicitSection = null) {
+            const sec = explicitSection || currentSection || 'garcons';
+            const url = new URL(window.location.origin + window.location.pathname);
+            url.searchParams.set('space', 'parent');
+            url.searchParams.set('section', sec);
+            const linkToCopy = url.toString();
+            
+            const secNameFr = sec === 'garcons' ? 'Section Garçons 👦' : (sec === 'filles' ? 'Section Filles 👧' : 'Section Primaire & Maternelle 👶🎒');
+            const secNameAr = sec === 'garcons' ? 'قسم البنين 👦' : (sec === 'filles' ? 'قسم البنات 👧' : 'قسم الابتدائي والروضة 👶🎒');
+
+            const copySuccess = () => {
+                const msg = currentUserLanguage === 'ar'
+                    ? `تم نسخ رابط (${secNameAr}) بنجاح! يمكنك إرساله مباشرة لأولياء الأمور.`
+                    : `Lien direct copié pour la ${secNameFr} ! Vous pouvez l'envoyer directement aux parents.`;
+                showToastNotification(msg, 'success');
+                if (typeof displayAlert === 'function') {
+                    displayAlert(msg, false);
+                }
+            };
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(linkToCopy).then(copySuccess).catch(() => {
+                    fallbackCopy(linkToCopy, copySuccess);
+                });
+            } else {
+                fallbackCopy(linkToCopy, copySuccess);
+            }
+        }
+
+        function fallbackCopy(text, cb) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                if (cb) cb();
+            } catch (err) {
+                console.error('Échec de la copie:', err);
+            }
+            document.body.removeChild(ta);
+        }
+
         function resetSectionChoice() {
+            clearParentURL();
             const sectionSelectionEl = document.getElementById('section-selection');
             if (sectionSelectionEl) sectionSelectionEl.style.display = 'flex';
             document.getElementById('login-form').style.display = 'none';
@@ -2191,6 +2299,7 @@
                                 parentTR.classList.add('modified');
                                 const indicator = parentTR.querySelector('.save-indicator');
                                 if (indicator) indicator.style.display = 'none';
+                                updateTeacherCounters();
                             }
                         });
                     } else {
@@ -2270,6 +2379,88 @@
                 tBody.appendChild(tr);
             });
             makeTableColumnsResizable();
+            updateTeacherCounters();
+        }
+
+        function findTableRowElement(rowData, fallbackIndex = null) {
+            if (!rowData) return null;
+            const tableBody = document.querySelector('#planTable tbody');
+            if (!tableBody) return null;
+            
+            if (rowData._id) {
+                const tr = tableBody.querySelector(`tr[data-id="${rowData._id}"]`);
+                if (tr) return tr;
+            }
+            if (fallbackIndex !== null && fallbackIndex !== undefined) {
+                const tr = tableBody.querySelector(`tr[data-row-index="${fallbackIndex}"]`);
+                if (tr) return tr;
+            }
+            
+            const teacherK = findHKey('Enseignant');
+            const classK = findHKey('Classe');
+            const dayK = findHKey('Jour');
+            const periodK = findHKey('Période');
+            
+            const rows = tableBody.querySelectorAll('tr[data-row-index]');
+            for (let tr of rows) {
+                const idx = parseInt(tr.getAttribute('data-row-index'), 10);
+                if (!isNaN(idx) && filteredAndSortedData && filteredAndSortedData[idx]) {
+                    const candidate = filteredAndSortedData[idx];
+                    if (candidate === rowData) return tr;
+                    if (
+                        candidate[teacherK] === rowData[teacherK] &&
+                        candidate[classK] === rowData[classK] &&
+                        candidate[dayK] === rowData[dayK] &&
+                        String(candidate[periodK]) === String(rowData[periodK])
+                    ) {
+                        return tr;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function updateTeacherCounters() {
+            const countEl = document.getElementById('teacherRowCountTxt');
+            const modEl = document.getElementById('teacherModifiedCountTxt');
+            const saveBtn = document.getElementById('saveAllDisplayedBtn');
+            if (!countEl || !modEl) return;
+            
+            const displayedCount = (filteredAndSortedData || []).filter(r => r && !r.isReadOnlyCrossSection).length;
+            const modifiedRows = document.querySelectorAll('#planTable tbody tr.modified').length;
+            
+            const isAr = currentUserLanguage === 'ar';
+            countEl.textContent = isAr 
+                ? `${displayedCount} حصة معروضة` 
+                : `${displayedCount} cours affiché(s)`;
+                
+            if (modifiedRows > 0) {
+                modEl.innerHTML = isAr 
+                    ? `<span style="color:#DC2626; font-weight:800;">⚠️ ${modifiedRows} تعديل غير محفوظ</span>` 
+                    : `<span style="color:#DC2626; font-weight:800;">⚠️ ${modifiedRows} modification(s) non enregistrée(s)</span>`;
+                if (saveBtn) {
+                    saveBtn.classList.add('has-pending-saves');
+                    saveBtn.disabled = false;
+                }
+            } else {
+                modEl.innerHTML = isAr 
+                    ? `<span style="color:#059669; font-weight:700;">✅ الكل محفوظ</span>` 
+                    : `<span style="color:#059669; font-weight:700;">Tout est enregistré ✅</span>`;
+                if (saveBtn) {
+                    saveBtn.classList.remove('has-pending-saves');
+                }
+            }
+        }
+
+        function resetTeacherFilters() {
+            const selMatiere = document.getElementById('filterMatiere');
+            const selPeriode = document.getElementById('filterPeriode');
+            const selJour = document.getElementById('filterJour');
+            if (selMatiere) selMatiere.value = '';
+            if (selPeriode) selPeriode.value = '';
+            if (selJour) selJour.value = '';
+            sortAndDisplay();
+            showToastNotification(currentUserLanguage === 'ar' ? 'تمت إعادة ضبط جميع التصفِيات' : 'Filtres réinitialisés, tous les cours sont affichés.', 'success');
         }
         
         async function generateAILessonPlan(rowData, tableRowElement) {
@@ -2459,6 +2650,9 @@
                 displayAlert(currentUserLanguage === 'ar' ? 'لا يمكن تعديل بيانات القسم الآخر (للاطلاع فقط)' : 'Impossible de modifier une ligne appartenant à l\'autre section (lecture seule).', true);
                 return;
             }
+            if(!tableRowElement) {
+                tableRowElement = findTableRowElement(rowData);
+            }
             console.log("saveRow:",JSON.stringify(rowData).substring(0,100)+'...'); 
             displayAlert(''); 
             const btn=tableRowElement?.querySelector('.save-row-button'); 
@@ -2481,7 +2675,10 @@
                 const result=await response.json(); 
                 if(!response.ok){throw new Error(result.message||`Erreur ${response.status}`);} 
                 rowData._originalCopy = { ...rowData };
-                if(tableRowElement){tableRowElement.classList.remove('modified');} 
+                if(tableRowElement){
+                    tableRowElement.classList.remove('modified');
+                    tableRowElement.style.backgroundColor = '';
+                } 
                 if(indicator) indicator.style.display='inline-block'; 
                 if(result.updatedData?.updatedAt&&tableRowElement){ 
                     const updK=findHKey('updatedAt'); 
@@ -2491,15 +2688,22 @@
                         if(updCell){updCell.textContent=formatUpdatedAt(result.updatedData.updatedAt);} 
                     } 
                 } 
+                updateTeacherCounters();
             } catch(e){ 
                 console.error('Erreur saveRow:',e); 
                 displayAlert('error_saving_row', true, { error: e.message }); 
                 if(indicator) indicator.style.display='none'; 
+                if(tableRowElement) {
+                    tableRowElement.style.backgroundColor = '#f8d7da';
+                    tableRowElement.classList.add('modified');
+                }
+                updateTeacherCounters();
             } finally{
                 if(btn){btn.innerHTML=`<i class="${origBtnIcon}"></i>`; btn.disabled=false;} 
                 checkAndDisplayIncompleteTeachers();
             } 
         }
+
         async function saveAllDisplayedRows() { 
             const rowsToSave = (filteredAndSortedData || []).filter(r => r && !r.isReadOnlyCrossSection);
             if (!rowsToSave || rowsToSave.length === 0) { displayAlert('no_rows_to_save', true); return; } 
@@ -2510,14 +2714,69 @@
             displayAlert('saving_all_displayed', false, { count: totalRows }); 
             setButtonLoading('saveAllDisplayedBtn', true, 'fas fa-save'); 
             showProgressBar(); 
-            updateProgressBar(0); 
+            updateProgressBar(15); 
+            
+            const tableBody = document.querySelector('#planTable tbody'); 
+
+            // 1. Tenter la sauvegarde atomique par lot via /api/save-rows-batch
+            try {
+                const batchResponse = await fetch('/api/save-rows-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        week: currentWeek,
+                        section: currentSection,
+                        rows: rowsToSave.map(r => ({
+                            data: r,
+                            originalData: r._originalCopy || null
+                        }))
+                    })
+                });
+
+                if (batchResponse.ok) {
+                    const batchResult = await batchResponse.json();
+                    const savedAt = batchResult.savedAt || new Date().toISOString();
+                    const updK = findHKey('updatedAt');
+
+                    rowsToSave.forEach(rowData => {
+                        rowData._originalCopy = { ...rowData };
+                        if (updK) rowData[updK] = savedAt;
+                    });
+
+                    if (tableBody) {
+                        const trList = tableBody.querySelectorAll('tr');
+                        trList.forEach(tr => {
+                            tr.classList.remove('modified');
+                            tr.style.backgroundColor = '';
+                            const indicator = tr.querySelector('.save-indicator');
+                            if (indicator) indicator.style.display = 'inline-block';
+                            const updCell = tr.querySelector('.updated-at-column');
+                            if (updCell) updCell.textContent = formatUpdatedAt(savedAt);
+                        });
+                    }
+
+                    updateProgressBar(100);
+                    hideProgressBar();
+                    setButtonLoading('saveAllDisplayedBtn', false, 'fas fa-save');
+                    const successMsg = currentUserLanguage === 'ar'
+                        ? `تم حفظ جميع الأسطر (${batchResult.updatedCount || totalRows}) بنجاح تام!`
+                        : `Toutes les lignes (${batchResult.updatedCount || totalRows}) ont été enregistrées avec succès !`;
+                    displayAlert(successMsg, false);
+                    showToastNotification(successMsg, 'success');
+                    updateTeacherCounters();
+                    checkAndDisplayIncompleteTeachers();
+                    return;
+                }
+            } catch (batchErr) {
+                console.warn('Sauvegarde par lot indisponible, exécution séquentielle de repli:', batchErr);
+            }
+
+            // 2. Mode de repli résilient : enregistrement séquentiel sécurisé
             let successCount = 0; 
             let errorCount = 0; 
-            const tableBody = document.querySelector('#planTable tbody'); 
             for (let i = 0; i < totalRows; i++) { 
                 const rowData = rowsToSave[i]; 
-                const rowIndex = i; 
-                updateProgressBar(Math.round(((i + 1) / totalRows) * 95)); 
+                updateProgressBar(Math.round(20 + ((i + 1) / totalRows) * 75)); 
                 try { 
                     const response = await fetch('/api/save-row', { 
                         method: 'POST', 
@@ -2530,12 +2789,13 @@
                         }) 
                     }); 
                     const result = await response.json(); 
-                    if (!response.ok) { throw new Error(result.message || `Erreur ${response.status} L${rowIndex + 1}`); } 
+                    if (!response.ok) { throw new Error(result.message || `Erreur ${response.status} L${i + 1}`); } 
                     rowData._originalCopy = { ...rowData };
                     successCount++; 
-                    const tr = tableBody?.querySelector(`tr[data-row-index="${rowIndex}"]`); 
+                    const tr = findTableRowElement(rowData, i); 
                     if (tr) { 
                         tr.classList.remove('modified'); 
+                        tr.style.backgroundColor = ''; 
                         const indicator = tr.querySelector('.save-indicator'); 
                         if (indicator) indicator.style.display = 'inline-block'; 
                         if (result.updatedData?.updatedAt) { 
@@ -2548,9 +2808,9 @@
                         } 
                     } 
                 } catch (error) { 
-                    console.error(`Err L${rowIndex + 1}:`, error); 
+                    console.error(`Err L${i + 1}:`, error); 
                     errorCount++; 
-                    const tr = tableBody?.querySelector(`tr[data-row-index="${rowIndex}"]`); 
+                    const tr = findTableRowElement(rowData, i); 
                     if(tr) { 
                         tr.style.backgroundColor = '#f8d7da'; 
                         tr.classList.add('modified'); 
@@ -2562,8 +2822,14 @@
             updateProgressBar(100); 
             hideProgressBar(); 
             setButtonLoading('saveAllDisplayedBtn', false, 'fas fa-save'); 
-            if (errorCount === 0) { displayAlert('save_all_success', false, { count: successCount }); } 
-            else { displayAlert('save_all_partial', true, { success: successCount, error: errorCount }); } 
+            if (errorCount === 0) { 
+                displayAlert('save_all_success', false, { count: successCount }); 
+                showToastNotification(`${successCount} lignes enregistrées avec succès !`, 'success');
+            } else { 
+                displayAlert('save_all_partial', true, { success: successCount, error: errorCount }); 
+                showToastNotification(`${successCount} lignes sauvegardées, ${errorCount} erreurs.`, 'warning');
+            } 
+            updateTeacherCounters();
             checkAndDisplayIncompleteTeachers(); 
         }
         async function generateWordByClasse() { 
@@ -3315,10 +3581,42 @@
                 });
             }
             
-            // Vérifier la version d'authentification
+            // Raccourci clavier Ctrl+S / Cmd+S pour les enseignants (enregistrer toutes les modifications affichées)
+            window.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                    const planTab = document.getElementById('planTable');
+                    if (planTab && planTab.offsetParent !== null) {
+                        e.preventDefault();
+                        const saveAllBtn = document.getElementById('saveAllDisplayedBtn');
+                        if (saveAllBtn && !saveAllBtn.disabled) {
+                            saveAllDisplayedRows();
+                        }
+                    }
+                }
+            });
+
+            // Détection du Deep Linking (Lien direct Espace Parents sans authentification préalable requise)
+            const urlParams = new URLSearchParams(window.location.search);
+            const spaceParam = urlParams.get('space') || urlParams.get('espace');
+            const sectionParam = urlParams.get('section');
+            const viewParam = urlParams.get('view');
             const savedUser = localStorage.getItem('loggedInUser');
             const savedAuthVersion = localStorage.getItem('authVersion');
+
+            const isParentDirectLink = (spaceParam === 'parent') || (!savedUser && (sectionParam === 'garcons' || sectionParam === 'filles' || sectionParam === 'primaire'));
+
+            if (isParentDirectLink) {
+                const targetSec = (sectionParam === 'filles' || sectionParam === 'primaire') ? sectionParam : 'garcons';
+                console.log(`🔗 Accès direct Espace Parents détecté pour la section : ${targetSec}`);
+                currentUserLanguage = localStorage.getItem('parentLanguage') || 'fr';
+                enterParentSpaceWithSection(targetSec);
+                if (viewParam && viewParam !== 'parent-selection') {
+                    setTimeout(() => showHomeworkView(viewParam), 150);
+                }
+                return;
+            }
             
+            // Vérifier la version d'authentification
             if (savedUser && savedAuthVersion && parseInt(savedAuthVersion) === AUTH_VERSION) {
                 console.log(`Utilisateur trouvé dans la session : '${savedUser}'. Connexion automatique.`);
                 initializeApp(savedUser);
@@ -3513,6 +3811,10 @@ function showHomeworkView(viewName) {
         if (el) el.style.display = (v === viewName) ? 'block' : 'none';
     });
 
+    if (isParentMode) {
+        updateParentURL(currentSection, viewName);
+    }
+
     // Mettre à jour l'état actif des 4 onglets dans tous les conteneurs de navigation
     const activeTabMap = {
         'parent-selection': 'students',
@@ -3590,6 +3892,7 @@ function enterParentSpaceWithSection(section) {
     
     updateSectionBadges();
     applyParentLanguageUI();
+    updateParentURL(section, 'parent-selection');
     
     // Basculer vers le portail devoirs/parents sur l'écran d'accueil du Suivi des Élèves
     switchMainTab('devoirs');
@@ -3606,6 +3909,7 @@ function toggleParentSection() {
     localStorage.setItem('selectedSection', newSection);
     localStorage.setItem('currentSection', newSection);
     updateSectionBadges();
+    updateParentURL(newSection);
     
     // Réinitialiser le cache pour la nouvelle section
     parentRawPlanData = [];
@@ -5290,6 +5594,7 @@ const parentI18n = {
         homeBtn: 'Accueil',
         parentPlanTitle: 'Plan Hebdomadaire',
         studentFollowBtn: 'Suivi Élève & Contact',
+        copyDirectLink: 'Copier lien direct',
         tabStudents: '1. Suivi Élèves & Devoirs',
         tabPlan: '2. Plan Hebdomadaire',
         tabTeachers: '3. Contacter Enseignants',
@@ -5345,6 +5650,7 @@ const parentI18n = {
         homeBtn: 'الرئيسية',
         parentPlanTitle: 'الخطة الأسبوعية',
         studentFollowBtn: 'متابعة الطالب والتواصل',
+        copyDirectLink: 'نسخ الرابط المباشر',
         tabStudents: '١. متابعة الطلاب والواجبات',
         tabPlan: '٢. الخطة الأسبوعية',
         tabTeachers: '٣. تواصل مع المعلمين',
@@ -5456,6 +5762,8 @@ function applyParentLanguageUI() {
     document.querySelectorAll('.tab-txt-students').forEach(el => el.textContent = t.tabStudents);
     document.querySelectorAll('.tab-txt-teachers').forEach(el => el.textContent = t.tabTeachers);
     document.querySelectorAll('.tab-txt-photos').forEach(el => el.textContent = t.tabPhotos);
+    document.querySelectorAll('.parentCopyLinkTxt').forEach(el => el.textContent = t.copyDirectLink);
+    updateSectionBadges();
 }
 
 function showTeacherContactSection() {

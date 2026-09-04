@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plans Hebdomadaires</title>
+    <title>Plans Hebdomadaires &amp; Devoirs</title>
+    <meta name="description" content="Suivi des plans hebdomadaires, devoirs, espace parent bilingue (arabe/français), messagerie enseignants et gestion des élèves">
+    <meta property="og:title" content="Plans Hebdomadaires &amp; Devoirs">
+    <meta property="og:description" content="Suivi des plans hebdomadaires, devoirs, espace parent bilingue (arabe/français), messagerie enseignants et gestion des élèves">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -182,27 +185,42 @@
                     <div class="section-choice-subtitle">Veuillez choisir la section de vos enfants (accès libre) : / يرجى اختيار القسم</div>
                     
                     <div class="space-buttons-row">
-                        <button type="button" class="space-section-btn girls-btn" onclick="enterParentSpaceWithSection('filles')">
-                            <i class="fas fa-venus"></i>
-                            <div class="btn-labels">
-                                <span class="btn-primary-text">Section Filles</span>
-                                <span class="btn-sub-text">قسم البنات 👧</span>
-                            </div>
-                        </button>
-                        <button type="button" class="space-section-btn boys-btn" onclick="enterParentSpaceWithSection('garcons')">
-                            <i class="fas fa-mars"></i>
-                            <div class="btn-labels">
-                                <span class="btn-primary-text">Section Garçons</span>
-                                <span class="btn-sub-text">قسم البنين 👦</span>
-                            </div>
-                        </button>
-                        <button type="button" class="space-section-btn primary-btn" onclick="enterParentSpaceWithSection('primaire')">
-                            <i class="fas fa-shapes"></i>
-                            <div class="btn-labels">
-                                <span class="btn-primary-text">Primaire & Maternelle</span>
-                                <span class="btn-sub-text">الابتدائي والروضة 👶🎒</span>
-                            </div>
-                        </button>
+                        <div style="display:flex; flex-direction:column; gap:6px; flex:1; min-width:200px;">
+                            <button type="button" class="space-section-btn girls-btn" onclick="enterParentSpaceWithSection('filles')">
+                                <i class="fas fa-venus"></i>
+                                <div class="btn-labels">
+                                    <span class="btn-primary-text">Section Filles</span>
+                                    <span class="btn-sub-text">قسم البنات 👧</span>
+                                </div>
+                            </button>
+                            <button type="button" class="copy-mini-btn" onclick="copyParentDirectLink('filles')" title="Copier le lien direct pour les parents de la section Filles">
+                                <i class="fas fa-link"></i> <span>Copier lien direct (Filles)</span>
+                            </button>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:6px; flex:1; min-width:200px;">
+                            <button type="button" class="space-section-btn boys-btn" onclick="enterParentSpaceWithSection('garcons')">
+                                <i class="fas fa-mars"></i>
+                                <div class="btn-labels">
+                                    <span class="btn-primary-text">Section Garçons</span>
+                                    <span class="btn-sub-text">قسم البنين 👦</span>
+                                </div>
+                            </button>
+                            <button type="button" class="copy-mini-btn" onclick="copyParentDirectLink('garcons')" title="Copier le lien direct pour les parents de la section Garçons">
+                                <i class="fas fa-link"></i> <span>Copier lien direct (Garçons)</span>
+                            </button>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:6px; flex:1; min-width:200px;">
+                            <button type="button" class="space-section-btn primary-btn" onclick="enterParentSpaceWithSection('primaire')">
+                                <i class="fas fa-shapes"></i>
+                                <div class="btn-labels">
+                                    <span class="btn-primary-text">Primaire & Maternelle</span>
+                                    <span class="btn-sub-text">الابتدائي والروضة 👶🎒</span>
+                                </div>
+                            </button>
+                            <button type="button" class="copy-mini-btn" onclick="copyParentDirectLink('primaire')" title="Copier le lien direct pour les parents de la section Primaire">
+                                <i class="fas fa-link"></i> <span>Copier lien direct (Primaire)</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <button type="button" class="home-back-btn" onclick="showHomeStep('main')">
@@ -1018,6 +1036,10 @@
                  <option value="Jeudi">Jeudi</option>
             </select>
 
+            <button type="button" id="btnResetFilters" onclick="resetTeacherFilters()" class="pro-button secondary-button" style="padding: 7px 12px; font-size: 0.84rem; font-weight: 700; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;" title="Réinitialiser tous les filtres pour afficher l'ensemble des cours">
+                <i class="fas fa-undo"></i> <span id="btnResetFiltersTxt">Effacer filtres</span>
+            </button>
+
             <!-- OPTION DE CONSULTATION INTER-SECTIONS (LECTURE SEULE) -->
             <div id="crossSectionToggleWrapper" style="display: inline-flex; align-items: center; gap: 8px; margin-left: auto; padding: 6px 12px; background: #EEF2FF; border: 1.5px solid #C7D2FE; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <input type="checkbox" id="toggleCrossSectionView" onchange="handleCrossSectionToggle(this.checked)" style="cursor: pointer; width: 16px; height: 16px; accent-color: #4F46E5;">
@@ -1117,13 +1139,21 @@
             </div>
         </div>
         
-        <div class="table-actions-container">
-            <button id="saveAllDisplayedBtn" onclick="saveAllDisplayedRows()" class="action-button save-all-button pro-button success-button" disabled>
-                <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Lignes Affichées</span>
-            </button>
-            <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans()" class="action-button pro-button" disabled style="margin-left: 10px; background: #7C3AED;">
-                <i class="fas fa-file-word"></i> <span class="btn-text">Générer Plans de Leçon (Affichés)</span>
-            </button>
+        <div class="table-actions-container" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <button id="saveAllDisplayedBtn" onclick="saveAllDisplayedRows()" class="action-button save-all-button pro-button success-button" disabled title="Raccourci clavier : Ctrl + S / حفظ الكل">
+                    <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Lignes Affichées</span>
+                </button>
+                <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans()" class="action-button pro-button" disabled style="background: #7C3AED;">
+                    <i class="fas fa-file-word"></i> <span class="btn-text">Générer Plans de Leçon (Affichés)</span>
+                </button>
+            </div>
+            <div id="teacherRowsCounterBadge" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.88rem; color: #1E293B; background: #F8FAFC; padding: 8px 16px; border-radius: 10px; border: 1.5px solid #CBD5E1; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <i class="fas fa-list-check" style="color: #2563EB;"></i> 
+                <span id="teacherRowCountTxt">0 cours affiché(s)</span>
+                <span style="color: #94A3B8;">•</span>
+                <span id="teacherModifiedCountTxt" style="color: #059669;">Tout est enregistré ✅</span>
+            </div>
         </div>
         <div class="table-responsive-wrapper">
             <table id="planTable">
@@ -1157,6 +1187,9 @@
                             </h2>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <button type="button" class="btn-copy-parent-link" onclick="copyParentDirectLink()" title="Copier le lien direct pour les parents / نسخ الرابط المباشر">
+                                <i class="fas fa-link"></i> <span class="parentCopyLinkTxt">Copier lien direct</span>
+                            </button>
                             <button type="button" class="pro-button" onclick="toggleParentLanguage()" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
                                 <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
                             </button>
@@ -1230,6 +1263,9 @@
                             </h2>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <button type="button" class="btn-copy-parent-link" onclick="copyParentDirectLink()" title="Copier le lien direct pour les parents / نسخ الرابط المباشر">
+                                <i class="fas fa-link"></i> <span class="parentCopyLinkTxt">Copier lien direct</span>
+                            </button>
                             <button type="button" class="pro-button" onclick="toggleParentLanguage()" id="parentLangToggleBtn2" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
                                 <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
                             </button>
@@ -1287,6 +1323,9 @@
                             </h2>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <button type="button" class="btn-copy-parent-link" onclick="copyParentDirectLink()" title="Copier le lien direct pour les parents / نسخ الرابط المباشر">
+                                <i class="fas fa-link"></i> <span class="parentCopyLinkTxt">Copier lien direct</span>
+                            </button>
                             <button type="button" class="pro-button" onclick="toggleParentLanguage()" style="background:#3B82F6; color:white; border-radius:10px; padding:8px 16px; font-weight:700; border:none; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
                                 <i class="fas fa-globe"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
                             </button>
@@ -1541,6 +1580,9 @@
                             </h2>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <button type="button" class="btn-copy-parent-link" onclick="copyParentDirectLink()" title="Copier le lien direct pour les parents / نسخ الرابط المباشر">
+                                <i class="fas fa-link"></i> <span class="parentCopyLinkTxt">Copier lien direct</span>
+                            </button>
                             <!-- Bouton Sélecteur de Langue FR / AR -->
                             <button type="button" class="pro-button" onclick="toggleParentLanguage()" id="parentLangToggleBtn" style="padding:8px 16px; font-weight:700; background:#3B82F6; color:white; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
                                 <i class="fas fa-language"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
@@ -1687,19 +1729,34 @@
             <h2 style="color:#1E1B4B; margin-bottom:8px; font-weight:800; font-size:1.4rem;">Espace Parents & Élèves</h2>
             <p style="color:#6B7280; font-size:0.95rem; margin-bottom:25px;">Veuillez choisir la section de votre enfant pour consulter son plan hebdomadaire, ses devoirs et contacter les enseignants :</p>
             
-            <div style="display:flex; flex-direction:column; gap:14px;">
-                <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('garcons')" style="padding:16px 20px; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; border-radius:14px; font-weight:700; font-size:1.05rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(37,99,235,0.3);">
-                    <span><i class="fas fa-mars" style="margin-right:10px; font-size:1.2rem;"></i> Section Garçons 👦</span>
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-                <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('filles')" style="padding:16px 20px; background:linear-gradient(135deg, #EC4899, #DB2777); color:white; border-radius:14px; font-weight:700; font-size:1.05rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(236,72,153,0.3);">
-                    <span><i class="fas fa-venus" style="margin-right:10px; font-size:1.2rem;"></i> Section Filles 👧</span>
-                    <i class="fas fa-chevron-right"></i>
-                </button>
-                <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('primaire')" style="padding:16px 20px; background:linear-gradient(135deg, #10B981, #059669); color:white; border-radius:14px; font-weight:700; font-size:1.05rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(16,185,129,0.3);">
-                    <span><i class="fas fa-shapes" style="margin-right:10px; font-size:1.2rem;"></i> Section Primaire & Maternelle 👶🎒</span>
-                    <i class="fas fa-chevron-right"></i>
-                </button>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <div style="display:flex; gap:8px; align-items:stretch;">
+                    <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('garcons')" style="flex:1; padding:14px 18px; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; border-radius:14px; font-weight:700; font-size:1.02rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(37,99,235,0.3);">
+                        <span><i class="fas fa-mars" style="margin-right:8px; font-size:1.2rem;"></i> Section Garçons 👦</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button type="button" class="pro-button copy-mini-btn" onclick="copyParentDirectLink('garcons')" title="Copier le lien direct pour les parents (Section Garçons)">
+                        <i class="fas fa-link"></i>
+                    </button>
+                </div>
+                <div style="display:flex; gap:8px; align-items:stretch;">
+                    <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('filles')" style="flex:1; padding:14px 18px; background:linear-gradient(135deg, #EC4899, #DB2777); color:white; border-radius:14px; font-weight:700; font-size:1.02rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(236,72,153,0.3);">
+                        <span><i class="fas fa-venus" style="margin-right:8px; font-size:1.2rem;"></i> Section Filles 👧</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button type="button" class="pro-button copy-mini-btn" onclick="copyParentDirectLink('filles')" title="Copier le lien direct pour les parents (Section Filles)">
+                        <i class="fas fa-link"></i>
+                    </button>
+                </div>
+                <div style="display:flex; gap:8px; align-items:stretch;">
+                    <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('primaire')" style="flex:1; padding:14px 18px; background:linear-gradient(135deg, #10B981, #059669); color:white; border-radius:14px; font-weight:700; font-size:1.02rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(16,185,129,0.3);">
+                        <span><i class="fas fa-shapes" style="margin-right:8px; font-size:1.2rem;"></i> Section Primaire & Maternelle 👶🎒</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button type="button" class="pro-button copy-mini-btn" onclick="copyParentDirectLink('primaire')" title="Copier le lien direct pour les parents (Section Primaire)">
+                        <i class="fas fa-link"></i>
+                    </button>
+                </div>
             </div>
             <button type="button" class="pro-button secondary-button" onclick="closeParentSectionModal()" style="margin-top:20px; width:100%; padding:10px;">
                 Annuler

@@ -2375,5 +2375,79 @@ body[dir="rtl"] .hw-close-modal {
     box-shadow: 0 4px 14px rgba(5, 150, 105, 0.35);
 }
 
+/* En-tête de tableau figé (Sticky Header) pour l'espace enseignant */
+.table-responsive-wrapper {
+    max-height: 75vh;
+    overflow-y: auto;
+    position: relative;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
 
+#planTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #1E1B4B !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
 
+/* Boutons de copie rapide de lien direct parent */
+.btn-copy-parent-link {
+    background: #10B981;
+    color: white;
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(16, 185, 129, 0.25);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.btn-copy-parent-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+}
+
+.copy-mini-btn {
+    background: #EFF6FF;
+    border: 1.5px solid #BFDBFE;
+    color: #1D4ED8;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.copy-mini-btn:hover {
+    background: #DBEAFE;
+    transform: translateY(-1px);
+}
+
+/* Lignes modifiées dans le tableau enseignant */
+tr.modified {
+    border-left: 4px solid #F59E0B !important;
+}
+
+tr.modified .save-row-button {
+    background: #F59E0B !important;
+    border-color: #D97706 !important;
+    color: white !important;
+    animation: pulseGlow 1.5s infinite;
+}
+
+/* Toast container animations */
+#app-toast-container {
+    pointer-events: none;
+    z-index: 100000;
+}

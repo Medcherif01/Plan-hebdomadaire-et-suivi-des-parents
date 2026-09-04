@@ -2689,7 +2689,7 @@ app.get('/api/plans/:week', async (req, res) => {
       
       // Vérifier si le plan a été explicitement autorisé / publié pour les parents par l'admin
       const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
-      const isPublishedToParents = pubDoc ? Boolean(pubDoc.published) : false;
+      const isPublishedToParents = pubDoc ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents) : (enrichedData && enrichedData.length > 0 ? true : false);
 
       // Récupérer les journées spéciales / fusionnées pour cette semaine et section
       const specialDays = await db.collection('special_days').find({ 
@@ -2706,7 +2706,7 @@ app.get('/api/plans/:week', async (req, res) => {
       });
     } else {
       const pubDoc = await db.collection('published_plans').findOne({ _id: `${section}_${weekNumber}` });
-      const isPublishedToParents = pubDoc ? Boolean(pubDoc.published) : false;
+      const isPublishedToParents = pubDoc ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents) : false;
       const specialDays = await db.collection('special_days').find({ 
         section: section, 
         week: weekNumber 
@@ -2798,70 +2798,214 @@ app.post('/api/save-notes', async (req, res) => {
   }
 });
 
+// Verrouillage asynchrone par document pour éviter les écrasements concurrents (Race Conditions)
+const planLocks = new Map();
+
+function withPlanLock(docId, asyncFn) {
+  const prevPromise = planLocks.get(docId) || Promise.resolve();
+  const currentPromise = prevPromise
+    .catch(() => {})
+    .then(async () => {
+      return await asyncFn();
+    });
+  planLocks.set(docId, currentPromise);
+  currentPromise.finally(() => {
+    if (planLocks.get(docId) === currentPromise) {
+      planLocks.delete(docId);
+    }
+  });
+  return currentPromise;
+}
+
+// Fonction de correspondance tolérante et sécurisée pour les lignes d'un plan
+function matchPlanRow(elem, criteria) {
+  if (!elem || !criteria) return false;
+  
+  // 1. Identifiant explicite
+  if (criteria._rowId && elem._rowId && String(criteria._rowId) === String(elem._rowId)) return true;
+  if (criteria._id && elem._id && String(criteria._id) === String(elem._id)) return true;
+  if (criteria.rowId && elem.rowId && String(criteria.rowId) === String(elem.rowId)) return true;
+
+  const getF = (obj, field) => {
+    const k = findKey(obj, field);
+    return k ? String(obj[k] || '').trim().toLowerCase() : '';
+  };
+
+  const ensE = getF(elem, 'Enseignant');
+  const ensC = getF(criteria, 'Enseignant');
+  const clsE = getF(elem, 'Classe');
+  const clsC = getF(criteria, 'Classe');
+  const jourE = getF(elem, 'Jour');
+  const jourC = getF(criteria, 'Jour');
+  const perE = getF(elem, 'Période');
+  const perC = getF(criteria, 'Période');
+  const matE = getF(elem, 'Matière');
+  const matC = getF(criteria, 'Matière');
+
+  // Correspondance exacte des 5 critères principaux
+  if (ensE && clsE && jourE && perE && matE) {
+    if (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC && matE === matC) {
+      return true;
+    }
+  }
+
+  // Correspondance 4 critères (Enseignant, Classe, Jour, Période) - protège contre les modifications d'intitulé de matière
+  if (ensE && clsE && jourE && perE) {
+    if (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC) {
+      return true;
+    }
+  }
+
+  // Correspondance alternative (Classe, Jour, Période, Matière)
+  if (clsE && jourE && perE && matE) {
+    if (clsE === clsC && jourE === jourC && perE === perC && matE === matC) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 app.post('/api/save-row', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const rowData = req.body.data;
   const originalData = req.body.originalData;
   const section = req.body.section || 'garcons';
-  if (isNaN(weekNumber) || typeof rowData !== 'object') return res.status(400).json({ message: 'Données invalides.' });
+  if (isNaN(weekNumber) || typeof rowData !== 'object') {
+    return res.status(400).json({ message: 'Données invalides.' });
+  }
+
   try {
     const db = await connectToDatabase();
     const docId = `${section}_${weekNumber}`;
     const now = new Date();
-    
-    // Si originalData est fourni, chercher d'abord la ligne d'origine dans le document
-    const planDoc = await db.collection('plans').findOne({ _id: docId });
-    if (planDoc && Array.isArray(planDoc.data)) {
-      const matchCriteria = originalData || rowData;
-      const targetIdx = planDoc.data.findIndex(elem => {
-        const ensMatch = (elem[findKey(elem, 'Enseignant')] || '') === (matchCriteria[findKey(matchCriteria, 'Enseignant')] || '');
-        const clsMatch = (elem[findKey(elem, 'Classe')] || '') === (matchCriteria[findKey(matchCriteria, 'Classe')] || '');
-        const jourMatch = (elem[findKey(elem, 'Jour')] || '') === (matchCriteria[findKey(matchCriteria, 'Jour')] || '');
-        const perMatch = String(elem[findKey(elem, 'Période')] || '') === String(matchCriteria[findKey(matchCriteria, 'Période')] || '');
-        const matMatch = (elem[findKey(elem, 'Matière')] || '') === (matchCriteria[findKey(matchCriteria, 'Matière')] || '');
-        return ensMatch && clsMatch && jourMatch && perMatch && matMatch;
-      });
+
+    const result = await withPlanLock(docId, async () => {
+      let planDoc = await db.collection('plans').findOne({ _id: docId });
+      if (!planDoc) {
+        planDoc = { _id: docId, section: section, week: weekNumber, data: [], updatedAt: now };
+      }
+      if (!Array.isArray(planDoc.data)) {
+        planDoc.data = [];
+      }
+
+      let targetIdx = -1;
+      // 1. Chercher avec originalData si fourni
+      if (originalData) {
+        targetIdx = planDoc.data.findIndex(elem => matchPlanRow(elem, originalData));
+      }
+      // 2. Chercher avec rowData si non trouvé
+      if (targetIdx === -1) {
+        targetIdx = planDoc.data.findIndex(elem => matchPlanRow(elem, rowData));
+      }
 
       if (targetIdx !== -1) {
-        planDoc.data[targetIdx] = { ...planDoc.data[targetIdx], ...rowData, updatedAt: now };
-        await db.collection('plans').updateOne(
-          { _id: docId },
-          { $set: { data: planDoc.data, updatedAt: now } }
-        );
-        return res.status(200).json({ message: 'Ligne enregistrée avec succès.', updatedData: { updatedAt: now } });
+        planDoc.data[targetIdx] = {
+          ...planDoc.data[targetIdx],
+          ...rowData,
+          updatedAt: now
+        };
+      } else {
+        // Si la ligne n'existait pas encore, l'ajouter directement pour ne jamais perdre de saisie
+        planDoc.data.push({
+          ...rowData,
+          updatedAt: now
+        });
       }
-    }
 
-    // Fallback avec arrayFilters
-    const updateFields = {};
-    for (const key in rowData) {
-      updateFields[`data.$[elem].${key}`] = rowData[key];
-    }
-    updateFields['data.$[elem].updatedAt'] = now;
+      await db.collection('plans').updateOne(
+        { _id: docId },
+        { $set: { week: weekNumber, section: section, data: planDoc.data, updatedAt: now } },
+        { upsert: true }
+      );
 
-    const filterObj = originalData || rowData;
-    const arrayFilters = [{
-      "elem.Enseignant": filterObj[findKey(filterObj, 'Enseignant')],
-      "elem.Classe": filterObj[findKey(filterObj, 'Classe')],
-      "elem.Jour": filterObj[findKey(filterObj, 'Jour')],
-      "elem.Période": filterObj[findKey(filterObj, 'Période')],
-      "elem.Matière": filterObj[findKey(filterObj, 'Matière')]
-    }];
+      return { updatedAt: now };
+    });
 
-    const result = await db.collection('plans').updateOne(
-      { _id: docId },
-      { $set: updateFields },
-      { arrayFilters: arrayFilters }
-    );
-
-    if (result.modifiedCount > 0 || result.matchedCount > 0) {
-      res.status(200).json({ message: 'Ligne enregistrée.', updatedData: { updatedAt: now } });
-    } else {
-      res.status(404).json({ message: 'Ligne non trouvée.' });
-    }
+    res.status(200).json({
+      message: 'Ligne enregistrée avec succès.',
+      updatedData: { updatedAt: result.updatedAt }
+    });
   } catch (error) {
-    console.error('Erreur MongoDB /save-row:', error);
+    console.error('Erreur /save-row:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
+  }
+});
+
+// Enregistrement groupé (batch) ultra-rapide et atomique de toutes les lignes affichées
+app.post('/api/save-rows-batch', async (req, res) => {
+  const weekNumber = parseInt(req.body.week, 10);
+  const rows = req.body.rows;
+  const section = req.body.section || 'garcons';
+
+  if (isNaN(weekNumber) || !Array.isArray(rows)) {
+    return res.status(400).json({ message: 'Données ou liste de lignes invalides.' });
+  }
+
+  try {
+    const db = await connectToDatabase();
+    const docId = `${section}_${weekNumber}`;
+    const now = new Date();
+
+    const result = await withPlanLock(docId, async () => {
+      let planDoc = await db.collection('plans').findOne({ _id: docId });
+      if (!planDoc) {
+        planDoc = { _id: docId, section: section, week: weekNumber, data: [], updatedAt: now };
+      }
+      if (!Array.isArray(planDoc.data)) {
+        planDoc.data = [];
+      }
+
+      let updatedCount = 0;
+      let insertedCount = 0;
+
+      rows.forEach(item => {
+        const rowData = item.data || item;
+        const originalData = item.originalData || null;
+
+        let targetIdx = -1;
+        if (originalData) {
+          targetIdx = planDoc.data.findIndex(elem => matchPlanRow(elem, originalData));
+        }
+        if (targetIdx === -1) {
+          targetIdx = planDoc.data.findIndex(elem => matchPlanRow(elem, rowData));
+        }
+
+        if (targetIdx !== -1) {
+          planDoc.data[targetIdx] = {
+            ...planDoc.data[targetIdx],
+            ...rowData,
+            updatedAt: now
+          };
+          updatedCount++;
+        } else {
+          planDoc.data.push({
+            ...rowData,
+            updatedAt: now
+          });
+          insertedCount++;
+        }
+      });
+
+      await db.collection('plans').updateOne(
+        { _id: docId },
+        { $set: { week: weekNumber, section: section, data: planDoc.data, updatedAt: now } },
+        { upsert: true }
+      );
+
+      return { total: rows.length, updatedCount, insertedCount, updatedAt: now };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `${result.total} ligne(s) enregistrée(s) avec succès.`,
+      updatedCount: result.updatedCount,
+      insertedCount: result.insertedCount,
+      updatedAt: result.updatedAt
+    });
+  } catch (error) {
+    console.error('Erreur /api/save-rows-batch:', error);
+    res.status(500).json({ message: 'Erreur serveur lors de l\'enregistrement groupé.' });
   }
 });
 
