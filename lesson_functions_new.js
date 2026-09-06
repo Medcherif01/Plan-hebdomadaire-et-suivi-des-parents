@@ -382,7 +382,8 @@ async function downloadWeeklyPlan(week, classe) {
         return;
     }
 
-    const url = `/api/download-weekly-plan/${week}/${classe}`;
+    const activeSec = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+    const url = `/api/download-weekly-plan/${week}/${classe}?section=${encodeURIComponent(activeSec)}`;
     displayAlert(`Téléchargement du plan pour ${classe}...`);
 
     try {

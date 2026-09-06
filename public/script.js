@@ -330,6 +330,10 @@
             applyParentUIMode(false);
             updateSectionBadges();
             
+            const adminUploadSec = document.getElementById('adminUploadSectionSelect');
+            if (adminUploadSec) adminUploadSec.value = section;
+            if (typeof updateUploadTargetInfo === 'function') updateUploadTargetInfo();
+
             const sectionSelectionEl = document.getElementById('section-selection');
             if (sectionSelectionEl) sectionSelectionEl.style.display = 'none';
             
@@ -632,6 +636,10 @@
             
             const adminStudFilter = document.getElementById('adminStudentSectionFilter');
             if (adminStudFilter) adminStudFilter.value = newSection;
+
+            const adminUploadSec = document.getElementById('adminUploadSectionSelect');
+            if (adminUploadSec) adminUploadSec.value = newSection;
+            if (typeof updateUploadTargetInfo === 'function') updateUploadTargetInfo();
             
             // Recharger l'onglet admin actuellement actif
             const activeTabBtn = document.querySelector('.admin-tab-btn.active');
@@ -1081,7 +1089,11 @@
           const summaryEl = document.getElementById('uploadTargetSummaryText');
           const secSelect = document.getElementById('adminUploadSectionSelect');
           const sec = secSelect ? secSelect.value : (currentSection || 'garcons');
-          const secLabel = (sec === 'garcons') ? 'Garçons 👦' : (sec === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧');
+          const secBadge = (sec === 'garcons') 
+            ? '<span style="background:#DBEAFE; color:#1D4ED8; padding:2px 8px; border-radius:6px; font-weight:700;">👦 Section Garçons</span>' 
+            : (sec === 'primaire' 
+              ? '<span style="background:#FEF3C7; color:#B45309; padding:2px 8px; border-radius:6px; font-weight:700;">👶🎒 Section Primaire & Maternelle</span>' 
+              : '<span style="background:#FCE7F3; color:#BE185D; padding:2px 8px; border-radius:6px; font-weight:700;">👧 Section Filles</span>');
 
           if (countEl) {
             countEl.textContent = `${weeks.length} semaine(s) sélectionnée(s)`;
@@ -1089,12 +1101,12 @@
 
           if (summaryEl) {
             if (weeks.length === 0) {
-              summaryEl.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-exclamation-triangle"></i> Aucune semaine sélectionnée</span> pour la Section <strong>${secLabel}</strong>.`;
+              summaryEl.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-exclamation-triangle"></i> Aucune semaine sélectionnée</span> pour la ${secBadge}.`;
             } else if (weeks.length === 1) {
-              summaryEl.innerHTML = `L'import Excel s'appliquera uniquement à la <strong>Semaine ${weeks[0]}</strong> pour la Section <strong>${secLabel}</strong>.`;
+              summaryEl.innerHTML = `<i class="fas fa-shield-alt" style="color:#10B981;"></i> L'import s'enregistrera <strong>UNIQUEMENT</strong> dans la ${secBadge} pour la <strong>Semaine S${weeks[0]}</strong> (les 2 autres sections restent strictement inchangées).`;
             } else {
               const weeksList = weeks.length <= 8 ? weeks.map(w => `S${w}`).join(', ') : `S${weeks[0]}...S${weeks[weeks.length-1]} (${weeks.length} semaines)`;
-              summaryEl.innerHTML = `L'import Excel sera <strong>propagé sur ${weeks.length} semaines</strong> (${weeksList}) pour la Section <strong>${secLabel}</strong>.`;
+              summaryEl.innerHTML = `<i class="fas fa-shield-alt" style="color:#10B981;"></i> L'import s'enregistrera <strong>UNIQUEMENT</strong> dans la ${secBadge} sur <strong>${weeks.length} semaines</strong> (${weeksList}) (les 2 autres sections restent strictement inchangées).`;
             }
           }
         }
@@ -1445,18 +1457,23 @@
             updateProgressBar(15);
 
             try {
+                const cleanData = uploadedPlanData.map(row => {
+                    if (!row || typeof row !== 'object') return null;
+                    return { ...row, _section: targetSection };
+                }).filter(Boolean);
+
                 let response, result;
                 if (isMulti) {
                     response = await fetch('/api/save-multiple-weeks', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ weeks: targetWeeks, data: uploadedPlanData, section: targetSection })
+                        body: JSON.stringify({ weeks: targetWeeks, data: cleanData, section: targetSection })
                     });
                 } else {
                     response = await fetch('/api/save-plan', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ week: targetWeeks[0], data: uploadedPlanData, section: targetSection })
+                        body: JSON.stringify({ week: targetWeeks[0], data: cleanData, section: targetSection })
                     });
                 }
 
@@ -3038,10 +3055,17 @@
                 const contentEl = document.getElementById(`adminTab_${t}`);
                 const btnEl = document.getElementById(`tabBtn_${t}`);
                 if (contentEl) contentEl.style.display = (t === tabName) ? 'block' : 'none';
-                if (btnEl) btnEl.classList.toggle('active', t === tabName);
+                if (btnEl) {
+                    if (t === tabName) btnEl.classList.add('active');
+                    else btnEl.classList.remove('active');
+                }
             });
             if (tabName === 'teachers') {
-                loadAdminUsersList();
+                const filterEl = document.getElementById('adminSectionFilter');
+                if (filterEl && (!filterEl.value || filterEl.value === '')) {
+                    filterEl.value = currentSection || 'garcons';
+                }
+                if (typeof loadAdminUsersList === 'function') loadAdminUsersList();
             } else if (tabName === 'calendar') {
                 populateAdminWeekSelectToEdit();
                 renderAdminWeeksTable();
@@ -3050,7 +3074,12 @@
             } else if (tabName === 'reports') {
                 populateAdminReportClassSelector();
             } else if (tabName === 'upload') {
+                const secSelect = document.getElementById('adminUploadSectionSelect');
+                if (secSelect && currentSection) {
+                    secSelect.value = currentSection;
+                }
                 populateAdminUploadWeekSelector();
+                updateUploadTargetInfo();
             } else if (tabName === 'messages') {
                 if (typeof loadAdminAllMessages === 'function') loadAdminAllMessages();
             } else if (tabName === 'publication') {
@@ -3149,6 +3178,10 @@
                     if (tabMessages) tabMessages.style.display = 'inline-flex';
                     if (tabPublication) tabPublication.style.display = 'inline-flex';
 
+                    const adminSecSel = document.getElementById('adminUploadSectionSelect');
+                    if (adminSecSel && currentSection) {
+                        adminSecSel.value = currentSection;
+                    }
                     populateAdminUploadWeekSelector();
                     switchAdminTab('upload');
                 }
@@ -3323,46 +3356,7 @@
             console.log("État appli réinitialisé après logout.");
         }
 
-        // --- Fonctions Admin de Gestion des Onglets et Supervision ---
-        function switchAdminTab(tabName) {
-            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication'];
-            tabs.forEach(t => {
-                const contentEl = document.getElementById(`adminTab_${t}`);
-                const btnEl = document.getElementById(`tabBtn_${t}`);
-                if (contentEl) {
-                    contentEl.style.display = (t === tabName) ? 'block' : 'none';
-                }
-                if (btnEl) {
-                    if (t === tabName) {
-                        btnEl.classList.add('active');
-                    } else {
-                        btnEl.classList.remove('active');
-                    }
-                }
-            });
-
-            if (tabName === 'teachers') {
-                const filterEl = document.getElementById('adminSectionFilter');
-                if (filterEl && (!filterEl.value || filterEl.value === '')) {
-                    filterEl.value = currentSection || 'garcons';
-                }
-                loadAdminUsersList();
-            } else if (tabName === 'calendar') {
-                populateAdminWeekSelectToEdit();
-                renderAdminWeeksTable();
-            } else if (tabName === 'students') {
-                if (typeof loadAdminStudentsList === 'function') loadAdminStudentsList();
-            } else if (tabName === 'reports') {
-                populateAdminReportClassSelector();
-            } else if (tabName === 'upload') {
-                populateAdminUploadWeekSelector();
-            } else if (tabName === 'messages') {
-                loadAdminAllMessages();
-            } else if (tabName === 'publication') {
-                loadAdminPublicationStatus();
-            }
-        }
-
+        // --- Fonctions Admin de Supervision ---
         let allAdminUsersCache = [];
 
         async function loadAdminUsersList() {

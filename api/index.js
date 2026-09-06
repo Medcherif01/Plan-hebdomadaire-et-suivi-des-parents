@@ -359,15 +359,53 @@ class InMemoryCollection {
   }
 
   async findOne(query) {
+    if (!query) return this.items[0] || null;
     return this.items.find(item => this._matches(item, query)) || null;
   }
 
   find(query = {}, options = {}) {
     let result = this.items.filter(item => this._matches(item, query));
+    let sortObj = null;
+    let limitCount = null;
+    let skipCount = 0;
     const cursor = {
-      sort: (sortObj) => cursor,
-      projection: (projObj) => cursor,
-      toArray: async () => result,
+      sort: (s) => {
+        sortObj = s;
+        return cursor;
+      },
+      limit: (n) => {
+        limitCount = n;
+        return cursor;
+      },
+      skip: (n) => {
+        skipCount = n;
+        return cursor;
+      },
+      project: () => cursor,
+      projection: () => cursor,
+      toArray: async () => {
+        let res = [...result];
+        if (sortObj && typeof sortObj === 'object') {
+          const entries = Object.entries(sortObj);
+          if (entries.length > 0) {
+            res.sort((a, b) => {
+              for (const [key, dir] of entries) {
+                const valA = a ? a[key] : undefined;
+                const valB = b ? b[key] : undefined;
+                if (valA === valB) continue;
+                if (valA === undefined) return 1;
+                if (valB === undefined) return -1;
+                const comparison = valA > valB ? 1 : -1;
+                return (dir === -1 || dir === 'desc') ? -comparison : comparison;
+              }
+              return 0;
+            });
+          }
+        }
+        if (skipCount > 0) res = res.slice(skipCount);
+        if (typeof limitCount === 'number') res = res.slice(0, limitCount);
+        return res;
+      },
     };
     return cursor;
   }
@@ -388,17 +426,50 @@ class InMemoryCollection {
     return { acknowledged: true, insertedIds };
   }
 
+  _setDeep(obj, path, value) {
+    if (!path.includes('.')) {
+      obj[path] = value;
+      return;
+    }
+    const parts = path.split('.');
+    let curr = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (curr[part] === undefined || curr[part] === null || typeof curr[part] !== 'object') {
+        curr[part] = {};
+      }
+      curr = curr[part];
+    }
+    curr[parts[parts.length - 1]] = value;
+  }
+
   async updateOne(filter, update, options = {}) {
     let index = this.items.findIndex(item => this._matches(item, filter));
     if (index >= 0) {
       if (update.$set) {
-        Object.assign(this.items[index], update.$set);
+        for (const [k, v] of Object.entries(update.$set)) {
+          this._setDeep(this.items[index], k, v);
+        }
+      }
+      if (update.$inc) {
+        for (const [k, v] of Object.entries(update.$inc)) {
+          const curr = this._getValueByPath(this.items[index], k) || 0;
+          this._setDeep(this.items[index], k, curr + v);
+        }
       }
       return { modifiedCount: 1, matchedCount: 1 };
     } else if (options.upsert) {
       const newItem = { _id: filter._id || filter.endpoint || filter.week || String(Date.now()) };
-      if (update.$set) Object.assign(newItem, update.$set);
-      if (update.$setOnInsert) Object.assign(newItem, update.$setOnInsert);
+      if (update.$setOnInsert) {
+        for (const [k, v] of Object.entries(update.$setOnInsert)) {
+          this._setDeep(newItem, k, v);
+        }
+      }
+      if (update.$set) {
+        for (const [k, v] of Object.entries(update.$set)) {
+          this._setDeep(newItem, k, v);
+        }
+      }
       this.items.push(newItem);
       return { modifiedCount: 0, matchedCount: 0, upsertedCount: 1 };
     }
@@ -409,7 +480,17 @@ class InMemoryCollection {
     let count = 0;
     this.items.forEach(item => {
       if (this._matches(item, filter)) {
-        if (update.$set) Object.assign(item, update.$set);
+        if (update.$set) {
+          for (const [k, v] of Object.entries(update.$set)) {
+            this._setDeep(item, k, v);
+          }
+        }
+        if (update.$inc) {
+          for (const [k, v] of Object.entries(update.$inc)) {
+            const curr = this._getValueByPath(item, k) || 0;
+            this._setDeep(item, k, curr + v);
+          }
+        }
         count++;
       }
     });
@@ -453,55 +534,113 @@ class InMemoryCollection {
     const matched = this.items.filter(item => this._matches(item, query));
     const set = new Set();
     matched.forEach(item => {
-      const parts = field.split('.');
-      let val = item;
-      for (const p of parts) {
-        if (Array.isArray(val)) {
-          val.forEach(v => { if (v && v[p]) set.add(v[p]); });
-          return;
-        } else if (val && typeof val === 'object') {
-          val = val[p];
-        } else {
-          val = undefined;
-          break;
-        }
-      }
-      if (val !== undefined && val !== null && val !== "") {
+      const val = this._getValueByPath(item, field);
+      if (Array.isArray(val)) {
+        val.forEach(v => {
+          if (v !== undefined && v !== null && v !== '') set.add(v);
+        });
+      } else if (val !== undefined && val !== null && val !== '') {
         set.add(val);
       }
     });
     return Array.from(set);
   }
 
+  async createIndex() { return 'ok'; }
+  async dropIndex() { return 'ok'; }
+
+  _getValueByPath(obj, keyPath) {
+    if (!obj || typeof obj !== 'object') return undefined;
+    if (keyPath in obj) return obj[keyPath];
+    const parts = keyPath.split('.');
+    let curr = obj;
+    for (let i = 0; i < parts.length; i++) {
+      if (curr === null || curr === undefined) return undefined;
+      const part = parts[i];
+      if (Array.isArray(curr)) {
+        const remaining = parts.slice(i).join('.');
+        return curr.map(item => this._getValueByPath(item, remaining)).flat();
+      }
+      curr = curr[part];
+    }
+    return curr;
+  }
+
   _matches(item, query) {
-    if (!query || Object.keys(query).length === 0) return true;
+    if (!query || typeof query !== 'object' || Object.keys(query).length === 0) return true;
     for (const key of Object.keys(query)) {
+      if (key === '$or') {
+        if (!Array.isArray(query.$or)) return false;
+        const matchedOr = query.$or.some(subQuery => this._matches(item, subQuery));
+        if (!matchedOr) return false;
+        continue;
+      }
+      if (key === '$and') {
+        if (!Array.isArray(query.$and)) return false;
+        const matchedAnd = query.$and.every(subQuery => this._matches(item, subQuery));
+        if (!matchedAnd) return false;
+        continue;
+      }
+
       const qVal = query[key];
-      const iVal = item ? item[key] : undefined;
+      const iVal = this._getValueByPath(item, key);
 
       if (qVal instanceof RegExp) {
-        if (!qVal.test(String(iVal || ''))) return false;
-      } else if (typeof qVal === 'object' && qVal !== null) {
+        if (!qVal.test(String(iVal ?? ''))) return false;
+      } else if (qVal && typeof qVal === 'object' && !Array.isArray(qVal) && !(qVal instanceof Date)) {
+        if (qVal.$exists !== undefined) {
+          const exists = iVal !== undefined;
+          if (exists !== Boolean(qVal.$exists)) return false;
+        }
         if (qVal.$regex !== undefined) {
           const reg = qVal.$regex instanceof RegExp ? qVal.$regex : new RegExp(qVal.$regex, qVal.$options || 'i');
-          if (!reg.test(String(iVal || ''))) return false;
-        } else if (qVal.$in && Array.isArray(qVal.$in)) {
-          if (!qVal.$in.includes(iVal)) return false;
-        } else if (qVal.$nin && Array.isArray(qVal.$nin)) {
-          if (qVal.$nin.includes(iVal)) return false;
-        } else if (qVal.$ne !== undefined) {
-          if (iVal === qVal.$ne) return false;
-        } else if (qVal.$gt !== undefined) {
-          if (!(iVal > qVal.$gt)) return false;
-        } else if (qVal.$gte !== undefined) {
-          if (!(iVal >= qVal.$gte)) return false;
-        } else if (qVal.$lt !== undefined) {
-          if (!(iVal < qVal.$lt)) return false;
-        } else if (qVal.$lte !== undefined) {
-          if (!(iVal <= qVal.$lte)) return false;
+          if (!reg.test(String(iVal ?? ''))) return false;
+        }
+        if (qVal.$in && Array.isArray(qVal.$in)) {
+          const inMatches = Array.isArray(iVal)
+            ? iVal.some(v => qVal.$in.some(target => String(target) === String(v)))
+            : qVal.$in.some(target => String(target) === String(iVal));
+          if (!inMatches) return false;
+        }
+        if (qVal.$nin && Array.isArray(qVal.$nin)) {
+          const ninMatches = Array.isArray(iVal)
+            ? iVal.every(v => !qVal.$nin.some(target => String(target) === String(v)))
+            : !qVal.$nin.some(target => String(target) === String(iVal));
+          if (!ninMatches) return false;
+        }
+        if (qVal.$ne !== undefined) {
+          if (String(iVal) === String(qVal.$ne)) return false;
+        }
+        if (qVal.$gt !== undefined) {
+          const compA = iVal instanceof Date ? iVal.getTime() : iVal;
+          const compB = qVal.$gt instanceof Date ? qVal.$gt.getTime() : qVal.$gt;
+          if (!(compA > compB)) return false;
+        }
+        if (qVal.$gte !== undefined) {
+          const compA = iVal instanceof Date ? iVal.getTime() : iVal;
+          const compB = qVal.$gte instanceof Date ? qVal.$gte.getTime() : qVal.$gte;
+          if (!(compA >= compB)) return false;
+        }
+        if (qVal.$lt !== undefined) {
+          const compA = iVal instanceof Date ? iVal.getTime() : iVal;
+          const compB = qVal.$lt instanceof Date ? qVal.$lt.getTime() : qVal.$lt;
+          if (!(compA < compB)) return false;
+        }
+        if (qVal.$lte !== undefined) {
+          const compA = iVal instanceof Date ? iVal.getTime() : iVal;
+          const compB = qVal.$lte instanceof Date ? qVal.$lte.getTime() : qVal.$lte;
+          if (!(compA <= compB)) return false;
         }
       } else {
-        if (iVal !== qVal) return false;
+        if (Array.isArray(iVal)) {
+          if (!iVal.some(val => String(val) === String(qVal))) return false;
+        } else if (qVal instanceof Date && iVal instanceof Date) {
+          if (qVal.getTime() !== iVal.getTime()) return false;
+        } else if (key === '_id' || (qVal && typeof qVal === 'object' && typeof qVal.toString === 'function')) {
+          if (String(iVal) !== String(qVal)) return false;
+        } else {
+          if (iVal !== qVal && String(iVal) !== String(qVal)) return false;
+        }
       }
     }
     return true;
@@ -1782,10 +1921,6 @@ app.get('/api/teacher-homeworks', async (req, res) => {
       query.week = parseInt(week, 10);
     }
     let planDocs = await db.collection('plans').find(query).toArray();
-    if ((!planDocs || planDocs.length === 0) && section === 'garcons') {
-      const fallbackDocs = await db.collection('plans').find(week ? { week: parseInt(week, 10) } : {}).toArray();
-      if (fallbackDocs) planDocs.push(...fallbackDocs);
-    }
 
     // Charger les semaines et dates officielles
     const weeksConfigDoc = await db.collection('school_weeks_config').find({}).toArray();
@@ -1912,11 +2047,6 @@ app.get('/api/evaluations', async (req, res) => {
         { _id: section }
       ]
     }).toArray();
-
-    if ((!planDocs || planDocs.length === 0) && section === 'garcons') {
-      const fallbackDocs = await db.collection('plans').find({}).toArray();
-      if (fallbackDocs) planDocs.push(...fallbackDocs);
-    }
 
     // Déterminer la semaine cible pour la date demandée
     let targetWeekNumber = null;
@@ -2858,27 +2988,6 @@ app.get('/api/plans/:week', async (req, res) => {
       ]
     });
     
-    if (!planDocument && section === 'garcons') {
-      planDocument = await db.collection('plans').findOne({
-        $or: [
-          { week: weekNumber },
-          { week: String(weekNumber) },
-          { _id: String(weekNumber) },
-          { _id: weekNumber }
-        ]
-      });
-    }
-
-    if (!planDocument) {
-      planDocument = await db.collection('plans').findOne({
-        $or: [
-          { week: weekNumber },
-          { week: String(weekNumber) },
-          { _id: new RegExp(`_${weekNumber}$`) }
-        ]
-      });
-    }
-    
     if (planDocument) {
       const lessonPlans = await db.collection('lessonPlans')
         .find({ week: weekNumber, section: section }, { projection: { _id: 1 } })
@@ -2941,9 +3050,8 @@ app.get('/api/plans/:week', async (req, res) => {
           { _id: `${section}_${String(weekNumber)}` },
           { week: weekNumber, section: section },
           { week: String(weekNumber), section: section },
-          { week: weekNumber },
-          { week: String(weekNumber) },
-          { _id: String(weekNumber) }
+          { _id: `all_${weekNumber}` },
+          { week: weekNumber, section: 'all' }
         ]
       });
       const isPublishedToParents = (pubDoc && (pubDoc.published !== undefined || pubDoc.isPublishedToParents !== undefined))
@@ -2970,9 +3078,8 @@ app.get('/api/plans/:week', async (req, res) => {
           { _id: `${section}_${String(weekNumber)}` },
           { week: weekNumber, section: section },
           { week: String(weekNumber), section: section },
-          { week: weekNumber },
-          { week: String(weekNumber) },
-          { _id: String(weekNumber) }
+          { _id: `all_${weekNumber}` },
+          { week: weekNumber, section: 'all' }
         ]
       });
       const isPublishedToParents = pubDoc ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents) : false;
@@ -2991,17 +3098,35 @@ app.get('/api/plans/:week', async (req, res) => {
 app.post('/api/save-plan', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const data = req.body.data;
-  const section = req.body.section || 'garcons';
+  const rawSection = String(req.body.section || 'garcons').toLowerCase().trim();
+  const section = ['garcons', 'filles', 'primaire'].includes(rawSection) ? rawSection : 'garcons';
   if (isNaN(weekNumber) || !Array.isArray(data)) return res.status(400).json({ message: 'Données invalides.' });
   try {
     const db = await connectToDatabase();
     const docId = `${section}_${weekNumber}`;
+    const now = new Date();
+    // Estampiller chaque ligne avec la section cible pour garantir une isolation stricte
+    const stampedData = data.map(item => (item && typeof item === 'object') ? { ...item, _section: section } : item);
     await db.collection('plans').updateOne(
       { _id: docId },
-      { $set: { week: weekNumber, section: section, data: data, updatedAt: new Date() } },
+      { 
+        $set: { 
+          _id: docId,
+          week: weekNumber, 
+          section: section, 
+          data: stampedData, 
+          updatedAt: now 
+        } 
+      },
       { upsert: true }
     );
-    res.status(200).json({ message: `Plan S${weekNumber} (${section}) enregistré.` });
+    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${stampedData.length} lignes enregistrées UNIQUEMENT pour la section ${section}.`);
+    res.status(200).json({ 
+      success: true,
+      message: `Plan S${weekNumber} pour la section ${section} enregistré avec succès.`,
+      section: section,
+      week: weekNumber
+    });
   } catch (error) {
     console.error('Erreur MongoDB /save-plan:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -3011,7 +3136,10 @@ app.post('/api/save-plan', async (req, res) => {
 // Enregistrement d'un plan Excel vers plusieurs semaines pour chaque section séparée
 app.post('/api/save-multiple-weeks', async (req, res) => {
   try {
-    const { weeks, data, section = 'garcons' } = req.body;
+    const { weeks, data, section: rawSection = 'garcons' } = req.body;
+    const cleanSection = String(rawSection || 'garcons').toLowerCase().trim();
+    const section = ['garcons', 'filles', 'primaire'].includes(cleanSection) ? cleanSection : 'garcons';
+
     if (!Array.isArray(weeks) || weeks.length === 0 || !Array.isArray(data) || data.length === 0) {
       return res.status(400).json({ message: 'Données ou liste de semaines invalides.' });
     }
@@ -3021,14 +3149,18 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
     }
     const db = await connectToDatabase();
     const now = new Date();
+    // Estampiller chaque ligne avec la section cible pour garantir une isolation stricte
+    const stampedData = data.map(item => (item && typeof item === 'object') ? { ...item, _section: section } : item);
+
     const operations = validWeeks.map(w => ({
       updateOne: {
         filter: { _id: `${section}_${w}` },
         update: { 
           $set: { 
+            _id: `${section}_${w}`,
             week: w, 
             section: section, 
-            data: data, 
+            data: stampedData, 
             updatedAt: now 
           } 
         },
@@ -3036,11 +3168,12 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
       }
     }));
     await db.collection('plans').bulkWrite(operations);
-    console.log(`[Multi-Weeks Upload] ${data.length} lignes appliquées aux semaines ${validWeeks.join(', ')} pour la section ${section}.`);
+    console.log(`[Multi-Weeks Upload] ${data.length} lignes appliquées aux semaines ${validWeeks.join(', ')} UNIQUEMENT pour la section ${section}.`);
     res.status(200).json({ 
       success: true,
       message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section}.`,
-      savedWeeks: validWeeks
+      savedWeeks: validWeeks,
+      section: section
     });
   } catch (error) {
     console.error('Erreur MongoDB /api/save-multiple-weeks:', error);
@@ -3380,7 +3513,8 @@ app.get('/api/all-classes', async (req, res) => {
 
 app.post('/api/generate-word', async (req, res) => {
   try {
-    const { week, classe, data, notes } = req.body;
+    const { week, classe, data, notes, section: rawSection = 'garcons' } = req.body;
+    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
     const weekNumber = Number(week);
     if (!Number.isInteger(weekNumber) || !classe || !Array.isArray(data)) {
       return res.status(400).json({ message: 'Données invalides.' });
@@ -3476,7 +3610,7 @@ app.post('/api/generate-word', async (req, res) => {
     // 1. Enregistrement du plan de leçon dans MongoDB
     try {
       const db = await connectToDatabase();
-      const lessonPlanId = `S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}`;
+      const lessonPlanId = `${section}_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}`;
       
       await db.collection('weeklyLessonPlans').updateOne(
           { _id: lessonPlanId },
@@ -3484,6 +3618,7 @@ app.post('/api/generate-word', async (req, res) => {
               $set: { 
                   week: weekNumber, 
                   classe: classe, 
+                  section: section,
                   filename: filename, 
                   fileData: buf, 
                   updatedAt: new Date() 
@@ -3492,7 +3627,7 @@ app.post('/api/generate-word', async (req, res) => {
           },
           { upsert: true }
       );
-      console.log(`✅ Plan de leçon ${lessonPlanId} enregistré dans MongoDB.`);
+      console.log(`✅ Plan de leçon ${lessonPlanId} (${section}) enregistré dans MongoDB.`);
     } catch (dbError) {
       console.error(`❌ Erreur lors de l'enregistrement du plan de leçon dans MongoDB:`, dbError);
       // On continue pour envoyer le fichier même en cas d'échec de l'enregistrement
@@ -3514,7 +3649,8 @@ app.post('/api/generate-word', async (req, res) => {
 
 	app.post('/api/generate-weekly-plans-zip', async (req, res) => {
 	  try {
-	    const { week, classes, data, notes } = req.body;
+	    const { week, classes, data, notes, section: rawSection = 'garcons' } = req.body;
+	    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
 	    const weekNumber = Number(week);
 	    if (!Number.isInteger(weekNumber) || !Array.isArray(classes) || !Array.isArray(data)) {
 	      return res.status(400).json({ message: 'Données invalides (semaine, classes ou data manquantes).' });
@@ -3628,7 +3764,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      // Enregistrement du plan de leçon dans MongoDB (comme dans /api/generate-word)
 	      try {
 	        const db = await connectToDatabase();
-	        const lessonPlanId = `S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}`;
+	        const lessonPlanId = `${section}_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}`;
 	        
 	        await db.collection('weeklyLessonPlans').updateOne(
 	            { _id: lessonPlanId },
@@ -3636,6 +3772,7 @@ app.post('/api/generate-word', async (req, res) => {
 	                $set: { 
 	                    week: weekNumber, 
 	                    classe: classe, 
+	                    section: section,
 	                    filename: docxFilename, 
 	                    fileData: buf, 
 	                    updatedAt: new Date() 
@@ -3644,7 +3781,7 @@ app.post('/api/generate-word', async (req, res) => {
 	            },
 	            { upsert: true }
 	        );
-	        console.log(`✅ Plan de leçon ${lessonPlanId} enregistré dans MongoDB.`);
+	        console.log(`✅ Plan de leçon ${lessonPlanId} (${section}) enregistré dans MongoDB.`);
 	      } catch (dbError) {
 	        console.error(`❌ Erreur lors de l'enregistrement du plan de leçon dans MongoDB:`, dbError);
 	      }
@@ -3669,13 +3806,21 @@ app.post('/api/generate-word', async (req, res) => {
 	  try {
 	    const weekNumber = Number(req.params.week);
 	    const classe = req.params.classe;
+	    const rawSection = String(req.query.section || 'garcons').toLowerCase().trim();
+	    const section = ['garcons', 'filles', 'primaire'].includes(rawSection) ? rawSection : 'garcons';
 	    if (!Number.isInteger(weekNumber) || !classe) {
 	      return res.status(400).json({ message: 'Semaine ou classe invalide.' });
 	    }
 
-	    const lessonPlanId = `S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}`;
+	    const lessonPlanId = `${section}_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}`;
 	    const db = await connectToDatabase();
-	    const planDocument = await db.collection('weeklyLessonPlans').findOne({ _id: lessonPlanId });
+	    let planDocument = await db.collection('weeklyLessonPlans').findOne({ _id: lessonPlanId });
+	    if (!planDocument) {
+	      planDocument = await db.collection('weeklyLessonPlans').findOne({ week: weekNumber, classe: classe, section: section });
+	    }
+	    if (!planDocument) {
+	      planDocument = await db.collection('weeklyLessonPlans').findOne({ _id: `S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}` });
+	    }
 
 	    if (!planDocument || !planDocument.fileData) {
 	      console.log(`⚠️ Plan de leçon non trouvé pour ${lessonPlanId}`);
@@ -3719,9 +3864,6 @@ app.post('/api/generate-excel-workbook', async (req, res) => {
       let planDocument = await db.collection('plans').findOne({ _id: docId });
       if (!planDocument) {
         planDocument = await db.collection('plans').findOne({ week: weekNumber, section: section });
-      }
-      if (!planDocument && section === 'garcons') {
-        planDocument = await db.collection('plans').findOne({ week: weekNumber });
       }
 
       if (!planDocument?.data?.length) {
@@ -3831,9 +3973,6 @@ app.post('/api/full-report-by-class', async (req, res) => {
 
     const db = await connectToDatabase();
     let allPlans = await db.collection('plans').find({ section: section }).sort({ week: 1 }).toArray();
-    if ((!allPlans || allPlans.length === 0) && section === 'garcons') {
-      allPlans = await db.collection('plans').find({}).sort({ week: 1 }).toArray();
-    }
     if (!allPlans || allPlans.length === 0) return res.status(404).json({ message: 'Aucune donnée.' });
 
     const dataBySubject = {};
@@ -5419,6 +5558,22 @@ app.post('/api/notify-incomplete-teachers', async (req, res) => {
     });
   }
 });
+
+// Middleware de gestion d'erreur global et fallback si base de données déconnectée
+app.use((err, req, res, next) => {
+  if (err.name === 'MongooseError' || err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError' || (err.message && err.message.includes('buffering timed out'))) {
+    console.warn('[AI Studio] Base de données hors ligne — réponse de secours renvoyée');
+    if (req.method === 'GET') {
+      return res.json(req.path.endsWith('s') || req.path.endsWith('s/') ? [] : {});
+    }
+    return res.status(503).json({ error: 'Service temporairement indisponible (base de données hors ligne)' });
+  }
+  console.error('Erreur non gérée:', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
 // Configuration Port et Host
 const PORT = 3000;
 const HOST = '0.0.0.0';
