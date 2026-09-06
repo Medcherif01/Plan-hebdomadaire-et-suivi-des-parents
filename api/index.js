@@ -105,6 +105,7 @@ function createDefaultLessonTemplateZip() {
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 </Types>`);
 
   zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -114,31 +115,109 @@ function createDefaultLessonTemplateZip() {
 
   zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`);
+
+  zip.file('word/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:docDefaults>
+    <w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:rDefault>
+  </w:docDefaults>
+</w:styles>`);
 
   zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
   <w:body>
-    <w:p><w:r><w:rPr><w:b/><w:sz w:val="32"/></w:rPr><w:t>PLAN DE LEÇON - {Matiere}</w:t></w:r></w:p>
-    <w:p><w:r><w:t>Enseignant : {NomEnseignant} | Classe : {Classe} | Semaine : {Semaine} | Jour : {Jour} ({Date})</w:t></w:r></w:p>
-    <w:p><w:r><w:t>Titre du cours / Leçon : {Lecon}</w:t></w:r></w:p>
-    <w:p><w:r><w:t>Unité : {TitreUnite}</w:t></w:r></w:p>
-    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Objectifs d'apprentissage :</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="34"/><w:color w:val="1E3A8A"/></w:rPr><w:t>FICHE DE PRÉPARATION DE LEÇON</w:t></w:r></w:p>
+    <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="26"/><w:color w:val="2563EB"/></w:rPr><w:t>{Matiere} - {Classe}</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Enseignant : {NomEnseignant} | Semaine : {Semaine} | Séance : {Seance} | Date : {Jour} {Date}</w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:b/><w:sz w:val="24"/><w:color w:val="1E293B"/></w:rPr><w:t>Titre du cours / Leçon : </w:t></w:r><w:r><w:t>{Lecon}</w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Unité pédagogique : </w:t></w:r><w:r><w:t>{TitreUnite}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:before="140"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="1D4ED8"/></w:rPr><w:t>🎯 Objectifs d'apprentissage :</w:t></w:r></w:p>
     <w:p><w:r><w:t>{Objectifs}</w:t></w:r></w:p>
-    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Méthodes &amp; Outils :</w:t></w:r></w:p>
-    <w:p><w:r><w:t>Méthodes : {Methodes} | Outils : {Outils}</w:t></w:r></w:p>
-    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Déroulement de la séance :</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:before="140"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="1D4ED8"/></w:rPr><w:t>🛠 Méthodes &amp; Outils :</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Méthodes : {Methodes}</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Outils &amp; Matériel : {Outils}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:before="140"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="1D4ED8"/></w:rPr><w:t>⏱ Déroulement de la séance :</w:t></w:r></w:p>
     <w:p><w:r><w:t>{Contenu}</w:t></w:r></w:p>
-    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Ressources :</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:before="140"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="1D4ED8"/></w:rPr><w:t>📚 Ressources pédagogiques :</w:t></w:r></w:p>
     <w:p><w:r><w:t>{Ressources}</w:t></w:r></w:p>
-    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Devoirs à la maison :</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:before="140"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="1D4ED8"/></w:rPr><w:t>📝 Devoirs à la maison :</w:t></w:r></w:p>
     <w:p><w:r><w:t>{Devoirs}</w:t></w:r></w:p>
-    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Différenciation :</w:t></w:r></w:p>
-    <w:p><w:r><w:t>Soutien : {DiffLents} | Enrichissement : {DiffTresPerf} | Classe : {DiffTous}</w:t></w:r></w:p>
+    <w:p><w:pPr><w:spacing w:before="140"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="1D4ED8"/></w:rPr><w:t>🌟 Différenciation pédagogique :</w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>• Soutien &amp; Remédiation : </w:t></w:r><w:r><w:t>{DiffLents}</w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>• Approfondissement : </w:t></w:r><w:r><w:t>{DiffTresPerf}</w:t></w:r></w:p>
+    <w:p><w:r><w:rPr><w:b/></w:rPr><w:t>• Démarche collective : </w:t></w:r><w:r><w:t>{DiffTous}</w:t></w:r></w:p>
   </w:body>
 </w:document>`);
 
   return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
+
+/**
+ * Générateur pédagogique intégré de secours (Ultra-résilient)
+ * Produit un plan de leçon complet et structuré si le service IA (Gemini/Groq) est indisponible ou hors quota.
+ */
+function generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, travaux, support, devoirsPrevus) {
+  const isEn = Array.isArray(englishTeachers) && englishTeachers.includes(enseignant);
+  const isAr = Array.isArray(arabicTeachers) && arabicTeachers.includes(enseignant);
+  const topic = lecon && String(lecon).trim().length > 1 && lecon !== '-' ? String(lecon).trim() : `${matiere || 'Séance de cours'}`;
+
+  if (isEn) {
+    return {
+      TitreUnite: `Unit: ${matiere || 'Course Unit'} - ${topic}`,
+      Methodes: "Active learning, guided practice, formative feedback, differentiated instruction",
+      Outils: support && support !== 'Non spécifié' ? support : "Textbook, worksheets, board, multimedia projector",
+      Objectifs: `- Understand and master key concepts related to: ${topic}\n- Apply core knowledge through structured classroom exercises\n- Formulate logical conclusions and demonstrate autonomous understanding`,
+      etapes: [
+        { phase: "Introduction & Hook", duree: "5 min", activite: `Review prior concepts, present the learning intentions, and engage students with an opening hook on "${topic}".` },
+        { phase: "Guided Practice & Core Activity", duree: "25 min", activite: `Interactive instruction and concept development. Classroom tasks: ${travaux && travaux !== 'Non spécifié' ? travaux : 'Problem solving and practical applications'}. Using materials: ${support && support !== 'Non spécifié' ? support : 'Curriculum materials'}.` },
+        { phase: "Synthesis & Formative Assessment", duree: "10 min", activite: `Consolidate key learnings, review student solutions, and clarify remaining questions.` },
+        { phase: "Wrap-up & Homework", duree: "5 min", activite: `Summarize the lesson outcomes and assign homework: ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : 'Reinforcement exercises'}.` }
+      ],
+      Ressources: support && support !== 'Non spécifié' ? support : "Curriculum textbook, guided notes, educational handouts",
+      Devoirs: devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `Consolidation exercises on ${topic}`,
+      DiffLents: "Step-by-step scaffolding, visual aids, and one-on-one guided prompts",
+      DiffTresPerf: "Challenging application problems and peer-tutoring leadership",
+      DiffTous: "Multi-modal presentation and regular understanding checks"
+    };
+  } else if (isAr) {
+    return {
+      TitreUnite: `الوحدة: ${matiere || 'المادة الدراسية'} - ${topic}`,
+      Methodes: "التعلم النشط، الممارسة الموجهة، التمايز البيداغوجي، الحوار والمناقشة",
+      Outils: support && support !== 'Non spécifié' ? support : "الكتاب المدرسي، السبورة، أوراق العمل، الوسائل التعليمية",
+      Objectifs: `- استيعاب وفهم المفاهيم الأساسية لدرس: ${topic}\n- تطبيق المعارف المكتسبة من خلال أنشطة صفية وتمارين موجهة\n- تنمية التفكير التحليلي والقدرة على الاستنتاج الذاتي`,
+      etapes: [
+        { phase: "التهيئة والتمهيد", duree: "5 دقائق", activite: `مراجعة المكتسبات السابقة، إثارة دافعية التلاميذ، وإعلان أهداف الدرس: "${topic}".` },
+        { phase: "بناء التعلمات والنشاط الرئيسي", duree: "25 دقيقة", activite: `الشرح التفاعلي وإنجاز التطبيقات. أعمال الصف: ${travaux && travaux !== 'Non spécifié' ? travaux : 'أنشطة تطبيقية وتمارين صفية'}. الاعتماد على السند: ${support && support !== 'Non spécifié' ? support : 'المعينات التربوية المعتمدة'}.` },
+        { phase: "التقويم التكويني والتركيب", duree: "10 دقائق", activite: `مناقشة الحلول، رصد الثغرات وتصحيح الأخطاء الشائعة، وتركيب خلاصة الدرس.` },
+        { phase: "الخاتمة وتكليف الواجبات", duree: "5 دقائق", activite: `تأكيد المفاهيم الأساسية وتوجيه التلاميذ للواجبات المنزلية: ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : 'تمارين التثبيت المنزلي'}.` }
+      ],
+      Ressources: support && support !== 'Non spécifié' ? support : "الكتاب المدرسي المعتمد، المذكرات البيداغوجية، بطاقات الأنشطة",
+      Devoirs: devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `إنجاز تمارين تطبيقية في موضوع ${topic}`,
+      DiffLents: "دعم فردي موجه، تبسيط التعليمات وتقديم أمثلة إرشادية خطوة بخطوة",
+      DiffTresPerf: "تمارين إثرائية متقدمة ومسائل مفتوحة لتحفيز التفكير الإبداعي",
+      DiffTous: "تنويع أساليب العرض والتفاعل ومراعاة وتيرة التعلم لجميع المتعلمين"
+    };
+  } else {
+    return {
+      TitreUnite: `Unité : ${matiere || 'Discipline'} - ${topic}`,
+      Methodes: "Pédagogie active, démarche explicite, pratique guidée puis autonome, différenciation",
+      Outils: support && support !== 'Non spécifié' ? support : "Manuel scolaire, tableau interactif/feutre, fiches d'exercices",
+      Objectifs: `- Comprendre et maîtriser les notions fondamentales du thème : ${topic}\n- Mobiliser les compétences acquises dans des situations d'application concrètes\n- Développer l'esprit d'analyse et l'autonomie dans le raisonnement`,
+      etapes: [
+        { phase: "Introduction & Accroche", duree: "5 min", activite: `Rappel des prérequis, mise en situation motivante et formulation claire des objectifs d'apprentissage sur « ${topic} ».` },
+        { phase: "Activité Principale & Entraînement", duree: "25 min", activite: `Apports conceptuels et mise en œuvre des travaux de classe : ${travaux && travaux !== 'Non spécifié' ? travaux : 'Exercices d\'application et recherche guidée'}. Exploitation du support : ${support && support !== 'Non spécifié' ? support : 'Documents et manuel scolaire'}.` },
+        { phase: "Synthèse & Évaluation formative", duree: "10 min", activite: `Mise en commun des productions des élèves, formalisation institutionnelle des notions et correction des erreurs fréquentes.` },
+        { phase: "Clôture & Devoirs", duree: "5 min", activite: `Bilan récapitulatif de la séance et explication des consignes de travail autonome : ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : 'Exercices d\'entraînement et de mémorisation'}.` }
+      ],
+      Ressources: support && support !== 'Non spécifié' ? support : "Manuel officiel, fiches pédagogiques, ressources documentaires",
+      Devoirs: devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `Consolidation et exercices d'application sur ${topic}`,
+      DiffLents: "Étayage progressif, consignes simplifiées, exemples repères et accompagnement ciblé",
+      DiffTresPerf: "Activités d'approfondissement, défis de réflexion et rôle de tuteur d'équipe",
+      DiffTous: "Modalités d'apprentissage variées (individuel, binôme) et progression par paliers"
+    };
+  }
 }
 
 function createDefaultWordTemplateZip() {
@@ -4241,17 +4320,16 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
 // --------------------- Génération IA (REST, v1, modèle dynamique) ------
 
 app.post('/api/generate-ai-lesson-plan', async (req, res) => {
+  let docxBufferToSend = null;
+  let filenameToSend = 'plan_de_lecon.docx';
+  let lessonPlanIdToSend = '';
+
   try {
     console.log('📝 [AI Lesson Plan] Nouvelle demande de génération');
     
     const groqKeys = getAllGroqApiKeys();
     const geminiKeys = getAllGeminiApiKeys();
-    
-    if (groqKeys.length === 0 && geminiKeys.length === 0) {
-      console.error('❌ [AI Lesson Plan] Aucune clé API (GROQ ou GEMINI) disponible');
-      return res.status(503).json({ message: "Le service IA n'est pas initialisé. Vérifiez les clés API GROQ ou GEMINI du serveur." });
-    }
-    
+    const hasAiKeys = (groqKeys.length > 0 || geminiKeys.length > 0);
     console.log(`🔧 [AI Lesson Plan] Pool IA actif: ${groqKeys.length} clé(s) GROQ, ${geminiKeys.length} clé(s) GEMINI`);
 
     const { week, rowData } = req.body;
@@ -4267,15 +4345,16 @@ app.post('/api/generate-ai-lesson-plan', async (req, res) => {
     try {
       templateBuffer = await getLessonTemplateBuffer();
     } catch (e) {
-      console.error("Erreur de récupération du modèle Word:", e);
-      return res.status(500).json({ message: "Impossible de générer ou récupérer le modèle de leçon." });
+      console.warn("⚠️ Récupération modèle distant échouée, utilisation du modèle interne:", e.message);
+      templateBuffer = createDefaultLessonTemplateZip();
     }
 
-    // Extraire données
+    // Extraire données de la ligne
     const enseignant = rowData[findKey(rowData, 'Enseignant')] || '';
     const classe = rowData[findKey(rowData, 'Classe')] || '';
     const matiere = rowData[findKey(rowData, 'Matière')] || '';
-    const lecon = rowData[findKey(rowData, 'Leçon')] || '';
+    const rawLecon = rowData[findKey(rowData, 'Leçon')] || '';
+    const lecon = (rawLecon && rawLecon.trim().length > 0 && rawLecon !== '-') ? rawLecon.trim() : `${matiere || 'Séance'} (${classe || ''})`;
     const jour = rowData[findKey(rowData, 'Jour')] || '';
     const seance = rowData[findKey(rowData, 'Période')] || '';
     const support = rowData[findKey(rowData, 'Support')] || 'Non spécifié';
@@ -4299,61 +4378,65 @@ app.post('/api/generate-ai-lesson-plan', async (req, res) => {
       }
     }
 
-    // Prompt + structure JSON
-    const jsonStructure = `{"TitreUnite":"un titre d'unité pertinent pour la leçon","Methodes":"liste des méthodes d'enseignement","Outils":"liste des outils de travail","Objectifs":"une liste concise des objectifs d'apprentissage (compétences, connaissances), séparés par des sauts de ligne (\\\\n). Commence chaque objectif par un tiret (-).","etapes":[{"phase":"Introduction","duree":"5 min","activite":"Description de l'activité d'introduction pour l'enseignant et les élèves."},{"phase":"Activité Principale","duree":"25 min","activite":"Description de l'activité principale, en intégrant les 'travaux de classe' et le 'support' si possible."},{"phase":"Synthèse","duree":"10 min","activite":"Description de l'activité de conclusion et de vérification des acquis."},{"phase":"Clôture","duree":"5 min","activite":"Résumé rapide et annonce des devoirs."}],"Ressources":"les ressources spécifiques à utiliser.","Devoirs":"une suggestion de devoirs.","DiffLents":"une suggestion pour aider les apprenants en difficulté.","DiffTresPerf":"une suggestion pour stimuler les apprenants très performants.","DiffTous":"une suggestion de différenciation pour toute la classe."}`;
+    let aiData = null;
+    let providerUsed = 'Modèle Pédagogique';
 
-    let prompt;
-    if (englishTeachers.includes(enseignant)) {
-      prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.
+    // 1. Tenter la génération par l'IA si des clés sont présentes
+    if (hasAiKeys) {
+      const jsonStructure = `{"TitreUnite":"un titre d'unité pertinent pour la leçon","Methodes":"liste des méthodes d'enseignement","Outils":"liste des outils de travail","Objectifs":"une liste concise des objectifs d'apprentissage (compétences, connaissances), séparés par des sauts de ligne (\\\\n). Commence chaque objectif par un tiret (-).","etapes":[{"phase":"Introduction","duree":"5 min","activite":"Description de l'activité d'introduction pour l'enseignant et les élèves."},{"phase":"Activité Principale","duree":"25 min","activite":"Description de l'activité principale, en intégrant les 'travaux de classe' et le 'support' si possible."},{"phase":"Synthèse","duree":"10 min","activite":"Description de l'activité de conclusion et de vérification des acquis."},{"phase":"Clôture","duree":"5 min","activite":"Résumé rapide et annonce des devoirs."}],"Ressources":"les ressources spécifiques à utiliser.","Devoirs":"une suggestion de devoirs.","DiffLents":"une suggestion pour aider les apprenants en difficulté.","DiffTresPerf":"une suggestion pour stimuler les apprenants très performants.","DiffTous":"une suggestion de différenciation pour toute la classe."}`;
 
+      let prompt;
+      if (englishTeachers.includes(enseignant)) {
+        prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.
 CRITICAL INSTRUCTION: You MUST strictly generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}]. DO NOT invent, substitute, or drift to any other topic or chapter.
-
 As an expert pedagogical assistant, create a detailed 45-minute lesson plan in English. Structure the lesson into timed phases and integrate the teacher's existing notes:
 - Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}
 - Planned Classwork: ${travaux}
 - Mentioned Support/Materials: ${support}
 - Planned Homework: ${devoirsPrevus}
-
 Use the following JSON structure with professional, concrete values in English (keys exactly as specified):
 ${jsonStructure}`;
-    } else if (arabicTeachers.includes(enseignant)) {
-      prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.
-
+      } else if (arabicTeachers.includes(enseignant)) {
+        prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.
 تعليمات صارمة وأساسية: يجب عليك حصراً بناء خطة الدرس للموضوع المطلوب تحديداً: [${lecon}] في مادة [${matiere}] وفصل [${classe}]. يُمنع تماماً تغيير الموضوع أو توليد درس مختلف أو عام.
-
 بصفتك مساعدًا تربويًا خبيرًا، أنشئ خطة درس مفصلة باللغة العربية مدتها 45 دقيقة. قم ببناء الدرس في مراحل محددة زمنياً وادمج ملاحظات المعلم:
 - المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}
 - أعمال الصف المخطط لها: ${travaux}
 - الدعم/المواد: ${support}
 - الواجبات المخطط لها: ${devoirsPrevus}
-
 استخدم البنية التالية بالقيم المهنية والملموسة (المفاتيح كما هي بالإنجليزية):
 ${jsonStructure}`;
-    } else {
-      prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.
-
+      } else {
+        prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.
 INSTRUCTION CRITIQUE : Vous DEVEZ impérativement et fidèlement concevoir la fiche de préparation pour le Thème de leçon spécifié : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ». Ne changez JAMAIS de sujet et n'extrapolez pas vers une autre leçon.
-
 En tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :
 - Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}
 - Travaux de classe : ${travaux}
 - Support/Matériel : ${support}
 - Devoirs prévus : ${devoirsPrevus}
-
 Utilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :
 ${jsonStructure}`;
+      }
+
+      try {
+        const { content: rawText, provider } = await callAiWithKeyRotation(prompt, `AI Lesson Plan (${enseignant} - ${matiere})`);
+        providerUsed = provider;
+        try {
+          aiData = JSON.parse(rawText);
+        } catch {
+          const cleaned = rawText.replace(/^```json\s*|\s*```$/g, '').trim();
+          aiData = JSON.parse(cleaned);
+        }
+      } catch (aiErr) {
+        console.warn(`⚠️ [AI Lesson Plan] Quota ou indisponibilité IA (${aiErr.message}). Basculement sur le générateur pédagogique intégré.`);
+      }
     }
 
-    // Appel IA avec rotation et basculement automatique
-    const { content: rawText, provider } = await callAiWithKeyRotation(prompt, `AI Lesson Plan (${enseignant} - ${matiere})`);
-
-    // Parse JSON avec nettoyage
-    let aiData;
-    try {
-      aiData = JSON.parse(rawText);
-    } catch {
-      const cleaned = rawText.replace(/^```json\s*|\s*```$/g, '').trim();
-      aiData = JSON.parse(cleaned);
+    // 2. Si l'IA n'est pas configurée ou a échoué (quota, format JSON...), utiliser le générateur pédagogique intégré
+    if (!aiData) {
+      console.log(`💡 [AI Lesson Plan] Utilisation du moteur pédagogique intégré pour ${matiere} (${classe})`);
+      aiData = generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, travaux, support, devoirsPrevus);
+      providerUsed = 'Moteur Pédagogique Intégré';
     }
 
     // Préparer le DOCX
@@ -4385,12 +4468,16 @@ ${jsonStructure}`;
     const buf = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 
     // Format: Matière_Classe_Semaine_Séance_Enseignant.docx
-    const filename = `${sanitizeForFilename(matiere)}_${sanitizeForFilename(classe)}_S${weekNumber}_P${sanitizeForFilename(seance)}_${sanitizeForFilename(enseignant)}.docx`;
-    console.log(`📄 [AI Lesson Plan] Envoi du fichier: ${filename} (Généré via ${provider})`);
+    const filename = `${sanitizeForFilename(matiere || 'Cours')}_${sanitizeForFilename(classe || 'Classe')}_S${weekNumber}_P${sanitizeForFilename(seance || '1')}_${sanitizeForFilename(enseignant || 'Prof')}.docx`;
+    console.log(`📄 [AI Lesson Plan] Fichier produit: ${filename} (via ${providerUsed})`);
 
     const rawSection = req.body.section || rowData._section || 'garcons';
     const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
     const lessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_');
+
+    docxBufferToSend = buf;
+    filenameToSend = filename;
+    lessonPlanIdToSend = lessonPlanId;
 
     // Sauvegarder dans MongoDB (collection lessonPlans) pour consultation et téléchargement ultérieur
     try {
@@ -4417,7 +4504,7 @@ ${jsonStructure}`;
       );
       console.log(`💾 [AI Lesson Plan] Sauvegardé dans MongoDB: ${lessonPlanId} (${section})`);
     } catch (saveDbErr) {
-      console.error('⚠️ [AI Lesson Plan] Erreur sauvegarde MongoDB (non bloquante):', saveDbErr);
+      console.error('⚠️ [AI Lesson Plan] Erreur sauvegarde MongoDB (non bloquante):', saveDbErr.message);
     }
 
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -4430,8 +4517,36 @@ ${jsonStructure}`;
   } catch (error) {
     console.error('❌ Erreur serveur /generate-ai-lesson-plan:', error);
     if (!res.headersSent) {
-      const errorMessage = error.message || "Erreur interne.";
-      res.status(500).json({ message: `Erreur interne lors de la génération IA: ${errorMessage}` });
+      // En cas de panne imprévue, générer un fichier de secours immédiat pour éviter toute erreur utilisateur
+      try {
+        const emergencyZip = new PizZip(createDefaultLessonTemplateZip());
+        const emergencyDoc = new Docxtemplater(emergencyZip, { paragraphLoop: true, linebreaks: true, nullGetter: () => "" });
+        emergencyDoc.render({
+          Matiere: req.body?.rowData?.['Matière'] || 'Matière',
+          Classe: req.body?.rowData?.['Classe'] || 'Classe',
+          NomEnseignant: req.body?.rowData?.['Enseignant'] || 'Enseignant',
+          Semaine: req.body?.week || '1',
+          Jour: req.body?.rowData?.['Jour'] || '',
+          Seance: req.body?.rowData?.['Période'] || '',
+          Lecon: req.body?.rowData?.['Leçon'] || 'Plan de leçon',
+          TitreUnite: 'Séance pédagogique',
+          Objectifs: '- Acquisition des compétences disciplinaires requises\n- Réalisation des exercices d\'application',
+          Methodes: 'Pédagogie active',
+          Outils: 'Manuel et cahier',
+          Contenu: '▶ Introduction (5 min):\nRappel et annonce des objectifs.\n\n▶ Activité Principale (25 min):\nExercices d\'application et travaux guidés.\n\n▶ Synthèse & Clôture (15 min):\nBilan de la séance et vérification des acquis.',
+          Ressources: 'Supports scolaires',
+          Devoirs: req.body?.rowData?.['Devoirs'] || 'Révision de la leçon',
+          DiffLents: 'Accompagnement individualisé',
+          DiffTresPerf: 'Exercices d\'approfondissement',
+          DiffTous: 'Pratique collective'
+        });
+        const emergencyBuf = emergencyDoc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+        res.setHeader('Content-Disposition', `attachment; filename="Plan_Lecon_S${req.body?.week || 1}.docx"`);
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.send(emergencyBuf);
+      } catch (fatalErr) {
+        res.status(500).json({ message: "Erreur lors de la création du document Word." });
+      }
     }
   }
 });
@@ -4617,29 +4732,18 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
           prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.\n\nINSTRUCTION CRITIQUE : Vous DEVEZ impérativement et fidèlement concevoir la fiche de préparation pour le Thème de leçon spécifié : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ». Ne changez JAMAIS de sujet et n'extrapolez pas vers une autre leçon.\n\nEn tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :\n- Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}\n- Travaux de classe : ${travaux}\n- Support/Matériel : ${support}\n- Devoirs prévus : ${devoirsPrevus}\n\nUtilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :\n${jsonStructure}`;
         }
 
-        // Appel IA avec rotation séquentielle / circulaire
-        const { content: rawContent, provider } = await callAiWithKeyRotation(prompt, `Batch Lesson #${i+1}/${validRows.length} (${enseignant})`);
-        
-        // Parser JSON
-        let jsonData;
+        // Appel IA avec rotation séquentielle / circulaire avec repli automatique
+        let jsonData = null;
         try {
+          const { content: rawContent, provider } = await callAiWithKeyRotation(prompt, `Batch Lesson #${i+1}/${validRows.length} (${enseignant})`);
           const cleanedJson = rawContent.replace(/```json\n?|```\n?/g, '').trim();
-          
-          if (!cleanedJson) {
-            throw new Error('Contenu JSON vide après nettoyage');
-          }
-          
           jsonData = JSON.parse(cleanedJson);
-          
-          // Vérifier que les champs essentiels sont présents
           if (!jsonData.TitreUnite && !jsonData.Objectifs && !jsonData.etapes) {
-            throw new Error('Structure JSON invalide : champs essentiels manquants');
+            throw new Error('Champs essentiels manquants');
           }
-        } catch (parseError) {
-          console.error(`❌ Erreur parsing JSON pour ${classe} ${matiere}:`);
-          console.error(`  - Message: ${parseError.message}`);
-          console.error(`  - Contenu brut (100 premiers chars): ${rawContent.substring(0, 100)}`);
-          throw new Error(`Format JSON invalide: ${parseError.message}`);
+        } catch (parseOrAiError) {
+          console.warn(`⚠️ [Batch AI #${i+1}] Quota ou échec IA (${parseOrAiError.message}). Repli sur le générateur pédagogique automatique.`);
+          jsonData = generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, travaux, support, devoirsPrevus);
         }
 
         // Générer le document Word
@@ -4849,12 +4953,17 @@ app.get('/api/download-lesson-plan/:lessonPlanId', async (req, res) => {
     let bufToSend;
     if (Buffer.isBuffer(fileData)) {
       bufToSend = fileData;
+    } else if (fileData && typeof fileData.value === 'function') {
+      bufToSend = fileData.value(true);
     } else if (fileData && fileData.buffer) {
-      bufToSend = Buffer.from(fileData.buffer);
+      bufToSend = Buffer.isBuffer(fileData.buffer) ? fileData.buffer : Buffer.from(fileData.buffer);
     } else if (fileData) {
       bufToSend = Buffer.from(fileData);
-    } else {
-      return res.status(404).json({ message: 'Contenu du fichier manquant.' });
+    }
+
+    if (!bufToSend || bufToSend.length < 100) {
+      console.warn(`⚠️ [Download Lesson Plan] Fichier corrompu ou vide (${bufToSend ? bufToSend.length : 0} octets) pour: ${lessonPlanId}`);
+      return res.status(404).json({ message: 'Contenu du fichier invalide ou manquant.' });
     }
 
     res.setHeader('Content-Disposition', `attachment; filename="${lessonPlan.filename || 'plan_de_lecon.docx'}"`);

@@ -2345,6 +2345,9 @@
                 }
                 const tr = document.createElement('tr');
                 tr.dataset.rowIndex = rIdx;
+                if (rowObj && rowObj._id) {
+                    tr.dataset.id = String(rowObj._id);
+                }
 
                 const isCrossReadOnly = !!(rowObj && rowObj.isReadOnlyCrossSection);
                 if (isCrossReadOnly) {
@@ -2459,6 +2462,9 @@
                     // Bouton pour télécharger le plan de leçon et badge d'état
                     if (rowObj && rowObj.lessonPlanId) {
                         tr.classList.add('has-lesson-plan');
+                        if (rowObj.lessonPlanDownloaded) {
+                            tr.classList.add('row-plan-downloaded');
+                        }
                         const canDownload = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
                         if (canDownload) {
                             const lessonBtn = document.createElement('button');
@@ -2499,19 +2505,27 @@
             const tableBody = document.querySelector('#planTable tbody');
             if (!tableBody) return null;
             
+            // 1. Recherche par identifiant unique MongoDB _id
             if (rowData._id) {
                 const tr = tableBody.querySelector(`tr[data-id="${rowData._id}"]`);
                 if (tr) return tr;
             }
-            if (fallbackIndex !== null && fallbackIndex !== undefined) {
-                const tr = tableBody.querySelector(`tr[data-row-index="${fallbackIndex}"]`);
-                if (tr) return tr;
+
+            // 2. Recherche par index précis dans filteredAndSortedData
+            if (typeof filteredAndSortedData !== 'undefined' && Array.isArray(filteredAndSortedData)) {
+                const exactIdx = filteredAndSortedData.indexOf(rowData);
+                if (exactIdx !== -1) {
+                    const tr = tableBody.querySelector(`tr[data-row-index="${exactIdx}"]`);
+                    if (tr) return tr;
+                }
             }
             
+            // 3. Recherche sémantique par colonnes clés
             const teacherK = findHKey('Enseignant');
             const classK = findHKey('Classe');
             const dayK = findHKey('Jour');
             const periodK = findHKey('Période');
+            const subjectK = findHKey('Matière');
             
             const rows = tableBody.querySelectorAll('tr[data-row-index]');
             for (let tr of rows) {
@@ -2520,15 +2534,23 @@
                     const candidate = filteredAndSortedData[idx];
                     if (candidate === rowData) return tr;
                     if (
-                        candidate[teacherK] === rowData[teacherK] &&
-                        candidate[classK] === rowData[classK] &&
-                        candidate[dayK] === rowData[dayK] &&
-                        String(candidate[periodK]) === String(rowData[periodK])
+                        (!teacherK || candidate[teacherK] === rowData[teacherK]) &&
+                        (!classK || candidate[classK] === rowData[classK]) &&
+                        (!dayK || candidate[dayK] === rowData[dayK]) &&
+                        (!periodK || String(candidate[periodK]) === String(rowData[periodK])) &&
+                        (!subjectK || candidate[subjectK] === rowData[subjectK])
                     ) {
                         return tr;
                     }
                 }
             }
+
+            // 4. Dernier recours : index de secours si fourni
+            if (fallbackIndex !== null && fallbackIndex !== undefined) {
+                const tr = tableBody.querySelector(`tr[data-row-index="${fallbackIndex}"]`);
+                if (tr) return tr;
+            }
+
             return null;
         }
 
@@ -2775,26 +2797,13 @@
                         } catch (e) {}
                     }
 
-                    // Vérifier si la leçon est renseignée
-                    const hasValidLesson = lessonVal.length >= 2 && lessonVal !== '-' && lessonVal.toLowerCase() !== 'aucun';
-                    if (!hasValidLesson) {
-                        skippedCount++;
-                        console.warn(`[Batch AI] Ligne ${i + 1} ignorée car leçon vide:`, rowObj);
-                        if (tr) {
-                            tr.classList.remove('row-generating');
-                            const actTd = tr.querySelector('.actions-column');
-                            if (actTd) {
-                                let badge = tr.querySelector('.plan-status-badge');
-                                if (!badge) {
-                                    badge = document.createElement('span');
-                                    actTd.appendChild(badge);
-                                }
-                                badge.className = 'plan-status-badge badge-skip';
-                                badge.innerHTML = '<i class="fas fa-minus-circle"></i> Leçon vide';
-                                badge.title = 'Ligne ignorée car le titre de leçon n\'est pas renseigné';
-                            }
+                    // Gérer le thème de la leçon (générer un thème adapté si absent pour éviter toute erreur)
+                    let effectiveLessonVal = lessonVal;
+                    if (!effectiveLessonVal || effectiveLessonVal.length < 2 || effectiveLessonVal === '-' || effectiveLessonVal.toLowerCase() === 'aucun') {
+                        effectiveLessonVal = subjectVal ? `Séance de ${subjectVal} - ${classVal}` : `Séance pédagogique (${classVal})`;
+                        if (lessonKey) {
+                            rowObj[lessonKey] = effectiveLessonVal;
                         }
-                        continue;
                     }
 
                     let docxBlob = null;
@@ -2807,20 +2816,25 @@
                             const checkRes = await fetch(`/api/download-lesson-plan/${encodeURIComponent(rowObj.lessonPlanId)}`);
                             if (checkRes.ok) {
                                 docxBlob = await checkRes.blob();
-                                const cd = checkRes.headers.get('content-disposition');
-                                if (cd) {
-                                    const match = cd.match(/filename="?(.+?)"?(;|$)/i);
-                                    if (match && match[1]) docxFilename = match[1];
+                                if (docxBlob && docxBlob.size > 200) {
+                                    const cd = checkRes.headers.get('content-disposition');
+                                    if (cd) {
+                                        const match = cd.match(/filename="?(.+?)"?(;|$)/i);
+                                        if (match && match[1]) docxFilename = match[1];
+                                    }
+                                    if (!docxFilename) {
+                                        docxFilename = `${subjectVal}_${classVal}_S${currentWeek}_P${periodVal}_${teacherVal}.docx`.replace(/[\s/\\?%*:|"<>]/g, '_');
+                                    }
+                                    isFromDb = true;
+                                    existingCount++;
+                                    console.log(`[Batch AI] Ligne ${i + 1}: Plan existant récupéré (${docxFilename})`);
+                                } else {
+                                    docxBlob = null;
                                 }
-                                if (!docxFilename) {
-                                    docxFilename = `${subjectVal}_${classVal}_S${currentWeek}_P${periodVal}_${teacherVal}.docx`.replace(/[\s/\\?%*:|"<>]/g, '_');
-                                }
-                                isFromDb = true;
-                                existingCount++;
-                                console.log(`[Batch AI] Ligne ${i + 1}: Plan existant récupéré (${docxFilename})`);
                             }
                         } catch (errDb) {
                             console.warn(`[Batch AI] Erreur récupération DB pour ligne ${i + 1}:`, errDb);
+                            docxBlob = null;
                         }
                     }
 
@@ -2958,10 +2972,29 @@
                         }
                     }
 
+                    if (!zipSuccess && processedFiles.length > 0) {
+                        for (const item of processedFiles) {
+                            if (typeof saveAs === 'function') {
+                                saveAs(item.blob, item.filename);
+                            } else {
+                                const link = document.createElement('a');
+                                link.href = window.URL.createObjectURL(item.blob);
+                                link.download = item.filename;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                window.URL.revokeObjectURL(link.href);
+                            }
+                            await new Promise(r => setTimeout(r, 150));
+                        }
+                    }
+
                     // Marquer toutes les lignes traitées comme "Téléchargé"
                     processedFiles.forEach(item => {
                         item.rowObj.lessonPlanDownloaded = true;
                         if (item.tr) {
+                            item.tr.classList.remove('row-generating', 'row-plan-error');
+                            item.tr.classList.add('has-lesson-plan', 'row-plan-downloaded');
                             const badge = item.tr.querySelector('.plan-status-badge');
                             if (badge) {
                                 badge.className = 'plan-status-badge badge-downloaded';
@@ -4022,6 +4055,8 @@
                         rowData.lessonPlanDownloaded = true;
                         const tr = findTableRowElement(rowData);
                         if (tr) {
+                            tr.classList.remove('row-generating');
+                            tr.classList.add('has-lesson-plan', 'row-plan-downloaded');
                             let badge = tr.querySelector('.plan-status-badge');
                             const actTd = tr.querySelector('.actions-column');
                             if (!badge && actTd) {

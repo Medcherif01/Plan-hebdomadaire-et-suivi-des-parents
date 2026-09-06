@@ -2657,6 +2657,14 @@ tr.has-lesson-plan:hover {
     background-color: #DCFCE7 !important;
 }
 
+tr.row-plan-downloaded {
+    background-color: #EEF2FF !important;
+}
+
+tr.row-plan-downloaded:hover {
+    background-color: #E0E7FF !important;
+}
+
 tr.row-generating {
     background-color: #EDE9FE !important;
     box-shadow: inset 0 0 0 2px #7C3AED !important;
