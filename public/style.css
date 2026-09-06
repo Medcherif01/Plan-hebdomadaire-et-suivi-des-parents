@@ -2646,3 +2646,90 @@ tr.modified .save-row-button {
     margin-top: 6px;
 }
 
+/* ==========================================================================
+   STYLES POUR LA GÉNÉRATION DES PLANS DE LEÇON LIGNE PAR LIGNE
+   ========================================================================== */
+tr.has-lesson-plan {
+    background-color: #F0FDF4 !important;
+}
+
+tr.has-lesson-plan:hover {
+    background-color: #DCFCE7 !important;
+}
+
+tr.row-generating {
+    background-color: #EDE9FE !important;
+    box-shadow: inset 0 0 0 2px #7C3AED !important;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+tr.row-plan-error {
+    background-color: #FEF2F2 !important;
+    border-left: 3px solid #EF4444 !important;
+}
+
+.lesson-plan-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.25rem;
+    padding: 6px;
+    color: #2563EB;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    vertical-align: middle;
+}
+
+.lesson-plan-button:hover {
+    transform: scale(1.25);
+    color: #1D4ED8;
+    background: rgba(37, 99, 235, 0.12);
+    filter: drop-shadow(0 2px 4px rgba(37, 99, 235, 0.25));
+}
+
+.plan-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.73rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    margin-left: 6px;
+    vertical-align: middle;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+.plan-status-badge.badge-ready {
+    background: #DCFCE7;
+    color: #166534;
+    border: 1px solid #86EFAC;
+}
+
+.plan-status-badge.badge-downloaded {
+    background: #E0E7FF;
+    color: #3730A3;
+    border: 1px solid #A5B4FC;
+}
+
+.plan-status-badge.badge-skip {
+    background: #F1F5F9;
+    color: #64748B;
+    border: 1px solid #CBD5E1;
+}
+
+.plan-status-badge.badge-error {
+    background: #FEE2E2;
+    color: #991B1B;
+    border: 1px solid #FCA5A5;
+}
+
+#progress-bar-subtext {
+    background: #F8FAFC;
+    border-radius: 8px;
+    border: 1px solid #E2E8F0;
+    margin-top: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+

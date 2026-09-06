@@ -1331,9 +1331,48 @@
         }
         window.escapeHtml = escapeHtml;
         window.escapeHTML = escapeHtml;
-        function showProgressBar() { document.getElementById('progress-bar-container').style.display='block'; document.getElementById('progress-bar').style.width='0%'; document.getElementById('progress-bar').textContent='0%'; }
-        function updateProgressBar(p) { const clampedP = Math.min(100, Math.max(0, p)); document.getElementById('progress-bar').style.width=clampedP+'%'; document.getElementById('progress-bar').textContent=clampedP+'%'; }
-        function hideProgressBar() { setTimeout(() => { document.getElementById('progress-bar-container').style.display='none'; }, 500); }
+        function showProgressBar(initialText = '') { 
+            const container = document.getElementById('progress-bar-container'); 
+            const bar = document.getElementById('progress-bar');
+            const sub = document.getElementById('progress-bar-subtext');
+            if (container) container.style.display = 'block'; 
+            if (bar) {
+                bar.style.width = '0%'; 
+                bar.textContent = '0%'; 
+            }
+            if (sub) {
+                if (initialText) {
+                    sub.textContent = initialText;
+                    sub.style.display = 'block';
+                } else {
+                    sub.textContent = '';
+                    sub.style.display = 'none';
+                }
+            }
+        }
+        function updateProgressBar(p, text = '') { 
+            const clampedP = Math.min(100, Math.max(0, p)); 
+            const bar = document.getElementById('progress-bar');
+            const sub = document.getElementById('progress-bar-subtext');
+            if (bar) {
+                bar.style.width = clampedP + '%'; 
+                bar.textContent = clampedP + '%'; 
+            }
+            if (sub) {
+                if (text) {
+                    sub.textContent = text;
+                    sub.style.display = 'block';
+                }
+            }
+        }
+        function hideProgressBar() { 
+            setTimeout(() => { 
+                const container = document.getElementById('progress-bar-container');
+                const sub = document.getElementById('progress-bar-subtext');
+                if (container) container.style.display = 'none'; 
+                if (sub) sub.style.display = 'none';
+            }, 800); 
+        }
         function displayAlert(msgKey, isErr = false, params = {}) { if (!msgKey) { const div=document.getElementById('message-alerte'); div.style.display='none'; div.textContent=''; div.className=''; if(alertTimeoutId) clearTimeout(alertTimeoutId); alertTimeoutId = null; return; } const msg = t(msgKey, params); console.log(`Alert:${isErr?'ERR':'OK'}-${msg}`); const div=document.getElementById('message-alerte'); div.textContent=msg; div.className = isErr ? 'alert-error' : (msgKey.includes('warn') || msgKey.includes('partial') ? 'alert-warning' : 'alert-success'); div.classList.add('message-alert-base'); div.style.display='block'; if(alertTimeoutId) clearTimeout(alertTimeoutId); alertTimeoutId=setTimeout(()=>{ if(div.textContent===msg){div.style.display='none'; div.textContent=''; div.className='';} alertTimeoutId=null; }, isErr ? 8000 : 5000); }
         function setButtonLoading(btnId, isLoading, iconClass) { const btn=document.getElementById(btnId); if(!btn) return; btn.disabled=isLoading; const icon=btn.querySelector('i'); if(icon) icon.className=isLoading ? 'fas fa-spinner fa-spin' : iconClass; }
         function containsArabic(text) { if (typeof text !== 'string') return false; const arabicRegex = /[\u0600-\u06FF]/; return arabicRegex.test(text); }
@@ -2417,8 +2456,9 @@
                         actTd.appendChild(aiGenBtn);
                     }
                     
-                    // Bouton pour télécharger le plan de leçon
+                    // Bouton pour télécharger le plan de leçon et badge d'état
                     if (rowObj && rowObj.lessonPlanId) {
+                        tr.classList.add('has-lesson-plan');
                         const canDownload = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
                         if (canDownload) {
                             const lessonBtn = document.createElement('button');
@@ -2429,6 +2469,14 @@
                             lessonBtn.onclick = () => downloadLessonPlan(rowObj);
                             actTd.appendChild(lessonBtn);
                         }
+
+                        const statusBadge = document.createElement('span');
+                        statusBadge.className = 'plan-status-badge ' + (rowObj.lessonPlanDownloaded ? 'badge-downloaded' : 'badge-ready');
+                        statusBadge.innerHTML = rowObj.lessonPlanDownloaded
+                            ? '<i class="fas fa-check-double"></i> Téléchargé'
+                            : '<i class="fas fa-check-circle"></i> Prêt';
+                        statusBadge.title = rowObj.lessonPlanDownloaded ? 'Plan de leçon déjà téléchargé' : 'Plan de leçon disponible';
+                        actTd.appendChild(statusBadge);
                     }
                 }
 
@@ -2583,6 +2631,12 @@
                         }
                     }
                     
+                    const planIdHeader = response.headers.get('x-lesson-plan-id');
+                    if (rowData) {
+                        rowData.lessonPlanId = planIdHeader || rowData.lessonPlanId || 'generated';
+                        rowData.lessonPlanDownloaded = true;
+                    }
+
                     saveAs(blob, filename);
                     displayAlert('ai_lesson_plan_generated', false);
                     
@@ -2591,10 +2645,29 @@
                         aiButton.classList.add('lesson-plan-exists');
                         aiButton.title = 'Plan de Leçon déjà généré - Régénérer';
                     }
-                    
-                    // Marquer dans rowData qu'un plan existe (pour réaffichage)
-                    if (rowData) {
-                        rowData.lessonPlanId = 'generated';
+
+                    if (tableRowElement) {
+                        tableRowElement.classList.add('has-lesson-plan');
+                        const actTd = tableRowElement.querySelector('.actions-column');
+                        if (actTd) {
+                            if (!tableRowElement.querySelector('.lesson-plan-button')) {
+                                const lessonBtn = document.createElement('button');
+                                lessonBtn.innerHTML = '<i class="fas fa-file-download"></i>';
+                                lessonBtn.title = 'Télécharger Plan de Leçon';
+                                lessonBtn.classList.add('lesson-plan-button');
+                                lessonBtn.style.marginLeft = '5px';
+                                lessonBtn.onclick = () => downloadLessonPlan(rowData);
+                                actTd.appendChild(lessonBtn);
+                            }
+                            let badge = tableRowElement.querySelector('.plan-status-badge');
+                            if (!badge) {
+                                badge = document.createElement('span');
+                                actTd.appendChild(badge);
+                            }
+                            badge.className = 'plan-status-badge badge-downloaded';
+                            badge.innerHTML = '<i class="fas fa-check-double"></i> Téléchargé';
+                            badge.title = 'Plan de leçon généré et téléchargé';
+                        }
                     }
                 } else {
                     const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." }));
@@ -2620,7 +2693,7 @@
         
 
 
-        // Fonction pour générer tous les plans de leçon des lignes affichées dans le tableau
+        // Fonction pour générer tous les plans de leçon des lignes affichées dans le tableau (Ligne par ligne)
         async function generateAllDisplayedLessonPlans() {
             if (!currentWeek) {
                 displayAlert("Veuillez d'abord sélectionner une semaine.", true);
@@ -2630,74 +2703,293 @@
                 displayAlert("Aucune donnée à afficher. Utilisez les filtres pour afficher des données.", true);
                 return;
             }
-            
-            const confirmation = confirm(`Générer ${filteredAndSortedData.length} plan(s) de leçon IA pour les leçons affichées ?\n\nSemaine: ${currentWeek}\nTemps estimé: ~${filteredAndSortedData.length * 5} secondes\n\nUn fichier ZIP sera téléchargé automatiquement.`);
+
+            const teacherKey = findHKey('Enseignant');
+            const lessonKey = findHKey('Leçon');
+            const subjectKey = findHKey('Matière');
+            const classKey = findHKey('Classe');
+            const periodKey = findHKey('Période');
+            const dayKey = findHKey('Jour');
+
+            // Filtrer les lignes que l'utilisateur a le droit de générer
+            const eligibleRows = filteredAndSortedData.filter(row => {
+                if (!row || typeof row !== 'object') return false;
+                if (row.isReadOnlyCrossSection) return false;
+                const rowTeacher = teacherKey ? row[teacherKey] : null;
+                return isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher;
+            });
+
+            if (eligibleRows.length === 0) {
+                displayAlert("Aucune ligne modifiable/générable pour votre compte dans la sélection actuelle.", true);
+                return;
+            }
+
+            const confirmation = confirm(`Générer les plans de leçon pour ${eligibleRows.length} ligne(s) affichée(s) ?\n\n- Semaine: S${currentWeek}\n- Mode: Génération ligne par ligne avec suivi en direct\n- Marquage visuel de chaque séance générée et téléchargée\n- Archive ZIP groupée téléchargée à la fin.`);
             if (!confirmation) {
                 return;
             }
-            
-            console.log(`Génération de ${filteredAndSortedData.length} plans de leçon IA pour la semaine ${currentWeek}`);
-            displayAlert(`🤖 Génération de ${filteredAndSortedData.length} plans de leçon IA en cours... Veuillez patienter.`, false);
-            
+
+            console.log(`[Batch AI] Début de la génération ligne par ligne de ${eligibleRows.length} plan(s) de leçon`);
+            displayAlert(`🤖 Démarrage de la génération de ${eligibleRows.length} plan(s) de leçon...`, false);
+
             const btn = document.getElementById('generateAllDisplayedPlansBtn');
             const originalHTML = btn ? btn.innerHTML : '';
             if (btn) {
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="btn-text">Génération...</span>';
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="btn-text">Génération en cours...</span>';
                 btn.disabled = true;
             }
-            
-            showProgressBar();
-            updateProgressBar(10);
-            
+
+            showProgressBar(`Initialisation (0 / ${eligibleRows.length})...`);
+            updateProgressBar(0, `Initialisation (0 / ${eligibleRows.length})...`);
+
+            const zip = (typeof JSZip !== 'undefined') ? new JSZip() : null;
+            const processedFiles = [];
+            let generatedCount = 0;
+            let existingCount = 0;
+            let skippedCount = 0;
+            let errorCount = 0;
+
             try {
-                const response = await fetch('/api/generate-multiple-ai-lesson-plans', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        week: currentWeek,
-                        rowsData: filteredAndSortedData
-                    })
-                });
-                
-                updateProgressBar(80);
-                
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const contentDisposition = response.headers.get('content-disposition');
-                    let filename = `Plans_Lecon_IA_S${currentWeek}_${filteredAndSortedData.length}_fichiers.zip`;
+                for (let i = 0; i < eligibleRows.length; i++) {
+                    const rowObj = eligibleRows[i];
+                    const tr = findTableRowElement(rowObj, i);
+
+                    const teacherVal = (teacherKey && rowObj[teacherKey]) ? String(rowObj[teacherKey]).trim() : '';
+                    const classVal = (classKey && rowObj[classKey]) ? String(rowObj[classKey]).trim() : '';
+                    const subjectVal = (subjectKey && rowObj[subjectKey]) ? String(rowObj[subjectKey]).trim() : '';
+                    const lessonVal = (lessonKey && rowObj[lessonKey]) ? String(rowObj[lessonKey]).trim() : '';
+                    const periodVal = (periodKey && rowObj[periodKey]) ? String(rowObj[periodKey]).trim() : '';
+                    const dayVal = (dayKey && rowObj[dayKey]) ? String(rowObj[dayKey]).trim() : '';
+
+                    const shortLesson = lessonVal.length > 25 ? (lessonVal.substring(0, 25) + '...') : (lessonVal || 'Sans titre');
+                    const progressPct = Math.round((i / eligibleRows.length) * 100);
+                    const statusMsg = `Ligne ${i + 1}/${eligibleRows.length} (${progressPct}%) : ${classVal} - ${subjectVal} [${shortLesson}]`;
                     
-                    if (contentDisposition) {
-                        const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i);
-                        if (filenameMatch && filenameMatch[1]) {
-                            filename = filenameMatch[1];
+                    updateProgressBar(progressPct, statusMsg);
+
+                    // Mettre en évidence visuelle la ligne en cours de traitement
+                    if (tr) {
+                        tr.classList.add('row-generating');
+                        try {
+                            tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        } catch (e) {}
+                    }
+
+                    // Vérifier si la leçon est renseignée
+                    const hasValidLesson = lessonVal.length >= 2 && lessonVal !== '-' && lessonVal.toLowerCase() !== 'aucun';
+                    if (!hasValidLesson) {
+                        skippedCount++;
+                        console.warn(`[Batch AI] Ligne ${i + 1} ignorée car leçon vide:`, rowObj);
+                        if (tr) {
+                            tr.classList.remove('row-generating');
+                            const actTd = tr.querySelector('.actions-column');
+                            if (actTd) {
+                                let badge = tr.querySelector('.plan-status-badge');
+                                if (!badge) {
+                                    badge = document.createElement('span');
+                                    actTd.appendChild(badge);
+                                }
+                                badge.className = 'plan-status-badge badge-skip';
+                                badge.innerHTML = '<i class="fas fa-minus-circle"></i> Leçon vide';
+                                badge.title = 'Ligne ignorée car le titre de leçon n\'est pas renseigné';
+                            }
+                        }
+                        continue;
+                    }
+
+                    let docxBlob = null;
+                    let docxFilename = '';
+                    let isFromDb = false;
+
+                    // 1. Tenter de récupérer depuis la base de données si déjà présent
+                    if (rowObj.lessonPlanId) {
+                        try {
+                            const checkRes = await fetch(`/api/download-lesson-plan/${encodeURIComponent(rowObj.lessonPlanId)}`);
+                            if (checkRes.ok) {
+                                docxBlob = await checkRes.blob();
+                                const cd = checkRes.headers.get('content-disposition');
+                                if (cd) {
+                                    const match = cd.match(/filename="?(.+?)"?(;|$)/i);
+                                    if (match && match[1]) docxFilename = match[1];
+                                }
+                                if (!docxFilename) {
+                                    docxFilename = `${subjectVal}_${classVal}_S${currentWeek}_P${periodVal}_${teacherVal}.docx`.replace(/[\s/\\?%*:|"<>]/g, '_');
+                                }
+                                isFromDb = true;
+                                existingCount++;
+                                console.log(`[Batch AI] Ligne ${i + 1}: Plan existant récupéré (${docxFilename})`);
+                            }
+                        } catch (errDb) {
+                            console.warn(`[Batch AI] Erreur récupération DB pour ligne ${i + 1}:`, errDb);
                         }
                     }
-                    
-                    // Télécharger le ZIP automatiquement
-                    if (typeof saveAs === 'function') {
-                        saveAs(blob, filename);
-                    } else {
-                        const link = document.createElement('a');
-                        link.href = window.URL.createObjectURL(blob);
-                        link.download = filename;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        window.URL.revokeObjectURL(link.href);
+
+                    // 2. Si pas en base de données, générer par l'IA
+                    if (!docxBlob) {
+                        try {
+                            const genRes = await fetch('/api/generate-ai-lesson-plan', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    week: currentWeek,
+                                    rowData: rowObj,
+                                    section: rowObj._section || currentSection || 'garcons'
+                                })
+                            });
+
+                            if (genRes.ok) {
+                                docxBlob = await genRes.blob();
+                                const cd = genRes.headers.get('content-disposition');
+                                if (cd) {
+                                    const match = cd.match(/filename="?(.+?)"?(;|$)/i);
+                                    if (match && match[1]) docxFilename = match[1];
+                                }
+                                if (!docxFilename) {
+                                    docxFilename = `${subjectVal}_${classVal}_S${currentWeek}_P${periodVal}_${teacherVal}.docx`.replace(/[\s/\\?%*:|"<>]/g, '_');
+                                }
+                                const returnedPlanId = genRes.headers.get('x-lesson-plan-id');
+                                if (returnedPlanId) {
+                                    rowObj.lessonPlanId = returnedPlanId;
+                                } else if (!rowObj.lessonPlanId) {
+                                    rowObj.lessonPlanId = `${rowObj._section || currentSection || 'garcons'}_${currentWeek}_${teacherVal}_${classVal}_${subjectVal}_${periodVal}_${dayVal}`.replace(/\s+/g, '_');
+                                }
+                                generatedCount++;
+                                console.log(`[Batch AI] Ligne ${i + 1}: Plan IA généré avec succès (${docxFilename})`);
+                                // Pause de courtoisie pour ménager les quotas de l'API
+                                await new Promise(res => setTimeout(res, 800));
+                            } else {
+                                const errData = await genRes.json().catch(() => ({}));
+                                console.error(`[Batch AI] Échec génération ligne ${i + 1}:`, errData);
+                                errorCount++;
+                            }
+                        } catch (errGen) {
+                            console.error(`[Batch AI] Exception génération ligne ${i + 1}:`, errGen);
+                            errorCount++;
+                        }
                     }
-                    
-                    updateProgressBar(100);
-                    displayAlert(`✅ ${filteredAndSortedData.length} plans de leçon IA générés avec succès!\n\nFichier: ${filename}\n\nOuvrez le ZIP pour voir tous vos plans de leçon Word.`, false);
-                } else {
-                    const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." }));
-                    throw new Error(errorResult.message || `Erreur serveur ${response.status}`);
+
+                    // 3. Traiter le fichier obtenu et mettre à jour le DOM de la ligne
+                    if (docxBlob) {
+                        rowObj.lessonPlanDownloaded = false; // Sera marqué téléchargé dès la fin du zip
+                        processedFiles.push({ filename: docxFilename, blob: docxBlob, rowObj: rowObj, tr: tr });
+                        if (zip) {
+                            zip.file(docxFilename, docxBlob);
+                        }
+
+                        if (tr) {
+                            tr.classList.remove('row-generating', 'row-plan-error');
+                            tr.classList.add('has-lesson-plan');
+
+                            const actTd = tr.querySelector('.actions-column');
+                            if (actTd) {
+                                // Bouton disquette en vert
+                                const aiBtn = tr.querySelector('.ai-lesson-plan-button');
+                                if (aiBtn) {
+                                    aiBtn.classList.add('lesson-plan-exists');
+                                    aiBtn.title = 'Plan de Leçon déjà généré - Régénérer';
+                                }
+
+                                // Bouton de téléchargement direct
+                                let dlBtn = tr.querySelector('.lesson-plan-button');
+                                if (!dlBtn) {
+                                    dlBtn = document.createElement('button');
+                                    dlBtn.innerHTML = '<i class="fas fa-file-download"></i>';
+                                    dlBtn.title = 'Télécharger Plan de Leçon';
+                                    dlBtn.classList.add('lesson-plan-button');
+                                    dlBtn.style.marginLeft = '5px';
+                                    dlBtn.onclick = () => downloadLessonPlan(rowObj);
+                                    actTd.appendChild(dlBtn);
+                                }
+
+                                // Badge d'état "Prêt"
+                                let badge = tr.querySelector('.plan-status-badge');
+                                if (!badge) {
+                                    badge = document.createElement('span');
+                                    actTd.appendChild(badge);
+                                }
+                                badge.className = 'plan-status-badge badge-ready';
+                                badge.innerHTML = isFromDb ? '<i class="fas fa-check-circle"></i> Prêt (Existant)' : '<i class="fas fa-check-circle"></i> Généré';
+                                badge.title = isFromDb ? 'Plan existant en base de données' : 'Plan généré avec succès par l\'IA';
+                            }
+                        }
+                    } else {
+                        // Échec pour cette ligne
+                        if (tr) {
+                            tr.classList.remove('row-generating');
+                            tr.classList.add('row-plan-error');
+                            const actTd = tr.querySelector('.actions-column');
+                            if (actTd) {
+                                let badge = tr.querySelector('.plan-status-badge');
+                                if (!badge) {
+                                    badge = document.createElement('span');
+                                    actTd.appendChild(badge);
+                                }
+                                badge.className = 'plan-status-badge badge-error';
+                                badge.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Échec';
+                                badge.title = 'Erreur lors de la génération IA de cette séance';
+                            }
+                        }
+                    }
                 }
-            } catch (error) {
-                console.error("Erreur lors de la génération des plans de leçon IA:", error);
-                displayAlert(`❌ Erreur lors de la génération: ${error.message}`, true);
-                updateProgressBar(0);
+
+                updateProgressBar(100, `Finalisation de l'archive (${processedFiles.length} plans)...`);
+
+                // 4. Télécharger l'archive ZIP si des fichiers ont été produits
+                if (processedFiles.length > 0) {
+                    let zipSuccess = false;
+                    if (zip && typeof JSZip !== 'undefined') {
+                        try {
+                            const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+                            const zipFilename = `Plans_Lecon_S${currentWeek}_${processedFiles.length}_cours.zip`;
+                            if (typeof saveAs === 'function') {
+                                saveAs(zipBlob, zipFilename);
+                            } else {
+                                const link = document.createElement('a');
+                                link.href = window.URL.createObjectURL(zipBlob);
+                                link.download = zipFilename;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                window.URL.revokeObjectURL(link.href);
+                            }
+                            zipSuccess = true;
+                        } catch (zipErr) {
+                            console.error('[Batch AI] Erreur compression ZIP:', zipErr);
+                        }
+                    }
+
+                    // Marquer toutes les lignes traitées comme "Téléchargé"
+                    processedFiles.forEach(item => {
+                        item.rowObj.lessonPlanDownloaded = true;
+                        if (item.tr) {
+                            const badge = item.tr.querySelector('.plan-status-badge');
+                            if (badge) {
+                                badge.className = 'plan-status-badge badge-downloaded';
+                                badge.innerHTML = '<i class="fas fa-check-double"></i> Téléchargé';
+                                badge.title = 'Plan de leçon généré et inclus dans l\'archive téléchargée';
+                            }
+                        }
+                    });
+
+                    const summaryMsg = `✅ Génération terminée avec succès !\n\n` +
+                        `• Plans traités : ${processedFiles.length} (${generatedCount} généré(s), ${existingCount} déjà existant(s))\n` +
+                        (skippedCount ? `• Leçons vides ignorées : ${skippedCount}\n` : '') +
+                        (errorCount ? `• Erreurs : ${errorCount}\n` : '') +
+                        `• Fichier ZIP téléchargé automatiquement.`;
+
+                    displayAlert(summaryMsg, false);
+                } else {
+                    displayAlert(`⚠️ Aucun plan n'a pu être généré ou téléchargé (${skippedCount} leçon(s) vide(s), ${errorCount} erreur(s)).`, true);
+                }
+
+            } catch (globalError) {
+                console.error("[Batch AI] Erreur globale lors du processus:", globalError);
+                displayAlert(`❌ Erreur pendant le traitement : ${globalError.message}`, true);
             } finally {
-                hideProgressBar();
+                setTimeout(() => {
+                    hideProgressBar();
+                }, 2000);
+
                 if (btn) {
                     btn.innerHTML = originalHTML;
                     btn.disabled = false;
@@ -3724,6 +4016,24 @@
                     if (typeof saveAs === 'function') {
                         saveAs(blob, filename);
                         displayAlert('Plan de leçon téléchargé avec succès !', false);
+                    }
+
+                    if (rowData) {
+                        rowData.lessonPlanDownloaded = true;
+                        const tr = findTableRowElement(rowData);
+                        if (tr) {
+                            let badge = tr.querySelector('.plan-status-badge');
+                            const actTd = tr.querySelector('.actions-column');
+                            if (!badge && actTd) {
+                                badge = document.createElement('span');
+                                actTd.appendChild(badge);
+                            }
+                            if (badge) {
+                                badge.className = 'plan-status-badge badge-downloaded';
+                                badge.innerHTML = '<i class="fas fa-check-double"></i> Téléchargé';
+                                badge.title = 'Plan de leçon déjà téléchargé';
+                            }
+                        }
                     }
                 } else {
                     const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue" }));

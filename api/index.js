@@ -3036,9 +3036,12 @@ app.get('/api/plans/:week', async (req, res) => {
         const jour = row[findKey(row, 'Jour')] || '';
         
         const potentialLessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
+        const fallbackId = `${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
         
         if (availableLessonPlanIds.has(potentialLessonPlanId)) {
           return { ...row, lessonPlanId: potentialLessonPlanId };
+        } else if (availableLessonPlanIds.has(fallbackId)) {
+          return { ...row, lessonPlanId: fallbackId };
         }
         return row;
       });
@@ -4384,8 +4387,43 @@ ${jsonStructure}`;
     // Format: Matière_Classe_Semaine_Séance_Enseignant.docx
     const filename = `${sanitizeForFilename(matiere)}_${sanitizeForFilename(classe)}_S${weekNumber}_P${sanitizeForFilename(seance)}_${sanitizeForFilename(enseignant)}.docx`;
     console.log(`📄 [AI Lesson Plan] Envoi du fichier: ${filename} (Généré via ${provider})`);
+
+    const rawSection = req.body.section || rowData._section || 'garcons';
+    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
+    const lessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_');
+
+    // Sauvegarder dans MongoDB (collection lessonPlans) pour consultation et téléchargement ultérieur
+    try {
+      const db = await connectToDatabase();
+      await db.collection('lessonPlans').updateOne(
+        { _id: lessonPlanId },
+        {
+          $set: {
+            _id: lessonPlanId,
+            week: weekNumber,
+            section,
+            enseignant,
+            classe,
+            matiere,
+            periode: seance,
+            jour,
+            filename,
+            fileBuffer: buf,
+            createdAt: new Date(),
+            rowData
+          }
+        },
+        { upsert: true }
+      );
+      console.log(`💾 [AI Lesson Plan] Sauvegardé dans MongoDB: ${lessonPlanId} (${section})`);
+    } catch (saveDbErr) {
+      console.error('⚠️ [AI Lesson Plan] Erreur sauvegarde MongoDB (non bloquante):', saveDbErr);
+    }
+
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('X-Lesson-Plan-Id', lessonPlanId);
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, X-Lesson-Plan-Id');
     res.send(buf);
     console.log('✅ [AI Lesson Plan] Génération terminée avec succès');
 
@@ -4791,15 +4829,37 @@ app.get('/api/download-lesson-plan/:lessonPlanId', async (req, res) => {
     console.log(`📥 [Download Lesson Plan] Téléchargement: ${lessonPlanId}`);
     
     const db = await connectToDatabase();
-    const lessonPlan = await db.collection('lessonPlans').findOne({ _id: lessonPlanId });
+    let lessonPlan = await db.collection('lessonPlans').findOne({ _id: lessonPlanId });
+    if (!lessonPlan) {
+      // Recherche souple si l'ID a ou non le préfixe de section
+      const strippedId = lessonPlanId.replace(/^(garcons|filles|primaire)_/, '');
+      lessonPlan = await db.collection('lessonPlans').findOne({
+        $or: [
+          { _id: strippedId },
+          { _id: { $regex: strippedId.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + '$', $options: 'i' } }
+        ]
+      });
+    }
     
     if (!lessonPlan) {
       return res.status(404).json({ message: 'Plan de leçon introuvable.' });
     }
     
-    res.setHeader('Content-Disposition', `attachment; filename="${lessonPlan.filename}"`);
+    const fileData = lessonPlan.fileBuffer;
+    let bufToSend;
+    if (Buffer.isBuffer(fileData)) {
+      bufToSend = fileData;
+    } else if (fileData && fileData.buffer) {
+      bufToSend = Buffer.from(fileData.buffer);
+    } else if (fileData) {
+      bufToSend = Buffer.from(fileData);
+    } else {
+      return res.status(404).json({ message: 'Contenu du fichier manquant.' });
+    }
+
+    res.setHeader('Content-Disposition', `attachment; filename="${lessonPlan.filename || 'plan_de_lecon.docx'}"`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.send(lessonPlan.fileBuffer.buffer);
+    res.send(bufToSend);
     
     console.log(`✅ [Download Lesson Plan] Envoyé: ${lessonPlan.filename}`);
     

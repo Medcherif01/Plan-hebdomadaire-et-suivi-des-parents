@@ -15,6 +15,7 @@
         crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link rel="stylesheet" href="style.css">
     <style>
         .table-actions-container {
@@ -1051,6 +1052,7 @@
         <div id="message-alerte" style="display: none;"></div>
         <div id="progress-bar-container" style="display: none;">
             <div id="progress-bar">0%</div>
+            <div id="progress-bar-subtext" style="display: none; font-size: 0.85rem; color: #1E293B; font-weight: 600; text-align: center; margin-top: 6px; padding: 4px;"></div>
         </div>
          <div class="notes-container">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
