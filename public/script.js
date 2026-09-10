@@ -2441,7 +2441,11 @@
                     // Bouton disquette pour générer le plan de leçon IA pour cette ligne
                     const teacherKey = findHKey('Enseignant');
                     const rowTeacher = teacherKey ? rowObj[teacherKey] : null;
-                    const canGenerate = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
+                    const isRowTeacherMatch = !rowTeacher || 
+                        isRowForLoggedInTeacher(rowTeacher, loggedInUser, loggedInTeacherTable) || 
+                        String(rowTeacher).trim().toLowerCase() === String(loggedInUser || '').trim().toLowerCase() ||
+                        (loggedInTeacherTable && String(rowTeacher).trim().toLowerCase() === String(loggedInTeacherTable).trim().toLowerCase());
+                    const canGenerate = !rowObj.isReadOnlyCrossSection && (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || isRowTeacherMatch);
                     
                     if (canGenerate) {
                         const aiGenBtn = document.createElement('button');
@@ -2465,7 +2469,7 @@
                         if (rowObj.lessonPlanDownloaded) {
                             tr.classList.add('row-plan-downloaded');
                         }
-                        const canDownload = (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher);
+                        const canDownload = isUserAdminOrSupervisor(loggedInUser, currentUserRole) || isRowTeacherMatch || !rowObj.isReadOnlyCrossSection;
                         if (canDownload) {
                             const lessonBtn = document.createElement('button');
                             lessonBtn.innerHTML = '<i class="fas fa-file-download"></i>';
@@ -2734,15 +2738,24 @@
             const dayKey = findHKey('Jour');
 
             // Filtrer les lignes que l'utilisateur a le droit de générer
+            const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
             const eligibleRows = filteredAndSortedData.filter(row => {
                 if (!row || typeof row !== 'object') return false;
                 if (row.isReadOnlyCrossSection) return false;
+                if (!isTeacherOnly) return true; // Admin et superviseurs peuvent tout générer
                 const rowTeacher = teacherKey ? row[teacherKey] : null;
-                return isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser === rowTeacher;
+                return !rowTeacher || 
+                       isRowForLoggedInTeacher(rowTeacher, loggedInUser, loggedInTeacherTable) || 
+                       String(rowTeacher).trim().toLowerCase() === String(loggedInUser || '').trim().toLowerCase() ||
+                       (loggedInTeacherTable && String(rowTeacher).trim().toLowerCase() === String(loggedInTeacherTable).trim().toLowerCase());
             });
 
             if (eligibleRows.length === 0) {
-                displayAlert("Aucune ligne modifiable/générable pour votre compte dans la sélection actuelle.", true);
+                if (filteredAndSortedData.length > 0 && isTeacherOnly && filteredAndSortedData.every(r => r && r.isReadOnlyCrossSection)) {
+                    displayAlert("Les séances affichées appartiennent à l'autre section (consultation seule). Basculez sur votre section pour générer vos plans de leçon.", true);
+                } else {
+                    displayAlert("Aucune ligne modifiable/générable pour votre compte dans la sélection actuelle.", true);
+                }
                 return;
             }
 
@@ -3032,7 +3045,23 @@
         }
         
         async function generateWeeklyLessonPlans() { if (!currentWeek) { displayAlert("please_select_week", true); return; } if (!filteredAndSortedData || filteredAndSortedData.length === 0) { displayAlert("no_data_to_display_filters", true); return; } const confirmation = confirm(t("Voulez-vous générer les plans de leçons pour toutes les données affichées de la semaine " + currentWeek + " ?")); if (!confirmation) return; console.log("Generating Weekly Lesson Plans for week:", currentWeek); displayAlert("generating_weekly_lessons", false); setButtonLoading("generateWeeklyLessonsBtn", true, "fas fa-robot"); showProgressBar(); updateProgressBar(10); try { const response = await fetch("/api/generate-weekly-lesson-plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ week: currentWeek, data: filteredAndSortedData }) }); updateProgressBar(80); if (response.ok) { const blob = await response.blob(); const contentDisposition = response.headers.get("content-disposition"); let filename = `plans_lecons_semaine_${currentWeek}.zip`; if (contentDisposition) { const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i); if (filenameMatch && filenameMatch[1]) { filename = filenameMatch[1]; } } saveAs(blob, filename); updateProgressBar(100); displayAlert("weekly_lessons_generated", false); } else { const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." })); throw new Error(errorResult.message || `Erreur serveur ${response.status}`); } } catch (error) { console.error("Error generating weekly lesson plans:", error); displayAlert("error_generating_ai_lesson_plan", true, { error: error.message }); updateProgressBar(0); } finally { hideProgressBar(); setButtonLoading("generateWeeklyLessonsBtn", false, "fas fa-robot"); } }
-        function updateActionButtonsState(isEnabled) { document.getElementById('generateWordBtn').disabled = !isEnabled; document.getElementById('generateExcelBtn').disabled = !isEnabled; const saveAllBtn = document.getElementById('saveAllDisplayedBtn'); if (saveAllBtn) { saveAllBtn.disabled = !isEnabled || !filteredAndSortedData || filteredAndSortedData.length === 0; } const generateAllDisplayedPlansBtn = document.getElementById('generateAllDisplayedPlansBtn'); if (generateAllDisplayedPlansBtn) { generateAllDisplayedPlansBtn.disabled = !isEnabled || !filteredAndSortedData || filteredAndSortedData.length === 0; generateAllDisplayedPlansBtn.style.display = ''; } }
+        function updateActionButtonsState(isEnabled) { 
+            document.getElementById('generateWordBtn').disabled = !isEnabled; 
+            document.getElementById('generateExcelBtn').disabled = !isEnabled; 
+            const saveAllBtn = document.getElementById('saveAllDisplayedBtn'); 
+            if (saveAllBtn) { 
+                saveAllBtn.disabled = !isEnabled || !filteredAndSortedData || filteredAndSortedData.length === 0; 
+            } 
+            const generateAllDisplayedPlansBtn = document.getElementById('generateAllDisplayedPlansBtn'); 
+            if (generateAllDisplayedPlansBtn) { 
+                generateAllDisplayedPlansBtn.disabled = !isEnabled || !filteredAndSortedData || filteredAndSortedData.length === 0; 
+                generateAllDisplayedPlansBtn.style.display = ''; 
+            }
+            const openLessonPlanModalBtn = document.getElementById('openLessonPlanModalBtn');
+            if (openLessonPlanModalBtn) {
+                openLessonPlanModalBtn.disabled = !isEnabled || !planData || planData.length === 0;
+            }
+        }
         async function saveRow(rowData, tableRowElement) { 
             if(!rowData||typeof rowData!=='object'){displayAlert('invalid_row',true); return;} 
             if(rowData.isReadOnlyCrossSection) {
@@ -3512,12 +3541,12 @@
                 }
 
                 const lessonPlanGen = document.getElementById('lesson-plan-generator');
-                if (lessonPlanGen) lessonPlanGen.style.display = isAdminUser ? 'flex' : 'none';
+                if (lessonPlanGen) lessonPlanGen.style.display = 'flex';
             } else {
                 const adminActionsEl = document.getElementById('admin-actions');
                 if (adminActionsEl) adminActionsEl.style.display = 'none';
                 const lessonPlanGen = document.getElementById('lesson-plan-generator');
-                if (lessonPlanGen) lessonPlanGen.style.display = 'none';
+                if (lessonPlanGen) lessonPlanGen.style.display = 'flex';
             }
             
             currentWeek = null;

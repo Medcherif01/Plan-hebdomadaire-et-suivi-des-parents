@@ -1146,8 +1146,11 @@
                 <button id="saveAllDisplayedBtn" onclick="saveAllDisplayedRows()" class="action-button save-all-button pro-button success-button" disabled title="Raccourci clavier : Ctrl + S / حفظ الكل">
                     <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Lignes Affichées</span>
                 </button>
-                <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans()" class="action-button pro-button" disabled style="background: #7C3AED;">
+                <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans()" class="action-button pro-button" disabled style="background: #7C3AED;" title="Générer les plans de leçon de toutes les séances affichées">
                     <i class="fas fa-file-word"></i> <span class="btn-text">Générer Plans de Leçon (Affichés)</span>
+                </button>
+                <button id="openLessonPlanModalBtn" onclick="openLessonPlanModal()" class="action-button pro-button" style="background: #2563EB;" title="Ouvrir la sélection par classes et matières pour générer les plans de leçon IA">
+                    <i class="fas fa-layer-group"></i> <span class="btn-text">Générer par Classes/Matières</span>
                 </button>
             </div>
             <div id="teacherRowsCounterBadge" style="display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.88rem; color: #1E293B; background: #F8FAFC; padding: 8px 16px; border-radius: 10px; border: 1.5px solid #CBD5E1; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">

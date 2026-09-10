@@ -43,7 +43,23 @@ function populateLessonPlanClasses() {
         return;
     }
     
-    const uniqueClasses = [...new Set(planData.map(item => item[classKey]).filter(Boolean))];
+    const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
+    const enseignantKey = findHKey('Enseignant');
+    
+    let filteredPlanData = planData;
+    if (isTeacherOnly && enseignantKey) {
+        const teacherRows = planData.filter(item => {
+            if (!item || item.isReadOnlyCrossSection) return false;
+            const rowTeacher = item[enseignantKey];
+            return isRowForLoggedInTeacher(rowTeacher, loggedInUser, loggedInTeacherTable) ||
+                   String(rowTeacher || '').trim().toLowerCase() === String(loggedInUser || '').trim().toLowerCase();
+        });
+        if (teacherRows.length > 0) {
+            filteredPlanData = teacherRows;
+        }
+    }
+
+    const uniqueClasses = [...new Set(filteredPlanData.map(item => item[classKey]).filter(Boolean))];
     uniqueClasses.sort(compareClasses);
     
     if (uniqueClasses.length === 0) {
@@ -134,41 +150,37 @@ function updateLessonPlanSubjects() {
     
     const classKey = findHKey('Classe');
     const matiereKey = findHKey('Matière');
+    const enseignantKey = findHKey('Enseignant');
     
     if (!classKey || !matiereKey) {
         container.innerHTML = '<p style="color: #999;">Erreur de configuration</p>';
         updateGenerateButtonState();
         return;
     }
+
+    const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
     
-    // Mots-clés pour exclure les matières arabes
-    const arabicKeywords = [
-        'عربي', 'العربية', 'اللغة العربية', 'arabe',
-        'قرآن', 'القرآن', 'coran',
-        'تجويد', 'التجويد', 'tajwid',
-        'حديث', 'الحديث', 'hadith',
-        'تربية', 'التربية', 'islamique',
-        'توحيد', 'التوحيد', 'tawhid',
-        'فقه', 'الفقه', 'fiqh',
-        'سيرة', 'السيرة', 'sirah'
-    ];
+    // Récupérer les matières des classes sélectionnées (filtrées pour l'enseignant connecté si non admin)
+    let subjectsQuery = planData.filter(item => {
+        if (!item || !selectedClasses.includes(item[classKey]) || !item[matiereKey]) return false;
+        if (item.isReadOnlyCrossSection) return false;
+        if (isTeacherOnly && enseignantKey) {
+            return isRowForLoggedInTeacher(item[enseignantKey], loggedInUser, loggedInTeacherTable) ||
+                   String(item[enseignantKey] || '').trim().toLowerCase() === String(loggedInUser || '').trim().toLowerCase();
+        }
+        return true;
+    });
+
+    if (subjectsQuery.length === 0) {
+        // Repli sur toutes les matières des classes sélectionnées
+        subjectsQuery = planData.filter(item => item && selectedClasses.includes(item[classKey]) && item[matiereKey] && !item.isReadOnlyCrossSection);
+    }
     
-    // Récupérer toutes les matières des classes sélectionnées
-    const subjectsFromSelectedClasses = planData
-        .filter(item => selectedClasses.includes(item[classKey]) && item[matiereKey])
-        .map(item => item[matiereKey]);
-    
-    // Filtrer pour exclure les matières arabes
-    const uniqueSubjects = [...new Set(subjectsFromSelectedClasses)]
-        .filter(subject => {
-            return !arabicKeywords.some(keyword => 
-                subject.toLowerCase().includes(keyword.toLowerCase())
-            );
-        })
-        .sort();
+    // Toutes les matières sont autorisées pour tous les enseignants
+    const uniqueSubjects = [...new Set(subjectsQuery.map(item => item[matiereKey]))].sort();
     
     if (uniqueSubjects.length === 0) {
-        container.innerHTML = '<p style="color: #999;">Aucune matière non-arabe trouvée pour ces classes</p>';
+        container.innerHTML = '<p style="color: #999;">Aucune matière trouvée pour ces classes</p>';
         updateGenerateButtonState();
         return;
     }
@@ -310,11 +322,19 @@ async function generateAILessonPlansZip(selectedClasses, selectedSubjects) {
     const enseignantKey = findHKey('Enseignant');
     
     // Filtrer les lignes correspondantes
-    const rowsToGenerate = planData.filter(item => 
-        selectedClasses.includes(item[classKey]) && 
-        selectedSubjects.includes(item[matiereKey]) &&
-        item[leconKey] // Ne générer que pour les lignes qui ont une leçon
-    );
+    const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
+    const rowsToGenerate = planData.filter(item => {
+        if (!item) return false;
+        if (item.isReadOnlyCrossSection) return false;
+        if (!selectedClasses.includes(item[classKey])) return false;
+        if (!selectedSubjects.includes(item[matiereKey])) return false;
+        if (!item[leconKey]) return false; // Ne générer que pour les lignes qui ont une leçon
+        if (isTeacherOnly && enseignantKey) {
+            return isRowForLoggedInTeacher(item[enseignantKey], loggedInUser, loggedInTeacherTable) ||
+                   String(item[enseignantKey] || '').trim().toLowerCase() === String(loggedInUser || '').trim().toLowerCase();
+        }
+        return true;
+    });
     
     if (rowsToGenerate.length === 0) {
         displayAlert("Aucune ligne avec leçon trouvée pour ces combinaisons classe/matière.", true);
@@ -369,6 +389,44 @@ async function generateAILessonPlansZip(selectedClasses, selectedSubjects) {
             
             displayAlert(`✅ ${lessonPlansData.length} plan(s) de leçon IA générés et téléchargés avec succès ! Fichier: '${filename}'`, false, 6000);
             
+            // Mettre à jour l'état des lignes dans les données et dans le tableau
+            rowsToGenerate.forEach(row => {
+                row.lessonPlanDownloaded = true;
+                row.lessonPlanId = row.lessonPlanId || 'generated';
+                if (typeof findTableRowElement === 'function') {
+                    const tr = findTableRowElement(row);
+                    if (tr) {
+                        tr.classList.add('has-lesson-plan', 'row-plan-downloaded');
+                        const aiBtn = tr.querySelector('.ai-lesson-plan-button');
+                        if (aiBtn) {
+                            aiBtn.classList.add('lesson-plan-exists');
+                            aiBtn.title = 'Plan de Leçon déjà généré - Régénérer';
+                        }
+                        let dlBtn = tr.querySelector('.lesson-plan-button');
+                        const actTd = tr.querySelector('.actions-column');
+                        if (!dlBtn && actTd) {
+                            dlBtn = document.createElement('button');
+                            dlBtn.innerHTML = '<i class="fas fa-file-download"></i>';
+                            dlBtn.title = 'Télécharger Plan de Leçon';
+                            dlBtn.classList.add('lesson-plan-button');
+                            dlBtn.style.marginLeft = '5px';
+                            dlBtn.onclick = () => downloadLessonPlan(row);
+                            actTd.appendChild(dlBtn);
+                        }
+                        let badge = tr.querySelector('.plan-status-badge');
+                        if (!badge && actTd) {
+                            badge = document.createElement('span');
+                            actTd.appendChild(badge);
+                        }
+                        if (badge) {
+                            badge.className = 'plan-status-badge badge-downloaded';
+                            badge.innerHTML = '<i class="fas fa-check-double"></i> Téléchargé';
+                            badge.title = 'Plan de leçon généré et inclus dans l\'archive téléchargée';
+                        }
+                    }
+                }
+            });
+
             // Fermer la modal
             closeLessonPlanModal();
             
