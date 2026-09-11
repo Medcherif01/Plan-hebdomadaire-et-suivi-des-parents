@@ -3404,7 +3404,7 @@
         function updateDynamicUIElements() { console.log("Updating dynamic UI for lang:", currentUserLanguage); const dateRangeEl=document.getElementById('weekDateRange'); const weekNum = parseInt(currentWeek, 10); const dates = specificWeekDateRanges[weekNum]; if(weekStartDate && dates?.end){ const s = weekStartDate; const e = new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ dateRangeEl.textContent = `${t('week_label')} ${currentWeek} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'From' : 'Du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`; } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (Err dates)`; } } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (${t('no_data')}: dates non définies)`; } createTableHeader(); displayPlanTable(filteredAndSortedData); const notesInput = document.getElementById('notesInput'); const notesClassSel = document.getElementById('notesClassSelector'); if (notesInput && notesClassSel) { if (notesClassSel.value) { const selText = notesClassSel.options[notesClassSel.selectedIndex].text; notesInput.placeholder = t('notes_placeholder', { classText: selText }); } else { notesInput.placeholder = t('select_class_placeholder'); } } }
 
         function switchAdminTab(tabName) {
-            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days'];
+            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days', 'schedule'];
             tabs.forEach(t => {
                 const contentEl = document.getElementById(`adminTab_${t}`);
                 const btnEl = document.getElementById(`tabBtn_${t}`);
@@ -3441,6 +3441,8 @@
             } else if (tabName === 'special_days') {
                 if (typeof populateAdminSpecialDaysForm === 'function') populateAdminSpecialDaysForm();
                 if (typeof loadAdminSpecialDaysList === 'function') loadAdminSpecialDaysList();
+            } else if (tabName === 'schedule') {
+                if (typeof initAdminScheduleTab === 'function') initAdminScheduleTab();
             }
         }
 
@@ -8144,6 +8146,640 @@ async function executeFullClassExcelDownload(explicitClass) {
         if (btn) {
             btn.disabled = false;
             if (btnText) btnText.textContent = "Télécharger Excel (.xlsx)";
+        }
+    }
+}
+
+
+// =========================================================================
+// GESTION ET RÉORGANISATION DE L'EMPLOI DU TEMPS PAR L'ADMINISTRATION
+// =========================================================================
+
+window.currentAdminScheduleSlots = [];
+window.adminScheduleTeachersCache = [];
+window.adminScheduleSubjectsCache = [];
+window.adminScheduleClassesCache = [];
+window.adminScheduleMaxPeriod = 7;
+window.currentEditingSlot = null;
+
+async function initAdminScheduleTab() {
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    if (sectionSel) {
+        sectionSel.value = currentSection || 'garcons';
+    }
+
+    const weekSel = document.getElementById('adminScheduleWeekSelect');
+    if (weekSel) {
+        weekSel.innerHTML = '';
+        for (let w = 1; w <= 38; w++) {
+            const opt = document.createElement('option');
+            opt.value = String(w);
+            opt.textContent = 'Semaine ' + w;
+            if (parseInt(currentWeek, 10) === w) opt.selected = true;
+            weekSel.appendChild(opt);
+        }
+        if (!weekSel.value) weekSel.value = "1";
+    }
+
+    updateAdminScheduleScopeInfo();
+    await populateAdminScheduleClasses();
+}
+
+async function populateAdminScheduleClasses() {
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+    const classSel = document.getElementById('adminScheduleClassSelect');
+    if (!classSel) return;
+
+    classSel.innerHTML = '<option value="">-- Chargement des classes... --</option>';
+
+    try {
+        const response = await fetch('/api/all-classes?section=' + encodeURIComponent(targetSection));
+        if (!response.ok) throw new Error('Erreur ' + response.status);
+        const classes = await response.json();
+        window.adminScheduleClassesCache = classes || [];
+
+        classSel.innerHTML = '<option value="">-- Sélectionnez une classe --</option>';
+        window.adminScheduleClassesCache.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            classSel.appendChild(opt);
+        });
+
+        const mainClassFilter = document.getElementById('classFilter');
+        if (mainClassFilter && mainClassFilter.value && window.adminScheduleClassesCache.includes(mainClassFilter.value)) {
+            classSel.value = mainClassFilter.value;
+        } else if (window.adminScheduleClassesCache.length > 0) {
+            classSel.value = window.adminScheduleClassesCache[0];
+        }
+
+        if (classSel.value) {
+            loadAdminScheduleForClass();
+        } else {
+            const msg = document.getElementById('adminScheduleGridMessage');
+            const tbl = document.getElementById('adminScheduleTable');
+            if (msg) {
+                msg.style.display = 'block';
+                msg.textContent = "Aucune classe trouvée pour cette section. Veuillez importer un plan ou sélectionner une autre section.";
+            }
+            if (tbl) tbl.style.display = 'none';
+        }
+    } catch (err) {
+        console.error("Erreur populateAdminScheduleClasses:", err);
+        classSel.innerHTML = '<option value="">Erreur chargement classes</option>';
+    }
+}
+
+function onAdminScheduleSectionChange() {
+    populateAdminScheduleClasses();
+}
+
+function onAdminScheduleWeekChange() {
+    updateAdminScheduleScopeInfo();
+    loadAdminScheduleForClass();
+}
+
+function updateAdminScheduleScopeInfo() {
+    const weekSel = document.getElementById('adminScheduleWeekSelect');
+    const selWeek = weekSel ? parseInt(weekSel.value, 10) || 1 : 1;
+    const radios = document.getElementsByName('adminScheduleScopeRadio');
+    let mode = 'single';
+    for (const r of radios) {
+        if (r.checked) { mode = r.value; break; }
+    }
+
+    const summaryText = document.getElementById('adminScheduleScopeSummaryText');
+    if (!summaryText) return;
+
+    if (mode === 'single') {
+        summaryText.innerHTML = '📌 <strong>Semaine unique :</strong> Les modifications s\'appliqueront <u>exclusivement à la Semaine ' + selWeek + '</u>. Les autres semaines resteront inchangées.';
+    } else {
+        const remainingCount = 38 - selWeek + 1;
+        summaryText.innerHTML = '⏩ <strong>Semaines restantes :</strong> Les modifications s\'appliqueront à <u>' + remainingCount + ' semaine(s)</u> (de la <strong>Semaine ' + selWeek + '</strong> jusqu\'à la <strong>Semaine 38</strong> incluse).';
+    }
+}
+
+async function loadAdminScheduleForClass() {
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+    const weekSel = document.getElementById('adminScheduleWeekSelect');
+    const selectedWeek = weekSel ? (weekSel.value || '1') : '1';
+    const classSel = document.getElementById('adminScheduleClassSelect');
+    const selectedClass = classSel ? classSel.value : '';
+
+    const msgEl = document.getElementById('adminScheduleGridMessage');
+    const tblEl = document.getElementById('adminScheduleTable');
+    const noticeEl = document.getElementById('scheduleDataStatsNotice');
+
+    if (!selectedClass) {
+        if (msgEl) {
+            msgEl.style.display = 'block';
+            msgEl.innerHTML = '<i class="fas fa-info-circle"></i> Veuillez sélectionner une classe ci-dessus pour afficher et réorganiser son emploi du temps.';
+        }
+        if (tblEl) tblEl.style.display = 'none';
+        if (noticeEl) noticeEl.innerHTML = '';
+        window.currentAdminScheduleSlots = [];
+        return;
+    }
+
+    if (msgEl) {
+        msgEl.style.display = 'block';
+        msgEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Chargement des créneaux de la classe ' + selectedClass + '...';
+    }
+    if (tblEl) tblEl.style.display = 'none';
+
+    try {
+        const response = await fetch('/api/admin/schedule-class?section=' + encodeURIComponent(targetSection) + '&week=' + encodeURIComponent(selectedWeek) + '&classe=' + encodeURIComponent(selectedClass));
+        if (!response.ok) throw new Error('Erreur ' + response.status);
+        const data = await response.json();
+
+        window.currentAdminScheduleSlots = data.slots || [];
+        window.adminScheduleTeachersCache = data.teachers || [];
+        window.adminScheduleSubjectsCache = data.distinctSubjects || [];
+
+        let maxP = 7;
+        window.currentAdminScheduleSlots.forEach(s => {
+            const pNum = parseInt(s.periode, 10);
+            if (!isNaN(pNum) && pNum > maxP) maxP = pNum;
+        });
+        window.adminScheduleMaxPeriod = Math.max(7, maxP);
+
+        if (noticeEl) {
+            if (data.filledSlotsCount > 0) {
+                noticeEl.innerHTML = '🛡️ <strong>' + data.filledSlotsCount + ' séance(s)</strong> de cette semaine ont déjà été remplies par les enseignants (leçons, devoirs). <em>Toutes leurs saisies seront intégralement conservées</em> et replacées sur le nouvel horaire.';
+            } else {
+                noticeEl.innerHTML = '✨ <strong>0 séance remplie</strong> pour cette semaine. L\'emploi du temps sera configuré proprement pour les futurs remplissages.';
+            }
+        }
+
+        updateScheduleModalDatalists();
+
+        if (msgEl) msgEl.style.display = 'none';
+        if (tblEl) tblEl.style.display = 'table';
+
+        renderAdminScheduleGrid();
+    } catch (err) {
+        console.error("Erreur loadAdminScheduleForClass:", err);
+        if (msgEl) {
+            msgEl.style.display = 'block';
+            msgEl.innerHTML = '<span style="color:red;"><i class="fas fa-exclamation-triangle"></i> Erreur lors du chargement : ' + err.message + '</span>';
+        }
+    }
+}
+
+function updateScheduleModalDatalists() {
+    const dl = document.getElementById('slotModalSubjectsDatalist');
+    if (dl) {
+        dl.innerHTML = '';
+        const defaultSubjects = [
+            "Mathématiques", "Français", "Langue Arabe", "Sciences", "Physique-Chimie",
+            "SVT", "Histoire-Géographie", "Éducation Islamique", "Anglais", "Informatique",
+            "Éducation Physique et Sportive (EPS)", "Arts Plastiques", "Éducation Civique"
+        ];
+        const combined = Array.from(new Set([...defaultSubjects, ...(window.adminScheduleSubjectsCache || [])])).sort();
+        combined.forEach(sub => {
+            const opt = document.createElement('option');
+            opt.value = sub;
+            dl.appendChild(opt);
+        });
+    }
+
+    const tSel = document.getElementById('slotModalTeacherSelect');
+    if (tSel) {
+        tSel.innerHTML = '<option value="">-- Aucun enseignant spécifié --</option>';
+        (window.adminScheduleTeachersCache || []).forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            tSel.appendChild(opt);
+        });
+    }
+}
+
+function getSubjectBadgeColor(subject) {
+    const s = String(subject || '').toLowerCase();
+    if (s.includes('math')) return { bg: '#EFF6FF', border: '#93C5FD', text: '#1D4ED8', dot: '#3B82F6' };
+    if (s.includes('franç') || s.includes('franc') || s.includes('anglais')) return { bg: '#F0FDF4', border: '#86EFAC', text: '#15803D', dot: '#22C55E' };
+    if (s.includes('arab') || s.includes('islam') || s.includes('coran')) return { bg: '#FFFBEB', border: '#FDE68A', text: '#B45309', dot: '#F59E0B' };
+    if (s.includes('scienc') || s.includes('phys') || s.includes('svt') || s.includes('chim')) return { bg: '#FAF5FF', border: '#D8B4FE', text: '#7E22CE', dot: '#A855F7' };
+    if (s.includes('hist') || s.includes('géo') || s.includes('geo') || s.includes('civ')) return { bg: '#FFF1F2', border: '#FECDD3', text: '#BE123C', dot: '#F43F5E' };
+    if (s.includes('sport') || s.includes('eps')) return { bg: '#ECFDF5', border: '#A7F3D0', text: '#047857', dot: '#10B981' };
+    if (s.includes('art') || s.includes('dessin') || s.includes('mus')) return { bg: '#FDF4FF', border: '#F5D0FE', text: '#A21CAF', dot: '#D946EF' };
+    return { bg: '#F8FAFC', border: '#CBD5E1', text: '#334155', dot: '#64748B' };
+}
+
+function renderAdminScheduleGrid() {
+    const tbody = document.getElementById('adminScheduleTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    const days = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
+    const maxP = window.adminScheduleMaxPeriod || 7;
+
+    for (let p = 1; p <= maxP; p++) {
+        const tr = document.createElement('tr');
+        tr.style.background = (p % 2 === 0) ? '#F8FAFC' : '#FFFFFF';
+
+        const tdPeriod = document.createElement('td');
+        tdPeriod.style.padding = '10px';
+        tdPeriod.style.textAlign = 'center';
+        tdPeriod.style.fontWeight = '800';
+        tdPeriod.style.color = '#1E293B';
+        tdPeriod.style.background = '#F1F5F9';
+        tdPeriod.style.borderRadius = '8px';
+        tdPeriod.style.border = '1px solid #CBD5E1';
+        tdPeriod.innerHTML = '<span style="display:block; font-size:0.95rem; color:#0284C7;">Période ' + p + '</span><small style="color:#64748B; font-weight:600; font-size:0.75rem;">Séance ' + p + '</small>';
+        tr.appendChild(tdPeriod);
+
+        days.forEach(day => {
+            const td = document.createElement('td');
+            td.style.padding = '8px';
+            td.style.verticalAlign = 'top';
+            td.style.border = '1px solid #E2E8F0';
+            td.style.borderRadius = '8px';
+            td.style.minHeight = '75px';
+            td.style.width = '18%';
+
+            const slot = (window.currentAdminScheduleSlots || []).find(s => {
+                const sDay = (s.jour || '').trim();
+                const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
+                return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(p);
+            });
+
+            if (slot && slot.matiere) {
+                const colors = getSubjectBadgeColor(slot.matiere);
+                const hasFilled = Boolean(slot.hasContent);
+
+                td.style.background = colors.bg;
+                td.style.borderColor = colors.border;
+
+                let contentBadgeHtml = '';
+                if (hasFilled) {
+                    const titleText = 'Leçon: ' + (slot.lessonPreview || 'Saisie effectuée') + '&#10;Devoirs: ' + (slot.homeworkPreview || 'Non spécifiés');
+                    contentBadgeHtml = '<span title="' + titleText + '" style="display:inline-flex; align-items:center; gap:3px; background:#10B981; color:white; font-size:0.7rem; font-weight:800; padding:2px 6px; border-radius:10px; margin-top:4px;">' +
+                        '<i class="fas fa-check-circle" style="font-size:0.65rem;"></i> Saisie existante</span>';
+                }
+
+                const matEscaped = typeof escapeHtml === 'function' ? escapeHtml(slot.matiere) : slot.matiere;
+                const ensEscaped = typeof escapeHtml === 'function' ? escapeHtml(slot.enseignant || 'Non spécifié') : (slot.enseignant || 'Non spécifié');
+
+                td.innerHTML =
+                    '<div style="display:flex; flex-direction:column; height:100%; justify-content:space-between; gap:4px;">' +
+                        '<div>' +
+                            '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:4px;">' +
+                                '<span style="font-weight:800; font-size:0.88rem; color:' + colors.text + '; display:flex; align-items:center; gap:5px;">' +
+                                    '<span style="width:8px; height:8px; border-radius:50%; background:' + colors.dot + '; display:inline-block;"></span>' +
+                                    matEscaped +
+                                '</span>' +
+                                '<button type="button" onclick="clearScheduleSlot(\'' + day + '\', ' + p + ')" title="Vider ce créneau" style="background:none; border:none; color:#EF4444; cursor:pointer; font-size:0.8rem; padding:1px 3px;">' +
+                                    '<i class="fas fa-times"></i>' +
+                                '</button>' +
+                            '</div>' +
+                            '<div style="font-size:0.78rem; color:#475569; margin-top:2px; font-weight:600; display:flex; align-items:center; gap:4px;">' +
+                                '<i class="fas fa-chalkboard-teacher" style="color:#64748B; font-size:0.75rem;"></i>' +
+                                '<span>' + ensEscaped + '</span>' +
+                            '</div>' +
+                            contentBadgeHtml +
+                        '</div>' +
+                        '<div style="margin-top:6px; display:flex; justify-content:flex-end; gap:4px;">' +
+                            '<button type="button" onclick="openScheduleSlotModal(\'' + day + '\', ' + p + ')" class="pro-button" style="padding:2px 7px; font-size:0.72rem; font-weight:700; background:white; color:#0284C7; border:1px solid #BAE6FD; border-radius:4px; cursor:pointer;">' +
+                                '<i class="fas fa-edit"></i> Modifier' +
+                            '</button>' +
+                        '</div>' +
+                    '</div>';
+            } else {
+                td.style.background = '#FAFAFA';
+                td.innerHTML =
+                    '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; min-height:60px;">' +
+                        '<button type="button" onclick="openScheduleSlotModal(\'' + day + '\', ' + p + ')" style="background:none; border:1px dashed #CBD5E1; border-radius:6px; padding:6px 10px; font-size:0.78rem; color:#64748B; font-weight:600; cursor:pointer; width:100%;">' +
+                            '<i class="fas fa-plus" style="font-size:0.7rem;"></i> Assigner' +
+                        '</button>' +
+                    '</div>';
+            }
+
+            tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+    }
+}
+
+function openScheduleSlotModal(day, period) {
+    window.currentEditingSlot = { day, period };
+    const modal = document.getElementById('scheduleSlotModal');
+    const titleEl = document.getElementById('scheduleSlotModalTitle');
+    const matInput = document.getElementById('slotModalMatiereInput');
+    const tSel = document.getElementById('slotModalTeacherSelect');
+
+    if (!modal) return;
+
+    if (titleEl) {
+        titleEl.textContent = 'Créneau : ' + day + ' - Période ' + period;
+    }
+
+    const existing = (window.currentAdminScheduleSlots || []).find(s => {
+        const sDay = (s.jour || '').trim();
+        const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
+        return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(period);
+    });
+
+    if (matInput) {
+        matInput.value = existing ? (existing.matiere || '') : '';
+    }
+    if (tSel) {
+        tSel.value = existing ? (existing.enseignant || '') : '';
+    }
+
+    modal.style.display = 'flex';
+    if (matInput) setTimeout(() => matInput.focus(), 100);
+}
+
+function closeScheduleSlotModal() {
+    const modal = document.getElementById('scheduleSlotModal');
+    if (modal) modal.style.display = 'none';
+    window.currentEditingSlot = null;
+}
+
+function applyScheduleSlotModal() {
+    if (!window.currentEditingSlot) return;
+    const day = window.currentEditingSlot.day;
+    const period = window.currentEditingSlot.period;
+    const matInput = document.getElementById('slotModalMatiereInput');
+    const tSel = document.getElementById('slotModalTeacherSelect');
+
+    const matiere = matInput ? matInput.value.trim() : '';
+    const enseignant = tSel ? tSel.value.trim() : '';
+
+    if (!matiere) {
+        alert("Veuillez saisir ou sélectionner une matière.");
+        if (matInput) matInput.focus();
+        return;
+    }
+
+    if (!window.currentAdminScheduleSlots) window.currentAdminScheduleSlots = [];
+
+    const slotIdx = window.currentAdminScheduleSlots.findIndex(s => {
+        const sDay = (s.jour || '').trim();
+        const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
+        return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(period);
+    });
+
+    if (slotIdx >= 0) {
+        window.currentAdminScheduleSlots[slotIdx].matiere = matiere;
+        if (enseignant) {
+            window.currentAdminScheduleSlots[slotIdx].enseignant = enseignant;
+        }
+    } else {
+        window.currentAdminScheduleSlots.push({
+            jour: day,
+            periode: String(period),
+            matiere: matiere,
+            enseignant: enseignant,
+            hasContent: false
+        });
+    }
+
+    closeScheduleSlotModal();
+    renderAdminScheduleGrid();
+}
+
+function clearCurrentSlotFromModal() {
+    if (!window.currentEditingSlot) return;
+    const day = window.currentEditingSlot.day;
+    const period = window.currentEditingSlot.period;
+    clearScheduleSlot(day, period);
+    closeScheduleSlotModal();
+}
+
+function clearScheduleSlot(day, period) {
+    if (!window.currentAdminScheduleSlots) return;
+    const idx = window.currentAdminScheduleSlots.findIndex(s => {
+        const sDay = (s.jour || '').trim();
+        const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
+        return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(period);
+    });
+
+    if (idx >= 0) {
+        const slot = window.currentAdminScheduleSlots[idx];
+        if (slot.hasContent) {
+            const conf = confirm("Attention : ce créneau (" + day + " P" + period + " - " + slot.matiere + ") contient des données saisies par l'enseignant. Si vous le supprimez, ses saisies seront réaffectées si la matière a d'autres créneaux. Confirmer le vidage de ce créneau ?");
+            if (!conf) return;
+        }
+        window.currentAdminScheduleSlots.splice(idx, 1);
+        renderAdminScheduleGrid();
+    }
+}
+
+function applyQuickScheduleSwap() {
+    const sDay = document.getElementById('swapSourceDay')?.value || 'Dimanche';
+    const sPer = document.getElementById('swapSourcePeriod')?.value || '1';
+    const tDay = document.getElementById('swapTargetDay')?.value || 'Lundi';
+    const tPer = document.getElementById('swapTargetPeriod')?.value || '1';
+    const action = document.getElementById('swapActionType')?.value || 'swap';
+
+    if (sDay === tDay && sPer === tPer) {
+        alert("Le créneau source et le créneau cible sont identiques. Veuillez choisir deux créneaux différents.");
+        return;
+    }
+
+    if (!window.currentAdminScheduleSlots) window.currentAdminScheduleSlots = [];
+
+    const sIdx = window.currentAdminScheduleSlots.findIndex(s => {
+        const day = (s.jour || '').trim();
+        const per = String(s.periode || '').replace(/[^0-9]/g, '');
+        return day.toLowerCase().startsWith(sDay.toLowerCase()) && per === String(sPer);
+    });
+
+    const tIdx = window.currentAdminScheduleSlots.findIndex(s => {
+        const day = (s.jour || '').trim();
+        const per = String(s.periode || '').replace(/[^0-9]/g, '');
+        return day.toLowerCase().startsWith(tDay.toLowerCase()) && per === String(tPer);
+    });
+
+    if (sIdx === -1 && tIdx === -1) {
+        alert("Les deux créneaux sélectionnés sont vides dans la grille.");
+        return;
+    }
+
+    if (action === 'swap') {
+        if (sIdx >= 0 && tIdx >= 0) {
+            window.currentAdminScheduleSlots[sIdx].jour = tDay;
+            window.currentAdminScheduleSlots[sIdx].periode = String(tPer);
+            window.currentAdminScheduleSlots[tIdx].jour = sDay;
+            window.currentAdminScheduleSlots[tIdx].periode = String(sPer);
+        } else if (sIdx >= 0 && tIdx === -1) {
+            window.currentAdminScheduleSlots[sIdx].jour = tDay;
+            window.currentAdminScheduleSlots[sIdx].periode = String(tPer);
+        } else if (sIdx === -1 && tIdx >= 0) {
+            window.currentAdminScheduleSlots[tIdx].jour = sDay;
+            window.currentAdminScheduleSlots[tIdx].periode = String(sPer);
+        }
+    } else {
+        if (sIdx >= 0) {
+            if (tIdx >= 0) {
+                window.currentAdminScheduleSlots.splice(tIdx, 1);
+            }
+            const updatedSIdx = window.currentAdminScheduleSlots.findIndex(s => {
+                const day = (s.jour || '').trim();
+                const per = String(s.periode || '').replace(/[^0-9]/g, '');
+                return day.toLowerCase().startsWith(sDay.toLowerCase()) && per === String(sPer);
+            });
+            if (updatedSIdx >= 0) {
+                window.currentAdminScheduleSlots[updatedSIdx].jour = tDay;
+                window.currentAdminScheduleSlots[updatedSIdx].periode = String(tPer);
+            }
+        }
+    }
+
+    renderAdminScheduleGrid();
+}
+
+function addNewPeriodToSchedule() {
+    if (window.adminScheduleMaxPeriod >= 10) {
+        alert("Le nombre maximum de 10 périodes par jour est atteint.");
+        return;
+    }
+    window.adminScheduleMaxPeriod++;
+    renderAdminScheduleGrid();
+}
+
+function duplicateScheduleToOtherClassModal() {
+    const classSel = document.getElementById('adminScheduleClassSelect');
+    const currentClass = classSel ? classSel.value : '';
+    if (!currentClass) {
+        alert("Veuillez d'abord sélectionner une classe.");
+        return;
+    }
+
+    const modal = document.getElementById('scheduleDuplicateModal');
+    const targetSel = document.getElementById('duplicateTargetClassSelect');
+    if (!modal || !targetSel) return;
+
+    targetSel.innerHTML = '';
+    const otherClasses = (window.adminScheduleClassesCache || []).filter(c => c !== currentClass);
+    if (otherClasses.length === 0) {
+        alert("Aucune autre classe disponible dans cette section pour la duplication.");
+        return;
+    }
+
+    otherClasses.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        targetSel.appendChild(opt);
+    });
+
+    modal.style.display = 'flex';
+}
+
+function closeScheduleDuplicateModal() {
+    const modal = document.getElementById('scheduleDuplicateModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function applyDuplicateScheduleToClass() {
+    const targetSel = document.getElementById('duplicateTargetClassSelect');
+    const targetClass = targetSel ? targetSel.value : '';
+    if (!targetClass) return;
+
+    const classSel = document.getElementById('adminScheduleClassSelect');
+    const srcClass = classSel ? classSel.value : '';
+
+    if (!confirm('Voulez-vous dupliquer l\'emploi du temps de la classe ' + srcClass + ' vers la classe ' + targetClass + ' ?')) {
+        return;
+    }
+
+    closeScheduleDuplicateModal();
+    if (classSel) {
+        classSel.value = targetClass;
+        renderAdminScheduleGrid();
+        alert('L\'agencement des créneaux a été copié pour la classe ' + targetClass + '. Cliquez sur "Enregistrer & Réorganiser" pour appliquer.');
+    }
+}
+
+async function saveAndReorganizeSchedule() {
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+    const weekSel = document.getElementById('adminScheduleWeekSelect');
+    const selectedWeek = weekSel ? parseInt(weekSel.value, 10) || 1 : 1;
+    const classSel = document.getElementById('adminScheduleClassSelect');
+    const selectedClass = classSel ? classSel.value : '';
+
+    const radios = document.getElementsByName('adminScheduleScopeRadio');
+    let targetMode = 'single';
+    for (const r of radios) {
+        if (r.checked) { targetMode = r.value; break; }
+    }
+
+    if (!selectedClass) {
+        alert("Veuillez sélectionner une classe.");
+        return;
+    }
+
+    if (!window.currentAdminScheduleSlots || window.currentAdminScheduleSlots.length === 0) {
+        alert("Aucun créneau d'emploi du temps n'a été défini pour cette classe.");
+        return;
+    }
+
+    const scopeDescription = (targetMode === 'single')
+        ? ('la Semaine ' + selectedWeek + ' uniquement')
+        : ('toutes les semaines restantes de la Semaine ' + selectedWeek + ' jusqu\'à la Semaine 38');
+
+    const confirmMsg = 'Confirmez-vous la réorganisation de l\'emploi du temps ?\n\n' +
+        '• Classe : ' + selectedClass + '\n' +
+        '• Section : ' + targetSection + '\n' +
+        '• Portée : ' + scopeDescription + '\n' +
+        '• Nombre de créneaux hebdomadaires : ' + window.currentAdminScheduleSlots.length + '\n\n' +
+        'Garantie : Toutes les informations déjà saisies par les enseignants (leçons, devoirs) seront scrupuleusement conservées et déplacées selon les nouveaux créneaux.';
+
+    if (!confirm(confirmMsg)) return;
+
+    const saveBtn = document.getElementById('btnSaveScheduleReorganize');
+    const origBtnHtml = saveBtn ? saveBtn.innerHTML : '';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Réorganisation en cours...';
+    }
+
+    try {
+        const response = await fetch('/api/admin/reorganize-schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                section: targetSection,
+                classe: selectedClass,
+                startWeek: selectedWeek,
+                endWeek: targetMode === 'remaining' ? 38 : selectedWeek,
+                targetMode: targetMode,
+                slots: window.currentAdminScheduleSlots
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || ('Erreur serveur ' + response.status));
+        }
+
+        const resData = await response.json();
+
+        alert('✅ Succès !\n\n' + resData.message + '\n' +
+              '• Semaines mises à jour : ' + resData.affectedWeeksCount + '\n' +
+              '• Lignes réorganisées : ' + resData.totalUpdatedRows + '\n\n' +
+              'Toutes les saisies et devoirs des enseignants ont été préservés avec succès.');
+
+        if (typeof fetchData === 'function') {
+            await fetchData(currentWeek, currentSection);
+        }
+
+        await loadAdminScheduleForClass();
+    } catch (err) {
+        console.error("Erreur saveAndReorganizeSchedule:", err);
+        alert('❌ Erreur lors de la réorganisation : ' + err.message);
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = origBtnHtml;
         }
     }
 }

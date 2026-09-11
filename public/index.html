@@ -419,6 +419,9 @@
                  <button type="button" class="admin-tab-btn" onclick="switchAdminTab('special_days')" id="tabBtn_special_days">
                      <i class="fas fa-layer-group" style="color:#8B5CF6;"></i> <span>8. Fusion Jours & Photos</span>
                  </button>
+                  <button type="button" class="admin-tab-btn" onclick="switchAdminTab('schedule')" id="tabBtn_schedule">
+                      <i class="fas fa-calendar-alt" style="color:#0284C7;"></i> <span>9. Emploi du Temps (Jours & Périodes)</span>
+                  </button>
              </div>
 
              <!-- ONGLET 1 : IMPORT EXCEL DES PLANS HEBDOMADAIRES -->
@@ -989,6 +992,208 @@
                      </div>
                  </div>
              </div>
+
+              <!-- ONGLET 9 : EMPLOI DU TEMPS (JOURS, PÉRIODES & MATIÈRES) -->
+              <div id="adminTab_schedule" class="admin-tab-content" style="display:none; width:100%;">
+                  <div class="admin-card-inner">
+                      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                          <div>
+                              <h4 style="margin:0; color:#0284C7; display:flex; align-items:center; gap:8px;">
+                                  <i class="fas fa-calendar-alt" style="color:#0EA5E9;"></i> Modification de l'Emploi du Temps (Jours, Périodes & Matières)
+                              </h4>
+                              <p class="admin-subtext" style="margin:4px 0 0 0;">
+                                  Configurez l'emploi du temps par classe : changez les jours, périodes et matières. Vous pouvez appliquer la réorganisation à la <strong>semaine choisie</strong> ou à <strong>toutes les semaines restantes</strong>.
+                              </p>
+                          </div>
+                      </div>
+
+                      <!-- BANNIÈRE GARANTIE D'INTÉGRITÉ DES DONNÉES -->
+                      <div style="background:#ECFDF5; border:1.5px solid #10B981; border-radius:12px; padding:14px 18px; margin-bottom:18px; display:flex; align-items:center; gap:14px;">
+                          <i class="fas fa-shield-alt fa-2x" style="color:#10B981; flex-shrink:0;"></i>
+                          <div style="font-size:0.9rem; color:#065F46; line-height:1.45;">
+                              <strong>Garantie absolue d'intégrité des saisies :</strong> Si un enseignant a déjà rempli des leçons, devoirs, travaux ou objectifs, 
+                              <strong>toutes ses informations enregistrées sont 100% conservées</strong>. Les lignes sont simplement déplacées vers leurs nouveaux créneaux (Jours et Périodes) 
+                              en respectant scrupuleusement l'ordre chronologique original de son programme.
+                              <div id="scheduleDataStatsNotice" style="margin-top:4px; font-weight:700; color:#047857;"></div>
+                          </div>
+                      </div>
+
+                      <!-- BARRE DE SÉLECTION & CONFIGURATION -->
+                      <div style="background:#F8FAFC; border:1.5px solid #CBD5E1; border-radius:14px; padding:18px; margin-bottom:20px;">
+                          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:16px;">
+                              <div>
+                                  <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:5px;">
+                                      <i class="fas fa-venus-mars" style="color:#0284C7;"></i> 1. Section Cible :
+                                  </label>
+                                  <select id="adminScheduleSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;" onchange="onAdminScheduleSectionChange()">
+                                      <option value="garcons">👦 Section Garçons</option>
+                                      <option value="filles">👧 Section Filles</option>
+                                      <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
+                                  </select>
+                              </div>
+
+                              <div>
+                                  <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:5px;">
+                                      <i class="fas fa-chalkboard-user" style="color:#0284C7;"></i> 2. Classe à Modifier :
+                                  </label>
+                                  <select id="adminScheduleClassSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;" onchange="loadAdminScheduleForClass()">
+                                      <option value="">-- Sélectionnez une classe --</option>
+                                  </select>
+                              </div>
+
+                              <div>
+                                  <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:5px;">
+                                      <i class="fas fa-calendar-week" style="color:#0284C7;"></i> 3. Semaine Choisie :
+                                  </label>
+                                  <select id="adminScheduleWeekSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;" onchange="onAdminScheduleWeekChange()">
+                                      <!-- Rempli avec les 38 semaines -->
+                                  </select>
+                              </div>
+
+                              <div>
+                                  <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:5px;">
+                                      <i class="fas fa-sliders-h" style="color:#0284C7;"></i> 4. Portée d'Application :
+                                  </label>
+                                  <div style="display:flex; flex-direction:column; gap:6px; background:white; padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1;">
+                                      <label style="font-weight:600; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                                          <input type="radio" name="adminScheduleScopeRadio" value="single" checked onchange="updateAdminScheduleScopeInfo()">
+                                          <span>📌 Semaine choisie uniquement</span>
+                                      </label>
+                                      <label style="font-weight:600; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; gap:6px;">
+                                          <input type="radio" name="adminScheduleScopeRadio" value="remaining" onchange="updateAdminScheduleScopeInfo()">
+                                          <span style="color:#0369A1; font-weight:700;">⏩ Cette semaine et toutes les suivantes (jusqu'à S38)</span>
+                                      </label>
+                                  </div>
+                              </div>
+                          </div>
+
+                          <!-- Résumé dynamique de la portée -->
+                          <div id="adminScheduleScopeSummary" style="background:#F0F9FF; border:1px solid #BAE6FD; border-radius:8px; padding:10px 14px; font-size:0.88rem; font-weight:700; color:#0369A1; display:flex; align-items:center; gap:8px;">
+                              <i class="fas fa-info-circle"></i>
+                              <span id="adminScheduleScopeSummaryText">L'emploi du temps sera appliqué uniquement à la Semaine sélectionnée.</span>
+                          </div>
+                      </div>
+
+                      <!-- BARRE D'ACTIONS RAPIDES : PERMUTATION DE CRÉNEAUX & OUTILS -->
+                      <div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:12px; padding:14px; margin-bottom:18px;">
+                          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+                              <span style="font-weight:800; color:#1E293B; font-size:0.92rem; display:flex; align-items:center; gap:6px;">
+                                  <i class="fas fa-exchange-alt" style="color:#0284C7;"></i> Déplacer ou Permuter rapidement deux créneaux :
+                              </span>
+                              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                  <button type="button" class="pro-button" onclick="duplicateScheduleToOtherClassModal()" style="padding:6px 12px; font-size:0.82rem; font-weight:700; background:white; color:#0369A1; border:1.5px solid #BAE6FD;">
+                                      <i class="fas fa-copy"></i> Copier cet emploi vers une autre classe
+                                  </button>
+                                  <button type="button" class="pro-button" onclick="addNewPeriodToSchedule()" style="padding:6px 12px; font-size:0.82rem; font-weight:700; background:white; color:#334155; border:1.5px solid #CBD5E1;">
+                                      <i class="fas fa-plus"></i> Ajouter une période (Période 8)
+                                  </button>
+                                  <button type="button" class="pro-button" onclick="loadAdminScheduleForClass()" style="padding:6px 12px; font-size:0.82rem; font-weight:700; background:white; color:#334155; border:1.5px solid #CBD5E1;">
+                                      <i class="fas fa-sync-alt"></i> Recharger
+                                  </button>
+                              </div>
+                          </div>
+
+                          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px; align-items:end;">
+                              <div>
+                                  <label style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:3px;">Créneau Source (De) :</label>
+                                  <div style="display:flex; gap:4px;">
+                                      <select id="swapSourceDay" style="flex:1.2; padding:7px; border-radius:6px; border:1px solid #CBD5E1; font-size:0.85rem; font-weight:600;">
+                                          <option value="Dimanche">Dimanche</option>
+                                          <option value="Lundi">Lundi</option>
+                                          <option value="Mardi">Mardi</option>
+                                          <option value="Mercredi">Mercredi</option>
+                                          <option value="Jeudi">Jeudi</option>
+                                      </select>
+                                      <select id="swapSourcePeriod" style="flex:0.8; padding:7px; border-radius:6px; border:1px solid #CBD5E1; font-size:0.85rem; font-weight:600;">
+                                          <option value="1">P1</option>
+                                          <option value="2">P2</option>
+                                          <option value="3">P3</option>
+                                          <option value="4">P4</option>
+                                          <option value="5">P5</option>
+                                          <option value="6">P6</option>
+                                          <option value="7">P7</option>
+                                          <option value="8">P8</option>
+                                      </select>
+                                  </div>
+                              </div>
+
+                              <div>
+                                  <label style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:3px;">Créneau Cible (Vers) :</label>
+                                  <div style="display:flex; gap:4px;">
+                                      <select id="swapTargetDay" style="flex:1.2; padding:7px; border-radius:6px; border:1px solid #CBD5E1; font-size:0.85rem; font-weight:600;">
+                                          <option value="Dimanche">Dimanche</option>
+                                          <option value="Lundi" selected>Lundi</option>
+                                          <option value="Mardi">Mardi</option>
+                                          <option value="Mercredi">Mercredi</option>
+                                          <option value="Jeudi">Jeudi</option>
+                                      </select>
+                                      <select id="swapTargetPeriod" style="flex:0.8; padding:7px; border-radius:6px; border:1px solid #CBD5E1; font-size:0.85rem; font-weight:600;">
+                                          <option value="1" selected>P1</option>
+                                          <option value="2">P2</option>
+                                          <option value="3">P3</option>
+                                          <option value="4">P4</option>
+                                          <option value="5">P5</option>
+                                          <option value="6">P6</option>
+                                          <option value="7">P7</option>
+                                          <option value="8">P8</option>
+                                      </select>
+                                  </div>
+                              </div>
+
+                              <div>
+                                  <label style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:3px;">Action :</label>
+                                  <select id="swapActionType" style="width:100%; padding:7px; border-radius:6px; border:1px solid #CBD5E1; font-size:0.85rem; font-weight:600;">
+                                      <option value="swap">🔄 Permuter les deux cours (Échange mutuel)</option>
+                                      <option value="move">➡️ Déplacer vers la cible (Écrase / remplace)</option>
+                                  </select>
+                              </div>
+
+                              <div>
+                                  <button type="button" class="pro-button" onclick="applyQuickScheduleSwap()" style="width:100%; padding:8px 12px; background:#0284C7; color:white; font-weight:700; border:none; border-radius:6px; cursor:pointer;">
+                                      <i class="fas fa-check"></i> Appliquer dans la grille
+                                  </button>
+                              </div>
+                          </div>
+                      </div>
+
+                      <!-- GRILLE D'EMPLOI DU TEMPS HEBDOMADAIRE (INTERACTIVE) -->
+                      <div style="background:white; border:1.5px solid #E2E8F0; border-radius:12px; overflow-x:auto; padding:10px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                          <div id="adminScheduleGridMessage" style="padding:25px; text-align:center; color:#64748B; font-weight:600;">
+                              Veuillez sélectionner une classe ci-dessus pour afficher et modifier son emploi du temps.
+                          </div>
+                          <table id="adminScheduleTable" style="display:none; width:100%; border-collapse:separate; border-spacing:6px; min-width:760px;">
+                              <thead>
+                                  <tr style="background:#0F172A; color:white;">
+                                      <th style="padding:10px; border-radius:8px; font-size:0.85rem; width:110px; text-align:center;">Période</th>
+                                      <th style="padding:10px; border-radius:8px; font-size:0.85rem; text-align:center;">Dimanche</th>
+                                      <th style="padding:10px; border-radius:8px; font-size:0.85rem; text-align:center;">Lundi</th>
+                                      <th style="padding:10px; border-radius:8px; font-size:0.85rem; text-align:center;">Mardi</th>
+                                      <th style="padding:10px; border-radius:8px; font-size:0.85rem; text-align:center;">Mercredi</th>
+                                      <th style="padding:10px; border-radius:8px; font-size:0.85rem; text-align:center;">Jeudi</th>
+                                  </tr>
+                              </thead>
+                              <tbody id="adminScheduleTableBody">
+                                  <!-- Lignes de périodes générées dynamiquement -->
+                              </tbody>
+                          </table>
+                      </div>
+
+                      <!-- BOUTON D'ENREGISTREMENT ET DE RÉORGANISATION PRINCIPALE -->
+                      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:16px; background:#F8FAFC; border:1.5px solid #CBD5E1; border-radius:12px;">
+                          <div>
+                              <div style="font-weight:800; color:#1E293B; font-size:0.95rem;">
+                                  Prêt à appliquer le nouvel agencement ?
+                              </div>
+                              <div style="font-size:0.85rem; color:#64748B;">
+                                  Les jours et périodes seront réassignés. Toutes les saisies existantes sont scrupuleusement conservées.
+                              </div>
+                          </div>
+                          <button id="btnSaveScheduleReorganize" onclick="saveAndReorganizeSchedule()" class="pro-button success-button" style="padding:12px 26px; font-size:1rem; font-weight:800; border-radius:10px; box-shadow:0 4px 14px rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:8px;">
+                              <i class="fas fa-save"></i> <span>Enregistrer & Réorganiser l'Emploi du Temps</span>
+                          </button>
+                      </div>
+                  </div>
+              </div>
         </div>
         <div class="filter-container main-actions-container">
             <!-- BOUTON PRINCIPAL POUR TOUS LES ENSEIGNANTS : TÉLÉCHARGER LE PLAN COMPLET PAR CLASSE (TOUTES MATIÈRES & TOUS ENSEIGNANTS) -->
@@ -1917,5 +2122,72 @@
     <script src="notifications.js"></script>
     <script src="lesson_functions_new.js"></script>
     <script src="script.js"></script>
+
+    <!-- MODAL D'ÉDITION D'UN CRÉNEAU D'EMPLOI DU TEMPS -->
+    <div id="scheduleSlotModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:14px; max-width:480px; width:90%; padding:24px; box-shadow:0 10px 30px rgba(0,0,0,0.3); margin:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #E2E8F0; padding-bottom:10px;">
+                <h3 style="margin:0; color:#0284C7; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-clock"></i> <span id="scheduleSlotModalTitle">Modifier le Créneau</span>
+                </h3>
+                <button type="button" onclick="closeScheduleSlotModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#64748B;">&times;</button>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:6px;">
+                    <i class="fas fa-book" style="color:#0284C7;"></i> Matière :
+                </label>
+                <input type="text" id="slotModalMatiereInput" list="slotModalSubjectsDatalist" placeholder="Ex: Mathématiques, Français, Arabe..." style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.95rem; font-weight:600; box-sizing:border-box;">
+                <datalist id="slotModalSubjectsDatalist"></datalist>
+            </div>
+
+            <div style="margin-bottom:18px;">
+                <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:6px;">
+                    <i class="fas fa-user-tie" style="color:#0284C7;"></i> Enseignant (optionnel) :
+                </label>
+                <select id="slotModalTeacherSelect" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.95rem; font-weight:600; background:white; box-sizing:border-box;">
+                    <option value="">-- Conserver l'enseignant actuel / Non spécifié --</option>
+                </select>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+                <button type="button" onclick="clearCurrentSlotFromModal()" class="pro-button" style="background:#FEE2E2; color:#DC2626; border:1px solid #FCA5A5; font-weight:700; padding:8px 14px; border-radius:8px; cursor:pointer;">
+                    <i class="fas fa-trash-alt"></i> Vider ce créneau
+                </button>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" onclick="closeScheduleSlotModal()" class="pro-button secondary-button" style="padding:8px 14px; font-weight:700; border-radius:8px; cursor:pointer;">
+                        Annuler
+                    </button>
+                    <button type="button" onclick="applyScheduleSlotModal()" class="pro-button success-button" style="padding:8px 18px; font-weight:700; border-radius:8px; cursor:pointer;">
+                        <i class="fas fa-check"></i> Valider
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DUPLICATION VERS AUTRE CLASSE -->
+    <div id="scheduleDuplicateModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10000; align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:14px; max-width:440px; width:90%; padding:24px; box-shadow:0 10px 30px rgba(0,0,0,0.3); margin:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #E2E8F0; padding-bottom:10px;">
+                <h3 style="margin:0; color:#0284C7; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-copy"></i> Dupliquer l'emploi du temps
+                </h3>
+                <button type="button" onclick="closeScheduleDuplicateModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#64748B;">&times;</button>
+            </div>
+            <p style="font-size:0.88rem; color:#475569; margin-bottom:14px;">
+                Copier la structure de l'emploi du temps actuel vers une autre classe de la même section :
+            </p>
+            <div style="margin-bottom:18px;">
+                <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:6px;">Classe Cible :</label>
+                <select id="duplicateTargetClassSelect" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;"></select>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+                <button type="button" onclick="closeScheduleDuplicateModal()" class="pro-button secondary-button" style="padding:8px 14px; font-weight:700; border-radius:8px;">Annuler</button>
+                <button type="button" onclick="applyDuplicateScheduleToClass()" class="pro-button success-button" style="padding:8px 16px; font-weight:700; border-radius:8px;"><i class="fas fa-check"></i> Dupliquer</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

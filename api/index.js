@@ -3591,6 +3591,361 @@ app.get('/api/all-classes', async (req, res) => {
   }
 });
 
+// --------------------- Gestion & Réorganisation de l'Emploi du Temps ---------------------
+
+app.get('/api/admin/schedule-class', async (req, res) => {
+  try {
+    const section = req.query.section || 'garcons';
+    const week = parseInt(req.query.week, 10) || 1;
+    const classe = req.query.classe || '';
+
+    const db = await connectToDatabase();
+    const docId = `${section}_${week}`;
+
+    let planDoc = await db.collection('plans').findOne({
+      $or: [
+        { _id: docId },
+        { _id: `${section}_${String(week)}` },
+        { week: week, section: section },
+        { week: String(week), section: section }
+      ]
+    });
+
+    let sourceRows = [];
+    if (planDoc && Array.isArray(planDoc.data)) {
+      sourceRows = planDoc.data;
+    } else {
+      const fallbackDoc = await db.collection('plans').findOne({
+        section: section,
+        'data.Classe': { $exists: true }
+      });
+      if (fallbackDoc && Array.isArray(fallbackDoc.data)) {
+        sourceRows = fallbackDoc.data;
+      }
+    }
+
+    const classRows = classe
+      ? sourceRows.filter(r => {
+          const c = r[findKey(r, 'Classe')];
+          return c && isClassMatchServer(c, classe);
+        })
+      : [];
+
+    const dayValuesOrder = { "Dimanche": 1, "Lundi": 2, "Mardi": 3, "Mercredi": 4, "Jeudi": 5 };
+    const getDayOrd = (j) => dayValuesOrder[extractDayNameFromString(j) || j] || 99;
+    const getPerNum = (p) => { const n = parseInt(p, 10); return isNaN(n) ? 99 : n; };
+
+    const slots = classRows.map(row => {
+      const rawJour = row[findKey(row, 'Jour')] || '';
+      const day = extractDayNameFromString(rawJour) || rawJour;
+      const rawPer = row[findKey(row, 'Période')] || '1';
+      const per = String(rawPer).replace(/[^0-9]/g, '') || rawPer;
+      const mat = row[findKey(row, 'Matière')] || '';
+      const ens = row[findKey(row, 'Enseignant')] || '';
+      const lec = (row[findKey(row, 'Leçon')] || '').trim();
+      const dev = (row[findKey(row, 'Devoirs')] || '').trim();
+      const obj = (row[findKey(row, 'Objectifs')] || '').trim();
+      const hasContent = Boolean(lec || dev || obj);
+
+      return {
+        jour: day,
+        periode: per,
+        matiere: mat,
+        enseignant: ens,
+        hasContent,
+        lessonPreview: lec ? lec.substring(0, 50) : '',
+        homeworkPreview: dev ? dev.substring(0, 50) : ''
+      };
+    });
+
+    slots.sort((a, b) => {
+      const dDiff = getDayOrd(a.jour) - getDayOrd(b.jour);
+      if (dDiff !== 0) return dDiff;
+      return getPerNum(a.periode) - getPerNum(b.periode);
+    });
+
+    const distinctSubjects = Array.from(new Set(sourceRows.map(r => r[findKey(r, 'Matière')]).filter(Boolean))).sort();
+
+    let teachers = [];
+    try {
+      const users = await db.collection('users').find({
+        role: { $ne: 'admin' },
+        $or: [{ section: section }, { section: 'all' }]
+      }).toArray();
+      teachers = users.map(u => u.nom || u.username).filter(Boolean);
+    } catch (e) {}
+
+    if (teachers.length === 0) {
+      teachers = Array.from(new Set(sourceRows.map(r => r[findKey(r, 'Enseignant')]).filter(Boolean)));
+    }
+    teachers.sort();
+
+    const distinctClasses = Array.from(new Set(sourceRows.map(r => r[findKey(r, 'Classe')]).filter(Boolean))).sort();
+    const filledSlotsCount = slots.filter(s => s.hasContent).length;
+
+    res.status(200).json({
+      success: true,
+      section,
+      week,
+      classe,
+      slots,
+      teachers,
+      distinctSubjects,
+      distinctClasses,
+      filledSlotsCount,
+      totalSlots: slots.length
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/schedule-class:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/reorganize-schedule', async (req, res) => {
+  try {
+    const {
+      section = 'garcons',
+      classe: targetClasse,
+      startWeek = 1,
+      endWeek = 1,
+      targetMode = 'single',
+      slots = [],
+      classSchedules = {}
+    } = req.body;
+
+    const sWeek = parseInt(startWeek, 10);
+    let eWeek = parseInt(endWeek, 10);
+    if (isNaN(sWeek) || sWeek < 1) {
+      return res.status(400).json({ error: 'Semaine de départ invalide.' });
+    }
+    if (targetMode === 'remaining') {
+      eWeek = 38;
+    } else if (isNaN(eWeek) || eWeek < sWeek) {
+      eWeek = sWeek;
+    }
+
+    const schedulesToApply = {};
+    if (targetClasse && Array.isArray(slots) && slots.length > 0) {
+      schedulesToApply[targetClasse] = slots;
+    }
+    if (classSchedules && typeof classSchedules === 'object') {
+      for (const [cls, clsSlots] of Object.entries(classSchedules)) {
+        if (Array.isArray(clsSlots) && clsSlots.length > 0) {
+          schedulesToApply[cls] = clsSlots;
+        }
+      }
+    }
+
+    if (Object.keys(schedulesToApply).length === 0) {
+      return res.status(400).json({ error: 'Aucun créneau d\'emploi du temps fourni.' });
+    }
+
+    const db = await connectToDatabase();
+    const dayValuesOrder = { "Dimanche": 1, "Lundi": 2, "Mardi": 3, "Mercredi": 4, "Jeudi": 5 };
+    const getDayOrd = (j) => dayValuesOrder[extractDayNameFromString(j) || j] || 99;
+    const getPerNum = (p) => { const n = parseInt(p, 10); return isNaN(n) ? 99 : n; };
+
+    for (const [cls, clsSlots] of Object.entries(schedulesToApply)) {
+      clsSlots.sort((a, b) => {
+        const dDiff = getDayOrd(a.jour) - getDayOrd(b.jour);
+        if (dDiff !== 0) return dDiff;
+        return getPerNum(a.periode) - getPerNum(b.periode);
+      });
+    }
+
+    let affectedWeeksCount = 0;
+    let totalUpdatedRows = 0;
+    const now = new Date();
+
+    for (let w = sWeek; w <= eWeek; w++) {
+      const docId = `${section}_${w}`;
+
+      await withPlanLock(docId, async () => {
+        let planDoc = await db.collection('plans').findOne({
+          $or: [
+            { _id: docId },
+            { _id: `${section}_${String(w)}` },
+            { week: w, section: section },
+            { week: String(w), section: section }
+          ]
+        });
+
+        let weekRows = planDoc && Array.isArray(planDoc.data) ? [...planDoc.data] : [];
+        let weekModified = false;
+
+        for (const [clsName, newSlots] of Object.entries(schedulesToApply)) {
+          const isTargetClass = (row) => {
+            const rowCls = row[findKey(row, 'Classe')];
+            return rowCls && isClassMatchServer(rowCls, clsName);
+          };
+
+          const oldClassRows = weekRows.filter(isTargetClass);
+          const otherRows = weekRows.filter(r => !isTargetClass(r));
+
+          if (oldClassRows.length === 0) {
+            const newClassRows = newSlots.map(slot => ({
+              "Enseignant": slot.enseignant || '',
+              "Jour": slot.jour,
+              "Période": String(slot.periode),
+              "Classe": clsName,
+              "Matière": slot.matiere,
+              "Leçon": "",
+              "Objectifs": "",
+              "Travaux de classe": "",
+              "Devoirs": "",
+              "Support": "",
+              "_section": section,
+              "updatedAt": now
+            }));
+            weekRows = [...otherRows, ...newClassRows];
+            weekModified = true;
+            totalUpdatedRows += newClassRows.length;
+            continue;
+          }
+
+          const normSubj = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+          const oldRowsBySubject = new Map();
+          oldClassRows.forEach(row => {
+            const rawSub = row[findKey(row, 'Matière')] || '';
+            const key = normSubj(rawSub);
+            if (!oldRowsBySubject.has(key)) {
+              oldRowsBySubject.set(key, []);
+            }
+            oldRowsBySubject.get(key).push(row);
+          });
+
+          const newSlotsBySubject = new Map();
+          newSlots.forEach(slot => {
+            const key = normSubj(slot.matiere);
+            if (!newSlotsBySubject.has(key)) {
+              newSlotsBySubject.set(key, []);
+            }
+            newSlotsBySubject.get(key).push(slot);
+          });
+
+          const remappedClassRows = [];
+          const usedOldRowIndices = new Set();
+
+          for (const [subjKey, slotsList] of newSlotsBySubject.entries()) {
+            const existingSubjectRows = oldRowsBySubject.get(subjKey) || [];
+
+            slotsList.forEach((slot, slotIdx) => {
+              if (slotIdx < existingSubjectRows.length) {
+                const existingRow = existingSubjectRows[slotIdx];
+                usedOldRowIndices.add(existingRow);
+
+                const jourKey = findKey(existingRow, 'Jour') || 'Jour';
+                const perKey = findKey(existingRow, 'Période') || 'Période';
+                const ensKey = findKey(existingRow, 'Enseignant') || 'Enseignant';
+                const matKey = findKey(existingRow, 'Matière') || 'Matière';
+
+                const updatedRow = {
+                  ...existingRow,
+                  [jourKey]: slot.jour,
+                  [perKey]: String(slot.periode),
+                  [matKey]: slot.matiere,
+                  updatedAt: now
+                };
+
+                if (slot.enseignant && slot.enseignant.trim()) {
+                  updatedRow[ensKey] = slot.enseignant.trim();
+                }
+
+                remappedClassRows.push(updatedRow);
+              } else {
+                const sampleRow = oldClassRows[0] || {};
+                const jourKey = findKey(sampleRow, 'Jour') || 'Jour';
+                const perKey = findKey(sampleRow, 'Période') || 'Période';
+                const ensKey = findKey(sampleRow, 'Enseignant') || 'Enseignant';
+                const matKey = findKey(sampleRow, 'Matière') || 'Matière';
+                const clsKey = findKey(sampleRow, 'Classe') || 'Classe';
+                const lecKey = findKey(sampleRow, 'Leçon') || 'Leçon';
+                const objKey = findKey(sampleRow, 'Objectifs') || 'Objectifs';
+                const traKey = findKey(sampleRow, 'Travaux de classe') || 'Travaux de classe';
+                const devKey = findKey(sampleRow, 'Devoirs') || 'Devoirs';
+                const supKey = findKey(sampleRow, 'Support') || 'Support';
+
+                const newRow = {
+                  [ensKey]: slot.enseignant || '',
+                  [jourKey]: slot.jour,
+                  [perKey]: String(slot.periode),
+                  [clsKey]: clsName,
+                  [matKey]: slot.matiere,
+                  [lecKey]: '',
+                  [objKey]: '',
+                  [traKey]: '',
+                  [devKey]: '',
+                  [supKey]: '',
+                  _section: section,
+                  updatedAt: now
+                };
+                remappedClassRows.push(newRow);
+              }
+            });
+          }
+
+          oldClassRows.forEach(oldRow => {
+            if (!usedOldRowIndices.has(oldRow)) {
+              const lec = (oldRow[findKey(oldRow, 'Leçon')] || '').trim();
+              const dev = (oldRow[findKey(oldRow, 'Devoirs')] || '').trim();
+              const obj = (oldRow[findKey(oldRow, 'Objectifs')] || '').trim();
+              const hasTeacherData = Boolean(lec || dev || obj);
+
+              if (hasTeacherData) {
+                remappedClassRows.push(oldRow);
+              }
+            }
+          });
+
+          remappedClassRows.sort((a, b) => {
+            const jA = a[findKey(a, 'Jour')];
+            const jB = b[findKey(b, 'Jour')];
+            const pA = a[findKey(a, 'Période')];
+            const pB = b[findKey(b, 'Période')];
+            const dDiff = getDayOrd(jA) - getDayOrd(jB);
+            if (dDiff !== 0) return dDiff;
+            return getPerNum(pA) - getPerNum(pB);
+          });
+
+          weekRows = [...otherRows, ...remappedClassRows];
+          weekModified = true;
+          totalUpdatedRows += remappedClassRows.length;
+        }
+
+        if (weekModified) {
+          await db.collection('plans').updateOne(
+            { _id: docId },
+            {
+              $set: {
+                week: w,
+                section: section,
+                data: weekRows,
+                updatedAt: now
+              }
+            },
+            { upsert: true }
+          );
+          affectedWeeksCount++;
+        }
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Emploi du temps réorganisé avec succès sur ${affectedWeeksCount} semaine(s).`,
+      affectedWeeksCount,
+      totalUpdatedRows,
+      startWeek: sWeek,
+      endWeek: eWeek,
+      targetMode
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/reorganize-schedule:', error);
+    res.status(500).json({ error: 'Erreur lors de la réorganisation de l\'emploi du temps: ' + error.message });
+  }
+});
+
 // --------------------- Génération Word (plan hebdo) ---------------------
 
 app.post('/api/generate-word', async (req, res) => {
