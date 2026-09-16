@@ -2796,15 +2796,31 @@ app.get('/api/get-messages', async (req, res) => {
     // Récupérer toutes les réponses associées à ces messages
     const msgIds = messages.map(m => String(m._id));
     const replies = await db.collection('teacher_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
+    let parentReplies = [];
+    try {
+      parentReplies = await db.collection('parent_chat_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
+    } catch (eSub) {}
+
     const repliesMap = {};
     replies.forEach(r => {
       const mid = String(r.messageId);
       if (!repliesMap[mid]) repliesMap[mid] = [];
-      repliesMap[mid].push(r);
+      repliesMap[mid].push({ ...r, type: 'teacher' });
+    });
+    parentReplies.forEach(pr => {
+      const mid = String(pr.messageId);
+      if (!repliesMap[mid]) repliesMap[mid] = [];
+      repliesMap[mid].push({ ...pr, type: 'parent', replyText: pr.text });
+    });
+
+    // Trier les réponses par ordre chronologique
+    Object.keys(repliesMap).forEach(mid => {
+      repliesMap[mid].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
     });
 
     const enrichedMessages = messages.map(m => ({
       ...m,
+      id: String(m._id),
       replies: repliesMap[String(m._id)] || []
     }));
 
@@ -2877,12 +2893,61 @@ app.post('/api/parent-login', async (req, res) => {
 
 app.get('/api/parent-messages', async (req, res) => {
   try {
-    const { phone } = req.query;
-    if (!phone) return res.status(400).json({ error: 'Numéro de téléphone requis' });
+    const { phone, name } = req.query;
+    if (!phone && !name) return res.status(200).json({ messages: [] });
     const db = await connectToDatabase();
-    const messages = await db.collection('teacher_messages').find({ parentPhone: phone }).sort({ createdAt: -1 }).toArray();
-    res.status(200).json({ messages });
+    
+    let queryConditions = [];
+    if (phone && phone.trim()) {
+      const cleanPhone = phone.trim();
+      queryConditions.push({ parentPhone: cleanPhone });
+      const digitsOnly = cleanPhone.replace(/[^0-9]/g, '');
+      if (digitsOnly.length >= 8) {
+        queryConditions.push({ parentPhone: { $regex: new RegExp(digitsOnly.slice(-8)) } });
+      }
+    }
+    if (name && name.trim()) {
+      queryConditions.push({ parentName: { $regex: new RegExp(name.trim(), 'i') } });
+    }
+
+    const query = queryConditions.length > 1 ? { $or: queryConditions } : (queryConditions[0] || {});
+    const messages = await db.collection('teacher_messages').find(query).sort({ createdAt: -1 }).toArray();
+
+    const msgIds = messages.map(m => String(m._id));
+    const replies = await db.collection('teacher_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
+    
+    // Récupérer également les sous-messages des parents s'il y en a
+    let parentReplies = [];
+    try {
+      parentReplies = await db.collection('parent_chat_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
+    } catch (eSub) {}
+
+    const repliesMap = {};
+    replies.forEach(r => {
+      const mid = String(r.messageId);
+      if (!repliesMap[mid]) repliesMap[mid] = [];
+      repliesMap[mid].push({ ...r, type: 'teacher' });
+    });
+    parentReplies.forEach(pr => {
+      const mid = String(pr.messageId);
+      if (!repliesMap[mid]) repliesMap[mid] = [];
+      repliesMap[mid].push({ ...pr, type: 'parent', replyText: pr.text });
+    });
+
+    // Trier les réponses par ordre chronologique
+    Object.keys(repliesMap).forEach(mid => {
+      repliesMap[mid].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+    });
+
+    const enrichedMessages = messages.map(m => ({
+      ...m,
+      id: String(m._id),
+      replies: repliesMap[String(m._id)] || []
+    }));
+
+    res.status(200).json({ messages: enrichedMessages });
   } catch (e) {
+    console.error('Erreur /api/parent-messages:', e);
     res.status(500).json({ messages: [] });
   }
 });
@@ -2890,9 +2955,18 @@ app.get('/api/parent-messages', async (req, res) => {
 app.get('/api/parent-unread-replies', async (req, res) => {
   try {
     const { phone } = req.query;
-    if (!phone) return res.status(400).json({ error: 'Téléphone requis' });
+    if (!phone) return res.status(200).json({ unreadCount: 0 });
     const db = await connectToDatabase();
-    const count = await db.collection('teacher_replies').countDocuments({ parentPhone: phone, readByParent: false });
+    const cleanPhone = phone.trim();
+    const digitsOnly = cleanPhone.replace(/[^0-9]/g, '');
+    let query = {
+      readByParent: false,
+      $or: [
+        { parentPhone: cleanPhone },
+        ...(digitsOnly.length >= 8 ? [{ parentPhone: { $regex: new RegExp(digitsOnly.slice(-8)) } }] : [])
+      ]
+    };
+    const count = await db.collection('teacher_replies').countDocuments(query);
     res.status(200).json({ unreadCount: count });
   } catch (e) {
     res.status(500).json({ unreadCount: 0 });
@@ -2901,10 +2975,22 @@ app.get('/api/parent-unread-replies', async (req, res) => {
 
 app.post('/api/mark-replies-read', async (req, res) => {
   try {
-    const { phone } = req.body;
-    if (!phone) return res.status(400).json({ error: 'Téléphone requis' });
+    const { phone, messageId } = req.body;
     const db = await connectToDatabase();
-    await db.collection('teacher_replies').updateMany({ parentPhone: phone, readByParent: false }, { $set: { readByParent: true } });
+    let filter = { readByParent: false };
+    if (messageId) {
+      filter.messageId = String(messageId);
+    } else if (phone) {
+      const cleanPhone = String(phone).trim();
+      const digitsOnly = cleanPhone.replace(/[^0-9]/g, '');
+      filter.$or = [
+        { parentPhone: cleanPhone },
+        ...(digitsOnly.length >= 8 ? [{ parentPhone: { $regex: new RegExp(digitsOnly.slice(-8)) } }] : [])
+      ];
+    } else {
+      return res.status(400).json({ error: 'Téléphone ou messageId requis' });
+    }
+    await db.collection('teacher_replies').updateMany(filter, { $set: { readByParent: true } });
     res.status(200).json({ message: 'Réponses marquées comme lues' });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -2913,33 +2999,97 @@ app.post('/api/mark-replies-read', async (req, res) => {
 
 app.post('/api/send-reply', async (req, res) => {
   try {
-    const { messageId, teacherName, parentPhone, replyText } = req.body;
-    if (!messageId || !teacherName || !parentPhone || !replyText) return res.status(400).json({ error: 'Données incomplètes' });
+    let { messageId, teacherName, parentPhone, replyText } = req.body;
+    if (!messageId || !replyText || String(replyText).trim() === '') {
+      return res.status(400).json({ error: 'Identifiant du message et texte de la réponse requis' });
+    }
     const db = await connectToDatabase();
+    const { ObjectId } = require('mongodb');
+
+    let origMsg = null;
+    try {
+      if (ObjectId.isValid(messageId)) {
+        origMsg = await db.collection('teacher_messages').findOne({ _id: new ObjectId(messageId) });
+      }
+    } catch (eId) {}
+    if (!origMsg) {
+      origMsg = await db.collection('teacher_messages').findOne({ _id: messageId });
+    }
+
+    if (!parentPhone && origMsg && origMsg.parentPhone) {
+      parentPhone = origMsg.parentPhone;
+    }
+    if (!teacherName && origMsg && origMsg.teacherName) {
+      teacherName = origMsg.teacherName;
+    }
+    if (!teacherName) teacherName = 'Enseignant';
+    if (!parentPhone) parentPhone = '';
+
     const newReply = {
       messageId: String(messageId),
-      teacherName,
-      parentPhone,
-      replyText: replyText.trim(),
+      teacherName: String(teacherName).trim(),
+      parentPhone: String(parentPhone).trim(),
+      replyText: String(replyText).trim(),
       readByParent: false,
       createdAt: new Date()
     };
-    await db.collection('teacher_replies').insertOne(newReply);
+    const insRes = await db.collection('teacher_replies').insertOne(newReply);
+    newReply._id = insRes.insertedId;
 
     // Mettre à jour le statut du message d'origine
     try {
-      const { ObjectId } = require('mongodb');
-      if (ObjectId.isValid(messageId)) {
+      if (origMsg && origMsg._id) {
         await db.collection('teacher_messages').updateOne(
-          { _id: new ObjectId(messageId) },
-          { $set: { replied: true, repliedAt: new Date(), lastReply: replyText.trim() } }
+          { _id: origMsg._id },
+          { $set: { replied: true, read: true, repliedAt: new Date(), lastReply: String(replyText).trim() } }
         );
       }
     } catch (updateErr) {
       console.warn('Note: update message status non critique:', updateErr.message);
     }
 
-    res.status(200).json({ success: true, message: 'Réponse envoyée', reply: newReply });
+    res.status(200).json({ success: true, message: 'Réponse envoyée avec succès', reply: newReply });
+  } catch (e) {
+    console.error('Erreur /api/send-reply:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/parent-send-chat', async (req, res) => {
+  try {
+    const { messageId, text, parentName, parentPhone } = req.body;
+    if (!messageId || !text || String(text).trim() === '') {
+      return res.status(400).json({ error: 'Message ID et texte requis' });
+    }
+    const db = await connectToDatabase();
+    const { ObjectId } = require('mongodb');
+    let origMsg = null;
+    if (ObjectId.isValid(messageId)) {
+      origMsg = await db.collection('teacher_messages').findOne({ _id: new ObjectId(messageId) });
+    }
+    if (!origMsg) {
+      origMsg = await db.collection('teacher_messages').findOne({ _id: messageId });
+    }
+
+    const replyItem = {
+      messageId: String(messageId),
+      sender: 'parent',
+      parentName: parentName || (origMsg ? origMsg.parentName : 'Parent'),
+      parentPhone: parentPhone || (origMsg ? origMsg.parentPhone : ''),
+      teacherName: origMsg ? origMsg.teacherName : '',
+      text: String(text).trim(),
+      createdAt: new Date()
+    };
+    await db.collection('parent_chat_replies').insertOne(replyItem);
+
+    // Marquer le message comme non-lu pour que l'enseignant ait sa notification 1 en rouge
+    if (origMsg && origMsg._id) {
+      await db.collection('teacher_messages').updateOne(
+        { _id: origMsg._id },
+        { $set: { read: false, replied: false, lastParentReply: String(text).trim(), updatedAt: new Date() } }
+      );
+    }
+    res.status(200).json({ success: true, item: replyItem });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -142,6 +142,72 @@
             cursor: not-allowed;
             white-space: nowrap;
         }
+
+        /* BADGE ROUGE DE NOTIFICATION VIVE (1 REÇU) POUR ENSEIGNANTS ET PARENTS */
+        .red-notification-badge {
+            background-color: #EF4444 !important;
+            color: #FFFFFF !important;
+            font-size: 0.74rem !important;
+            font-weight: 800 !important;
+            min-width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 5px;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.55);
+            border: 2px solid #FFFFFF;
+            line-height: 1;
+            z-index: 10;
+            animation: pulseRedBadge 1.8s infinite ease-in-out;
+        }
+        @keyframes pulseRedBadge {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.18); box-shadow: 0 0 12px rgba(239, 68, 68, 0.85); }
+        }
+
+        /* STYLES MESSENGER PARENT */
+        .parent-chat-bubble-parent {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #2563EB, #1D4ED8);
+            color: #FFFFFF;
+            padding: 10px 14px;
+            border-radius: 16px 16px 2px 16px;
+            max-width: 82%;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+            word-wrap: break-word;
+        }
+        .parent-chat-bubble-teacher {
+            align-self: flex-start;
+            background: #F1F5F9;
+            color: #1E293B;
+            border: 1px solid #E2E8F0;
+            padding: 10px 14px;
+            border-radius: 16px 16px 16px 2px;
+            max-width: 82%;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            word-wrap: break-word;
+        }
+        .messenger-convo-item {
+            padding: 12px 14px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid transparent;
+            margin-bottom: 6px;
+        }
+        .messenger-convo-item:hover {
+            background-color: #F8FAFC;
+            border-color: #CBD5E1;
+        }
+        .messenger-convo-item.active {
+            background-color: #EFF6FF;
+            border-color: #93C5FD;
+        }
     </style>
 </head>
 <body dir="ltr">
@@ -315,6 +381,10 @@
                  </div>
                  <h2 id="weekDateRange"></h2>
                  <div class="user-actions-container">
+                    <button id="teacherHeaderMsgBtn" type="button" class="pro-button" onclick="openTeacherMessagesModal()" style="display:none; position:relative; background:#EFF6FF; color:#1E40AF; border:1.5px solid #BFDBFE; font-weight:700; padding:6px 12px; border-radius:10px; cursor:pointer; align-items:center; gap:6px; font-size:0.88rem;" title="Boîte des messages des parents">
+                        <i class="fas fa-envelope" style="color:#2563EB;"></i> <span id="teacherHeaderMsgText">Messages Parents</span>
+                        <span id="teacherHeaderMsgBadge" class="red-notification-badge" style="display:none; position:absolute; top:-7px; right:-7px;">0</span>
+                    </button>
                     <span id="loggedInUserInfo" style="font-style: italic;"></span>
                     <button id="logout-button" class="pro-button danger-button">
                         <i class="fas fa-sign-out-alt"></i> <span class="btn-text">Déconnecter</span>
@@ -1488,6 +1558,10 @@
                         <button type="button" class="pro-button tab-btn-photos primary-button active" onclick="showHomeworkView('homework-home')">
                             <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
                         </button>
+                        <button type="button" class="pro-button tab-btn-messenger" onclick="openParentMessengerModal()" style="position:relative; background:#EFF6FF; color:#1E40AF; border:1.5px solid #93C5FD; font-weight:700;">
+                            <i class="fab fa-facebook-messenger" style="color:#2563EB;"></i> <span class="tab-txt-messenger">Discussions</span>
+                            <span class="parent-unread-badge-ui red-notification-badge" style="display:none; position:absolute; top:-7px; right:-7px;">0</span>
+                        </button>
                     </div>
 
                     <div style="display:none; gap:15px; justify-content:center; flex-wrap:wrap; margin-bottom:25px;" id="portal-role-buttons">
@@ -1558,6 +1632,10 @@
                         <button type="button" class="pro-button tab-btn-photos" onclick="showHomeworkView('homework-home')">
                             <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
                         </button>
+                        <button type="button" class="pro-button tab-btn-messenger" onclick="openParentMessengerModal()" style="position:relative; background:#EFF6FF; color:#1E40AF; border:1.5px solid #93C5FD; font-weight:700;">
+                            <i class="fab fa-facebook-messenger" style="color:#2563EB;"></i> <span class="tab-txt-messenger">Discussions</span>
+                            <span class="parent-unread-badge-ui red-notification-badge" style="display:none; position:absolute; top:-7px; right:-7px;">0</span>
+                        </button>
                     </div>
 
                     <div class="filter-container" style="margin-bottom:25px; text-align:center; padding:18px 20px; background:white; border-radius:16px; border:1px solid #E2E8F0; box-shadow:0 4px 16px rgba(0,0,0,0.04);">
@@ -1612,12 +1690,39 @@
                         <button type="button" class="pro-button tab-btn-photos" onclick="showHomeworkView('homework-home')">
                             <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
                         </button>
+                        <button type="button" class="pro-button tab-btn-messenger" onclick="openParentMessengerModal()" style="position:relative; background:#EFF6FF; color:#1E40AF; border:1.5px solid #93C5FD; font-weight:700;">
+                            <i class="fab fa-facebook-messenger" style="color:#2563EB;"></i> <span class="tab-txt-messenger">Discussions</span>
+                            <span class="parent-unread-badge-ui red-notification-badge" style="display:none; position:absolute; top:-7px; right:-7px;">0</span>
+                        </button>
                     </div>
 
                     <!-- CONTACT ENSEIGNANTS ET MESSAGES PARENT -->
                     <div id="teacher-contact-section" class="teacher-contact-section" style="background:white; border-radius:18px; padding:24px; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1px solid #E2E8F0; margin-top:10px;">
+                        
+                        <!-- BANNIÈRE MESSENGER POUR LES PARENTS -->
+                        <div style="background:linear-gradient(135deg, #EFF6FF, #EEF2FF); border:1.5px solid #BFDBFE; border-radius:16px; padding:18px 22px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; box-shadow:0 4px 14px rgba(37,99,235,0.08);">
+                            <div style="display:flex; align-items:center; gap:16px;">
+                                <div style="width:52px; height:52px; border-radius:50%; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; display:flex; align-items:center; justify-content:center; font-size:1.6rem; box-shadow:0 4px 12px rgba(37,99,235,0.35); flex-shrink:0;">
+                                    <i class="fab fa-facebook-messenger"></i>
+                                </div>
+                                <div>
+                                    <h4 style="margin:0; font-size:1.1rem; font-weight:800; color:#1E3A8A; display:flex; align-items:center; gap:8px;">
+                                        Boîte de Réception & Discussions (Style Messenger)
+                                        <span class="parent-unread-badge-ui red-notification-badge" style="display:none; position:static;">0</span>
+                                    </h4>
+                                    <p style="margin:4px 0 0 0; font-size:0.88rem; color:#475569;">
+                                        Consultez vos messages, recevez les réponses des enseignants et échangez sous forme de discussion continue.
+                                    </p>
+                                </div>
+                            </div>
+                            <button type="button" class="pro-button" onclick="openParentMessengerModal()" style="position:relative; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; font-weight:700; border-radius:12px; padding:11px 22px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:9px; box-shadow:0 4px 14px rgba(37,99,235,0.35); font-size:0.95rem;">
+                                <i class="fab fa-facebook-messenger"></i> Ouvrir mes discussions
+                                <span class="parent-unread-badge-ui red-notification-badge" style="display:none; position:absolute; top:-7px; right:-7px;">0</span>
+                            </button>
+                        </div>
+
                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-                            <h3 style="margin:0; color:#1E1B4B; font-size:1.25rem;"><i class="fas fa-comments" style="color:#2563EB;"></i> <span id="txtContactTeachersTitle">Contacter les Enseignants</span></h3>
+                            <h3 style="margin:0; color:#1E1B4B; font-size:1.25rem;"><i class="fas fa-comments" style="color:#2563EB;"></i> <span id="txtContactTeachersTitle">Contacter un Enseignant</span></h3>
                             <button class="pro-button primary-button" onclick="openParentAuthModal()"><i class="fas fa-user-lock"></i> <span id="txtParentAuthBtn">Connexion / Inscription Parent</span></button>
                         </div>
                         <p id="txtContactTeachersDesc" style="font-size:0.92rem; color:#6B7280; margin:0 0 18px 0;">Cliquez sur n'importe quel enseignant ci-dessous pour lui envoyer directement un message concernant votre enfant.</p>
@@ -1879,6 +1984,10 @@
                         </button>
                         <button type="button" class="pro-button tab-btn-photos" onclick="showHomeworkView('homework-home')">
                             <i class="fas fa-camera"></i> <span class="tab-txt-photos">4. Célébrations & Photos</span>
+                        </button>
+                        <button type="button" class="pro-button tab-btn-messenger" onclick="openParentMessengerModal()" style="position:relative; background:#EFF6FF; color:#1E40AF; border:1.5px solid #93C5FD; font-weight:700;">
+                            <i class="fab fa-facebook-messenger" style="color:#2563EB;"></i> <span class="tab-txt-messenger">Discussions</span>
+                            <span class="parent-unread-badge-ui red-notification-badge" style="display:none; position:absolute; top:-7px; right:-7px;">0</span>
                         </button>
                     </div>
 
@@ -2306,6 +2415,114 @@
                     Fermer
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- BOUTON FLOTTANT MESSENGER POUR LES PARENTS (STYLE MESSENGER AVEC BADGE NOTIFICATION ROUGE) -->
+    <div id="parentFloatingMessengerBtn" onclick="openParentMessengerModal()" style="display:none; position:fixed; bottom:24px; right:24px; z-index:9998; width:58px; height:58px; border-radius:50%; background:linear-gradient(135deg, #0084FF, #0066FF); color:white; box-shadow:0 6px 22px rgba(0,102,255,0.45); cursor:pointer; align-items:center; justify-content:center; font-size:1.7rem; transition:transform 0.2s ease, box-shadow 0.2s ease;" title="Discussions avec les Enseignants (Messenger) / محادثات مع الأساتذة">
+        <i class="fab fa-facebook-messenger"></i>
+        <span id="parentFloatingUnreadBadge" class="red-notification-badge" style="display:none; position:absolute; top:-4px; right:-4px;">0</span>
+    </div>
+
+    <!-- MODAL MESSAGERIE MESSENGER DES PARENTS (STYLE MESSENGER AVEC NOTIFICATIONS & DISCUSSION DIRECTE) -->
+    <div id="parentMessengerModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.7); z-index:10010; overflow-y:auto; backdrop-filter:blur(3px);">
+        <div style="background:white; border-radius:20px; max-width:920px; width:94%; margin:25px auto; box-shadow:0 20px 50px rgba(0,0,0,0.3); border:1px solid #E2E8F0; overflow:hidden; display:flex; flex-direction:column; height:85vh; min-height:550px;">
+            
+            <!-- En-tête Messenger -->
+            <div style="background:linear-gradient(135deg, #1E40AF, #3B82F6); color:white; padding:16px 22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; box-shadow:0 2px 10px rgba(30,64,175,0.2);">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:44px; height:44px; border-radius:50%; background:white; color:#2563EB; display:flex; align-items:center; justify-content:center; font-size:1.4rem; box-shadow:0 2px 8px rgba(0,0,0,0.15);">
+                        <i class="fab fa-facebook-messenger"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:1.2rem; font-weight:800; color:white; display:flex; align-items:center; gap:8px;">
+                            Discussions & Messagerie Parents
+                            <span id="parentModalUnreadBadge" class="red-notification-badge" style="display:none; position:static;">0</span>
+                        </h3>
+                        <p style="margin:2px 0 0 0; font-size:0.84rem; opacity:0.9;">
+                            Échangez directement avec les enseignants de vos enfants
+                        </p>
+                    </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <!-- Numéro de téléphone du parent -->
+                    <div id="parentPhoneDisplayBar" style="background:rgba(255,255,255,0.2); border-radius:20px; padding:5px 14px; font-size:0.84rem; display:flex; align-items:center; gap:8px; border:1px solid rgba(255,255,255,0.3);">
+                        <i class="fas fa-phone-alt"></i> <span id="parentCurrentPhoneLabel">Non défini</span>
+                        <button type="button" onclick="promptChangeParentPhone()" style="background:rgba(255,255,255,0.25); border:none; color:white; cursor:pointer; padding:2px 6px; border-radius:10px; font-size:0.75rem;" title="Changer le numéro de téléphone"><i class="fas fa-pen"></i> Modifier</button>
+                    </div>
+                    <button type="button" onclick="closeParentMessengerModal()" style="background:rgba(255,255,255,0.2); border:none; border-radius:50%; width:34px; height:34px; font-size:1.4rem; cursor:pointer; color:white; display:flex; align-items:center; justify-content:center; transition:background 0.2s;">&times;</button>
+                </div>
+            </div>
+
+            <!-- Corps Messenger en 2 colonnes -->
+            <div style="display:flex; flex:1; overflow:hidden; background:#F8FAFC;">
+                
+                <!-- Volet gauche : Liste des conversations & Démarrer une nouvelle discussion -->
+                <div id="messengerLeftPane" style="width:340px; border-right:1.5px solid #E2E8F0; background:white; display:flex; flex-direction:column; overflow:hidden;">
+                    <div style="padding:14px; border-bottom:1px solid #E2E8F0; background:#FAFAFA;">
+                        <button type="button" onclick="showNewChatPicker()" class="pro-button primary-button" style="width:100%; border-radius:10px; padding:9px 14px; font-size:0.9rem; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                            <i class="fas fa-plus"></i> Nouveau message à un enseignant
+                        </button>
+                        <!-- Sélecteur rapide pour nouvelle conversation -->
+                        <div id="newChatPickerBox" style="display:none; margin-top:12px; padding:12px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px;">
+                            <label style="font-size:0.82rem; font-weight:700; color:#1E40AF; display:block; margin-bottom:6px;">Choisir l'enseignant :</label>
+                            <select id="newChatTeacherSelect" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #93C5FD; font-size:0.88rem; font-weight:600; background:white; margin-bottom:8px;"></select>
+                            <div style="display:flex; justify-content:flex-end; gap:6px;">
+                                <button type="button" onclick="hideNewChatPicker()" class="pro-button secondary-button" style="padding:5px 10px; font-size:0.8rem;">Annuler</button>
+                                <button type="button" onclick="startNewChatWithSelectedTeacher()" class="pro-button primary-button" style="padding:5px 12px; font-size:0.8rem; font-weight:700;">Démarrer</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Liste des conversations scrollable -->
+                    <div id="messengerConversationsList" style="flex:1; overflow-y:auto; padding:10px;">
+                        <p style="text-align:center; color:#94A3B8; font-size:0.88rem; padding:20px;">Chargement de vos discussions...</p>
+                    </div>
+                </div>
+
+                <!-- Volet droit : Fil de discussion interactif (Chat Messenger) -->
+                <div id="messengerRightPane" style="flex:1; display:flex; flex-direction:column; background:#F8FAFC; overflow:hidden;">
+                    
+                    <!-- En-tête de la conversation active -->
+                    <div id="messengerChatHeader" style="padding:12px 18px; background:white; border-bottom:1.5px solid #E2E8F0; display:flex; align-items:center; justify-content:space-between; min-height:60px;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div id="chatTeacherAvatar" style="width:42px; height:42px; border-radius:50%; background:#EEF2FF; color:#2563EB; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.1rem; border:2px solid #C7D2FE;">
+                                <i class="fas fa-chalkboard-teacher"></i>
+                            </div>
+                            <div>
+                                <h4 id="chatTeacherName" style="margin:0; font-size:1rem; font-weight:800; color:#1E293B;">Sélectionnez une discussion</h4>
+                                <span id="chatTeacherSub" style="font-size:0.8rem; color:#64748B;">Discutez en direct avec l'enseignant</span>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" onclick="refreshCurrentConversation()" class="pro-button" style="padding:6px 10px; font-size:0.82rem; background:white; border:1px solid #CBD5E1; border-radius:8px;" title="Actualiser la discussion">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Messages scrollables -->
+                    <div id="messengerChatMessages" style="flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:12px;">
+                        <div style="text-align:center; color:#94A3B8; margin:auto;">
+                            <i class="fab fa-facebook-messenger" style="font-size:3rem; color:#CBD5E1; margin-bottom:10px; display:block;"></i>
+                            <p style="margin:0; font-weight:600; font-size:0.95rem;">Bienvenue dans votre messagerie parentale</p>
+                            <p style="margin:4px 0 0 0; font-size:0.84rem;">Sélectionnez une conversation à gauche ou commencez un nouveau message.</p>
+                        </div>
+                    </div>
+
+                    <!-- Barre de saisie style Messenger en bas -->
+                    <div id="messengerInputBar" style="padding:12px 18px; background:white; border-top:1.5px solid #E2E8F0; display:none; align-items:center; gap:10px;">
+                        <div style="flex:1; position:relative;">
+                            <textarea id="parentChatInputText" rows="1" placeholder="Écrivez votre message à l'enseignant... (Entrée pour envoyer) / اكتب رسالتك هنا..." style="width:100%; resize:none; padding:10px 14px; border-radius:22px; border:1.5px solid #CBD5E1; font-size:0.92rem; outline:none; font-family:inherit; box-sizing:border-box; max-height:100px;" onkeydown="handleParentChatKey(event)"></textarea>
+                        </div>
+                        <button type="button" id="btnSendParentChat" onclick="sendParentChatMessage()" style="width:42px; height:42px; border-radius:50%; background:linear-gradient(135deg, #2563EB, #1D4ED8); border:none; color:white; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:1.1rem; box-shadow:0 3px 10px rgba(37,99,235,0.3); transition:transform 0.15s ease;">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
         </div>
     </div>
 

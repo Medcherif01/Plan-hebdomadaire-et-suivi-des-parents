@@ -3692,6 +3692,9 @@
                     });
                 }, 1000);
             }
+            if (typeof checkTeacherUnreadMessagesNotification === 'function') {
+                checkTeacherUnreadMessagesNotification();
+            }
         }
         
         async function handleLogin() {
@@ -3801,6 +3804,11 @@
             applyLanguageSettings();
             displayAlert('');
             hideProgressBar();
+
+            const headerBtn = document.getElementById('teacherHeaderMsgBtn');
+            if (headerBtn) headerBtn.style.display = 'none';
+            const headerBadge = document.getElementById('teacherHeaderMsgBadge');
+            if (headerBadge) headerBadge.style.display = 'none';
             
             console.log("État appli réinitialisé après logout.");
         }
@@ -4142,6 +4150,11 @@
             if (saveAdminBtn) saveAdminBtn.disabled = true;
             const saveNotesBtn = document.getElementById('saveNotesBtn');
             if (saveNotesBtn) saveNotesBtn.disabled = true;
+
+            setTimeout(() => {
+                if (typeof checkTeacherUnreadMessagesNotification === 'function') checkTeacherUnreadMessagesNotification();
+                if (typeof checkParentUnreadMessagesNotification === 'function') checkParentUnreadMessagesNotification();
+            }, 1200);
         });
 
         // ==================== FONCTIONS POUR PLANS DE LEÇON (COORDINATEUR) ====================
@@ -6895,6 +6908,9 @@ async function submitParentMessage() {
                 document.getElementById('parentMessageText').value = '';
             }
             closeContactTeacherModal();
+            if (typeof checkParentUnreadMessagesNotification === 'function') {
+                checkParentUnreadMessagesNotification();
+            }
         } else {
             alert(currentUserLanguage === 'ar' ? 'حدث خطأ أثناء إرسال الرسالة، يرجى المحاولة لاحقاً.' : 'Erreur lors de l\'envoi du message.');
         }
@@ -7114,6 +7130,8 @@ async function sendTeacherReply(messageId) {
     try {
         const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser) ? loggedInUser : 'Enseignant';
         const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        const targetMsg = (currentTeacherMessages || []).find(m => String(m.id || m._id) === String(messageId));
+        const pPhone = targetMsg ? (targetMsg.parentPhone || '') : '';
 
         const res = await fetch('/api/send-reply', {
             method: 'POST',
@@ -7122,6 +7140,7 @@ async function sendTeacherReply(messageId) {
                 messageId: messageId,
                 replyText: replyText,
                 teacherName: teacherName,
+                parentPhone: pPhone,
                 section: section
             })
         });
@@ -7129,7 +7148,6 @@ async function sendTeacherReply(messageId) {
         if (res.ok) {
             const data = await res.json();
             // Ajouter la réponse localement
-            const targetMsg = (currentTeacherMessages || []).find(m => String(m.id) === String(messageId));
             if (targetMsg) {
                 if (!targetMsg.replies) targetMsg.replies = [];
                 targetMsg.replies.push(data.reply || {
@@ -7157,6 +7175,10 @@ async function sendTeacherReply(messageId) {
                 navBadgeEl.style.display = unread > 0 ? 'inline-block' : 'none';
             }
 
+            if (typeof checkTeacherUnreadMessagesNotification === 'function') {
+                checkTeacherUnreadMessagesNotification();
+            }
+
             displayAlert('✅ Votre réponse a été envoyée avec succès au parent.', false, 3000);
         } else {
             const err = await res.json();
@@ -7170,6 +7192,590 @@ async function sendTeacherReply(messageId) {
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-paper-plane"></i> Répondre';
         }
+    }
+}
+
+// ============================================================================
+// NOTIFICATIONS EN ROUGE ("1" ROUGE POUR LES ENSEIGNANTS ET POUR LES PARENTS)
+// ============================================================================
+
+async function checkTeacherUnreadMessagesNotification() {
+    try {
+        const isConnected = (typeof loggedInUser !== 'undefined' && loggedInUser);
+        const headerBtn = document.getElementById('teacherHeaderMsgBtn');
+        const headerBadge = document.getElementById('teacherHeaderMsgBadge');
+        const teacherViewBadge = document.getElementById('teacher-unread-badge');
+
+        if (!isConnected) {
+            if (headerBtn) headerBtn.style.display = 'none';
+            if (headerBadge) headerBadge.style.display = 'none';
+            if (teacherViewBadge) teacherViewBadge.style.display = 'none';
+            return;
+        }
+
+        if (headerBtn) headerBtn.style.display = 'inline-flex';
+
+        const teacherName = (typeof isUserAdminOrSupervisor === 'function' && isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? 'all' : loggedInUser;
+        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        
+        const res = await fetch(`/api/unread-count?teacherName=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const unreadCount = data.count || 0;
+
+        if (unreadCount > 0) {
+            if (headerBadge) {
+                headerBadge.textContent = unreadCount;
+                headerBadge.style.display = 'inline-flex';
+            }
+            if (teacherViewBadge) {
+                teacherViewBadge.textContent = unreadCount;
+                teacherViewBadge.style.display = 'inline-flex';
+            }
+        } else {
+            if (headerBadge) headerBadge.style.display = 'none';
+            if (teacherViewBadge) teacherViewBadge.style.display = 'none';
+        }
+    } catch (e) {
+        console.warn('checkTeacherUnreadMessagesNotification:', e);
+    }
+}
+
+async function checkParentUnreadMessagesNotification() {
+    try {
+        const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
+        const floatingBtn = document.getElementById('parentFloatingMessengerBtn');
+        const floatingBadge = document.getElementById('parentFloatingUnreadBadge');
+        const modalBadge = document.getElementById('parentModalUnreadBadge');
+        const uiBadges = document.querySelectorAll('.parent-unread-badge-ui');
+
+        if (typeof isParentMode !== 'undefined' && isParentMode) {
+            if (floatingBtn) floatingBtn.style.display = 'flex';
+        }
+
+        if (!phone) {
+            if (floatingBadge) floatingBadge.style.display = 'none';
+            if (modalBadge) modalBadge.style.display = 'none';
+            uiBadges.forEach(b => b.style.display = 'none');
+            return;
+        }
+
+        const res = await fetch(`/api/parent-unread-replies?phone=${encodeURIComponent(phone.trim())}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const unreadCount = data.unreadCount || 0;
+
+        if (unreadCount > 0) {
+            if (floatingBadge) {
+                floatingBadge.textContent = unreadCount;
+                floatingBadge.style.display = 'inline-flex';
+            }
+            if (modalBadge) {
+                modalBadge.textContent = unreadCount;
+                modalBadge.style.display = 'inline-flex';
+            }
+            uiBadges.forEach(b => {
+                b.textContent = unreadCount;
+                b.style.display = 'inline-flex';
+            });
+        } else {
+            if (floatingBadge) floatingBadge.style.display = 'none';
+            if (modalBadge) modalBadge.style.display = 'none';
+            uiBadges.forEach(b => b.style.display = 'none');
+        }
+    } catch (e) {
+        console.warn('checkParentUnreadMessagesNotification:', e);
+    }
+}
+
+setInterval(checkTeacherUnreadMessagesNotification, 20000);
+setInterval(checkParentUnreadMessagesNotification, 20000);
+
+// ============================================================================
+// BOÎTE DE RÉCEPTION & DISCUSSION MESSENGER POUR LES PARENTS
+// ============================================================================
+
+let parentMessengerData = [];
+let activeParentChatTeacher = null;
+
+async function openParentMessengerModal(preselectedTeacher = null) {
+    const modal = document.getElementById('parentMessengerModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    const currentPhone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
+    const phoneLabel = document.getElementById('parentCurrentPhoneLabel');
+    if (phoneLabel) {
+        phoneLabel.textContent = currentPhone ? `📱 ${currentPhone}` : 'Non configuré';
+    }
+
+    if (preselectedTeacher) {
+        activeParentChatTeacher = preselectedTeacher;
+    }
+
+    populateNewChatTeacherSelect();
+    await loadParentConversations();
+    checkParentUnreadMessagesNotification();
+}
+
+function closeParentMessengerModal() {
+    const modal = document.getElementById('parentMessengerModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function populateNewChatTeacherSelect() {
+    const select = document.getElementById('newChatTeacherSelect');
+    if (!select) return;
+
+    let teachers = [];
+    if (typeof currentSection !== 'undefined' && currentSection && typeof teachersBySection !== 'undefined' && teachersBySection[currentSection]) {
+        teachers = [...teachersBySection[currentSection]];
+    } else if (typeof allTeachers !== 'undefined' && Array.isArray(allTeachers)) {
+        teachers = [...allTeachers];
+    } else {
+        teachers = ['Bensaad', 'Salim', 'Rida', 'Houcine', 'Amine', 'Kamel', 'Yassine', 'Adel'];
+    }
+
+    const uniqueTeachers = Array.from(new Set(teachers)).sort();
+    select.innerHTML = '<option value="">-- Choisir un enseignant --</option>' + 
+        uniqueTeachers.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+}
+
+function toggleNewChatPicker() {
+    const picker = document.getElementById('newChatPicker');
+    if (!picker) return;
+    picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+}
+
+function startNewChatWithSelectedTeacher() {
+    const select = document.getElementById('newChatTeacherSelect');
+    if (!select || !select.value) {
+        alert("Veuillez sélectionner un enseignant dans la liste.");
+        return;
+    }
+    const chosenTeacher = select.value;
+    toggleNewChatPicker();
+    selectParentConversation(chosenTeacher);
+}
+
+function promptChangeParentPhone() {
+    const current = localStorage.getItem('parentSenderPhone') || '';
+    const newPhone = prompt("Entrez votre numéro de téléphone (utilisé pour retrouver vos messages et réponses) :", current);
+    if (newPhone !== null && newPhone.trim() !== '') {
+        const cleaned = newPhone.trim();
+        localStorage.setItem('parentSenderPhone', cleaned);
+        const phoneLabel = document.getElementById('parentCurrentPhoneLabel');
+        if (phoneLabel) phoneLabel.textContent = `📱 ${cleaned}`;
+        loadParentConversations();
+        checkParentUnreadMessagesNotification();
+    }
+}
+
+function saveParentMessengerPhoneManual() {
+    const input = document.getElementById('manualParentPhoneInput');
+    if (!input || !input.value.trim()) {
+        alert("Veuillez saisir votre numéro de téléphone.");
+        return;
+    }
+    const cleaned = input.value.trim();
+    localStorage.setItem('parentSenderPhone', cleaned);
+    const phoneLabel = document.getElementById('parentCurrentPhoneLabel');
+    if (phoneLabel) phoneLabel.textContent = `📱 ${cleaned}`;
+    loadParentConversations();
+    checkParentUnreadMessagesNotification();
+}
+
+async function loadParentConversations() {
+    const listEl = document.getElementById('messengerConversationsList');
+    const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
+    const parentName = localStorage.getItem('parentSenderName') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : '');
+
+    if (!listEl) return;
+
+    if (!phone && !parentName) {
+        listEl.innerHTML = `
+            <div style="padding:22px 16px; text-align:center;">
+                <div style="width:46px; height:46px; border-radius:50%; background:#EFF6FF; color:#2563EB; display:inline-flex; align-items:center; justify-content:center; font-size:1.3rem; margin-bottom:12px;">
+                    <i class="fas fa-phone-alt"></i>
+                </div>
+                <h5 style="margin:0 0 6px 0; font-size:0.95rem; color:#1E293B; font-weight:700;">Numéro de téléphone requis</h5>
+                <p style="font-size:0.8rem; color:#64748B; margin:0 0 14px 0; line-height:1.4;">
+                    Veuillez renseigner votre numéro de téléphone pour afficher vos échanges avec les enseignants :
+                </p>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <input type="tel" id="manualParentPhoneInput" placeholder="Ex: 0550123456" style="padding:9px 12px; border:1.5px solid #CBD5E1; border-radius:8px; font-size:0.88rem; width:100%; box-sizing:border-box; text-align:center; font-weight:600;" />
+                    <button type="button" class="pro-button primary-button" onclick="saveParentMessengerPhoneManual()" style="padding:9px 14px; font-size:0.85rem; font-weight:700; border-radius:8px;">
+                        <i class="fas fa-check"></i> Enregistrer & Voir mes messages
+                    </button>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    listEl.innerHTML = `
+        <div style="text-align:center; padding:30px; color:#64748B;">
+            <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:8px;"></i>
+            <p style="font-size:0.85rem;">Chargement des discussions...</p>
+        </div>
+    `;
+
+    try {
+        const queryParams = new URLSearchParams();
+        if (phone) queryParams.append('phone', phone);
+        if (parentName) queryParams.append('name', parentName);
+
+        const res = await fetch(`/api/parent-messages?${queryParams.toString()}`);
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+        const messages = await res.json();
+        parentMessengerData = messages;
+
+        // Regrouper par enseignant
+        const convoMap = {};
+        messages.forEach(m => {
+            const tName = m.teacherName || 'Enseignant';
+            if (!convoMap[tName]) {
+                convoMap[tName] = {
+                    teacherName: tName,
+                    messages: [],
+                    unreadRepliesCount: 0,
+                    lastTimestamp: new Date(m.createdAt || 0).getTime()
+                };
+            }
+            convoMap[tName].messages.push(m);
+
+            if (m.replies && Array.isArray(m.replies)) {
+                m.replies.forEach(r => {
+                    const rTime = new Date(r.createdAt || 0).getTime();
+                    if (rTime > convoMap[tName].lastTimestamp) {
+                        convoMap[tName].lastTimestamp = rTime;
+                    }
+                    if (r.readByParent !== true) {
+                        convoMap[tName].unreadRepliesCount++;
+                    }
+                });
+            }
+        });
+
+        const convos = Object.values(convoMap).sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+        renderParentConversationsList(convos);
+
+        if (activeParentChatTeacher) {
+            selectParentConversation(activeParentChatTeacher);
+        } else if (convos.length > 0) {
+            selectParentConversation(convos[0].teacherName);
+        }
+    } catch (err) {
+        console.error('Erreur loadParentConversations:', err);
+        listEl.innerHTML = `
+            <div style="padding:20px; text-align:center; color:#DC2626; font-size:0.85rem;">
+                <i class="fas fa-exclamation-circle fa-2x" style="margin-bottom:8px;"></i>
+                <p>Impossible de charger vos discussions.</p>
+            </div>
+        `;
+    }
+}
+
+function renderParentConversationsList(convos) {
+    const listEl = document.getElementById('messengerConversationsList');
+    if (!listEl) return;
+
+    if (!convos || convos.length === 0) {
+        listEl.innerHTML = `
+            <div style="text-align:center; padding:35px 15px; color:#94A3B8;">
+                <i class="fas fa-comments fa-2x" style="color:#CBD5E1; margin-bottom:10px;"></i>
+                <p style="font-weight:700; color:#64748B; font-size:0.9rem; margin:0 0 6px 0;">Aucune discussion active</p>
+                <p style="font-size:0.78rem; margin:0 0 14px 0;">Cliquez sur <b>+ Nouveau message</b> ci-dessus pour écrire directement à un enseignant.</p>
+                <button type="button" class="pro-button primary-button" onclick="toggleNewChatPicker()" style="font-size:0.82rem; padding:8px 14px; border-radius:8px;">
+                    <i class="fas fa-plus"></i> Nouveau message
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    convos.forEach(c => {
+        const isActive = activeParentChatTeacher === c.teacherName;
+        let lastSnippet = 'Aucun message';
+        let lastDateFormatted = '';
+        
+        const allEvents = [];
+        c.messages.forEach(m => {
+            allEvents.push({ text: m.message || m.content || '', date: m.createdAt, from: 'parent' });
+            if (m.replies && Array.isArray(m.replies)) {
+                m.replies.forEach(r => {
+                    allEvents.push({ text: r.replyText || r.text || '', date: r.createdAt, from: 'teacher' });
+                });
+            }
+        });
+        allEvents.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+
+        if (allEvents.length > 0) {
+            const lastEv = allEvents[allEvents.length - 1];
+            const prefix = lastEv.from === 'parent' ? 'Vous: ' : `${escapeHtml(c.teacherName)}: `;
+            lastSnippet = prefix + escapeHtml(lastEv.text);
+            if (lastSnippet.length > 38) lastSnippet = lastSnippet.substring(0, 38) + '...';
+            lastDateFormatted = lastEv.date ? new Date(lastEv.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+        }
+
+        html += `
+            <div class="messenger-convo-item ${isActive ? 'active' : ''}" onclick="selectParentConversation('${escapeHtml(c.teacherName)}')" id="convoItem_${escapeHtml(c.teacherName)}">
+                <div style="position:relative; width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.1rem; flex-shrink:0;">
+                    ${escapeHtml(c.teacherName.charAt(0).toUpperCase())}
+                    ${c.unreadRepliesCount > 0 ? `<span class="red-notification-badge" style="position:absolute; top:-3px; right:-3px; border:2px solid white;">${c.unreadRepliesCount}</span>` : ''}
+                </div>
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:3px;">
+                        <span style="font-weight:700; font-size:0.92rem; color:#1E293B; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${escapeHtml(c.teacherName)}
+                        </span>
+                        <span style="font-size:0.72rem; color:#94A3B8; flex-shrink:0; margin-left:6px;">${lastDateFormatted}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <p style="margin:0; font-size:0.8rem; color:${c.unreadRepliesCount > 0 ? '#1E293B' : '#64748B'}; font-weight:${c.unreadRepliesCount > 0 ? '700' : '400'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${lastSnippet}
+                        </p>
+                        ${c.unreadRepliesCount > 0 ? `<span class="red-notification-badge" style="position:static; margin-left:6px; flex-shrink:0;">${c.unreadRepliesCount}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    listEl.innerHTML = html;
+}
+
+async function selectParentConversation(teacherName) {
+    activeParentChatTeacher = teacherName;
+
+    document.querySelectorAll('.messenger-convo-item').forEach(el => el.classList.remove('active'));
+    const targetItem = document.getElementById(`convoItem_${teacherName}`);
+    if (targetItem) targetItem.classList.add('active');
+
+    const headerTitle = document.getElementById('chatTeacherName');
+    const headerSub = document.getElementById('chatTeacherStatus');
+    const headerAvatar = document.getElementById('chatTeacherAvatar');
+    const inputBar = document.getElementById('messengerInputBar');
+
+    if (headerTitle) headerTitle.textContent = teacherName;
+    if (headerSub) headerSub.textContent = "Enseignant • En ligne";
+    if (headerAvatar) headerAvatar.textContent = teacherName.charAt(0).toUpperCase();
+    if (inputBar) inputBar.style.display = 'block';
+
+    const relevantMsgs = (parentMessengerData || []).filter(m => (m.teacherName || '') === teacherName);
+
+    const chatEvents = [];
+    relevantMsgs.forEach(m => {
+        chatEvents.push({
+            id: m.id || m._id,
+            from: 'parent',
+            text: m.message || m.content || '',
+            date: m.createdAt,
+            parentName: m.parentName,
+            studentName: m.studentName,
+            isInitial: true
+        });
+
+        if (m.replies && Array.isArray(m.replies)) {
+            m.replies.forEach(r => {
+                chatEvents.push({
+                    id: r.id || r._id,
+                    messageId: m.id || m._id,
+                    from: r.from || 'teacher',
+                    teacherName: r.teacherName || teacherName,
+                    text: r.replyText || r.text || '',
+                    date: r.createdAt,
+                    readByParent: r.readByParent
+                });
+            });
+        }
+    });
+
+    chatEvents.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+
+    const chatContainer = document.getElementById('messengerChatMessages');
+    if (!chatContainer) return;
+
+    if (chatEvents.length === 0) {
+        chatContainer.innerHTML = `
+            <div style="text-align:center; padding:40px 20px; color:#94A3B8;">
+                <div style="width:54px; height:54px; border-radius:50%; background:#EFF6FF; color:#2563EB; display:inline-flex; align-items:center; justify-content:center; font-size:1.6rem; margin-bottom:12px;">
+                    <i class="fab fa-facebook-messenger"></i>
+                </div>
+                <h4 style="margin:0 0 6px 0; color:#1E293B; font-weight:700;">Nouvelle discussion avec ${escapeHtml(teacherName)}</h4>
+                <p style="font-size:0.85rem; color:#64748B; margin:0 0 16px 0;">Écrivez votre premier message ci-dessous. L'enseignant recevra immédiatement une notification.</p>
+            </div>
+        `;
+    } else {
+        let html = '';
+        let lastDateHeader = '';
+
+        chatEvents.forEach(ev => {
+            const evDate = ev.date ? new Date(ev.date) : new Date();
+            const dateDay = evDate.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+            const timeStr = evDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+            if (dateDay !== lastDateHeader) {
+                lastDateHeader = dateDay;
+                html += `
+                    <div style="text-align:center; margin:14px 0 10px 0;">
+                        <span style="background:#E2E8F0; color:#475569; font-size:0.72rem; font-weight:700; padding:3px 10px; border-radius:10px;">
+                            ${dateDay}
+                        </span>
+                    </div>
+                `;
+            }
+
+            if (ev.from === 'parent') {
+                html += `
+                    <div class="messenger-row right">
+                        <div class="messenger-bubble parent">
+                            ${ev.studentName ? `<div style="font-size:0.72rem; opacity:0.85; margin-bottom:2px; font-weight:600;"><i class="fas fa-child"></i> Élève : ${escapeHtml(ev.studentName)}</div>` : ''}
+                            <div style="white-space:pre-wrap; line-height:1.45;">${escapeHtml(ev.text)}</div>
+                            <div class="messenger-time" style="color:rgba(255,255,255,0.85);">${timeStr} <i class="fas fa-check" style="font-size:0.65rem; margin-left:2px;"></i></div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="messenger-row left">
+                        <div style="width:30px; height:30px; border-radius:50%; background:#2563EB; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; margin-right:8px; align-self:flex-end; flex-shrink:0;">
+                            ${escapeHtml((ev.teacherName || teacherName).charAt(0).toUpperCase())}
+                        </div>
+                        <div class="messenger-bubble teacher">
+                            <div style="font-size:0.72rem; color:#2563EB; font-weight:700; margin-bottom:2px;">
+                                <i class="fas fa-chalkboard-teacher"></i> ${escapeHtml(ev.teacherName || teacherName)}
+                            </div>
+                            <div style="white-space:pre-wrap; line-height:1.45;">${escapeHtml(ev.text)}</div>
+                            <div class="messenger-time" style="color:#64748B;">${timeStr}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+
+        chatContainer.innerHTML = html;
+    }
+
+    setTimeout(() => {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }, 50);
+
+    const input = document.getElementById('parentChatInputText');
+    if (input) input.focus();
+
+    const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
+    if (phone) {
+        try {
+            await fetch('/api/mark-replies-read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phone.trim() })
+            });
+            checkParentUnreadMessagesNotification();
+        } catch (e) {
+            console.warn('mark-replies-read error:', e);
+        }
+    }
+}
+
+function handleParentChatKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendParentChatMessage();
+    }
+}
+
+async function sendParentChatMessage() {
+    const input = document.getElementById('parentChatInputText');
+    const btn = document.getElementById('btnSendParentChat');
+    if (!input) return;
+
+    const text = input.value.trim();
+    if (!text) return;
+
+    if (!activeParentChatTeacher) {
+        alert("Veuillez sélectionner un enseignant à qui écrire.");
+        return;
+    }
+
+    const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
+    const parentName = localStorage.getItem('parentSenderName') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : "Parent d'élève");
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+
+    try {
+        const relevantMsgs = (parentMessengerData || []).filter(m => (m.teacherName || '') === activeParentChatTeacher);
+        
+        if (relevantMsgs.length > 0) {
+            const latestMsg = relevantMsgs[relevantMsgs.length - 1];
+            const msgId = latestMsg.id || latestMsg._id;
+
+            const res = await fetch('/api/parent-send-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messageId: msgId,
+                    text: text,
+                    parentName: parentName,
+                    parentPhone: phone
+                })
+            });
+
+            if (res.ok) {
+                input.value = '';
+                const chatContainer = document.getElementById('messengerChatMessages');
+                if (chatContainer) {
+                    const timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                    const newBubbleHtml = `
+                        <div class="messenger-row right">
+                            <div class="messenger-bubble parent">
+                                <div style="white-space:pre-wrap; line-height:1.45;">${escapeHtml(text)}</div>
+                                <div class="messenger-time" style="color:rgba(255,255,255,0.85);">${timeStr} <i class="fas fa-check" style="font-size:0.65rem; margin-left:2px;"></i></div>
+                            </div>
+                        </div>
+                    `;
+                    chatContainer.insertAdjacentHTML('beforeend', newBubbleHtml);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+                setTimeout(loadParentConversations, 500);
+            } else {
+                alert("Erreur lors de l'envoi du message.");
+            }
+        } else {
+            const res = await fetch('/api/send-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    teacherName: activeParentChatTeacher,
+                    parentName: parentName,
+                    parentPhone: phone,
+                    message: text,
+                    section: typeof currentSection !== 'undefined' ? currentSection : 'garcons'
+                })
+            });
+
+            if (res.ok) {
+                input.value = '';
+                await loadParentConversations();
+                selectParentConversation(activeParentChatTeacher);
+            } else {
+                alert("Erreur lors de l'envoi du message.");
+            }
+        }
+    } catch (e) {
+        console.error('Erreur sendParentChatMessage:', e);
+        alert("Erreur de connexion lors de l'envoi.");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+        }
+        if (input) input.focus();
     }
 }
 
