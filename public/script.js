@@ -1671,16 +1671,51 @@
             return 1;
         }
 
-        // Détermine le jour scolaire actif d'aujourd'hui (Dimanche à Jeudi) pour les parents
-        function getTodaySchoolDayName() {
+        // Détermine le jour scolaire actif d'aujourd'hui pour les parents selon la règle :
+        // - Lié à la date du jour (ex: si aujourd'hui est 13/09/2026 -> affiche par défaut ce jour : Dimanche à Jeudi)
+        // - Vendredi : affiche un jour avant (Jeudi)
+        // - Samedi : affiche un jour après (Dimanche : s'il est déjà disponible dans le plan, sinon Jeudi dernier)
+        function getTodaySchoolDayName(classRows = null) {
             const today = new Date();
             const dayIdx = today.getDay(); // 0=Dimanche, 1=Lundi, 2=Mardi, 3=Mercredi, 4=Jeudi, 5=Vendredi, 6=Samedi
             const schoolDays = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
+
+            // Si aujourd'hui est entre Dimanche (0) et Jeudi (4) : affiche ce jour
             if (dayIdx >= 0 && dayIdx <= 4) {
                 return schoolDays[dayIdx];
             }
-            // Le vendredi et samedi affiche les devoirs de jeudi précédent
-            return "Jeudi";
+
+            // Si aujourd'hui est Vendredi (5) : un jour avant -> Jeudi
+            if (dayIdx === 5) {
+                return "Jeudi";
+            }
+
+            // Si aujourd'hui est Samedi (6) : un jour après (Dimanche) s'il est déjà disponible, sinon Jeudi dernier
+            if (dayIdx === 6) {
+                const targetRows = (classRows && Array.isArray(classRows) && classRows.length > 0)
+                    ? classRows
+                    : (typeof parentRawPlanData !== 'undefined' && Array.isArray(parentRawPlanData) ? parentRawPlanData : []);
+
+                if (targetRows && targetRows.length > 0) {
+                    const hasSunday = targetRows.some(r => {
+                        if (!r) return false;
+                        const j = String(getRowField(r, 'Jour') || '').trim().toLowerCase();
+                        const isSun = j.startsWith('dim') || j.includes('الأحد') || j.includes('dimanche');
+                        if (!isSun) return false;
+                        const lecon = String(getRowField(r, 'Leçon') || '').trim();
+                        const dev = String(getRowField(r, 'Devoir') || getRowField(r, 'Devoirs') || '').trim();
+                        const mat = String(getRowField(r, 'Matière') || '').trim();
+                        return (lecon !== '' || dev !== '' || mat !== '');
+                    });
+
+                    if (hasSunday) {
+                        return "Dimanche";
+                    }
+                }
+                return "Jeudi";
+            }
+
+            return "Dimanche";
         }
 
         // Calcule la date initiale pour les devoirs (vendredi et samedi basculent automatiquement sur le jeudi précédent)
@@ -1916,6 +1951,64 @@
                     document.addEventListener('mouseup', onMouseUp);
                 });
             });
+
+            if (window.syncPlanTableScrollDimensions) {
+                window.syncPlanTableScrollDimensions();
+            }
+        }
+
+        function initPlanTableScrollSync() {
+            const topScroll = document.getElementById('planTableTopScrollbar');
+            const topInner = document.getElementById('planTableTopScrollbarInner');
+            const bottomScroll = document.getElementById('planTableResponsiveWrapper');
+            const table = document.getElementById('planTable');
+
+            if (!topScroll || !topInner || !bottomScroll || !table) return;
+
+            window.syncPlanTableScrollDimensions = function() {
+                const tableWidth = table.scrollWidth || table.offsetWidth;
+                topInner.style.width = tableWidth + 'px';
+                if (tableWidth <= bottomScroll.clientWidth + 5) {
+                    topScroll.style.display = 'none';
+                } else {
+                    topScroll.style.display = 'block';
+                }
+            };
+
+            let isSyncingTop = false;
+            let isSyncingBottom = false;
+
+            topScroll.addEventListener('scroll', () => {
+                if (!isSyncingTop) {
+                    isSyncingBottom = true;
+                    bottomScroll.scrollLeft = topScroll.scrollLeft;
+                }
+                isSyncingTop = false;
+            });
+
+            bottomScroll.addEventListener('scroll', () => {
+                if (!isSyncingBottom) {
+                    isSyncingTop = true;
+                    topScroll.scrollLeft = bottomScroll.scrollLeft;
+                }
+                isSyncingBottom = false;
+            });
+
+            window.addEventListener('resize', () => {
+                if (window.syncPlanTableScrollDimensions) window.syncPlanTableScrollDimensions();
+            });
+
+            if (window.ResizeObserver) {
+                const observer = new ResizeObserver(() => {
+                    if (window.syncPlanTableScrollDimensions) window.syncPlanTableScrollDimensions();
+                });
+                observer.observe(table);
+                observer.observe(bottomScroll);
+            }
+
+            setTimeout(() => {
+                if (window.syncPlanTableScrollDimensions) window.syncPlanTableScrollDimensions();
+            }, 300);
         }
 
         function createTableHeader() {
@@ -3936,6 +4029,7 @@
             console.log("DOM chargé.");
             fetchWeeksConfiguration();
             updateSectionBadges();
+            initPlanTableScrollSync();
 
             const loginButton = document.getElementById('login-button');
             const passwordInput = document.getElementById('password');
@@ -4591,6 +4685,10 @@ async function loadParentWeeklyPlan() {
             } else {
                 notesBox.style.display = 'none';
             }
+        }
+        
+        if (!window.userHasManuallySelectedParentDay && typeof getTodaySchoolDayName === 'function') {
+            parentActiveDay = getTodaySchoolDayName(classRows);
         }
         
         renderParentPlanCards(classRows);
@@ -6806,13 +6904,272 @@ async function submitParentMessage() {
     }
 }
 
+let currentTeacherMessages = [];
+let currentTeacherMsgFilter = 'all';
+
 async function openTeacherMessagesModal() {
-    const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser) ? loggedInUser : 'all';
-    const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
-    const res = await fetch(`/api/get-messages?teacherName=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
-    if (res.ok) {
-        const messages = await res.json();
-        alert(`Vous avez ${messages.length} message(s) de parents.`);
+    const modal = document.getElementById('teacherMessagesModal');
+    if (!modal) return;
+
+    const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? loggedInUser : 'all';
+    const nameEl = document.getElementById('teacherModalTeacherName');
+    if (nameEl) {
+        nameEl.textContent = teacherName === 'all' ? 'Tous les enseignants (Supervision)' : teacherName;
+    }
+
+    modal.style.display = 'block';
+    await loadTeacherMessages();
+}
+
+function closeTeacherMessagesModal() {
+    const modal = document.getElementById('teacherMessagesModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function loadTeacherMessages() {
+    const container = document.getElementById('teacherMessagesList');
+    if (container) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:30px; color:#64748B;">
+                <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:10px;"></i>
+                <p>Chargement des messages des parents...</p>
+            </div>
+        `;
+    }
+
+    try {
+        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? loggedInUser : 'all';
+        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        const res = await fetch(`/api/get-messages?teacherName=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
+        
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+        currentTeacherMessages = await res.json();
+
+        // Calcul des compteurs
+        const total = currentTeacherMessages.length;
+        const unread = currentTeacherMessages.filter(m => (!m.replies || m.replies.length === 0) && m.status !== 'replied').length;
+        const replied = total - unread;
+
+        const countAllEl = document.getElementById('countMsgAll');
+        const countUnreadEl = document.getElementById('countMsgUnread');
+        const countRepliedEl = document.getElementById('countMsgReplied');
+        const badgeModalEl = document.getElementById('teacherModalMsgCount');
+        const navBadgeEl = document.getElementById('teacher-unread-badge');
+
+        if (countAllEl) countAllEl.textContent = total;
+        if (countUnreadEl) countUnreadEl.textContent = unread;
+        if (countRepliedEl) countRepliedEl.textContent = replied;
+        if (badgeModalEl) badgeModalEl.textContent = total;
+
+        if (navBadgeEl) {
+            navBadgeEl.textContent = unread;
+            navBadgeEl.style.display = unread > 0 ? 'inline-block' : 'none';
+        }
+
+        renderTeacherMessagesList();
+    } catch (err) {
+        console.error('Erreur chargement messages enseignants:', err);
+        if (container) {
+            container.innerHTML = `
+                <div style="background:#FEF2F2; color:#991B1B; padding:16px; border-radius:10px; text-align:center;">
+                    <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
+                    Impossible de charger les messages pour le moment.
+                </div>
+            `;
+        }
+    }
+}
+
+function filterTeacherMessages(filterType) {
+    currentTeacherMsgFilter = filterType;
+    const btnAll = document.getElementById('btnFilterMsgAll');
+    const btnUnread = document.getElementById('btnFilterMsgUnread');
+    const btnReplied = document.getElementById('btnFilterMsgReplied');
+
+    const activeStyle = "padding:6px 12px; font-size:0.84rem; background:#2563EB; color:white; border:none; border-radius:6px; font-weight:700;";
+    const inactiveStyle = "padding:6px 12px; font-size:0.84rem; background:white; color:#475569; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;";
+
+    if (btnAll) btnAll.style.cssText = filterType === 'all' ? activeStyle : inactiveStyle;
+    if (btnUnread) btnUnread.style.cssText = filterType === 'unread' ? activeStyle : inactiveStyle;
+    if (btnReplied) btnReplied.style.cssText = filterType === 'replied' ? activeStyle : inactiveStyle;
+
+    renderTeacherMessagesList();
+}
+
+function renderTeacherMessagesList() {
+    const container = document.getElementById('teacherMessagesList');
+    if (!container) return;
+
+    let filtered = currentTeacherMessages || [];
+    if (currentTeacherMsgFilter === 'unread') {
+        filtered = filtered.filter(m => (!m.replies || m.replies.length === 0) && m.status !== 'replied');
+    } else if (currentTeacherMsgFilter === 'replied') {
+        filtered = filtered.filter(m => (m.replies && m.replies.length > 0) || m.status === 'replied');
+    }
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:45px 20px; color:#94A3B8; background:#F8FAFC; border-radius:12px; border:1px dashed #CBD5E1;">
+                <i class="fas fa-inbox fa-3x" style="color:#CBD5E1; margin-bottom:12px;"></i>
+                <p style="font-size:1.05rem; font-weight:600; margin:0 0 6px 0; color:#64748B;">Aucun message trouvé</p>
+                <span style="font-size:0.85rem;">${currentTeacherMsgFilter === 'unread' ? 'Tous les messages reçus ont été traités.' : 'Vous n\'avez reçu aucun message pour l\'instant.'}</span>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    filtered.forEach(m => {
+        const hasReplies = (m.replies && m.replies.length > 0) || m.status === 'replied';
+        const pName = escapeHtml(m.parentName || 'Parent d\'élève');
+        const pPhone = escapeHtml(m.parentPhone || '');
+        const sName = escapeHtml(m.studentName || '');
+        const sClass = escapeHtml(m.studentClass || '');
+        const dateStr = m.createdAt ? new Date(m.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'Récemment';
+
+        html += `
+            <div class="teacher-msg-card" id="teacherMsgCard_${m.id}">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-weight:700; font-size:1rem; color:#1E293B;">
+                                <i class="fas fa-user-circle" style="color:#2563EB;"></i> ${pName}
+                            </span>
+                            ${sName ? `<span style="background:#EFF6FF; color:#1D4ED8; font-size:0.78rem; font-weight:700; padding:2px 8px; border-radius:10px;">Élève : ${sName} ${sClass ? `(${sClass})` : ''}</span>` : ''}
+                        </div>
+                        <div style="font-size:0.8rem; color:#64748B; margin-top:3px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                            <span><i class="far fa-clock"></i> ${dateStr}</span>
+                            ${pPhone ? `
+                                <span><i class="fas fa-phone-alt"></i> <a href="tel:${pPhone}" style="color:#0284C7; text-decoration:none; font-weight:600;">${pPhone}</a></span>
+                                <a href="https://wa.me/${pPhone.replace(/[^0-9]/g, '')}" target="_blank" rel="noopener noreferrer" style="color:#16A34A; text-decoration:none; font-weight:700; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">
+                                    <i class="fab fa-whatsapp"></i> WhatsApp
+                                </a>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div>
+                        ${hasReplies ? `
+                            <span style="background:#ECFDF5; color:#059669; border:1px solid #A7F3D0; font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                                <i class="fas fa-check-circle"></i> Répondu
+                            </span>
+                        ` : `
+                            <span style="background:#FEF3C7; color:#D97706; border:1px solid #FDE68A; font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
+                                <i class="fas fa-clock"></i> En attente de réponse
+                            </span>
+                        `}
+                    </div>
+                </div>
+
+                <!-- Contenu de la question du parent -->
+                <div class="teacher-msg-quote">
+                    ${escapeHtml(m.message || m.content || '')}
+                </div>
+
+                <!-- Réponses de l'enseignant déjà envoyées -->
+                <div id="teacherRepliesList_${m.id}">
+                    ${(m.replies || []).map(r => `
+                        <div class="teacher-reply-bubble">
+                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; margin-bottom:4px; font-weight:700;">
+                                <span><i class="fas fa-chalkboard-teacher"></i> ${escapeHtml(r.teacherName || loggedInUser || 'Enseignant')} :</span>
+                                <span style="opacity:0.8;">${r.createdAt ? new Date(r.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
+                            </div>
+                            <div style="line-height:1.45; font-size:0.92rem; color:#14532D; white-space:pre-wrap;">${escapeHtml(r.replyText || '')}</div>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <!-- Formulaire de réponse directe -->
+                <div class="teacher-msg-reply-box">
+                    <div style="display:flex; gap:10px; align-items:flex-start;">
+                        <textarea id="teacherReplyText_${m.id}" rows="2" placeholder="Écrire une réponse directe à ${pName}..." style="flex:1; padding:8px 12px; border:1.5px solid #CBD5E1; border-radius:8px; font-size:0.88rem; resize:vertical; font-family:inherit;"></textarea>
+                        <button type="button" onclick="sendTeacherReply('${m.id}')" id="btnSendReply_${m.id}" class="pro-button primary-button" style="padding:8px 16px; font-weight:700; font-size:0.85rem; height:42px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; border-radius:8px;">
+                            <i class="fas fa-paper-plane"></i> Répondre
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+async function sendTeacherReply(messageId) {
+    const textEl = document.getElementById(`teacherReplyText_${messageId}`);
+    const btn = document.getElementById(`btnSendReply_${messageId}`);
+    if (!textEl) return;
+
+    const replyText = textEl.value.trim();
+    if (!replyText) {
+        alert("Veuillez saisir votre réponse avant d'envoyer.");
+        textEl.focus();
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Envoi...';
+    }
+
+    try {
+        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser) ? loggedInUser : 'Enseignant';
+        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+
+        const res = await fetch('/api/send-reply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messageId: messageId,
+                replyText: replyText,
+                teacherName: teacherName,
+                section: section
+            })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            // Ajouter la réponse localement
+            const targetMsg = (currentTeacherMessages || []).find(m => String(m.id) === String(messageId));
+            if (targetMsg) {
+                if (!targetMsg.replies) targetMsg.replies = [];
+                targetMsg.replies.push(data.reply || {
+                    replyText: replyText,
+                    teacherName: teacherName,
+                    createdAt: new Date().toISOString()
+                });
+                targetMsg.status = 'replied';
+            }
+
+            textEl.value = '';
+            renderTeacherMessagesList();
+            
+            // Recalculer les compteurs
+            const total = currentTeacherMessages.length;
+            const unread = currentTeacherMessages.filter(m => (!m.replies || m.replies.length === 0) && m.status !== 'replied').length;
+            const replied = total - unread;
+            const countUnreadEl = document.getElementById('countMsgUnread');
+            const countRepliedEl = document.getElementById('countMsgReplied');
+            const navBadgeEl = document.getElementById('teacher-unread-badge');
+            if (countUnreadEl) countUnreadEl.textContent = unread;
+            if (countRepliedEl) countRepliedEl.textContent = replied;
+            if (navBadgeEl) {
+                navBadgeEl.textContent = unread;
+                navBadgeEl.style.display = unread > 0 ? 'inline-block' : 'none';
+            }
+
+            displayAlert('✅ Votre réponse a été envoyée avec succès au parent.', false, 3000);
+        } else {
+            const err = await res.json();
+            alert(`Erreur lors de l'envoi : ${err.message || 'Impossible d\'enregistrer la réponse.'}`);
+        }
+    } catch (e) {
+        console.error('Erreur sendTeacherReply:', e);
+        alert('Erreur réseau lors de l\'envoi de la réponse.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Répondre';
+        }
     }
 }
 

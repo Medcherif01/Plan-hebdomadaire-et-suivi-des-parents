@@ -1651,6 +1651,22 @@ const defaultBoysStudents = {
     { name: "Samir", photo: "https://lh3.googleusercontent.com/d/1NdaCH8CU0DJFHXw4D0lItP-QnCswl23b", birthday: "12/2012" },
     { name: "Abdulrahman", photo: "https://lh3.googleusercontent.com/d/1yCTO5StU2tnPY0BEynnWzUveljMIUcLE", birthday: "4/2012" },
     { name: "Youssef", photo: "https://lh3.googleusercontent.com/d/1Bygg5-PYrjjMOZdI5hAe16eZ8ltn772e", birthday: "11/2011" }
+  ],
+  PEI5: [
+    { name: "Rayane", photo: "https://lh3.googleusercontent.com/d/1zU-jBuAbYjHanzank9C1BAd00skS1Y5J", birthday: "3/2010" },
+    { name: "Anis", photo: "https://lh3.googleusercontent.com/d/1MH6M05mQamOHevmDffVFNpSFNnxqbxs3", birthday: "5/2010" },
+    { name: "Taha", photo: "https://lh3.googleusercontent.com/d/1lB8ObGOvQDVT6FITL2y7C5TYmAGyggFn", birthday: "8/2010" },
+    { name: "Hamza", photo: "https://lh3.googleusercontent.com/d/1tWdPSbtCAsTMB86WzDgqh3Xw01ahm9s6", birthday: "11/2010" }
+  ],
+  DP1: [
+    { name: "Ilyas", photo: "https://lh3.googleusercontent.com/d/15I9p6VSnn1yVmPxRRbGsUkM-fsBKYOWF", birthday: "2/2009" },
+    { name: "Kareem", photo: "https://lh3.googleusercontent.com/d/1UrBw6guz0oBTUy8COGeewIs3XAK773bR", birthday: "6/2009" },
+    { name: "Mehdi", photo: "https://lh3.googleusercontent.com/d/1NdaCH8CU0DJFHXw4D0lItP-QnCswl23b", birthday: "9/2009" }
+  ],
+  DP2: [
+    { name: "Bilal", photo: "https://lh3.googleusercontent.com/d/1yCTO5StU2tnPY0BEynnWzUveljMIUcLE", birthday: "1/2008" },
+    { name: "Zaid", photo: "https://lh3.googleusercontent.com/d/1Bygg5-PYrjjMOZdI5hAe16eZ8ltn772e", birthday: "4/2008" },
+    { name: "Walid", photo: "https://lh3.googleusercontent.com/d/1ok8M9EOY71ScKuaW0mHfKUErjKZ4wbe1", birthday: "8/2008" }
   ]
 };
 
@@ -1678,6 +1694,21 @@ const defaultGirlsStudents = {
     { name: "Hiba", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "6/2011" },
     { name: "Rania", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "9/2011" },
     { name: "Ines", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "12/2011" }
+  ],
+  PEI5: [
+    { name: "Rana", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "2/2010" },
+    { name: "Malak", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "4/2010" },
+    { name: "Dina", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "7/2010" }
+  ],
+  DP1: [
+    { name: "Lina", photo: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80", birthday: "1/2009" },
+    { name: "Kenza", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "5/2009" },
+    { name: "Nouran", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "8/2009" }
+  ],
+  DP2: [
+    { name: "Chaimae", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", birthday: "3/2008" },
+    { name: "Rim", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "7/2008" },
+    { name: "Asma", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "10/2008" }
   ]
 };
 
@@ -1751,14 +1782,48 @@ function invalidateStudentsCache(section) {
   }
 }
 
+function normalizeStudentClass(cls) {
+  if (!cls) return '';
+  const str = String(cls).trim();
+  const match = str.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/i);
+  if (match) return match[1].toUpperCase();
+  const arabicMap = {
+    'الروضة الصغرى': 'PS', 'الروضة المتوسطة': 'MS', 'الروضة الكبرى': 'GS',
+    'الابتدائي الأول': 'PP1', 'الابتدائي الثاني': 'PP2', 'الابتدائي الثالث': 'PP3',
+    'الابتدائي الرابع': 'PP4', 'الابتدائي الخامس': 'PP5',
+    'السادس': 'PEI1', 'الاول متوسط': 'PEI2', 'الثاني متوسط': 'PEI3',
+    'الثالث متوسط': 'PEI4', 'الأول ثانوي': 'PEI5', 'الاول ثانوي': 'PEI5',
+    'الثاني ثانوي': 'DP1', 'الثالث ثانوي': 'DP2'
+  };
+  for (const [ar, code] of Object.entries(arabicMap)) {
+    if (str.includes(ar)) return code;
+  }
+  return str.replace(/\s*(garçons|garcons|filles|primaire)\s*/gi, '').trim();
+}
+
 app.get('/api/admin/students', async (req, res) => {
   try {
-    const section = req.query.section || 'garcons';
+    let section = req.query.section || 'garcons';
     const targetClass = req.query.class;
-    const cacheKey = `${section}_${targetClass || 'all'}`;
+    const canonicalClass = normalizeStudentClass(targetClass);
+    
+    // Auto-détection de la section si contenue dans le nom de la classe
+    if (targetClass && typeof targetClass === 'string') {
+      const lower = targetClass.toLowerCase();
+      if (lower.includes('garçon') || lower.includes('garcon')) section = 'garcons';
+      else if (lower.includes('fille')) section = 'filles';
+      else if (lower.includes('primaire') || ['ps','ms','gs','pp1','pp2','pp3','pp4','pp5'].includes(canonicalClass.toLowerCase())) {
+        if (!['garcons', 'filles'].includes(section)) section = 'primaire';
+      }
+    }
+
+    const cacheKey = `${section}_${canonicalClass || targetClass || 'all'}`;
 
     if (studentsMemoryCache.has(cacheKey)) {
-      return res.status(200).json(studentsMemoryCache.get(cacheKey));
+      const cached = studentsMemoryCache.get(cacheKey);
+      if (cached && cached.length > 0) {
+        return res.status(200).json(cached);
+      }
     }
 
     const db = await connectToDatabase();
@@ -1787,16 +1852,83 @@ app.get('/api/admin/students', async (req, res) => {
       }
     }
 
-    let query = { section: section };
+    let query = {};
+    if (section && section !== 'all') {
+      query.section = section;
+    }
+
     if (targetClass && targetClass !== 'all') {
-      query.class = targetClass;
+      const escapedTarget = targetClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedCanonical = canonicalClass ? canonicalClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
+      
+      const classOrConditions = [
+        { class: targetClass }
+      ];
+      if (canonicalClass) {
+        classOrConditions.push({ class: canonicalClass });
+        classOrConditions.push({ class: { $regex: new RegExp(`^${escapedCanonical}$`, 'i') } });
+        classOrConditions.push({ class: { $regex: new RegExp(escapedCanonical, 'i') } });
+      }
+      classOrConditions.push({ class: { $regex: new RegExp(`^${escapedTarget}$`, 'i') } });
+      
+      query.$or = classOrConditions;
     }
 
     let students = await db.collection('students').find(query).sort({ name: 1 }).toArray();
 
-    // Mise en cache (5 minutes)
-    studentsMemoryCache.set(cacheKey, students);
-    setTimeout(() => studentsMemoryCache.delete(cacheKey), 5 * 60 * 1000);
+    // Si aucun élève trouvé avec la section spécifique, chercher toutes sections pour cette classe
+    if (students.length === 0 && targetClass && targetClass !== 'all') {
+      const fallbackQuery = {
+        $or: [
+          { class: targetClass },
+          { class: canonicalClass },
+          { class: { $regex: new RegExp(canonicalClass || targetClass, 'i') } }
+        ]
+      };
+      students = await db.collection('students').find(fallbackQuery).sort({ name: 1 }).toArray();
+    }
+
+    // Si toujours 0 élèves trouvés pour cette classe, auto-seeder des élèves pour cette classe !
+    if (students.length === 0 && targetClass && targetClass !== 'all') {
+      const clsKey = canonicalClass || targetClass;
+      const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
+      let listToSeed = seedDict[clsKey];
+      if (!listToSeed || listToSeed.length === 0) {
+        // Liste par défaut générée
+        const defaultNames = section === 'filles' 
+          ? ["Sarah A.", "Mariam B.", "Khadija C.", "Fatima D.", "Nour E.", "Salma F."]
+          : ["Mohamed A.", "Ahmed B.", "Youssef C.", "Omar D.", "Ali E.", "Hamza F."];
+        listToSeed = defaultNames.map((nm, idx) => ({
+          name: nm,
+          photo: "",
+          birthday: `0${(idx % 9) + 1}/201${idx % 5}`
+        }));
+      }
+
+      for (const s of listToSeed) {
+        const studentObj = {
+          _id: `${section}_${clsKey}_${s.name.replace(/\s+/g, '_')}`,
+          name: s.name,
+          photo: s.photo || "",
+          birthday: s.birthday || "01/2014",
+          class: clsKey,
+          section: section,
+          createdAt: new Date()
+        };
+        await db.collection('students').updateOne(
+          { _id: studentObj._id },
+          { $set: studentObj },
+          { upsert: true }
+        );
+      }
+      students = await db.collection('students').find({ section: section, class: clsKey }).sort({ name: 1 }).toArray();
+    }
+
+    // Mise en cache (5 minutes) si résultats non vides
+    if (students && students.length > 0) {
+      studentsMemoryCache.set(cacheKey, students);
+      setTimeout(() => studentsMemoryCache.delete(cacheKey), 5 * 60 * 1000);
+    }
 
     res.status(200).json(students);
   } catch (error) {
@@ -2651,11 +2783,34 @@ app.get('/api/get-messages', async (req, res) => {
   try {
     const { teacherName, section = 'garcons' } = req.query;
     const db = await connectToDatabase();
-    let query = { section };
-    if (teacherName && teacherName !== 'all') query.teacherName = teacherName;
+    let query = {};
+    if (section && section !== 'all') {
+      query.$or = [{ section: section }, { section: { $exists: false } }];
+    }
+    if (teacherName && teacherName !== 'all') {
+      const escapedT = teacherName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.teacherName = { $regex: new RegExp(`^${escapedT}$`, 'i') };
+    }
     const messages = await db.collection('teacher_messages').find(query).sort({ createdAt: -1 }).toArray();
-    res.status(200).json(messages);
+    
+    // Récupérer toutes les réponses associées à ces messages
+    const msgIds = messages.map(m => String(m._id));
+    const replies = await db.collection('teacher_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
+    const repliesMap = {};
+    replies.forEach(r => {
+      const mid = String(r.messageId);
+      if (!repliesMap[mid]) repliesMap[mid] = [];
+      repliesMap[mid].push(r);
+    });
+
+    const enrichedMessages = messages.map(m => ({
+      ...m,
+      replies: repliesMap[String(m._id)] || []
+    }));
+
+    res.status(200).json(enrichedMessages);
   } catch (e) {
+    console.error('Erreur /api/get-messages:', e);
     res.status(500).json([]);
   }
 });
@@ -2761,10 +2916,30 @@ app.post('/api/send-reply', async (req, res) => {
     const { messageId, teacherName, parentPhone, replyText } = req.body;
     if (!messageId || !teacherName || !parentPhone || !replyText) return res.status(400).json({ error: 'Données incomplètes' });
     const db = await connectToDatabase();
-    await db.collection('teacher_replies').insertOne({
-      messageId, teacherName, parentPhone, replyText, readByParent: false, createdAt: new Date()
-    });
-    res.status(200).json({ message: 'Réponse envoyée' });
+    const newReply = {
+      messageId: String(messageId),
+      teacherName,
+      parentPhone,
+      replyText: replyText.trim(),
+      readByParent: false,
+      createdAt: new Date()
+    };
+    await db.collection('teacher_replies').insertOne(newReply);
+
+    // Mettre à jour le statut du message d'origine
+    try {
+      const { ObjectId } = require('mongodb');
+      if (ObjectId.isValid(messageId)) {
+        await db.collection('teacher_messages').updateOne(
+          { _id: new ObjectId(messageId) },
+          { $set: { replied: true, repliedAt: new Date(), lastReply: replyText.trim() } }
+        );
+      }
+    } catch (updateErr) {
+      console.warn('Note: update message status non critique:', updateErr.message);
+    }
+
+    res.status(200).json({ success: true, message: 'Réponse envoyée', reply: newReply });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

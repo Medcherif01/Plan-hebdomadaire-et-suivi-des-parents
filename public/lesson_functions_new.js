@@ -1,18 +1,337 @@
 // ==================== NOUVELLES FONCTIONS PLANS DE LEÇON (AVEC CHECKBOXES) ====================
 
 // Ouvrir la modal de génération de plans de leçon
-function openLessonPlanModal() {
+function openLessonPlanModal(defaultTab = 'teachers') {
     const modal = document.getElementById('lessonPlanModal');
     if (!modal) {
         console.error('Modal lessonPlanModal non trouvée');
         return;
     }
     
-    // Peupler les listes de classes et matières
+    // Peupler les enseignants et les classes/matières
+    populateLessonPlanTeachers();
     populateLessonPlanClasses();
+    
+    // Activer l'onglet par défaut (enseignants ou classes)
+    switchLessonPlanModalTab(defaultTab);
     
     // Afficher la modal
     modal.style.display = 'block';
+}
+
+// Basculer entre les onglets Enseignants et Classes
+function switchLessonPlanModalTab(tabName) {
+    const tabTeachers = document.getElementById('lessonPlanTabTeachers');
+    const tabClasses = document.getElementById('lessonPlanTabClasses');
+    const btnTeachers = document.getElementById('tabBtnTeachersSelection');
+    const btnClasses = document.getElementById('tabBtnClassesSelection');
+
+    if (tabName === 'teachers') {
+        if (tabTeachers) tabTeachers.style.display = 'block';
+        if (tabClasses) tabClasses.style.display = 'none';
+        if (btnTeachers) {
+            btnTeachers.style.background = '#0D9488';
+            btnTeachers.style.color = 'white';
+            btnTeachers.style.border = 'none';
+        }
+        if (btnClasses) {
+            btnClasses.style.background = '#F1F5F9';
+            btnClasses.style.color = '#475569';
+            btnClasses.style.border = '1px solid #CBD5E1';
+        }
+    } else {
+        if (tabTeachers) tabTeachers.style.display = 'none';
+        if (tabClasses) tabClasses.style.display = 'block';
+        if (btnClasses) {
+            btnClasses.style.background = '#2563EB';
+            btnClasses.style.color = 'white';
+            btnClasses.style.border = 'none';
+        }
+        if (btnTeachers) {
+            btnTeachers.style.background = '#F1F5F9';
+            btnTeachers.style.color = '#475569';
+            btnTeachers.style.border = '1px solid #CBD5E1';
+        }
+    }
+}
+
+// Fonction pour peupler les enseignants avec checkboxes
+function populateLessonPlanTeachers() {
+    const container = document.getElementById('lessonPlanTeachersList');
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!planData || planData.length === 0) {
+        container.innerHTML = '<p style="color: #94A3B8; padding: 10px;">Aucune donnée disponible pour cette semaine.</p>';
+        updateTeacherSelectionInfo();
+        return;
+    }
+
+    const enseignantKey = findHKey('Enseignant');
+    if (!enseignantKey) {
+        container.innerHTML = '<p style="color: #EF4444; padding: 10px;">Colonne Enseignant non trouvée.</p>';
+        updateTeacherSelectionInfo();
+        return;
+    }
+
+    // Calcul du nombre de séances/leçons par enseignant
+    const teacherCounts = {};
+    planData.forEach(row => {
+        if (!row || row.isReadOnlyCrossSection) return;
+        const t = (row[enseignantKey] || '').trim();
+        if (t) {
+            teacherCounts[t] = (teacherCounts[t] || 0) + 1;
+        }
+    });
+
+    const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
+    let teachers = Object.keys(teacherCounts).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+
+    if (isTeacherOnly) {
+        teachers = teachers.filter(t => 
+            isRowForLoggedInTeacher(t, loggedInUser, loggedInTeacherTable) ||
+            t.toLowerCase() === String(loggedInUser || '').trim().toLowerCase()
+        );
+        if (teachers.length === 0 && loggedInUser) {
+            teachers = [loggedInUser];
+            teacherCounts[loggedInUser] = 0;
+        }
+    }
+
+    if (teachers.length === 0) {
+        container.innerHTML = '<p style="color: #94A3B8; padding: 10px;">Aucun enseignant trouvé dans les données actuelles.</p>';
+        updateTeacherSelectionInfo();
+        return;
+    }
+
+    teachers.forEach((teacher, idx) => {
+        const count = teacherCounts[teacher] || 0;
+        const pill = document.createElement('label');
+        pill.className = 'teacher-plan-pill';
+        pill.dataset.teacherName = teacher.toLowerCase();
+
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.className = 'lesson-plan-teacher-chk';
+        chk.value = teacher;
+        chk.dataset.count = count;
+        // Par défaut coché si enseignant unique ou enseignant connecté
+        if (isTeacherOnly || teachers.length === 1) {
+            chk.checked = true;
+            pill.classList.add('checked');
+        }
+
+        chk.addEventListener('change', () => {
+            if (chk.checked) pill.classList.add('checked');
+            else pill.classList.remove('checked');
+            updateTeacherSelectionInfo();
+        });
+
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-user-tie';
+        icon.style.color = '#0D9488';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.style.fontWeight = '600';
+        nameSpan.style.fontSize = '0.9rem';
+        nameSpan.style.color = '#1E293B';
+        nameSpan.style.flex = '1';
+        nameSpan.textContent = teacher;
+
+        const countBadge = document.createElement('span');
+        countBadge.style.fontSize = '0.75rem';
+        countBadge.style.background = '#E0F2FE';
+        countBadge.style.color = '#0369A1';
+        countBadge.style.padding = '2px 7px';
+        countBadge.style.borderRadius = '10px';
+        countBadge.style.fontWeight = '700';
+        countBadge.textContent = `${count} cours`;
+
+        pill.appendChild(chk);
+        pill.appendChild(icon);
+        pill.appendChild(nameSpan);
+        pill.appendChild(countBadge);
+        container.appendChild(pill);
+    });
+
+    updateTeacherSelectionInfo();
+}
+
+// Filtrer les enseignants dans la modale
+function filterTeachersInLessonModal(query) {
+    const q = (query || '').toLowerCase().trim();
+    const pills = document.querySelectorAll('#lessonPlanTeachersList .teacher-plan-pill');
+    pills.forEach(pill => {
+        const name = pill.dataset.teacherName || '';
+        if (!q || name.includes(q)) {
+            pill.style.display = 'flex';
+        } else {
+            pill.style.display = 'none';
+        }
+    });
+}
+
+// Sélectionner tous les enseignants
+function selectAllTeachersInLessonModal() {
+    const chks = document.querySelectorAll('#lessonPlanTeachersList input.lesson-plan-teacher-chk');
+    chks.forEach(c => {
+        const pill = c.closest('.teacher-plan-pill');
+        if (!pill || pill.style.display !== 'none') {
+            c.checked = true;
+            if (pill) pill.classList.add('checked');
+        }
+    });
+    updateTeacherSelectionInfo();
+}
+
+// Désélectionner tous les enseignants
+function deselectAllTeachersInLessonModal() {
+    const chks = document.querySelectorAll('#lessonPlanTeachersList input.lesson-plan-teacher-chk');
+    chks.forEach(c => {
+        c.checked = false;
+        const pill = c.closest('.teacher-plan-pill');
+        if (pill) pill.classList.remove('checked');
+    });
+    updateTeacherSelectionInfo();
+}
+
+// Mettre à jour les informations de sélection d'enseignants
+function updateTeacherSelectionInfo() {
+    const chks = Array.from(document.querySelectorAll('#lessonPlanTeachersList input.lesson-plan-teacher-chk:checked'));
+    const infoDiv = document.getElementById('lessonPlanTeachersSelectionInfo');
+    const btnZip = document.getElementById('downloadSelectedTeachersZipBtn');
+
+    const selectedTeachers = chks.map(c => c.value);
+    let totalLessons = 0;
+    chks.forEach(c => {
+        totalLessons += parseInt(c.dataset.count || '0', 10);
+    });
+
+    if (selectedTeachers.length === 0) {
+        if (infoDiv) {
+            infoDiv.innerHTML = '<span style="color:#94A3B8;"><i class="fas fa-info-circle"></i> Sélectionnez un ou plusieurs enseignants pour télécharger leurs plans de leçons.</span>';
+        }
+        if (btnZip) btnZip.disabled = true;
+    } else {
+        if (infoDiv) {
+            infoDiv.innerHTML = `
+                <span style="color:#0D9488; font-weight:700;">
+                    <i class="fas fa-check-circle"></i> ${selectedTeachers.length} enseignant(s) sélectionné(s) : 
+                    <span style="color:#1E293B;">${selectedTeachers.slice(0, 3).join(', ')}${selectedTeachers.length > 3 ? ` et ${selectedTeachers.length - 3} autre(s)...` : ''}</span>
+                    <span style="margin-left: 8px; background:#CCFBF1; color:#0F766E; padding:3px 10px; border-radius:12px; font-size:0.85rem;">${totalLessons} plan(s) de leçon</span>
+                </span>
+            `;
+        }
+        if (btnZip) btnZip.disabled = false;
+    }
+}
+
+// Télécharger les plans de leçons par ensemble d'enseignants (Format ZIP)
+async function downloadSelectedTeachersLessonPlansZip() {
+    const checked = Array.from(document.querySelectorAll('#lessonPlanTeachersList input.lesson-plan-teacher-chk:checked'));
+    const selectedTeachers = checked.map(c => c.value.trim());
+
+    if (selectedTeachers.length === 0) {
+        displayAlert('Veuillez sélectionner au moins un enseignant.', true);
+        return;
+    }
+
+    if (!planData || planData.length === 0) {
+        displayAlert('Aucune donnée hebdomadaire disponible.', true);
+        return;
+    }
+
+    const enseignantKey = findHKey('Enseignant');
+    if (!enseignantKey) {
+        displayAlert('Erreur : Colonne Enseignant non trouvée dans le tableau.', true);
+        return;
+    }
+
+    // Filtrer les lignes correspondant aux enseignants sélectionnés
+    const matchedRows = planData.filter(row => {
+        if (!row || row.isReadOnlyCrossSection) return false;
+        const rowTeacher = (row[enseignantKey] || '').trim();
+        return selectedTeachers.some(st => st.toLowerCase() === rowTeacher.toLowerCase());
+    });
+
+    if (matchedRows.length === 0) {
+        displayAlert('Aucune ligne de cours trouvée pour les enseignants sélectionnés.', true);
+        return;
+    }
+
+    displayAlert(`Préparation et téléchargement des plans de leçon pour ${selectedTeachers.length} enseignant(s) (${matchedRows.length} séances)...`);
+    setButtonLoading('downloadSelectedTeachersZipBtn', true, 'fas fa-spinner fa-spin');
+    showProgressBar(`Génération / Téléchargement des plans pour ${selectedTeachers.length} enseignant(s)...`, 10);
+
+    try {
+        const payload = {
+            rows: matchedRows,
+            week: currentWeek || 1,
+            section: currentSection || 'garcons',
+            teachers: selectedTeachers
+        };
+
+        const response = await fetch('/api/generate-multiple-ai-lesson-plans', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            const weekStr = currentWeek ? `S${currentWeek}` : 'Semaine';
+            const teacherStr = selectedTeachers.length === 1 ? selectedTeachers[0].replace(/[^a-zA-Z0-9_-]/g, '_') : 'Ensemble_Enseignants';
+            a.download = `Plans_Lecons_${weekStr}_${teacherStr}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            displayAlert(`✅ Téléchargement réussi ! Archive ZIP des plans de leçon générée pour ${selectedTeachers.length} enseignant(s).`, false, 5000);
+
+            // Mettre à jour l'affichage des lignes du tableau
+            matchedRows.forEach(row => {
+                const tr = findTableRowElement(row);
+                if (tr) {
+                    tr.classList.remove('row-generating', 'row-plan-error');
+                    tr.classList.add('has-lesson-plan', 'row-plan-downloaded');
+                    const aiBtn = tr.querySelector('.ai-lesson-plan-button');
+                    if (aiBtn) {
+                        aiBtn.classList.add('lesson-plan-exists');
+                    }
+                    const actTd = tr.querySelector('.actions-column');
+                    if (actTd) {
+                        let badge = tr.querySelector('.plan-status-badge');
+                        if (!badge) {
+                            badge = document.createElement('span');
+                            actTd.appendChild(badge);
+                        }
+                        if (badge) {
+                            badge.className = 'plan-status-badge badge-downloaded';
+                            badge.innerHTML = '<i class="fas fa-check-double"></i> Téléchargé';
+                        }
+                    }
+                }
+            });
+
+            closeLessonPlanModal();
+        } else {
+            const errText = await response.text();
+            displayAlert(`❌ Erreur lors du téléchargement des plans : ${errText}`, true);
+        }
+    } catch (err) {
+        console.error('Erreur downloadSelectedTeachersLessonPlansZip:', err);
+        displayAlert('❌ Erreur de communication avec le serveur lors du téléchargement.', true);
+    } finally {
+        hideProgressBar();
+        setButtonLoading('downloadSelectedTeachersZipBtn', false, 'fas fa-file-archive');
+    }
 }
 
 // Fermer la modal de génération de plans de leçon

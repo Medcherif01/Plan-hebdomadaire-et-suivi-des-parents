@@ -2741,3 +2741,163 @@ tr.row-plan-error {
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
+/* ==========================================================================
+   2. FIX HORIZONTAL SCROLL & VISIBILITY: COLONNE ACTIONS TOUJOURS VISIBLE
+   ========================================================================== */
+.table-actions-container {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(10px);
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 10px 16px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+    margin-bottom: 12px;
+}
+
+#planTable th.actions-column,
+#planTable td.actions-column {
+    position: sticky !important;
+    right: 0 !important;
+    z-index: 15 !important;
+    background: #FFFFFF !important;
+    box-shadow: -4px 0 10px rgba(0, 0, 0, 0.08) !important;
+    min-width: 140px !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+}
+
+#planTable thead th.actions-column {
+    z-index: 25 !important;
+    background: #1E1B4B !important;
+    color: #FFFFFF !important;
+}
+
+#planTable tbody tr:nth-child(even) td.actions-column {
+    background: #F8FAFC !important;
+}
+
+#planTable tbody tr:hover td.actions-column {
+    background: #EFF6FF !important;
+}
+
+[dir="rtl"] #planTable th.actions-column,
+[dir="rtl"] #planTable td.actions-column {
+    right: auto !important;
+    left: 0 !important;
+    box-shadow: 4px 0 10px rgba(0, 0, 0, 0.08) !important;
+}
+
+#planTable td.editable {
+    min-width: 130px;
+    max-width: 240px;
+    word-break: break-word;
+    white-space: normal;
+}
+
+.table-responsive-wrapper {
+    max-height: 72vh;
+    overflow-x: auto;
+    overflow-y: auto;
+    position: relative;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    scrollbar-width: thin;
+    scrollbar-color: #94A3B8 #F1F5F9;
+}
+
+.table-responsive-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 10px;
+}
+.table-responsive-wrapper::-webkit-scrollbar-track {
+    background: #F1F5F9;
+    border-radius: 8px;
+}
+.table-responsive-wrapper::-webkit-scrollbar-thumb {
+    background: #94A3B8;
+    border-radius: 8px;
+}
+.table-responsive-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #64748B;
+}
+
+/* Double barre de défilement supérieure synchronisée */
+.table-top-scrollbar-wrapper {
+    overflow-x: auto;
+    overflow-y: hidden;
+    height: 12px;
+    margin-bottom: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: #94A3B8 #F1F5F9;
+}
+.table-top-scrollbar-inner {
+    height: 1px;
+}
+
+/* ==========================================================================
+   MESSAGES ENSEIGNANTS - PARENTS & TÉLÉCHARGEMENT GROUPÉ DES PLANS
+   ========================================================================== */
+.teacher-msg-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    transition: all 0.2s ease;
+}
+.teacher-msg-card:hover {
+    border-color: #CBD5E1;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.07);
+}
+.teacher-msg-quote {
+    background: #F8FAFC;
+    border-left: 4px solid #3B82F6;
+    padding: 12px 14px;
+    border-radius: 0 8px 8px 0;
+    color: #1E293B;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin: 10px 0;
+}
+.teacher-reply-bubble {
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-top: 8px;
+    color: #166534;
+    font-size: 0.9rem;
+}
+.teacher-msg-reply-box {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #CBD5E1;
+}
+
+/* Badges Enseignants dans Modal Plans de Leçons */
+.teacher-plan-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+.teacher-plan-pill:hover {
+    background: #EFF6FF;
+    border-color: #93C5FD;
+}
+.teacher-plan-pill.checked {
+    background: #EFF6FF;
+    border-color: #3B82F6;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
+}
+
+
