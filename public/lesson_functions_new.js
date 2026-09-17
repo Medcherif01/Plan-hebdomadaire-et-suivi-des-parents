@@ -265,6 +265,7 @@ async function downloadSelectedTeachersLessonPlansZip() {
 
     try {
         const payload = {
+            rowsData: matchedRows,
             rows: matchedRows,
             week: currentWeek || 1,
             section: currentSection || 'garcons',
@@ -285,15 +286,30 @@ async function downloadSelectedTeachersLessonPlansZip() {
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            const weekStr = currentWeek ? `S${currentWeek}` : 'Semaine';
-            const teacherStr = selectedTeachers.length === 1 ? selectedTeachers[0].replace(/[^a-zA-Z0-9_-]/g, '_') : 'Ensemble_Enseignants';
-            a.download = `Plans_Lecons_${weekStr}_${teacherStr}.zip`;
+            
+            let downloadFilename = selectedTeachers.length === 1
+                ? `Plan de lecon-${selectedTeachers[0]}-semaine(${currentWeek || 1}).zip`
+                : `Plans_Lecons_Semaine_${currentWeek || 1}_${selectedTeachers.length}_Enseignants.zip`;
+
+            const contentDisposition = response.headers.get('content-disposition');
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename\*?=['"]?(?:UTF-\d['"])?([^;\r\n"']*)['"]?/i);
+                if (filenameMatch && filenameMatch[1]) {
+                    try {
+                        downloadFilename = decodeURIComponent(filenameMatch[1]);
+                    } catch(e) {
+                        downloadFilename = filenameMatch[1];
+                    }
+                }
+            }
+
+            a.download = downloadFilename;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
 
-            displayAlert(`✅ Téléchargement réussi ! Archive ZIP des plans de leçon générée pour ${selectedTeachers.length} enseignant(s).`, false, 5000);
+            displayAlert(`✅ Téléchargement réussi ! Archive ZIP des plans de leçon générée (${downloadFilename}).`, false, 5000);
 
             // Mettre à jour l'affichage des lignes du tableau
             matchedRows.forEach(row => {
@@ -688,12 +704,20 @@ async function generateAILessonPlansZip(selectedClasses, selectedSubjects) {
         if (response.ok) {
             const blob = await response.blob();
             const contentDisposition = response.headers.get('content-disposition');
-            let filename = `Plans_Lecon_IA_S${currentWeek}_${lessonPlansData.length}_fichiers.zip`;
+            
+            const distinctTeachers = [...new Set(rowsToGenerate.map(r => (r[enseignantKey] || '').trim()).filter(Boolean))];
+            let filename = distinctTeachers.length === 1
+                ? `Plan de lecon-${distinctTeachers[0]}-semaine(${currentWeek || 1}).zip`
+                : `Plans_Lecon_IA_S${currentWeek}_${lessonPlansData.length}_fichiers.zip`;
             
             if (contentDisposition) {
-                const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i);
+                const filenameMatch = contentDisposition.match(/filename\*?=['"]?(?:UTF-\d['"])?([^;\r\n"']*)['"]?/i);
                 if (filenameMatch && filenameMatch[1]) {
-                    filename = filenameMatch[1];
+                    try {
+                        filename = decodeURIComponent(filenameMatch[1]);
+                    } catch(e) {
+                        filename = filenameMatch[1];
+                    }
                 }
             }
             

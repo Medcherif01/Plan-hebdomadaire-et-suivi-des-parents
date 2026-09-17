@@ -5292,43 +5292,45 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
     const geminiKeys = getAllGeminiApiKeys();
     
     if (groqKeys.length === 0 && geminiKeys.length === 0) {
-      return res.status(503).json({ message: "Le service IA n'est pas initialisé. Vérifiez les clés API GROQ ou GEMINI dans les variables d'environnement." });
+      console.warn("⚠️ [Multiple AI] Clés API IA non trouvées. Le système utilisera la base de données et le générateur pédagogique autonome.");
+    } else {
+      console.log(`🔧 [Multiple AI] Pool IA actif: ${groqKeys.length} clé(s) GROQ, ${geminiKeys.length} clé(s) GEMINI`);
     }
-    
-    console.log(`🔧 [Multiple AI] Pool IA actif: ${groqKeys.length} clé(s) GROQ, ${geminiKeys.length} clé(s) GEMINI`);
 
-    const { week, rowsData } = req.body;
+    const rowsData = req.body.rowsData || req.body.rows || req.body.data || [];
+    const week = req.body.week;
     if (!Array.isArray(rowsData) || rowsData.length === 0 || !week) {
       return res.status(400).json({ message: "Données invalides ou vides." });
     }
 
-    console.log(`✅ [Multiple AI Lesson Plans] Génération de ${rowsData.length} plans pour semaine ${week}`);
+    const weekNumber = Number(week);
+    console.log(`✅ [Multiple AI Lesson Plans] Génération de ${rowsData.length} plans pour semaine ${weekNumber}`);
 
-    // ⚡ FILTRER LES LIGNES AVEC LEÇONS VIDES AVANT DE COMMENCER
+    // Déterminer les enseignants distincts
+    const teacherKey = findKey(rowsData[0] || {}, 'Enseignant') || 'Enseignant';
+    const distinctTeachers = Array.from(new Set([
+      ...(Array.isArray(req.body.teachers) ? req.body.teachers : []),
+      ...rowsData.map(r => (r[teacherKey] || r.Enseignant || '').trim())
+    ].filter(Boolean)));
+
+    // Préparer toutes les lignes valides (sans rejeter si leçon courte)
     const validRows = [];
     const skippedRows = [];
     
     for (let i = 0; i < rowsData.length; i++) {
       const rowData = rowsData[i];
-      const lecon = rowData[findKey(rowData, 'Leçon')] || '';
-      const enseignant = rowData[findKey(rowData, 'Enseignant')] || '';
-      const classe = rowData[findKey(rowData, 'Classe')] || '';
-      const matiere = rowData[findKey(rowData, 'Matière')] || '';
-      
-      if (!lecon || lecon.trim() === '' || lecon.trim().length < 3) {
-        console.log(`⏭️  [${i+1}/${rowsData.length}] IGNORÉ (leçon vide): ${enseignant} | ${classe} | ${matiere}`);
-        skippedRows.push({ index: i+1, enseignant, classe, matiere, reason: 'Leçon vide' });
-      } else {
+      if (rowData && typeof rowData === 'object') {
         validRows.push({ index: i, rowData });
+      } else {
+        skippedRows.push({ index: i+1, reason: 'Ligne invalide' });
       }
     }
     
-    console.log(`📊 [Multiple AI] ${validRows.length} lignes valides, ${skippedRows.length} ignorées`);
+    console.log(`📊 [Multiple AI] ${validRows.length} lignes valides pour ${distinctTeachers.length} enseignant(s)`);
     
     if (validRows.length === 0) {
       return res.status(400).json({ 
-        message: "Aucune ligne avec une leçon valide à générer.",
-        skipped: skippedRows
+        message: "Aucune ligne valide à générer."
       });
     }
 
@@ -5341,142 +5343,217 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
       return res.status(500).json({ message: "Impossible de récupérer ou générer le modèle de leçon." });
     }
 
+    // Nom du ZIP :
+    // Si un seul enseignant : "Plan de lecon-nom d'enseignant-semaine(numero de semaine).zip"
+    let zipFilename;
+    if (distinctTeachers.length === 1) {
+      const teacherClean = sanitizeForFilename(distinctTeachers[0]);
+      zipFilename = `Plan de lecon-${teacherClean}-semaine(${weekNumber}).zip`;
+    } else {
+      zipFilename = `Plans_Lecons_Semaine_${weekNumber}_${distinctTeachers.length || rowsData.length}_enseignants.zip`;
+    }
+
     // Configuration du ZIP
     const archive = archiver('zip', { zlib: { level: 9 } });
-    const filename = `Plans_Lecon_IA_S${week}_${validRows.length}_fichiers.zip`;
 
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(zipFilename)}"; filename*=UTF-8''${encodeURIComponent(zipFilename)}"`);
     archive.pipe(res);
 
-    const weekNumber = Number(week);
     const datesNode = specificWeekDateRangesNode[weekNumber];
 
     let successCount = 0;
     let errorCount = 0;
-    
-    // Si des lignes ont été ignorées, ajouter un fichier récapitulatif
-    if (skippedRows.length > 0) {
-      const skipContent = `⏭️  LIGNES IGNORÉES (LEÇONS VIDES)\n\nTotal: ${skippedRows.length} ligne(s)\n\n` +
-        skippedRows.map(r => `${r.index}. ${r.enseignant} | ${r.classe} | ${r.matiere}\n   Raison: ${r.reason}`).join('\n\n');
-      archive.append(Buffer.from(skipContent, 'utf-8'), { name: '00_LIGNES_IGNOREES.txt' });
+    let fromDbCount = 0;
+
+    let db = null;
+    try {
+      db = await connectToDatabase();
+    } catch (dbInitErr) {
+      console.warn("⚠️ Impossible de se connecter à MongoDB lors du batch:", dbInitErr.message);
     }
 
-    // Générer chaque plan de leçon (uniquement les lignes valides)
+    // Générer chaque plan de leçon
     for (let i = 0; i < validRows.length; i++) {
       const { index: originalIndex, rowData } = validRows[i];
+      let docBuffer = null;
+      let fromDb = false;
       
-      try {
-        // Extraire données
-        const enseignant = rowData[findKey(rowData, 'Enseignant')] || '';
-        const classe = rowData[findKey(rowData, 'Classe')] || '';
-        const matiere = rowData[findKey(rowData, 'Matière')] || '';
-        const lecon = rowData[findKey(rowData, 'Leçon')] || '';
-        const jour = rowData[findKey(rowData, 'Jour')] || '';
-        const seance = rowData[findKey(rowData, 'Période')] || '';
-        const support = rowData[findKey(rowData, 'Support')] || 'Non spécifié';
-        const travaux = rowData[findKey(rowData, 'Travaux de classe')] || 'Non spécifié';
-        const devoirsPrevus = rowData[findKey(rowData, 'Devoirs')] || 'Non spécifié';
+      // Extraire données
+      const enseignant = rowData[findKey(rowData, 'Enseignant')] || rowData.Enseignant || 'Enseignant';
+      const classe = rowData[findKey(rowData, 'Classe')] || rowData.Classe || 'Classe';
+      const matiere = rowData[findKey(rowData, 'Matière')] || rowData.Matière || 'Matière';
+      let lecon = rowData[findKey(rowData, 'Leçon')] || rowData.Leçon || '';
+      const jour = rowData[findKey(rowData, 'Jour')] || rowData.Jour || '';
+      const seance = rowData[findKey(rowData, 'Période')] || rowData[findKey(rowData, 'Séance')] || rowData.Période || `${i+1}`;
+      const support = rowData[findKey(rowData, 'Support')] || rowData['Support / Matériel'] || 'Non spécifié';
+      const travaux = rowData[findKey(rowData, 'Travaux de classe')] || rowData[findKey(rowData, 'Travaux')] || 'Non spécifié';
+      const devoirsPrevus = rowData[findKey(rowData, 'Devoirs')] || rowData['Devoirs prévus'] || 'Non spécifié';
 
-        console.log(`📝 [${i+1}/${validRows.length}] (Ligne originale #${originalIndex+1}) ${enseignant} | ${classe} | ${matiere}`);
-        console.log(`  ├─ Leçon: "${lecon.substring(0, 50)}${lecon.length > 50 ? '...' : ''}"`);
-        console.log(`  ├─ Travaux: "${travaux.substring(0, 30)}${travaux.length > 30 ? '...' : ''}"`);
-        console.log(`  └─ Support: "${support.substring(0, 30)}${support.length > 30 ? '...' : ''}"`);
-        
-        if (!lecon || lecon.trim() === '') {
-          throw new Error('⚠️ Leçon vide - impossible de générer un plan de leçon sans contenu de leçon');
+      if (!lecon || lecon.trim().length < 2 || lecon.trim() === '-' || lecon.trim().toLowerCase() === 'aucun') {
+        lecon = matiere ? `Séance de ${matiere} - ${classe}` : `Séance pédagogique (${classe})`;
+      }
+
+      const docFilename = `${sanitizeForFilename(matiere)}_${sanitizeForFilename(classe)}_S${weekNumber}_P${sanitizeForFilename(seance)}_${sanitizeForFilename(enseignant)}.docx`;
+      // Organiser en sous-dossiers par enseignant si plusieurs enseignants dans l'archive
+      const zipEntryName = distinctTeachers.length > 1 
+        ? `${sanitizeForFilename(enseignant)}/${docFilename}` 
+        : docFilename;
+
+      try {
+        // 1. Tenter de récupérer depuis MongoDB si déjà généré
+        if (db) {
+          try {
+            const possibleIds = [
+              rowData.lessonPlanId,
+              `${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
+              `garcons_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
+              `filles_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
+              `primaire_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_')
+            ].filter(Boolean);
+
+            const existingPlan = await db.collection('lessonPlans').findOne({
+              $or: [
+                { _id: { $in: possibleIds } },
+                {
+                  week: weekNumber,
+                  enseignant: { $regex: `^${enseignant.trim()}$`, $options: 'i' },
+                  classe: { $regex: `^${classe.trim()}$`, $options: 'i' },
+                  matiere: { $regex: `^${matiere.trim()}$`, $options: 'i' },
+                  periode: String(seance).trim()
+                }
+              ]
+            });
+
+            if (existingPlan && existingPlan.fileBuffer) {
+              const rawBuf = existingPlan.fileBuffer;
+              let b = Buffer.isBuffer(rawBuf) ? rawBuf : null;
+              if (!b && rawBuf && typeof rawBuf.value === 'function') b = rawBuf.value(true);
+              if (!b && rawBuf && rawBuf.buffer) b = Buffer.isBuffer(rawBuf.buffer) ? rawBuf.buffer : Buffer.from(rawBuf.buffer);
+              if (!b && rawBuf) b = Buffer.from(rawBuf);
+
+              if (b && b.length > 200) {
+                docBuffer = b;
+                fromDb = true;
+                fromDbCount++;
+              }
+            }
+          } catch (dbSearchErr) {
+            console.warn(`[Batch] Erreur recherche MongoDB:`, dbSearchErr.message);
+          }
         }
 
-        // Date formatée
-        let formattedDate = "";
-        if (jour && datesNode?.start) {
-          const weekStartDateNode = new Date(datesNode.start + 'T00:00:00Z');
-          if (!isNaN(weekStartDateNode.getTime())) {
-            const dayName = extractDayNameFromString(jour);
-            if (dayName) {
-              const dateOfDay = getDateForDayNameNode(weekStartDateNode, dayName);
-              if (dateOfDay) formattedDate = formatDateFrenchNode(dateOfDay);
+        // 2. Si pas en base, générer via IA ou repli pédagogique
+        if (!docBuffer) {
+          console.log(`📝 [${i+1}/${validRows.length}] (Ligne #${originalIndex+1}) ${enseignant} | ${classe} | ${matiere}`);
+
+          // Date formatée
+          let formattedDate = "";
+          if (jour && datesNode?.start) {
+            const weekStartDateNode = new Date(datesNode.start + 'T00:00:00Z');
+            if (!isNaN(weekStartDateNode.getTime())) {
+              const dayName = extractDayNameFromString(jour);
+              if (dayName) {
+                const dateOfDay = getDateForDayNameNode(weekStartDateNode, dayName);
+                if (dateOfDay) formattedDate = formatDateFrenchNode(dateOfDay);
+              }
             }
           }
-        }
 
-        // Prompt selon la langue de l'enseignant
-        const jsonStructure = `{"TitreUnite":"un titre d'unité pertinent pour la leçon","Methodes":"liste des méthodes d'enseignement","Outils":"liste des outils de travail","Objectifs":"une liste concise des objectifs d'apprentissage (compétences, connaissances), séparés par des sauts de ligne (\\\\n). Commence chaque objectif par un tiret (-).","etapes":[{"phase":"Introduction","duree":"5 min","activite":"Description de l'activité d'introduction pour l'enseignant et les élèves."},{"phase":"Activité Principale","duree":"25 min","activite":"Description de l'activité principale, en intégrant les 'travaux de classe' et le 'support' si possible."},{"phase":"Synthèse","duree":"10 min","activite":"Description de l'activité de conclusion et de vérification des acquis."},{"phase":"Clôture","duree":"5 min","activite":"Résumé rapide et annonce des devoirs."}],"Ressources":"les ressources spécifiques à utiliser.","Devoirs":"une suggestion de devoirs.","DiffLents":"une suggestion pour aider les apprenants en difficulté.","DiffTresPerf":"une suggestion pour stimuler les apprenants très performants.","DiffTous":"une suggestion de différenciation pour toute la classe."}`;
+          // Prompt selon la langue de l'enseignant
+          const jsonStructure = `{"TitreUnite":"un titre d'unité pertinent pour la leçon","Methodes":"liste des méthodes d'enseignement","Outils":"liste des outils de travail","Objectifs":"une liste concise des objectifs d'apprentissage (compétences, connaissances), séparés par des sauts de ligne (\\\\n). Commence chaque objectif par un tiret (-).","etapes":[{"phase":"Introduction","duree":"5 min","activite":"Description de l'activité d'introduction pour l'enseignant et les élèves."},{"phase":"Activité Principale","duree":"25 min","activite":"Description de l'activité principale, en intégrant les 'travaux de classe' et le 'support' si possible."},{"phase":"Synthèse","duree":"10 min","activite":"Description de l'activité de conclusion et de vérification des acquis."},{"phase":"Clôture","duree":"5 min","activite":"Résumé rapide et annonce des devoirs."}],"Ressources":"les ressources spécifiques à utiliser.","Devoirs":"une suggestion de devoirs.","DiffLents":"une suggestion pour aider les apprenants en difficulté.","DiffTresPerf":"une suggestion pour stimuler les apprenants très performants.","DiffTous":"une suggestion de différenciation pour toute la classe."}`;
 
-        let prompt;
-        if (englishTeachers.includes(enseignant)) {
-          prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.\n\nCRITICAL INSTRUCTION: You MUST strictly generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}]. DO NOT invent, substitute, or drift to any other topic.\n\nAs an expert pedagogical assistant, create a detailed 45-minute lesson plan in English. Structure the lesson into timed phases and integrate the teacher's existing notes:\n- Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}\n- Planned Classwork: ${travaux}\n- Mentioned Support/Materials: ${support}\n- Planned Homework: ${devoirsPrevus}\n\nUse the following JSON structure with professional, concrete values in English (keys exactly as specified):\n${jsonStructure}`;
-        } else if (arabicTeachers.includes(enseignant)) {
-          prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.\n\nتعليمات صارمة وأساسية: يجب عليك حصراً بناء خطة الدرس للموضوع المطلوب تحديداً: [${lecon}] في مادة [${matiere}] وفصل [${classe}]. يُمنع تماماً تغيير الموضوع أو توليد درس مختلف أو عام.\n\nبصفتك مساعدًا تربويًا خبيرًا، أنشئ خطة درس مفصلة باللغة العربية مدتها 45 دقيقة. قم ببناء الدرس في مراحل محددة زمنياً وادمج ملاحظات المعلم:\n- المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}\n- أعمال الصف المخطط لها: ${travaux}\n- الدعم/المواد: ${support}\n- الواجبات المخطط لها: ${devoirsPrevus}\n\nاستخدم البنية التالية بالقيم المهنية والملموسة (المفاتيح كما هي بالإنجليزية):\n${jsonStructure}`;
-        } else {
-          prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.\n\nINSTRUCTION CRITIQUE : Vous DEVEZ impérativement et fidèlement concevoir la fiche de préparation pour le Thème de leçon spécifié : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ». Ne changez JAMAIS de sujet et n'extrapolez pas vers une autre leçon.\n\nEn tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :\n- Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}\n- Travaux de classe : ${travaux}\n- Support/Matériel : ${support}\n- Devoirs prévus : ${devoirsPrevus}\n\nUtilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :\n${jsonStructure}`;
-        }
-
-        // Appel IA avec rotation séquentielle / circulaire avec repli automatique
-        let jsonData = null;
-        try {
-          const { content: rawContent, provider } = await callAiWithKeyRotation(prompt, `Batch Lesson #${i+1}/${validRows.length} (${enseignant})`);
-          const cleanedJson = rawContent.replace(/```json\n?|```\n?/g, '').trim();
-          jsonData = JSON.parse(cleanedJson);
-          if (!jsonData.TitreUnite && !jsonData.Objectifs && !jsonData.etapes) {
-            throw new Error('Champs essentiels manquants');
+          let prompt;
+          if (englishTeachers.includes(enseignant)) {
+            prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.\n\nCRITICAL INSTRUCTION: You MUST strictly generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}]. DO NOT invent, substitute, or drift to any other topic.\n\nAs an expert pedagogical assistant, create a detailed 45-minute lesson plan in English. Structure the lesson into timed phases and integrate the teacher's existing notes:\n- Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}\n- Planned Classwork: ${travaux}\n- Mentioned Support/Materials: ${support}\n- Planned Homework: ${devoirsPrevus}\n\nUse the following JSON structure with professional, concrete values in English (keys exactly as specified):\n${jsonStructure}`;
+          } else if (arabicTeachers.includes(enseignant)) {
+            prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.\n\nتعليمات صارمة وأساسية: يجب عليك حصراً بناء خطة الدرس للموضوع المطلوب تحديداً: [${lecon}] في مادة [${matiere}] وفصل [${classe}]. يُمنع تماماً تغيير الموضوع أو توليد درس مختلف أو عام.\n\nبصفتك مساعدًا تربويًا خبيرًا، أنشئ خطة درس مفصلة باللغة العربية مدتها 45 دقيقة. قم ببناء الدرس في مراحل محددة زمنياً وادمج ملاحظات المعلم:\n- المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}\n- أعمال الصف المخطط لها: ${travaux}\n- الدعم/المواد: ${support}\n- الواجبات المخطط لها: ${devoirsPrevus}\n\nاستخدم البنية التالية بالقيم المهنية والملموسة (المفاتيح كما هي بالإنجليزية):\n${jsonStructure}`;
+          } else {
+            prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.\n\nINSTRUCTION CRITIQUE : Vous DEVEZ impérativement et fidèlement concevoir la fiche de préparation pour le Thème de leçon spécifié : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ». Ne changez JAMAIS de sujet et n'extrapolez pas vers une autre leçon.\n\nEn tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :\n- Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}\n- Travaux de classe : ${travaux}\n- Support/Matériel : ${support}\n- Devoirs prévus : ${devoirsPrevus}\n\nUtilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :\n${jsonStructure}`;
           }
-        } catch (parseOrAiError) {
-          console.warn(`⚠️ [Batch AI #${i+1}] Quota ou échec IA (${parseOrAiError.message}). Repli sur le générateur pédagogique automatique.`);
-          jsonData = generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, travaux, support, devoirsPrevus);
+
+          let jsonData = null;
+          if (groqKeys.length > 0 || geminiKeys.length > 0) {
+            try {
+              const { content: rawContent } = await callAiWithKeyRotation(prompt, `Batch Lesson #${i+1}/${validRows.length} (${enseignant})`);
+              const cleanedJson = rawContent.replace(/```json\n?|```\n?/g, '').trim();
+              jsonData = JSON.parse(cleanedJson);
+              if (!jsonData.TitreUnite && !jsonData.Objectifs && !jsonData.etapes) {
+                throw new Error('Champs essentiels manquants');
+              }
+            } catch (aiErr) {
+              console.warn(`⚠️ [Batch AI #${i+1}] Repli sur le générateur pédagogique automatique (${aiErr.message})`);
+              jsonData = generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, travaux, support, devoirsPrevus);
+            }
+          } else {
+            jsonData = generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, travaux, support, devoirsPrevus);
+          }
+
+          // Générer le document Word
+          const zip = new PizZip(templateBuffer);
+          const doc = new Docxtemplater(zip, { paragraphLoop: true, nullGetter: () => "" });
+
+          const minutageString = (jsonData.etapes || []).map(e =>
+            `${e.phase || ""} (${e.duree || ""}):\n${e.activite || ""}`
+          ).join('\n\n');
+
+          const templateData = {
+            TitreUnite: jsonData.TitreUnite || "",
+            Methodes: jsonData.Methodes || "",
+            Outils: jsonData.Outils || "",
+            Objectifs: jsonData.Objectifs || "",
+            Ressources: jsonData.Ressources || "",
+            Devoirs: jsonData.Devoirs || "",
+            DiffLents: jsonData.DiffLents || "",
+            DiffTresPerf: jsonData.DiffTresPerf || "",
+            DiffTous: jsonData.DiffTous || "",
+            Classe: classe,
+            Matiere: matiere,
+            Lecon: lecon,
+            Seance: seance,
+            NomEnseignant: enseignant,
+            Date: formattedDate,
+            Deroulement: minutageString,
+            Contenu: minutageString,
+            Minutage: minutageString,
+          };
+
+          doc.render(templateData);
+          docBuffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+          // Sauvegarde asynchrone dans MongoDB
+          if (db) {
+            const lessonPlanId = `${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_');
+            db.collection('lessonPlans').updateOne(
+              { _id: lessonPlanId },
+              {
+                $set: {
+                  week: weekNumber,
+                  enseignant,
+                  classe,
+                  matiere,
+                  periode: seance,
+                  jour,
+                  filename: docFilename,
+                  fileBuffer: docBuffer,
+                  createdAt: new Date(),
+                  rowData
+                }
+              },
+              { upsert: true }
+            ).catch(saveErr => console.warn('Sauvegarde async MongoDB ignorée:', saveErr.message));
+          }
         }
 
-        // Générer le document Word
-        const zip = new PizZip(templateBuffer);
-        const doc = new Docxtemplater(zip, { paragraphLoop: true, nullGetter: () => "" });
-
-        // Formatter les données pour le template
-        const minutageString = (jsonData.etapes || []).map(e =>
-          `${e.phase || ""} (${e.duree || ""}):\n${e.activite || ""}`
-        ).join('\n\n');
-
-        const templateData = {
-          TitreUnite: jsonData.TitreUnite || "",
-          Methodes: jsonData.Methodes || "",
-          Outils: jsonData.Outils || "",
-          Objectifs: jsonData.Objectifs || "",
-          Ressources: jsonData.Ressources || "",
-          Devoirs: jsonData.Devoirs || "",
-          DiffLents: jsonData.DiffLents || "",
-          DiffTresPerf: jsonData.DiffTresPerf || "",
-          DiffTous: jsonData.DiffTous || "",
-          Classe: classe,
-          Matiere: matiere,
-          Lecon: lecon,
-          Seance: seance,
-          NomEnseignant: enseignant,
-          Date: formattedDate,
-          Deroulement: minutageString,
-          Contenu: minutageString, // Le contenu est le déroulement des étapes
-          Minutage: minutageString, // Alias pour compatibilité
-        };
-
-        doc.render(templateData);
-        const docBuffer = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-
-        // Format: Matière_Classe_Semaine_Séance_Enseignant.docx
-        const docFilename = `${sanitizeForFilename(matiere)}_${sanitizeForFilename(classe)}_S${weekNumber}_P${sanitizeForFilename(seance)}_${sanitizeForFilename(enseignant)}.docx`;
-        
         // Ajouter au ZIP
-        archive.append(docBuffer, { name: docFilename });
+        archive.append(docBuffer, { name: zipEntryName });
         successCount++;
         
-        console.log(`✅ [${i+1}/${validRows.length}] Généré: ${docFilename}`);
+        console.log(`✅ [${i+1}/${validRows.length}] ${fromDb ? '📦 (DB Cache)' : '🤖 (Généré)'} -> ${zipEntryName}`);
 
-        // Délai adaptatif pour éviter rate limit
-        if (i < validRows.length - 1) {
-          // Délai progressif : 3s pour les premières, 5s après 10, 8s après 20
-          let delay = 3000; // 3 secondes par défaut
-          if (i >= 20) delay = 8000; // 8 secondes après 20 générations
-          else if (i >= 10) delay = 5000; // 5 secondes après 10 générations
-          
-          console.log(`⏳ Pause de ${delay/1000}s avant la prochaine génération...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+        // Délai léger uniquement si génération réseau IA pour préserver le quota sans bloquer
+        if (!fromDb && i < validRows.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
         }
 
       } catch (error) {
@@ -5604,6 +5681,12 @@ Généré par le système de gestion des plans hebdomadaires
       res.status(500).json({ message: `Erreur interne: ${error.message}` });
     }
   }
+});
+
+// Alias pour compatibilité avec /generate-weekly-lesson-plans
+app.post('/api/generate-weekly-lesson-plans', async (req, res) => {
+  req.body.rowsData = req.body.rowsData || req.body.data || req.body.rows || [];
+  return app._router.handle(req, res, () => {});
 });
 
 // Télécharger un plan de leçon depuis MongoDB
