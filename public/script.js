@@ -2037,8 +2037,22 @@
                     th.style.cursor = 'pointer';
                     th.title = 'Cliquer pour trier par cette colonne';
                     
+                    const getColIcon = (col) => {
+                        const c = String(col).toLowerCase();
+                        if (c.includes('enseign') || c.includes('معلم') || c.includes('teacher')) return '<i class="fas fa-chalkboard-teacher" style="margin-right:6px; color:#4F46E5;"></i>';
+                        if (c.includes('class') || c.includes('صف') || c.includes('grade')) return '<i class="fas fa-graduation-cap" style="margin-right:6px; color:#059669;"></i>';
+                        if (c.includes('mati') || c.includes('مادة') || c.includes('subject')) return '<i class="fas fa-book" style="margin-right:6px; color:#2563EB;"></i>';
+                        if (c.includes('périod') || c.includes('period') || c.includes('حصة')) return '<i class="fas fa-clock" style="margin-right:6px; color:#D97706;"></i>';
+                        if (c.includes('jour') || c.includes('يوم') || c.includes('day')) return '<i class="fas fa-calendar-day" style="margin-right:6px; color:#7C3AED;"></i>';
+                        if (c.includes('leçon') || c.includes('lecon') || c.includes('درس') || c.includes('lesson')) return '<i class="fas fa-book-open" style="margin-right:6px; color:#0891B2;"></i>';
+                        if (c.includes('trav') || c.includes('صفي') || c.includes('work')) return '<i class="fas fa-tasks" style="margin-right:6px; color:#64748B;"></i>';
+                        if (c.includes('devoir') || c.includes('واجب') || c.includes('homework')) return '<i class="fas fa-pen-fancy" style="margin-right:6px; color:#16A34A;"></i>';
+                        if (c.includes('support') || c.includes('وسائل') || c.includes('link')) return '<i class="fas fa-paperclip" style="margin-right:6px; color:#6B7280;"></i>';
+                        return '';
+                    };
+
                     const textSpan = document.createElement('span');
-                    textSpan.textContent = headerTranslations[h] || h;
+                    textSpan.innerHTML = `${getColIcon(h)}${escapeHtml(headerTranslations[h] || h)}`;
                     th.appendChild(textSpan);
 
                     const sortIcon = document.createElement('i');
@@ -2062,13 +2076,13 @@
                 });
                 
                 const actTh = document.createElement('th');
-                actTh.textContent = t('actions');
+                actTh.innerHTML = `<i class="fas fa-sliders-h" style="margin-right:6px; color:#475569;"></i><span>${escapeHtml(t('actions'))}</span>`;
                 actTh.classList.add('actions-column');
                 tHead.appendChild(actTh);
                 
                 if (curH.some(h => h.toLowerCase() === 'updatedat')) {
                     const updTh = document.createElement('th');
-                    updTh.textContent = t('updated_at');
+                    updTh.innerHTML = `<i class="fas fa-history" style="margin-right:6px; color:#94A3B8;"></i><span>${escapeHtml(t('updated_at'))}</span>`;
                     updTh.classList.add('updated-at-column');
                     tHead.appendChild(updTh);
                 }
@@ -3060,7 +3074,10 @@
                     if (zip && typeof JSZip !== 'undefined') {
                         try {
                             const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-                            const zipFilename = `Plans_Lecon_S${currentWeek}_${processedFiles.length}_cours.zip`;
+                            const teachersInZip = [...new Set(processedFiles.map(f => getRowField(f.rowObj, 'Enseignant')).filter(Boolean))];
+                            const zipFilename = teachersInZip.length === 1
+                                ? `Plan de lecon-${teachersInZip[0]}-semaine(${currentWeek}).zip`
+                                : `Plans_Lecon_S${currentWeek}_${processedFiles.length}_cours.zip`;
                             if (typeof saveAs === 'function') {
                                 saveAs(zipBlob, zipFilename);
                             } else {
@@ -4463,13 +4480,35 @@ function toggleParentSection() {
     loadClassStudents(defaultClass);
 }
 
+// Calcule la semaine par défaut pour l'espace parent :
+// Le vendredi, affiche le jeudi de la semaine passée (ex: vendredi de la semaine 4 -> semaine 3 et jour Jeudi)
+function getParentDefaultWeekNumber() {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0=Dimanche, 5=Vendredi, 6=Samedi
+    if (dayOfWeek === 5) { // Vendredi
+        const prevThursday = new Date(today);
+        prevThursday.setDate(prevThursday.getDate() - 1);
+        prevThursday.setHours(10, 0, 0, 0);
+        let w = (typeof getCurrentWeekNumber === 'function') ? getCurrentWeekNumber(prevThursday) : 1;
+        const currentNextWeek = (typeof getCurrentWeekNumber === 'function') ? getCurrentWeekNumber(today) : 1;
+        if (w >= currentNextWeek && currentNextWeek > 1) {
+            w = currentNextWeek - 1;
+        }
+        return Math.max(1, w || 1);
+    }
+    return (typeof getCurrentWeekNumber === 'function') ? (getCurrentWeekNumber() || 1) : 1;
+}
+window.getParentDefaultWeekNumber = getParentDefaultWeekNumber;
+
 function populateParentWeekSelector() {
     const select = document.getElementById('parentWeekSelector');
     if (!select) return;
     
-    const currentVal = select.value;
-    // Pour les parents : la semaine par défaut est TOUJOURS la SEMAINE COURANTE
-    const activeWeek = currentVal ? parseInt(currentVal, 10) : (getCurrentWeekNumber() || 1);
+    // Pour les parents : vendredi bascule sur la semaine passée (du jeudi dernier)
+    const defaultParentWeek = getParentDefaultWeekNumber();
+    const activeWeek = window.userHasManuallySelectedParentWeek && select.value 
+        ? parseInt(select.value, 10) 
+        : defaultParentWeek;
     select.innerHTML = '';
     
     const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
@@ -4530,12 +4569,19 @@ async function loadParentWeeklyPlan() {
         
         if (!weekSelect || !classSelect || !container) return;
         
-        // Par défaut pour les parents : la semaine courante
-        const selectedWeek = weekSelect.value || (getCurrentWeekNumber() || 1);
-        const curW = getCurrentWeekNumber();
-        // Si les parents consultent la semaine courante, positionner automatiquement sur le jour d'aujourd'hui
-        if (Number(selectedWeek) === Number(curW) && typeof getTodaySchoolDayName === 'function') {
-            parentActiveDay = getTodaySchoolDayName();
+        // Par défaut pour les parents : la semaine par défaut (sur semaine passée si vendredi)
+        const defaultParentW = getParentDefaultWeekNumber();
+        if (!window.userHasManuallySelectedParentWeek) {
+            weekSelect.value = String(defaultParentW);
+        }
+        const selectedWeek = weekSelect.value || defaultParentW;
+        
+        // Si les parents consultent la semaine par défaut, positionner automatiquement sur le jour d'école adéquat
+        // (Le vendredi, getTodaySchoolDayName() retourne automatiquement 'Jeudi' de la semaine précédente)
+        if (Number(selectedWeek) === Number(defaultParentW) && typeof getTodaySchoolDayName === 'function') {
+            if (!window.userHasManuallySelectedParentDay) {
+                parentActiveDay = getTodaySchoolDayName();
+            }
         }
         const classes = getSectionClasses(currentSection);
         const selectedClass = classSelect.value || classes[0];
@@ -4794,10 +4840,12 @@ function renderParentPlanCards(rows) {
     
     // Vérifier si une fusion de jour spéciale est active pour ce jour
     const activeSpecialDay = (parentSpecialDays || []).find(s => {
-        const dNorm = normalizeDayName(s.day) || s.day;
-        const pNorm = normalizeDayName(parentActiveDay) || parentActiveDay;
-        const matchesDay = (dNorm.toLowerCase() === pNorm.toLowerCase());
-        const matchesClass = (!s.classe || s.classe === 'ALL' || norm(s.classe) === norm(selectedClass));
+        if (!s) return false;
+        const dNorm = (normalizeDayName(s.day) || s.day || '').trim().toLowerCase();
+        const pNorm = (normalizeDayName(parentActiveDay) || parentActiveDay || '').trim().toLowerCase();
+        const matchesDay = (dNorm === pNorm);
+        const sClass = String(s.classe || '').trim().toLowerCase();
+        const matchesClass = (!s.classe || sClass === 'all' || sClass === 'toutes' || norm(s.classe) === norm(selectedClass));
         return matchesDay && matchesClass;
     });
 
@@ -4813,7 +4861,9 @@ function renderParentPlanCards(rows) {
             'activity': { label: 'Activité / Sortie Scolaire', icon: 'fas fa-futbol', color: '#10B981', bg: '#ECFDF5', border: '#A7F3D0' }
         };
         const typeCfg = typeLabels[activeSpecialDay.type] || typeLabels['no_courses'];
-        const photos = activeSpecialDay.photos || [];
+        const rawPhotos = Array.isArray(activeSpecialDay.photos) ? activeSpecialDay.photos : [];
+        const photos = rawPhotos.filter(p => p && (typeof p === 'string' ? p.trim() : (p.url || p.src || p.data)));
+        window.currentSpecialPhotos = photos;
 
         let photosGalleryHtml = '';
         if (photos.length > 0) {
@@ -4824,21 +4874,26 @@ function renderParentPlanCards(rows) {
                         <span>${currentUserLanguage === 'ar' ? 'معرض صور هذا اليوم' : 'Photos & Souvenirs de la journée'} (${photos.length})</span>
                     </div>
                     <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:16px;">
-                        ${photos.map((p, pIdx) => `
-                            <div class="special-photo-card" onclick="openImageLightbox('${escapeHtml(p.url).replace(/'/g, "\\'")}', '${escapeHtml(p.caption || '').replace(/'/g, "\\'")}')" style="background:white; border-radius:14px; overflow:hidden; border:1px solid #E2E8F0; box-shadow:0 4px 14px rgba(0,0,0,0.06); cursor:pointer; transition:transform 0.2s ease, box-shadow 0.2s ease;">
-                                <div style="height:170px; overflow:hidden; position:relative; background:#F8FAFC;">
-                                    <img src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Photo')}" loading="lazy" style="width:100%; height:100%; object-fit:cover; transition:transform 0.3s ease;">
-                                    <div style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.6); color:white; padding:4px 8px; border-radius:6px; font-size:0.75rem;">
+                        ${photos.map((p, pIdx) => {
+                            const rawUrl = typeof p === 'string' ? p : (p.url || p.src || p.data || '');
+                            const photoUrl = (typeof formatPhotoUrl === 'function') ? formatPhotoUrl(rawUrl) : rawUrl;
+                            const photoCaption = (typeof p === 'object' && p) ? (p.caption || p.name || '') : '';
+                            return `
+                            <div class="special-photo-card" onclick="openSpecialPhotoByIndex(${pIdx})" style="background:white; border-radius:14px; overflow:hidden; border:1px solid #E2E8F0; box-shadow:0 4px 14px rgba(0,0,0,0.06); cursor:pointer; transition:transform 0.2s ease, box-shadow 0.2s ease;">
+                                <div style="height:175px; overflow:hidden; position:relative; background:#F8FAFC;">
+                                    <img src="${photoUrl}" alt="${escapeHtml(photoCaption || 'Photo')}" loading="lazy" style="width:100%; height:100%; object-fit:cover; transition:transform 0.3s ease;">
+                                    <div style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.65); color:white; padding:4px 9px; border-radius:6px; font-size:0.75rem; display:flex; align-items:center; gap:5px;">
                                         <i class="fas fa-search-plus"></i> Agrandir
                                     </div>
                                 </div>
-                                ${p.caption ? `
+                                ${photoCaption ? `
                                     <div style="padding:10px 12px; font-size:0.88rem; font-weight:600; color:#334155; line-height:1.4;">
-                                        ${escapeHtml(p.caption)}
+                                        ${escapeHtml(photoCaption)}
                                     </div>
                                 ` : ''}
                             </div>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </div>
                 </div>
             `;
@@ -4866,9 +4921,9 @@ function renderParentPlanCards(rows) {
                 <div style="padding:32px 28px;">
                     <div style="background:${typeCfg.bg}; border-left:6px solid ${typeCfg.color}; border-radius:14px; padding:20px 24px; margin-bottom:20px;">
                         <h3 style="color:#1E1B4B; font-size:1.4rem; font-weight:800; margin:0 0 10px 0;">
-                            ${escapeHtml(activeSpecialDay.title)}
+                            ${escapeHtml(activeSpecialDay.title || 'Journée Spéciale')}
                         </h3>
-                        <p style="color:#334155; font-size:1.05rem; line-height:1.7; margin:0; white-space:pre-wrap;">${escapeHtml(activeSpecialDay.message || "Aucune séance de cours n'est programmée pour ce jour.")}</p>
+                        <p style="color:#334155; font-size:1.05rem; line-height:1.7; margin:0; white-space:pre-wrap;">${escapeHtml(activeSpecialDay.description || activeSpecialDay.message || "Aucune séance de cours n'est programmée pour ce jour.")}</p>
                     </div>
 
                     ${photosGalleryHtml}
@@ -5135,22 +5190,73 @@ async function loadAdminSpecialDaysList() {
     }
 }
 
-function handleSpecialDayPhotosSelected(e) {
+// Helper pour convertir les liens d'images (notamment Google Drive) en URL directe affichable
+function formatPhotoUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    const clean = url.trim();
+    if (clean.startsWith('data:image/')) return clean;
+
+    // Google Drive share link -> lh3.googleusercontent.com direct view
+    // Ex: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+    // Ex: https://drive.google.com/open?id=FILE_ID
+    const driveMatch = clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (driveMatch && driveMatch[1]) {
+        return `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+    }
+    return clean;
+}
+window.formatPhotoUrl = formatPhotoUrl;
+
+// Helper pour compresser les photos sélectionnées afin de garantir une inclusion parfaite et rapide
+function compressImageFile(file, maxWidth = 1600, maxHeight = 1200, quality = 0.85) {
+    return new Promise((resolve) => {
+        if (!file || !file.type.startsWith('image/')) {
+            resolve(null);
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                let w = img.width;
+                let h = img.height;
+                if (w > maxWidth || h > maxHeight) {
+                    const ratio = Math.min(maxWidth / w, maxHeight / h);
+                    w = Math.round(w * ratio);
+                    h = Math.round(h * ratio);
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(dataUrl);
+            };
+            img.onerror = () => resolve(e.target.result);
+            img.src = e.target.result;
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+    });
+}
+
+async function handleSpecialDayPhotosSelected(e) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const reader = new FileReader();
-        reader.onload = (event) => {
+        const compressed = await compressImageFile(file);
+        if (compressed) {
             adminSpecialPhotosList.push({
-                url: event.target.result,
+                url: compressed,
                 caption: file.name.replace(/\.[^/.]+$/, "")
             });
-            renderAdminSpecialPhotosPreview();
-        };
-        reader.readAsDataURL(file);
+        }
     }
+    renderAdminSpecialPhotosPreview();
+    e.target.value = '';
 }
 
 function addSpecialDayPhotoFromUrl() {
@@ -5159,7 +5265,7 @@ function addSpecialDayPhotoFromUrl() {
     if (!url) return;
 
     adminSpecialPhotosList.push({
-        url: url,
+        url: formatPhotoUrl(url),
         caption: 'Photo'
     });
     if (input) input.value = '';
@@ -5182,7 +5288,7 @@ function renderAdminSpecialPhotosPreview() {
 
     container.innerHTML = adminSpecialPhotosList.map((p, idx) => `
         <div style="position:relative; width:100px; height:100px; border-radius:10px; overflow:hidden; border:2px solid #CBD5E1; background:#F8FAFC;">
-            <img src="${escapeHtml(p.url)}" alt="Photo ${idx + 1}" style="width:100%; height:100%; object-fit:cover;">
+            <img src="${escapeHtml(formatPhotoUrl(p.url))}" alt="Photo ${idx + 1}" style="width:100%; height:100%; object-fit:cover;">
             <button type="button" onclick="removeAdminSpecialPhoto(${idx})" style="position:absolute; top:3px; right:3px; background:rgba(220,38,38,0.85); color:white; border:none; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; cursor:pointer;">
                 <i class="fas fa-times"></i>
             </button>
@@ -5298,19 +5404,59 @@ function openSpecialDayQuickModal(day, classe) {
 
     updateQuickSpecialClassesDropdown(classe);
 
+    // Chercher si un jour spécial existe déjà pour ce jour / classe dans la liste parentSpecialDays
+    const norm = (s) => String(s || '').trim().toLowerCase().replace(/[\s\-_]+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const curDayNorm = normalizeDayName(curDay) || curDay;
+    const existing = (parentSpecialDays || []).find(s => {
+        if (!s) return false;
+        const dNorm = normalizeDayName(s.day) || s.day;
+        const matchDay = (dNorm.toLowerCase() === curDayNorm.toLowerCase());
+        const sClass = String(s.classe || '').trim().toLowerCase();
+        const matchClass = (!s.classe || sClass === 'all' || sClass === 'toutes' || norm(s.classe) === norm(classe));
+        return matchDay && matchClass;
+    });
+
     const titleInput = document.getElementById('quickSpecialTitle');
     const msgInput = document.getElementById('quickSpecialMessage') || document.getElementById('quickSpecialDesc');
 
-    if (titleInput && (!titleInput.value || titleInput.value.startsWith('Pas de cours'))) {
-        titleInput.value = 'Orientation';
-    }
-    if (msgInput && !msgInput.value) {
-        msgInput.value = "La Direction & L'Equipe Pédagogique\nLes Écoles Internationales Al Kawthar";
+    if (existing) {
+        if (titleInput) titleInput.value = existing.title || 'Orientation';
+        if (msgInput) msgInput.value = existing.message || existing.description || '';
+        const rawP = Array.isArray(existing.photos) ? existing.photos : [];
+        quickSpecialPhotosList = rawP.map(p => {
+            if (typeof p === 'string') return { url: p, caption: '' };
+            if (p && typeof p === 'object') return { url: p.url || p.src || p.data || '', caption: p.caption || '' };
+            return null;
+        }).filter(p => p && p.url);
+    } else {
+        if (titleInput && (!titleInput.value || titleInput.value.startsWith('Pas de cours'))) {
+            titleInput.value = 'Orientation';
+        }
+        if (msgInput && !msgInput.value) {
+            msgInput.value = "La Direction & L'Equipe Pédagogique\nLes Écoles Internationales Al Kawthar";
+        }
+        quickSpecialPhotosList = [];
     }
 
-    quickSpecialPhotosList = [];
+    const urlInput = document.getElementById('quickSpecialPhotoUrlInput');
+    if (urlInput) urlInput.value = '';
+
     renderQuickSpecialPhotosPreview();
     modal.style.display = 'flex';
+}
+
+function addQuickSpecialPhotoFromUrl() {
+    const input = document.getElementById('quickSpecialPhotoUrlInput');
+    const url = input ? input.value.trim() : '';
+    if (!url) return;
+
+    const formatted = (typeof formatPhotoUrl === 'function') ? formatPhotoUrl(url) : url;
+    quickSpecialPhotosList.push({
+        url: formatted,
+        caption: 'Photo / Affiche'
+    });
+    input.value = '';
+    renderQuickSpecialPhotosPreview();
 }
 
 function onQuickSpecialSectionChange() {
@@ -5344,22 +5490,48 @@ function closeSpecialDayQuickModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function handleQuickSpecialPhotosSelected(e) {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+async function handleQuickSpecialPhotosSelected(e) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const container = document.getElementById('quickSpecialPhotosPreview');
+    if (container) {
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'quickPhotosLoadingIndicator';
+        loadingDiv.style.cssText = 'padding:6px 12px; background:#EFF6FF; border-radius:8px; color:#2563EB; font-size:0.85rem; font-weight:600; display:flex; align-items:center; gap:6px;';
+        loadingDiv.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Traitement de ${files.length} photo(s)...`;
+        container.appendChild(loadingDiv);
+    }
 
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            quickSpecialPhotosList.push({
-                url: event.target.result,
-                caption: file.name.replace(/\.[^/.]+$/, "")
-            });
-            renderQuickSpecialPhotosPreview();
-        };
-        reader.readAsDataURL(file);
+        try {
+            const compressed = (typeof compressImageFile === 'function') ? await compressImageFile(file, 1600, 1200, 0.82) : null;
+            if (compressed) {
+                quickSpecialPhotosList.push({
+                    url: compressed,
+                    caption: file.name.replace(/\.[^/.]+$/, "")
+                });
+            } else {
+                const dataUrl = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (event) => resolve(event.target.result);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(file);
+                });
+                if (dataUrl) {
+                    quickSpecialPhotosList.push({
+                        url: dataUrl,
+                        caption: file.name.replace(/\.[^/.]+$/, "")
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('Erreur lecture photo:', err);
+        }
     }
+    renderQuickSpecialPhotosPreview();
+    e.target.value = '';
 }
 
 function removeQuickSpecialPhoto(index) {
@@ -5378,7 +5550,7 @@ function renderQuickSpecialPhotosPreview() {
 
     container.innerHTML = quickSpecialPhotosList.map((p, idx) => `
         <div style="position:relative; width:90px; height:90px; border-radius:10px; overflow:hidden; border:2px solid #CBD5E1; background:#F8FAFC;">
-            <img src="${escapeHtml(p.url)}" alt="Photo ${idx + 1}" style="width:100%; height:100%; object-fit:cover;">
+            <img src="${escapeHtml((typeof formatPhotoUrl === 'function') ? formatPhotoUrl(p.url) : p.url)}" alt="Photo ${idx + 1}" style="width:100%; height:100%; object-fit:cover;">
             <button type="button" onclick="removeQuickSpecialPhoto(${idx})" style="position:absolute; top:3px; right:3px; background:rgba(220,38,38,0.85); color:white; border:none; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; cursor:pointer;">
                 <i class="fas fa-times"></i>
             </button>
@@ -5443,36 +5615,122 @@ async function saveQuickSpecialDay() {
     }
 }
 
-// Lightbox pour agrandir les photos des parents
-function openImageLightbox(src, caption) {
+// Lightbox moderne et interactive avec navigation multi-photos et raccourcis clavier
+let currentLightboxIndex = 0;
+
+function openSpecialPhotoByIndex(index) {
+    const photos = window.currentSpecialPhotos || [];
+    if (!photos || photos.length === 0) return;
+    currentLightboxIndex = Math.max(0, Math.min(index, photos.length - 1));
+    updateLightboxContent();
+}
+window.openSpecialPhotoByIndex = openSpecialPhotoByIndex;
+
+function updateLightboxContent() {
+    const photos = window.currentSpecialPhotos || [];
+    if (!photos || photos.length === 0) return;
+    const p = photos[currentLightboxIndex];
+    if (!p) return;
+    const rawUrl = typeof p === 'string' ? p : (p.url || p.src || p.data || '');
+    const url = (typeof formatPhotoUrl === 'function') ? formatPhotoUrl(rawUrl) : rawUrl;
+    const caption = (typeof p === 'object' && p) ? (p.caption || p.name || '') : '';
+    
+    openImageLightbox(url, caption, currentLightboxIndex + 1, photos.length);
+}
+
+function prevLightboxPhoto(e) {
+    if (e) e.stopPropagation();
+    const photos = window.currentSpecialPhotos || [];
+    if (!photos || photos.length <= 1) return;
+    currentLightboxIndex = (currentLightboxIndex - 1 + photos.length) % photos.length;
+    updateLightboxContent();
+}
+window.prevLightboxPhoto = prevLightboxPhoto;
+
+function nextLightboxPhoto(e) {
+    if (e) e.stopPropagation();
+    const photos = window.currentSpecialPhotos || [];
+    if (!photos || photos.length <= 1) return;
+    currentLightboxIndex = (currentLightboxIndex + 1) % photos.length;
+    updateLightboxContent();
+}
+window.nextLightboxPhoto = nextLightboxPhoto;
+
+function openImageLightbox(src, caption, currentNum, totalNum) {
     let lightbox = document.getElementById('appImageLightbox');
     if (!lightbox) {
         lightbox = document.createElement('div');
         lightbox.id = 'appImageLightbox';
-        lightbox.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:99999; padding:20px; box-sizing:border-box;';
+        lightbox.className = 'app-lightbox-backdrop';
+        lightbox.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15, 23, 42, 0.92); backdrop-filter:blur(8px); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:99999; padding:20px; box-sizing:border-box;';
         lightbox.innerHTML = `
-            <div style="position:relative; max-width:90vw; max-height:85vh; text-align:center;">
-                <button type="button" onclick="closeImageLightbox()" style="position:absolute; top:-40px; right:0; background:white; color:#1E1B4B; border:none; width:36px; height:36px; border-radius:50%; font-size:1.2rem; cursor:pointer; font-weight:800; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.3);">✕</button>
-                <img id="lightboxImg" src="" alt="Photo" style="max-width:100%; max-height:75vh; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.5); object-fit:contain;">
-                <div id="lightboxCaption" style="color:white; font-size:1.1rem; font-weight:700; margin-top:14px; text-shadow:0 2px 4px rgba(0,0,0,0.8);"></div>
+            <div style="position:relative; max-width:92vw; max-height:90vh; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                <!-- Bouton Fermer -->
+                <button type="button" onclick="closeImageLightbox()" title="Fermer (Échap)" style="position:absolute; top:-48px; right:0; background:rgba(255,255,255,0.2); color:white; border:1px solid rgba(255,255,255,0.4); width:40px; height:40px; border-radius:50%; font-size:1.2rem; cursor:pointer; font-weight:800; display:flex; align-items:center; justify-content:center; transition:background 0.2s;">
+                    ✕
+                </button>
+                
+                <!-- Boutons Précédent / Suivant si plusieurs photos -->
+                <button type="button" id="lightboxPrevBtn" onclick="prevLightboxPhoto(event)" title="Photo précédente (Flèche gauche)" style="position:absolute; left:-60px; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.2); color:white; border:1px solid rgba(255,255,255,0.3); width:44px; height:44px; border-radius:50%; font-size:1.2rem; cursor:pointer; display:none; align-items:center; justify-content:center; transition:background 0.2s;">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button type="button" id="lightboxNextBtn" onclick="nextLightboxPhoto(event)" title="Photo suivante (Flèche droite)" style="position:absolute; right:-60px; top:50%; transform:translateY(-50%); background:rgba(255,255,255,0.2); color:white; border:1px solid rgba(255,255,255,0.3); width:44px; height:44px; border-radius:50%; font-size:1.2rem; cursor:pointer; display:none; align-items:center; justify-content:center; transition:background 0.2s;">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+
+                <img id="lightboxImg" src="" alt="Photo" style="max-width:88vw; max-height:75vh; border-radius:14px; box-shadow:0 15px 40px rgba(0,0,0,0.6); object-fit:contain; background:#0F172A;">
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-top:14px; gap:16px;">
+                    <div id="lightboxCaption" style="color:white; font-size:1.05rem; font-weight:700; text-shadow:0 2px 4px rgba(0,0,0,0.8); flex:1;"></div>
+                    <div id="lightboxCounter" style="background:rgba(255,255,255,0.2); color:white; font-size:0.85rem; font-weight:700; padding:4px 10px; border-radius:20px; display:none; white-space:nowrap;"></div>
+                </div>
             </div>
         `;
         document.body.appendChild(lightbox);
         lightbox.onclick = (e) => {
             if (e.target === lightbox) closeImageLightbox();
         };
+
+        // Navigation au clavier
+        window.addEventListener('keydown', (e) => {
+            const lb = document.getElementById('appImageLightbox');
+            if (!lb || lb.style.display !== 'flex') return;
+            if (e.key === 'Escape') closeImageLightbox();
+            if (e.key === 'ArrowLeft') prevLightboxPhoto();
+            if (e.key === 'ArrowRight') nextLightboxPhoto();
+        });
     }
+
     const imgEl = document.getElementById('lightboxImg');
     const capEl = document.getElementById('lightboxCaption');
+    const counterEl = document.getElementById('lightboxCounter');
+    const prevBtn = document.getElementById('lightboxPrevBtn');
+    const nextBtn = document.getElementById('lightboxNextBtn');
+
     if (imgEl) imgEl.src = src;
     if (capEl) capEl.textContent = caption || '';
+    
+    if (totalNum && totalNum > 1) {
+        if (counterEl) {
+            counterEl.textContent = `${currentNum || 1} / ${totalNum}`;
+            counterEl.style.display = 'block';
+        }
+        if (prevBtn) prevBtn.style.display = 'flex';
+        if (nextBtn) nextBtn.style.display = 'flex';
+    } else {
+        if (counterEl) counterEl.style.display = 'none';
+        if (prevBtn) prevBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+    }
     lightbox.style.display = 'flex';
 }
+window.openImageLightbox = openImageLightbox;
 
 function closeImageLightbox() {
     const lightbox = document.getElementById('appImageLightbox');
     if (lightbox) lightbox.style.display = 'none';
 }
+window.closeImageLightbox = closeImageLightbox;
 
 function filterParentPlanByDay() {
     const classSelect = document.getElementById('parentClassSelector');

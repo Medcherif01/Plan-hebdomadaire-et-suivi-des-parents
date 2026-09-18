@@ -837,12 +837,13 @@ const findKey = (obj, target) => {
 
 // ======================= Fonction utilitaire pour les noms de fichiers ==
 const sanitizeForFilename = (str) => {
+  if (str === null || str === undefined) return 'Sans_nom';
   if (typeof str !== 'string') str = String(str);
-  const normalized = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  return normalized
-    .replace(/\s+/g, '-')
-    .replace(/[^a-zA-Z0-9-]/g, '_')
-    .replace(/__+/g, '_');
+  return str
+    .trim()
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim() || 'Sans_nom';
 };
 
 // ======================= Normalisation & Comparaison des Classes =========
@@ -3822,11 +3823,17 @@ app.post('/api/save-rows-batch', async (req, res) => {
 
 app.get('/api/special-days', async (req, res) => {
   try {
-    const { section = 'garcons', week } = req.query;
+    const { section, week } = req.query;
     const db = await connectToDatabase();
-    const query = { section };
+    const query = {};
+    if (section && section !== 'all') {
+      query.section = section;
+    } else if (!section) {
+      query.section = 'garcons';
+    }
     if (week) {
-      query.week = parseInt(week, 10);
+      const weekNum = parseInt(week, 10);
+      query.$or = [{ week: weekNum }, { week: String(weekNum) }, { week: String(week) }];
     }
     const days = await db.collection('special_days').find(query).toArray();
     res.status(200).json(days || []);
@@ -3838,23 +3845,55 @@ app.get('/api/special-days', async (req, res) => {
 
 app.post('/api/special-days', async (req, res) => {
   try {
-    const { section = 'garcons', week, day, classe = 'all', title, description, isNoSchool = true, photos = [] } = req.body;
+    const { section = 'garcons', week, day, classe = 'all', type = 'no_courses', title, description, message, isNoSchool = true, photos = [] } = req.body;
     const weekNum = parseInt(week, 10);
     if (!day || isNaN(weekNum)) {
       return res.status(400).json({ error: 'Jour et Semaine requis.' });
     }
+    
+    // Normalisation de la classe ('all', 'ALL', 'toutes' -> 'all')
+    const rawClass = String(classe || 'all').trim();
+    const normClass = (rawClass.toLowerCase() === 'all' || rawClass.toLowerCase() === 'toutes' || rawClass === '') ? 'all' : rawClass;
+
+    // Normalisation du jour
+    const rawDay = String(day).trim();
+    const dayMap = {
+      'dimanche': 'Dimanche', 'أحد': 'Dimanche', 'الأحد': 'Dimanche',
+      'lundi': 'Lundi', 'إثنين': 'Lundi', 'الاثنين': 'Lundi',
+      'mardi': 'Mardi', 'ثلاثاء': 'Mardi', 'الثلاثاء': 'Mardi',
+      'mercredi': 'Mercredi', 'أربعاء': 'Mercredi', 'الأربعاء': 'Mercredi',
+      'jeudi': 'Jeudi', 'خميس': 'Jeudi', 'الخميس': 'Jeudi'
+    };
+    const normDay = dayMap[rawDay.toLowerCase()] || (rawDay.charAt(0).toUpperCase() + rawDay.slice(1));
+
+    // Nettoyage et formatage des photos
+    const cleanedPhotos = (Array.isArray(photos) ? photos : []).map(p => {
+      if (typeof p === 'string' && p.trim()) {
+        return { url: p.trim(), caption: '' };
+      }
+      if (p && typeof p === 'object' && (p.url || p.src || p.data)) {
+        return {
+          url: String(p.url || p.src || p.data || '').trim(),
+          caption: String(p.caption || p.name || '').trim()
+        };
+      }
+      return null;
+    }).filter(p => p && p.url);
+
     const db = await connectToDatabase();
-    const docId = `${section}_${weekNum}_${day}_${classe || 'all'}`;
+    const docId = `${section}_${weekNum}_${normDay}_${normClass}`;
     const doc = {
       _id: docId,
       section,
       week: weekNum,
-      day,
-      classe: classe || 'all',
+      day: normDay,
+      classe: normClass,
+      type: type || 'no_courses',
       title: title || 'Journée Sans Cours',
-      description: description || '',
+      description: description || message || '',
+      message: message || description || '',
       isNoSchool: Boolean(isNoSchool),
-      photos: Array.isArray(photos) ? photos : [],
+      photos: cleanedPhotos,
       updatedAt: new Date()
     };
     await db.collection('special_days').updateOne(
@@ -3862,8 +3901,8 @@ app.post('/api/special-days', async (req, res) => {
       { $set: doc },
       { upsert: true }
     );
-    console.log(`[Special Day] Journée ${day} S${weekNum} (${section}) enregistrée: ${title} avec ${photos.length} photo(s).`);
-    res.status(200).json({ success: true, message: 'Journée spéciale enregistrée.', specialDay: doc });
+    console.log(`[Special Day] Journée ${normDay} S${weekNum} (${section}, classe: ${normClass}) enregistrée: "${title}" avec ${cleanedPhotos.length} photo(s).`);
+    res.status(200).json({ success: true, message: 'Journée spéciale enregistrée avec succès.', specialDay: doc });
   } catch (error) {
     console.error('Erreur /api/special-days POST:', error);
     res.status(500).json({ error: error.message });
@@ -5353,11 +5392,22 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
       zipFilename = `Plans_Lecons_Semaine_${weekNumber}_${distinctTeachers.length || rowsData.length}_enseignants.zip`;
     }
 
-    // Configuration du ZIP
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    // Configuration du ZIP avec gestion d'erreurs
+    const archive = archiver('zip', { zlib: { level: 6 } });
 
+    archive.on('warning', (err) => {
+      console.warn('[Archiver warning]:', err);
+    });
+    archive.on('error', (err) => {
+      console.error('[Archiver error]:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: `Erreur d'archivage ZIP: ${err.message}` });
+      }
+    });
+
+    const cleanAsciiFilename = zipFilename.replace(/[^\x20-\x7E]/g, '_');
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(zipFilename)}"; filename*=UTF-8''${encodeURIComponent(zipFilename)}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${cleanAsciiFilename}"; filename*=UTF-8''${encodeURIComponent(zipFilename)}"`);
     archive.pipe(res);
 
     const datesNode = specificWeekDateRangesNode[weekNumber];
@@ -5367,11 +5417,59 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
     let fromDbCount = 0;
 
     let db = null;
+    const lessonPlanCache = new Map();
     try {
       db = await connectToDatabase();
+      if (db) {
+        // Pré-charger en lot les fiches déjà existantes dans MongoDB pour un batch ultra-rapide
+        const allPossibleIds = [];
+        validRows.forEach(({ rowData }, idx) => {
+          const ens = rowData[findKey(rowData, 'Enseignant')] || rowData.Enseignant || '';
+          const cls = rowData[findKey(rowData, 'Classe')] || rowData.Classe || '';
+          const mat = rowData[findKey(rowData, 'Matière')] || rowData.Matière || '';
+          const per = rowData[findKey(rowData, 'Période')] || rowData[findKey(rowData, 'Séance')] || rowData.Période || `${idx+1}`;
+          const jr = rowData[findKey(rowData, 'Jour')] || rowData.Jour || '';
+          if (rowData.lessonPlanId) allPossibleIds.push(rowData.lessonPlanId);
+          allPossibleIds.push(`${weekNumber}_${ens}_${cls}_${mat}_${per}_${jr}`.replace(/\s+/g, '_'));
+          allPossibleIds.push(`garcons_${weekNumber}_${ens}_${cls}_${mat}_${per}_${jr}`.replace(/\s+/g, '_'));
+          allPossibleIds.push(`filles_${weekNumber}_${ens}_${cls}_${mat}_${per}_${jr}`.replace(/\s+/g, '_'));
+          allPossibleIds.push(`primaire_${weekNumber}_${ens}_${cls}_${mat}_${per}_${jr}`.replace(/\s+/g, '_'));
+        });
+
+        const existingPlans = await db.collection('lessonPlans').find({
+          $or: [
+            { _id: { $in: allPossibleIds } },
+            { week: weekNumber }
+          ]
+        }).toArray();
+
+        existingPlans.forEach(p => {
+          if (p._id) lessonPlanCache.set(String(p._id), p);
+          const key = `${p.week}_${String(p.enseignant||'').trim().toLowerCase()}_${String(p.classe||'').trim().toLowerCase()}_${String(p.matiere||'').trim().toLowerCase()}_${String(p.periode||'').trim().toLowerCase()}`;
+          lessonPlanCache.set(key, p);
+        });
+        console.log(`📦 [Batch Lesson Plans] ${lessonPlanCache.size} fiches existantes trouvées en cache DB.`);
+      }
     } catch (dbInitErr) {
       console.warn("⚠️ Impossible de se connecter à MongoDB lors du batch:", dbInitErr.message);
     }
+
+    const usedZipEntries = new Set();
+    const getUniqueZipEntry = (name) => {
+      let candidate = name;
+      let counter = 2;
+      while (usedZipEntries.has(candidate.toLowerCase())) {
+        const dotIdx = name.lastIndexOf('.');
+        if (dotIdx !== -1) {
+          candidate = `${name.substring(0, dotIdx)}_${counter}${name.substring(dotIdx)}`;
+        } else {
+          candidate = `${name}_${counter}`;
+        }
+        counter++;
+      }
+      usedZipEntries.add(candidate.toLowerCase());
+      return candidate;
+    };
 
     // Générer chaque plan de leçon
     for (let i = 0; i < validRows.length; i++) {
@@ -5396,57 +5494,51 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
 
       const docFilename = `${sanitizeForFilename(matiere)}_${sanitizeForFilename(classe)}_S${weekNumber}_P${sanitizeForFilename(seance)}_${sanitizeForFilename(enseignant)}.docx`;
       // Organiser en sous-dossiers par enseignant si plusieurs enseignants dans l'archive
-      const zipEntryName = distinctTeachers.length > 1 
+      const rawZipEntryName = distinctTeachers.length > 1 
         ? `${sanitizeForFilename(enseignant)}/${docFilename}` 
         : docFilename;
+      const zipEntryName = getUniqueZipEntry(rawZipEntryName);
 
       try {
-        // 1. Tenter de récupérer depuis MongoDB si déjà généré
-        if (db) {
-          try {
-            const possibleIds = [
-              rowData.lessonPlanId,
-              `${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
-              `garcons_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
-              `filles_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
-              `primaire_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_')
-            ].filter(Boolean);
+        // 1. Tenter de récupérer depuis le cache MongoDB pré-chargé
+        const possibleIds = [
+          rowData.lessonPlanId,
+          `${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
+          `garcons_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
+          `filles_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
+          `primaire_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_')
+        ].filter(Boolean);
 
-            const existingPlan = await db.collection('lessonPlans').findOne({
-              $or: [
-                { _id: { $in: possibleIds } },
-                {
-                  week: weekNumber,
-                  enseignant: { $regex: `^${enseignant.trim()}$`, $options: 'i' },
-                  classe: { $regex: `^${classe.trim()}$`, $options: 'i' },
-                  matiere: { $regex: `^${matiere.trim()}$`, $options: 'i' },
-                  periode: String(seance).trim()
-                }
-              ]
-            });
+        let cachedPlan = null;
+        for (const pid of possibleIds) {
+          if (lessonPlanCache.has(pid)) {
+            cachedPlan = lessonPlanCache.get(pid);
+            break;
+          }
+        }
+        if (!cachedPlan) {
+          const matchKey = `${weekNumber}_${String(enseignant).trim().toLowerCase()}_${String(classe).trim().toLowerCase()}_${String(matiere).trim().toLowerCase()}_${String(seance).trim().toLowerCase()}`;
+          if (lessonPlanCache.has(matchKey)) {
+            cachedPlan = lessonPlanCache.get(matchKey);
+          }
+        }
 
-            if (existingPlan && existingPlan.fileBuffer) {
-              const rawBuf = existingPlan.fileBuffer;
-              let b = Buffer.isBuffer(rawBuf) ? rawBuf : null;
-              if (!b && rawBuf && typeof rawBuf.value === 'function') b = rawBuf.value(true);
-              if (!b && rawBuf && rawBuf.buffer) b = Buffer.isBuffer(rawBuf.buffer) ? rawBuf.buffer : Buffer.from(rawBuf.buffer);
-              if (!b && rawBuf) b = Buffer.from(rawBuf);
+        if (cachedPlan && cachedPlan.fileBuffer) {
+          const rawBuf = cachedPlan.fileBuffer;
+          let b = Buffer.isBuffer(rawBuf) ? rawBuf : null;
+          if (!b && rawBuf && typeof rawBuf.value === 'function') b = rawBuf.value(true);
+          if (!b && rawBuf && rawBuf.buffer) b = Buffer.isBuffer(rawBuf.buffer) ? rawBuf.buffer : Buffer.from(rawBuf.buffer);
+          if (!b && rawBuf) b = Buffer.from(rawBuf);
 
-              if (b && b.length > 200) {
-                docBuffer = b;
-                fromDb = true;
-                fromDbCount++;
-              }
-            }
-          } catch (dbSearchErr) {
-            console.warn(`[Batch] Erreur recherche MongoDB:`, dbSearchErr.message);
+          if (b && b.length > 200) {
+            docBuffer = b;
+            fromDb = true;
+            fromDbCount++;
           }
         }
 
         // 2. Si pas en base, générer via IA ou repli pédagogique
         if (!docBuffer) {
-          console.log(`📝 [${i+1}/${validRows.length}] (Ligne #${originalIndex+1}) ${enseignant} | ${classe} | ${matiere}`);
-
           // Date formatée
           let formattedDate = "";
           if (jour && datesNode?.start) {
@@ -5473,16 +5565,18 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
           }
 
           let jsonData = null;
-          if (groqKeys.length > 0 || geminiKeys.length > 0) {
+          // Pour les lots importants (> 6 fiches), limiter le temps d'appel IA à 4s max pour garantir la fluidité
+          if ((groqKeys.length > 0 || geminiKeys.length > 0) && validRows.length <= 15) {
             try {
-              const { content: rawContent } = await callAiWithKeyRotation(prompt, `Batch Lesson #${i+1}/${validRows.length} (${enseignant})`);
+              const aiPromise = callAiWithKeyRotation(prompt, `Batch Lesson #${i+1}/${validRows.length} (${enseignant})`);
+              const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Délai IA dépassé')), 4000));
+              const { content: rawContent } = await Promise.race([aiPromise, timeoutPromise]);
               const cleanedJson = rawContent.replace(/```json\n?|```\n?/g, '').trim();
               jsonData = JSON.parse(cleanedJson);
               if (!jsonData.TitreUnite && !jsonData.Objectifs && !jsonData.etapes) {
                 throw new Error('Champs essentiels manquants');
               }
             } catch (aiErr) {
-              console.warn(`⚠️ [Batch AI #${i+1}] Repli sur le générateur pédagogique automatique (${aiErr.message})`);
               jsonData = generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, travaux, support, devoirsPrevus);
             }
           } else {
@@ -5548,13 +5642,6 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
         // Ajouter au ZIP
         archive.append(docBuffer, { name: zipEntryName });
         successCount++;
-        
-        console.log(`✅ [${i+1}/${validRows.length}] ${fromDb ? '📦 (DB Cache)' : '🤖 (Généré)'} -> ${zipEntryName}`);
-
-        // Délai léger uniquement si génération réseau IA pour préserver le quota sans bloquer
-        if (!fromDb && i < validRows.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
 
       } catch (error) {
         const classe = rowData[findKey(rowData, 'Classe')] || 'Unknown';

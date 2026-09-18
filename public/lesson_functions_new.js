@@ -293,13 +293,16 @@ async function downloadSelectedTeachersLessonPlansZip() {
 
             const contentDisposition = response.headers.get('content-disposition');
             if (contentDisposition) {
-                const filenameMatch = contentDisposition.match(/filename\*?=['"]?(?:UTF-\d['"])?([^;\r\n"']*)['"]?/i);
-                if (filenameMatch && filenameMatch[1]) {
+                const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;\r\n"']*)/i);
+                const standardMatch = contentDisposition.match(/filename="?([^;\r\n"']*)"?/i);
+                if (utf8Match && utf8Match[1]) {
                     try {
-                        downloadFilename = decodeURIComponent(filenameMatch[1]);
+                        downloadFilename = decodeURIComponent(utf8Match[1]);
                     } catch(e) {
-                        downloadFilename = filenameMatch[1];
+                        downloadFilename = utf8Match[1];
                     }
+                } else if (standardMatch && standardMatch[1]) {
+                    downloadFilename = standardMatch[1];
                 }
             }
 
