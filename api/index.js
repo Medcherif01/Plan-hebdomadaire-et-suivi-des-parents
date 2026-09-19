@@ -166,8 +166,11 @@ function createDefaultLessonTemplateZip() {
  * Produit un plan de leçon complet et structuré si le service IA (Gemini/Groq) est indisponible ou hors quota.
  */
 function generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, travaux, support, devoirsPrevus) {
-  const isEn = Array.isArray(englishTeachers) && englishTeachers.includes(enseignant);
-  const isAr = Array.isArray(arabicTeachers) && arabicTeachers.includes(enseignant);
+  const lang = typeof detectLessonLanguage === 'function' 
+    ? detectLessonLanguage(enseignant, matiere, lecon, travaux) 
+    : (/[\u0600-\u06FF]/.test(`${enseignant || ''} ${matiere || ''} ${lecon || ''}`) ? 'ar' : 'fr');
+  const isEn = lang === 'en';
+  const isAr = lang === 'ar';
   const topic = lecon && String(lecon).trim().length > 1 && lecon !== '-' ? String(lecon).trim() : `${matiere || 'Séance de cours'}`;
 
   if (isEn) {
@@ -175,12 +178,12 @@ function generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, tra
       TitreUnite: `Unit: ${matiere || 'Course Unit'} - ${topic}`,
       Methodes: "Active learning, guided practice, formative feedback, differentiated instruction",
       Outils: support && support !== 'Non spécifié' ? support : "Textbook, worksheets, board, multimedia projector",
-      Objectifs: `- Understand and master key concepts related to: ${topic}\n- Apply core knowledge through structured classroom exercises\n- Formulate logical conclusions and demonstrate autonomous understanding`,
+      Objectifs: `- Master the fundamental principles and key concepts of: ${topic}\n- Apply core knowledge through targeted classroom exercises on "${topic}"\n- Demonstrate autonomous reasoning and analytical problem solving`,
       etapes: [
         { phase: "Introduction & Hook", duree: "5 min", activite: `Review prior concepts, present the learning intentions, and engage students with an opening hook on "${topic}".` },
-        { phase: "Guided Practice & Core Activity", duree: "25 min", activite: `Interactive instruction and concept development. Classroom tasks: ${travaux && travaux !== 'Non spécifié' ? travaux : 'Problem solving and practical applications'}. Using materials: ${support && support !== 'Non spécifié' ? support : 'Curriculum materials'}.` },
-        { phase: "Synthesis & Formative Assessment", duree: "10 min", activite: `Consolidate key learnings, review student solutions, and clarify remaining questions.` },
-        { phase: "Wrap-up & Homework", duree: "5 min", activite: `Summarize the lesson outcomes and assign homework: ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : 'Reinforcement exercises'}.` }
+        { phase: "Guided Practice & Core Activity", duree: "25 min", activite: `Interactive instruction and concept development focusing specifically on "${topic}". Classroom tasks: ${travaux && travaux !== 'Non spécifié' ? travaux : `Targeted exercises on ${topic}`}. Materials: ${support && support !== 'Non spécifié' ? support : 'Curriculum resources'}.` },
+        { phase: "Synthesis & Formative Assessment", duree: "10 min", activite: `Consolidate key learnings on "${topic}", review student solutions, and clarify misconceptions.` },
+        { phase: "Wrap-up & Homework", duree: "5 min", activite: `Summarize the lesson outcomes on "${topic}" and assign homework: ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `Consolidation exercises on ${topic}`}.` }
       ],
       Ressources: support && support !== 'Non spécifié' ? support : "Curriculum textbook, guided notes, educational handouts",
       Devoirs: devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `Consolidation exercises on ${topic}`,
@@ -193,12 +196,12 @@ function generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, tra
       TitreUnite: `الوحدة: ${matiere || 'المادة الدراسية'} - ${topic}`,
       Methodes: "التعلم النشط، الممارسة الموجهة، التمايز البيداغوجي، الحوار والمناقشة",
       Outils: support && support !== 'Non spécifié' ? support : "الكتاب المدرسي، السبورة، أوراق العمل، الوسائل التعليمية",
-      Objectifs: `- استيعاب وفهم المفاهيم الأساسية لدرس: ${topic}\n- تطبيق المعارف المكتسبة من خلال أنشطة صفية وتمارين موجهة\n- تنمية التفكير التحليلي والقدرة على الاستنتاج الذاتي`,
+      Objectifs: `- استيعاب وفهم المفاهيم الأساسية الخاصة بدرس: ${topic}\n- تطبيق المعارف المكتسبة عبر أنشطة صفية وتمارين موجهة في موضوع: ${topic}\n- تنمية التفكير التحليلي والقدرة على الاستنتاج الذاتي والتطبيق السليم`,
       etapes: [
         { phase: "التهيئة والتمهيد", duree: "5 دقائق", activite: `مراجعة المكتسبات السابقة، إثارة دافعية التلاميذ، وإعلان أهداف الدرس: "${topic}".` },
-        { phase: "بناء التعلمات والنشاط الرئيسي", duree: "25 دقيقة", activite: `الشرح التفاعلي وإنجاز التطبيقات. أعمال الصف: ${travaux && travaux !== 'Non spécifié' ? travaux : 'أنشطة تطبيقية وتمارين صفية'}. الاعتماد على السند: ${support && support !== 'Non spécifié' ? support : 'المعينات التربوية المعتمدة'}.` },
-        { phase: "التقويم التكويني والتركيب", duree: "10 دقائق", activite: `مناقشة الحلول، رصد الثغرات وتصحيح الأخطاء الشائعة، وتركيب خلاصة الدرس.` },
-        { phase: "الخاتمة وتكليف الواجبات", duree: "5 دقائق", activite: `تأكيد المفاهيم الأساسية وتوجيه التلاميذ للواجبات المنزلية: ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : 'تمارين التثبيت المنزلي'}.` }
+        { phase: "بناء التعلمات والنشاط الرئيسي", duree: "25 دقيقة", activite: `الشرح التفاعلي وبناء المفاهيم المحددة في درس "${topic}". أعمال الصف المبرمجة: ${travaux && travaux !== 'Non spécifié' ? travaux : `تمارين وتطبيقات حول ${topic}`}. الاعتماد على السند: ${support && support !== 'Non spécifié' ? support : 'المعينات التربوية المعتمدة'}.` },
+        { phase: "التقويم التكويني والتركيب", duree: "10 دقائق", activite: `مناقشة الحلول المتعلقة بدرس "${topic}"، رصد الثغرات وتصحيح الأخطاء الشائعة، وتركيب خلاصة الدرس.` },
+        { phase: "الخاتمة وتكليف الواجبات", duree: "5 دقائق", activite: `تأكيد المفاهيم الأساسية لدرس "${topic}" وتوجيه التلاميذ للواجبات المنزلية: ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `تمارين التثبيت المنزلي لدرس ${topic}`}.` }
       ],
       Ressources: support && support !== 'Non spécifié' ? support : "الكتاب المدرسي المعتمد، المذكرات البيداغوجية، بطاقات الأنشطة",
       Devoirs: devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `إنجاز تمارين تطبيقية في موضوع ${topic}`,
@@ -211,12 +214,12 @@ function generatePedagogicalFallbackData(matiere, classe, lecon, enseignant, tra
       TitreUnite: `Unité : ${matiere || 'Discipline'} - ${topic}`,
       Methodes: "Pédagogie active, démarche explicite, pratique guidée puis autonome, différenciation",
       Outils: support && support !== 'Non spécifié' ? support : "Manuel scolaire, tableau interactif/feutre, fiches d'exercices",
-      Objectifs: `- Comprendre et maîtriser les notions fondamentales du thème : ${topic}\n- Mobiliser les compétences acquises dans des situations d'application concrètes\n- Développer l'esprit d'analyse et l'autonomie dans le raisonnement`,
+      Objectifs: `- Comprendre et assimiler les notions clés du thème spécifique : ${topic}\n- Réinvestir les savoirs et compétences acquis dans des exercices ciblés sur « ${topic} »\n- Développer l'esprit d'analyse et l'autonomie méthodologique des élèves`,
       etapes: [
-        { phase: "Introduction & Accroche", duree: "5 min", activite: `Rappel des prérequis, mise en situation motivante et formulation claire des objectifs d'apprentissage sur « ${topic} ».` },
-        { phase: "Activité Principale & Entraînement", duree: "25 min", activite: `Apports conceptuels et mise en œuvre des travaux de classe : ${travaux && travaux !== 'Non spécifié' ? travaux : 'Exercices d\'application et recherche guidée'}. Exploitation du support : ${support && support !== 'Non spécifié' ? support : 'Documents et manuel scolaire'}.` },
-        { phase: "Synthèse & Évaluation formative", duree: "10 min", activite: `Mise en commun des productions des élèves, formalisation institutionnelle des notions et correction des erreurs fréquentes.` },
-        { phase: "Clôture & Devoirs", duree: "5 min", activite: `Bilan récapitulatif de la séance et explication des consignes de travail autonome : ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : 'Exercices d\'entraînement et de mémorisation'}.` }
+        { phase: "Introduction & Accroche", duree: "5 min", activite: `Rappel des prérequis pertinents, mise en situation motivante et formulation claire des objectifs d'apprentissage sur « ${topic} ».` },
+        { phase: "Activité Principale & Entraînement", duree: "25 min", activite: `Explicitation et approfondissement du thème « ${topic} ». Mise en œuvre des travaux de classe : ${travaux && travaux !== 'Non spécifié' ? travaux : `exercices et recherche sur ${topic}`}. Exploitation du support : ${support && support !== 'Non spécifié' ? support : 'documents et manuel scolaire'}.` },
+        { phase: "Synthèse & Évaluation formative", duree: "10 min", activite: `Mise en commun des productions des élèves sur « ${topic} », institutionnalisation des notions clés et remédiation des erreurs récurrentes.` },
+        { phase: "Clôture & Devoirs", duree: "5 min", activite: `Bilan récapitulatif de la séance consacrée à « ${topic} » et consignes de travail personnel : ${devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `exercices d'application sur ${topic}`}.` }
       ],
       Ressources: support && support !== 'Non spécifié' ? support : "Manuel officiel, fiches pédagogiques, ressources documentaires",
       Devoirs: devoirsPrevus && devoirsPrevus !== 'Non spécifié' ? devoirsPrevus : `Consolidation et exercices d'application sur ${topic}`,
@@ -364,6 +367,26 @@ const isAmalSoleTeacher = (name) => {
   if (isAmalArabeTeacher(n)) return false;
   return n.includes('amal') || n.startsWith('amal');
 };
+
+function detectLessonLanguage(enseignant, matiere, lecon, travaux) {
+  const text = `${enseignant || ''} ${matiere || ''} ${lecon || ''} ${travaux || ''}`;
+  // 1. Détection arabe par caractères arabes ou matières d'arabe/islam/coran
+  const isArabicChar = /[\u0600-\u06FF]/.test(text);
+  const isArabicSubject = /arabe|islam|coran|tarbiya|tawhid|hadith|fiqh|sirah|tajweed|عربي|اسلام|قرآن|تربية|توحيد|فقه|حديث|سيرة/i.test(matiere || '');
+  const isArabicTeacher = (Array.isArray(arabicTeachers) && arabicTeachers.some(t => String(enseignant || '').toLowerCase().includes(t.toLowerCase()))) || isAmalArabeTeacher(enseignant);
+  if (isArabicChar || isArabicSubject || isArabicTeacher) {
+    return 'ar';
+  }
+
+  // 2. Détection anglais par matière ou enseignant
+  const isEnglishSubject = /anglais|english|esl/i.test(matiere || '');
+  const isEnglishTeacher = Array.isArray(englishTeachers) && englishTeachers.some(t => String(enseignant || '').toLowerCase().includes(t.toLowerCase()));
+  if (isEnglishSubject || isEnglishTeacher) {
+    return 'en';
+  }
+
+  return 'fr';
+}
 
 const isDualSectionTeacher = (name) => {
   if (!name) return false;
@@ -5437,35 +5460,54 @@ app.post('/api/generate-ai-lesson-plan', async (req, res) => {
     if (hasAiKeys) {
       const jsonStructure = `{"TitreUnite":"un titre d'unité pertinent pour la leçon","Methodes":"liste des méthodes d'enseignement","Outils":"liste des outils de travail","Objectifs":"une liste concise des objectifs d'apprentissage (compétences, connaissances), séparés par des sauts de ligne (\\\\n). Commence chaque objectif par un tiret (-).","etapes":[{"phase":"Introduction","duree":"5 min","activite":"Description de l'activité d'introduction pour l'enseignant et les élèves."},{"phase":"Activité Principale","duree":"25 min","activite":"Description de l'activité principale, en intégrant les 'travaux de classe' et le 'support' si possible."},{"phase":"Synthèse","duree":"10 min","activite":"Description de l'activité de conclusion et de vérification des acquis."},{"phase":"Clôture","duree":"5 min","activite":"Résumé rapide et annonce des devoirs."}],"Ressources":"les ressources spécifiques à utiliser.","Devoirs":"une suggestion de devoirs.","DiffLents":"une suggestion pour aider les apprenants en difficulté.","DiffTresPerf":"une suggestion pour stimuler les apprenants très performants.","DiffTous":"une suggestion de différenciation pour toute la classe."}`;
 
+      const lessonLang = detectLessonLanguage(enseignant, matiere, lecon, travaux);
       let prompt;
-      if (englishTeachers.includes(enseignant)) {
+      if (lessonLang === 'en') {
         prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.
-CRITICAL INSTRUCTION: You MUST strictly generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}]. DO NOT invent, substitute, or drift to any other topic or chapter.
-As an expert pedagogical assistant, create a detailed 45-minute lesson plan in English. Structure the lesson into timed phases and integrate the teacher's existing notes:
+CRITICAL MANDATORY INSTRUCTION: You MUST strictly and faithfully generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}].
 - Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}
 - Planned Classwork: ${travaux}
 - Mentioned Support/Materials: ${support}
 - Planned Homework: ${devoirsPrevus}
+
+STRICT PEDAGOGICAL COMPLIANCE RULES:
+1. The unit title, learning objectives, methods, tools, and ALL lesson stages (Introduction, Main Activity, Synthesis, Wrap-up) MUST FOCUS DIRECTLY AND EXCLUSIVELY on this specific lesson topic: [${lecon}].
+2. Explicitly incorporate the planned classwork [${travaux}] and support materials [${support}] into the main activity.
+3. The homework must directly support [${devoirsPrevus}] and reinforce "${lecon}".
+4. DO NOT invent, substitute, or drift to any other topic or chapter.
+
 Use the following JSON structure with professional, concrete values in English (keys exactly as specified):
 ${jsonStructure}`;
-      } else if (arabicTeachers.includes(enseignant)) {
+      } else if (lessonLang === 'ar') {
         prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.
-تعليمات صارمة وأساسية: يجب عليك حصراً بناء خطة الدرس للموضوع المطلوب تحديداً: [${lecon}] في مادة [${matiere}] وفصل [${classe}]. يُمنع تماماً تغيير الموضوع أو توليد درس مختلف أو عام.
-بصفتك مساعدًا تربويًا خبيرًا، أنشئ خطة درس مفصلة باللغة العربية مدتها 45 دقيقة. قم ببناء الدرس في مراحل محددة زمنياً وادمج ملاحظات المعلم:
-- المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}
+تعليمات أساسية وإلزامية قطعية: يجب عليك بناء وتصميم كامل خطة الدرس لعنوان وموضوع الدرس المُدخل تحديداً من قبل المعلم: [${lecon}].
+- المادة: ${matiere}، الفصل: ${classe}، موضوع الدرس: [${lecon}]
 - أعمال الصف المخطط لها: ${travaux}
-- الدعم/المواد: ${support}
+- الدعم والمعينات التعليمية: ${support}
 - الواجبات المخطط لها: ${devoirsPrevus}
+
+قواعد بيداغوجية إلزامية صارمة:
+1. يجب أن تدور جميع الأهداف التعليمية، عنوان الوحدة، الوسائل، ومراحل سير الدرس (التهيئة، بناء التعلمات، التقويم والتركيب، الخاتمة) حصراً ومباشرة حول هذا الدرس تحديداً: [${lecon}].
+2. ادمج صراحة في النشاط الرئيسي أعمال الصف المحددة: [${travaux}] والسند: [${support}].
+3. يجب أن تتوافق الواجبات المنزلية بدقة مع: [${devoirsPrevus}] وموضوع الدرس [${lecon}].
+4. يُمنع منعاً باتاً استبدال هذا الموضوع أو الانحراف إلى درس عام أو فصل مختلف.
+
 استخدم البنية التالية بالقيم المهنية والملموسة (المفاتيح كما هي بالإنجليزية):
 ${jsonStructure}`;
       } else {
         prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.
-INSTRUCTION CRITIQUE : Vous DEVEZ impérativement et fidèlement concevoir la fiche de préparation pour le Thème de leçon spécifié : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ». Ne changez JAMAIS de sujet et n'extrapolez pas vers une autre leçon.
-En tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :
-- Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}
+INSTRUCTION FONDAMENTALE ET ABSOLUE : Vous DEVEZ impérativement et fidèlement concevoir l'intégralité de la fiche de préparation pour le Thème de leçon EXACTEMENT saisi : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ».
+- Matière : ${matiere}, Classe : ${classe}, Thème saisi : « ${lecon} »
 - Travaux de classe : ${travaux}
 - Support/Matériel : ${support}
 - Devoirs prévus : ${devoirsPrevus}
+
+RÈGLES PÉDAGOGIQUES STRICTES DE CONFORMITÉ :
+1. Le titre de l'unité, les compétences/objectifs d'apprentissage, les méthodes, les outils, et toutes les étapes du déroulement (Introduction, Activité Principale, Synthèse, Clôture) DOIVENT TOUS porter DIRECTEMENT et EXCLUSIVEMENT sur la leçon « ${lecon} ».
+2. Vous devez intégrer explicitement dans l'activité principale les travaux de classe : « ${travaux} » et le support : « ${support} ».
+3. Les devoirs doivent être directement alignés avec « ${devoirsPrevus} » et la leçon « ${lecon} ».
+4. Interdiction formelle et absolue de changer de thème, de dériver vers un autre chapitre ou d'extrapoler vers une autre leçon.
+
 Utilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :
 ${jsonStructure}`;
       }
@@ -5871,7 +5913,16 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
           }
         }
 
-        if (cachedPlan && cachedPlan.fileBuffer) {
+        let isCacheMatching = false;
+        if (cachedPlan && cachedPlan.fileBuffer && !req.body.forceRegenerate) {
+          const curLec = String(lecon || '').trim().toLowerCase();
+          const cachedLec = String(cachedPlan.rowData?.[findKey(cachedPlan.rowData, 'Leçon')] || cachedPlan.rowData?.Leçon || cachedPlan.lecon || '').trim().toLowerCase();
+          if (curLec && cachedLec && curLec === cachedLec) {
+            isCacheMatching = true;
+          }
+        }
+
+        if (isCacheMatching) {
           const rawBuf = cachedPlan.fileBuffer;
           let b = Buffer.isBuffer(rawBuf) ? rawBuf : null;
           if (!b && rawBuf && typeof rawBuf.value === 'function') b = rawBuf.value(true);
@@ -5885,7 +5936,7 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
           }
         }
 
-        // 2. Si pas en base, générer via IA ou repli pédagogique
+        // 2. Si pas en base ou leçon modifiée, générer via IA ou repli pédagogique
         if (!docBuffer) {
           // Date formatée
           let formattedDate = "";
@@ -5900,16 +5951,17 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
             }
           }
 
-          // Prompt selon la langue de l'enseignant
+          // Prompt selon la langue de la leçon
           const jsonStructure = `{"TitreUnite":"un titre d'unité pertinent pour la leçon","Methodes":"liste des méthodes d'enseignement","Outils":"liste des outils de travail","Objectifs":"une liste concise des objectifs d'apprentissage (compétences, connaissances), séparés par des sauts de ligne (\\\\n). Commence chaque objectif par un tiret (-).","etapes":[{"phase":"Introduction","duree":"5 min","activite":"Description de l'activité d'introduction pour l'enseignant et les élèves."},{"phase":"Activité Principale","duree":"25 min","activite":"Description de l'activité principale, en intégrant les 'travaux de classe' et le 'support' si possible."},{"phase":"Synthèse","duree":"10 min","activite":"Description de l'activité de conclusion et de vérification des acquis."},{"phase":"Clôture","duree":"5 min","activite":"Résumé rapide et annonce des devoirs."}],"Ressources":"les ressources spécifiques à utiliser.","Devoirs":"une suggestion de devoirs.","DiffLents":"une suggestion pour aider les apprenants en difficulté.","DiffTresPerf":"une suggestion pour stimuler les apprenants très performants.","DiffTous":"une suggestion de différenciation pour toute la classe."}`;
 
+          const lessonLang = detectLessonLanguage(enseignant, matiere, lecon, travaux);
           let prompt;
-          if (englishTeachers.includes(enseignant)) {
-            prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.\n\nCRITICAL INSTRUCTION: You MUST strictly generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}]. DO NOT invent, substitute, or drift to any other topic.\n\nAs an expert pedagogical assistant, create a detailed 45-minute lesson plan in English. Structure the lesson into timed phases and integrate the teacher's existing notes:\n- Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}\n- Planned Classwork: ${travaux}\n- Mentioned Support/Materials: ${support}\n- Planned Homework: ${devoirsPrevus}\n\nUse the following JSON structure with professional, concrete values in English (keys exactly as specified):\n${jsonStructure}`;
-          } else if (arabicTeachers.includes(enseignant)) {
-            prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.\n\nتعليمات صارمة وأساسية: يجب عليك حصراً بناء خطة الدرس للموضوع المطلوب تحديداً: [${lecon}] في مادة [${matiere}] وفصل [${classe}]. يُمنع تماماً تغيير الموضوع أو توليد درس مختلف أو عام.\n\nبصفتك مساعدًا تربويًا خبيرًا، أنشئ خطة درس مفصلة باللغة العربية مدتها 45 دقيقة. قم ببناء الدرس في مراحل محددة زمنياً وادمج ملاحظات المعلم:\n- المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}\n- أعمال الصف المخطط لها: ${travaux}\n- الدعم/المواد: ${support}\n- الواجبات المخطط لها: ${devoirsPrevus}\n\nاستخدم البنية التالية بالقيم المهنية والملموسة (المفاتيح كما هي بالإنجليزية):\n${jsonStructure}`;
+          if (lessonLang === 'en') {
+            prompt = `Return ONLY valid JSON. No markdown, no code fences, no commentary.\n\nCRITICAL MANDATORY INSTRUCTION: You MUST strictly and faithfully generate the lesson plan specifically for the requested Subject: [${matiere}], Class: [${classe}], and Lesson Topic: [${lecon}].\n\n- Subject: ${matiere}, Class: ${classe}, Lesson Topic: ${lecon}\n- Planned Classwork: ${travaux}\n- Mentioned Support/Materials: ${support}\n- Planned Homework: ${devoirsPrevus}\n\nSTRICT PEDAGOGICAL COMPLIANCE RULES:\n1. The unit title, learning objectives, methods, tools, and ALL lesson stages MUST FOCUS DIRECTLY AND EXCLUSIVELY on this specific lesson topic: [${lecon}].\n2. Explicitly integrate into the main activity the planned classwork [${travaux}] and support materials [${support}].\n3. The homework must align with [${devoirsPrevus}] and "${lecon}".\n4. DO NOT invent, substitute, or drift to any other topic.\n\nUse the following JSON structure with professional, concrete values in English (keys exactly as specified):\n${jsonStructure}`;
+          } else if (lessonLang === 'ar') {
+            prompt = `أعد فقط JSON صالحًا. بدون Markdown أو أسوار كود أو تعليقات.\n\nتعليمات أساسية وإلزامية قطعية: يجب عليك بناء وتصميم كامل خطة الدرس لعنوان وموضوع الدرس المُدخل تحديداً من قبل المعلم: [${lecon}].\n\n- المادة: ${matiere}، الفصل: ${classe}، الموضوع: ${lecon}\n- أعمال الصف المخطط لها: ${travaux}\n- الدعم/المواد: ${support}\n- الواجبات المخطط لها: ${devoirsPrevus}\n\nقواعد بيداغوجية إلزامية صارمة:\n1. يجب أن تدور جميع الأهداف التعليمية، عنوان الوحدة، الوسائل، ومراحل سير الدرس حصراً ومباشرة حول هذا الدرس تحديداً: [${lecon}].\n2. ادمج صراحة في النشاط الرئيسي أعمال الصف: [${travaux}] والسند: [${support}].\n3. يجب أن تتوافق الواجبات بدقة مع: [${devoirsPrevus}] وموضوع الدرس [${lecon}].\n4. يُمنع منعاً باتاً استبدال هذا الموضوع أو توليد درس مختلف أو عام.\n\nاستخدم البنية التالية بالقيم المهنية والملموسة (المفاتيح كما هي بالإنجليزية):\n${jsonStructure}`;
           } else {
-            prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.\n\nINSTRUCTION CRITIQUE : Vous DEVEZ impérativement et fidèlement concevoir la fiche de préparation pour le Thème de leçon spécifié : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ». Ne changez JAMAIS de sujet et n'extrapolez pas vers une autre leçon.\n\nEn tant qu'assistant pédagogique expert, crée un plan de leçon détaillé de 45 minutes en français. Structure en phases chronométrées et intègre les notes de l'enseignant :\n- Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}\n- Travaux de classe : ${travaux}\n- Support/Matériel : ${support}\n- Devoirs prévus : ${devoirsPrevus}\n\nUtilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :\n${jsonStructure}`;
+            prompt = `Renvoie UNIQUEMENT du JSON valide. Pas de markdown, pas de blocs de code, pas de commentaire.\n\nINSTRUCTION FONDAMENTALE ET ABSOLUE : Vous DEVEZ impérativement et fidèlement concevoir l'intégralité de la fiche de préparation pour le Thème de leçon EXACTEMENT saisi : « ${lecon} », pour la matière « ${matiere} » et la classe « ${classe} ».\n\n- Matière : ${matiere}, Classe : ${classe}, Thème : ${lecon}\n- Travaux de classe : ${travaux}\n- Support/Matériel : ${support}\n- Devoirs prévus : ${devoirsPrevus}\n\nRÈGLES PÉDAGOGIQUES STRICTES DE CONFORMITÉ :\n1. Le titre de l'unité, les objectifs d'apprentissage, les méthodes, les outils, et toutes les étapes du déroulement DOIVENT TOUS porter DIRECTEMENT et EXCLUSIVEMENT sur la leçon « ${lecon} ».\n2. Vous devez intégrer explicitement dans l'activité principale les travaux de classe : « ${travaux} » et le support : « ${support} ».\n3. Les devoirs doivent être directement alignés avec « ${devoirsPrevus} » et la leçon « ${lecon} ».\n4. Interdiction formelle et absolue de changer de thème ou de dériver vers un autre sujet.\n\nUtilise la structure JSON suivante (valeurs concrètes et professionnelles ; clés strictement identiques) :\n${jsonStructure}`;
           }
 
           let jsonData = null;

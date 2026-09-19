@@ -2567,6 +2567,7 @@
                     const td = document.createElement('td');
                     let content = rowObj ? (rowObj[header] ?? '') : '';
                     td.setAttribute('dir', 'auto');
+                    td.dataset.header = header;
                     
                     // Une ligne d'une autre section est TOUJOURS en lecture seule (non éditable)
                     const isEditable = !isCrossReadOnly && editHdrKeys.includes(header);
@@ -2811,17 +2812,18 @@
                 return;
             }
 
-            // Synchroniser les valeurs actuelles affichées dans la ligne du tableau
+            // Synchroniser fidèlement les valeurs actuelles affichées dans la ligne du tableau
             if (tableRowElement) {
-                const cells = tableRowElement.querySelectorAll('td');
-                const curHeaders = headers || [];
-                cells.forEach((cell, idx) => {
-                    const hName = curHeaders[idx];
-                    if (hName && cell && cell.classList.contains('editable')) {
-                        const cellText = (cell.textContent || '').trim();
-                        rowData[hName] = cellText;
-                    }
-                });
+                const cells = tableRowElement.querySelectorAll('td[data-header]');
+                if (cells.length > 0) {
+                    cells.forEach(cell => {
+                        const hName = cell.dataset.header;
+                        if (hName && cell.classList.contains('editable')) {
+                            const cellText = (cell.textContent || '').trim();
+                            rowData[hName] = cellText;
+                        }
+                    });
+                }
             }
             
             console.log("Generating AI Lesson Plan for:", rowData);
@@ -2853,7 +2855,11 @@
                 const response = await fetch('/api/generate-ai-lesson-plan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ week: currentWeek, rowData: rowData })
+                    body: JSON.stringify({ 
+                        week: currentWeek, 
+                        rowData: rowData,
+                        section: rowData._section || currentSection || 'garcons'
+                    })
                 });
                 
                 if (response.ok) {
@@ -3004,6 +3010,17 @@
                     const rowObj = eligibleRows[i];
                     const tr = findTableRowElement(rowObj, i);
 
+                    // Synchroniser fidèlement avec les cellules éditées affichées dans la ligne du tableau
+                    if (tr) {
+                        const cells = tr.querySelectorAll('td[data-header]');
+                        cells.forEach(cell => {
+                            const hName = cell.dataset.header;
+                            if (hName && cell.classList.contains('editable')) {
+                                rowObj[hName] = (cell.textContent || '').trim();
+                            }
+                        });
+                    }
+
                     const teacherVal = (teacherKey && rowObj[teacherKey]) ? String(rowObj[teacherKey]).trim() : '';
                     const classVal = (classKey && rowObj[classKey]) ? String(rowObj[classKey]).trim() : '';
                     const subjectVal = (subjectKey && rowObj[subjectKey]) ? String(rowObj[subjectKey]).trim() : '';
@@ -3047,7 +3064,9 @@
                     let isFromDb = false;
 
                     // 1. Tenter de récupérer depuis la base de données si déjà présent
-                    if (rowObj.lessonPlanId) {
+                    // MAIS si la ligne a été modifiée dans le tableau, régénérer pour respecter la saisie
+                    const isRowModified = tr && tr.classList.contains('modified');
+                    if (rowObj.lessonPlanId && !isRowModified) {
                         try {
                             const checkRes = await fetch(`/api/download-lesson-plan/${encodeURIComponent(rowObj.lessonPlanId)}`);
                             if (checkRes.ok) {
@@ -3270,7 +3289,74 @@
             }
         }
         
-        async function generateWeeklyLessonPlans() { if (!currentWeek) { displayAlert("please_select_week", true); return; } if (!filteredAndSortedData || filteredAndSortedData.length === 0) { displayAlert("no_data_to_display_filters", true); return; } const confirmation = confirm(t("Voulez-vous générer les plans de leçons pour toutes les données affichées de la semaine " + currentWeek + " ?")); if (!confirmation) return; console.log("Generating Weekly Lesson Plans for week:", currentWeek); displayAlert("generating_weekly_lessons", false); setButtonLoading("generateWeeklyLessonsBtn", true, "fas fa-robot"); showProgressBar(); updateProgressBar(10); try { const response = await fetch("/api/generate-weekly-lesson-plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ week: currentWeek, data: filteredAndSortedData }) }); updateProgressBar(80); if (response.ok) { const blob = await response.blob(); const contentDisposition = response.headers.get("content-disposition"); let filename = `plans_lecons_semaine_${currentWeek}.zip`; if (contentDisposition) { const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i); if (filenameMatch && filenameMatch[1]) { filename = filenameMatch[1]; } } saveAs(blob, filename); updateProgressBar(100); displayAlert("weekly_lessons_generated", false); } else { const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." })); throw new Error(errorResult.message || `Erreur serveur ${response.status}`); } } catch (error) { console.error("Error generating weekly lesson plans:", error); displayAlert("error_generating_ai_lesson_plan", true, { error: error.message }); updateProgressBar(0); } finally { hideProgressBar(); setButtonLoading("generateWeeklyLessonsBtn", false, "fas fa-robot"); } }
+        async function generateWeeklyLessonPlans() { 
+            if (!currentWeek) { displayAlert("please_select_week", true); return; } 
+            if (!filteredAndSortedData || filteredAndSortedData.length === 0) { displayAlert("no_data_to_display_filters", true); return; } 
+            const confirmation = confirm(t("Voulez-vous générer les plans de leçons pour toutes les données affichées de la semaine " + currentWeek + " ?")); 
+            if (!confirmation) return; 
+
+            // Synchroniser fidèlement toutes les cellules modifiées affichées dans le tableau avant l'envoi
+            const tableBody = document.querySelector('#planTable tbody');
+            if (tableBody) {
+                const trList = tableBody.querySelectorAll('tr[data-row-index]');
+                trList.forEach(tr => {
+                    const rIdx = parseInt(tr.dataset.rowIndex, 10);
+                    const rowObj = filteredAndSortedData[rIdx];
+                    if (rowObj) {
+                        const cells = tr.querySelectorAll('td[data-header]');
+                        cells.forEach(cell => {
+                            const hName = cell.dataset.header;
+                            if (hName && cell.classList.contains('editable')) {
+                                rowObj[hName] = (cell.textContent || '').trim();
+                            }
+                        });
+                    }
+                });
+            }
+
+            console.log("Generating Weekly Lesson Plans for week:", currentWeek); 
+            displayAlert("generating_weekly_lessons", false); 
+            setButtonLoading("generateWeeklyLessonsBtn", true, "fas fa-robot"); 
+            showProgressBar(); 
+            updateProgressBar(10); 
+            try { 
+                const response = await fetch("/api/generate-weekly-lesson-plans", { 
+                    method: "POST", 
+                    headers: { "Content-Type": "application/json" }, 
+                    body: JSON.stringify({ 
+                        week: currentWeek, 
+                        data: filteredAndSortedData,
+                        section: currentSection,
+                        forceRegenerate: true
+                    }) 
+                }); 
+                updateProgressBar(80); 
+                if (response.ok) { 
+                    const blob = await response.blob(); 
+                    const contentDisposition = response.headers.get("content-disposition"); 
+                    let filename = `plans_lecons_semaine_${currentWeek}.zip`; 
+                    if (contentDisposition) { 
+                        const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i); 
+                        if (filenameMatch && filenameMatch[1]) { 
+                            filename = filenameMatch[1]; 
+                        } 
+                    } 
+                    saveAs(blob, filename); 
+                    updateProgressBar(100); 
+                    displayAlert("weekly_lessons_generated", false); 
+                } else { 
+                    const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." })); 
+                    throw new Error(errorResult.message || `Erreur serveur ${response.status}`); 
+                } 
+            } catch (error) { 
+                console.error("Error generating weekly lesson plans:", error); 
+                displayAlert("error_generating_ai_lesson_plan", true, { error: error.message }); 
+                updateProgressBar(0); 
+            } finally { 
+                hideProgressBar(); 
+                setButtonLoading("generateWeeklyLessonsBtn", false, "fas fa-robot"); 
+            } 
+        }
         function updateActionButtonsState(isEnabled) { 
             document.getElementById('generateWordBtn').disabled = !isEnabled; 
             document.getElementById('generateExcelBtn').disabled = !isEnabled; 
@@ -3296,6 +3382,16 @@
             }
             if(!tableRowElement) {
                 tableRowElement = findTableRowElement(rowData);
+            }
+            // Synchroniser fidèlement les valeurs éditées de la ligne
+            if (tableRowElement) {
+                const cells = tableRowElement.querySelectorAll('td[data-header]');
+                cells.forEach(cell => {
+                    const hName = cell.dataset.header;
+                    if (hName && cell.classList.contains('editable')) {
+                        rowData[hName] = (cell.textContent || '').trim();
+                    }
+                });
             }
             console.log("saveRow:",JSON.stringify(rowData).substring(0,100)+'...'); 
             displayAlert(''); 
@@ -3361,6 +3457,22 @@
             updateProgressBar(15); 
             
             const tableBody = document.querySelector('#planTable tbody'); 
+            if (tableBody) {
+                const trList = tableBody.querySelectorAll('tr[data-row-index]');
+                trList.forEach(tr => {
+                    const rIdx = parseInt(tr.dataset.rowIndex, 10);
+                    const rowObj = (filteredAndSortedData || [])[rIdx];
+                    if (rowObj) {
+                        const cells = tr.querySelectorAll('td[data-header]');
+                        cells.forEach(cell => {
+                            const hName = cell.dataset.header;
+                            if (hName && cell.classList.contains('editable')) {
+                                rowObj[hName] = (cell.textContent || '').trim();
+                            }
+                        });
+                    }
+                });
+            }
 
             // 1. Tenter la sauvegarde atomique par lot via /api/save-rows-batch
             try {
