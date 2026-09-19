@@ -20,6 +20,7 @@ const webpush = require('web-push');
 const path = require('path');
 const moment = require('moment');
 const crypto = require('crypto');
+const { generateDesignPlanHtml } = require(path.join(__dirname, '../design_plan_generator'));
 // ========================================================================
 // ====================== AIDES POUR GÉNÉRATION WORD ======================
 // ========================================================================
@@ -1360,12 +1361,13 @@ app.get('/api/admin/users', async (req, res) => {
 
 app.post('/api/admin/users', async (req, res) => {
   try {
-    const { username, password, section = 'garcons', role = 'teacher', language = 'fr', tableTeacherName = '' } = req.body;
+    const { username, password, section = 'garcons', role = 'teacher', language = 'fr', tableTeacherName = '', photoUrl = '' } = req.body;
     if (!username || !password) {
       return res.status(400).json({ message: 'Nom d\'utilisateur et mot de passe requis.' });
     }
     const trimmedUser = username.trim();
     const trimmedTableTeacherName = (tableTeacherName || '').trim() || trimmedUser;
+    const cleanPhoto = formatDriveImageUrl(photoUrl || '');
     const db = await connectToDatabase();
 
     const userId = `${section}_${trimmedUser}`;
@@ -1373,21 +1375,32 @@ app.post('/api/admin/users', async (req, res) => {
     // Si l'utilisateur avait été précédemment supprimé, annuler sa suppression
     await db.collection('deleted_users').deleteOne({ _id: userId });
 
+    const updateFields = { 
+      username: trimmedUser, 
+      tableTeacherName: trimmedTableTeacherName,
+      password: password, 
+      section: section, 
+      role: role, 
+      language: language || 'fr',
+      updatedAt: new Date() 
+    };
+    if (cleanPhoto) {
+      updateFields.photoUrl = cleanPhoto;
+    }
+
     await db.collection('users').updateOne(
       { _id: userId },
-      { 
-        $set: { 
-          username: trimmedUser, 
-          tableTeacherName: trimmedTableTeacherName,
-          password: password, 
-          section: section, 
-          role: role, 
-          language: language || 'fr',
-          updatedAt: new Date() 
-        } 
-      },
+      { $set: updateFields },
       { upsert: true }
     );
+
+    if (cleanPhoto) {
+      await db.collection('teachers_photos').updateOne(
+        { teacherName: trimmedUser },
+        { $set: { teacherName: trimmedUser, photoUrl: cleanPhoto, section, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    }
 
     res.status(200).json({ message: `Compte '${trimmedUser}' enregistré (Nom Tableau/Tri: '${trimmedTableTeacherName || trimmedUser}', Langue: ${language}) pour la section ${section}.` });
   } catch (error) {
@@ -1417,6 +1430,118 @@ app.delete('/api/admin/users', async (req, res) => {
   } catch (error) {
     console.error('Erreur DELETE /api/admin/users:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
+  }
+});
+
+// Helper pour nettoyer et convertir les liens Google Drive en URL d'image directe
+function formatDriveImageUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  const clean = url.trim();
+  if (clean.startsWith('data:image/')) return clean;
+  const driveMatch = clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (driveMatch && driveMatch[1]) {
+    return `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+  }
+  return clean;
+}
+
+// --- API GESTION DES PHOTOS DES ENSEIGNANTS (GOOGLE DRIVE / LIENS DIRECTS) ---
+
+app.get('/api/teachers-photos', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const photosDocs = await db.collection('teachers_photos').find({}).toArray();
+    const photosMap = {};
+    photosDocs.forEach(doc => {
+      if (doc.teacherName && doc.photoUrl) {
+        photosMap[doc.teacherName] = doc.photoUrl;
+      }
+    });
+
+    const usersWithPhotos = await db.collection('users').find({ photoUrl: { $exists: true, $ne: '' } }).toArray();
+    usersWithPhotos.forEach(u => {
+      if (u.username && u.photoUrl && !photosMap[u.username]) {
+        photosMap[u.username] = u.photoUrl;
+      }
+      if (u.tableTeacherName && u.photoUrl && !photosMap[u.tableTeacherName]) {
+        photosMap[u.tableTeacherName] = u.photoUrl;
+      }
+    });
+
+    res.status(200).json({ success: true, photos: photosMap });
+  } catch (error) {
+    console.error('Erreur GET /api/teachers-photos:', error);
+    res.status(500).json({ success: false, error: error.message, photos: {} });
+  }
+});
+
+app.post('/api/teachers-photos', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const { teacherName, photoUrl, section = 'garcons', photos } = req.body;
+
+    if (photos && typeof photos === 'object') {
+      for (const [tName, pUrl] of Object.entries(photos)) {
+        if (!tName) continue;
+        const cleanUrl = formatDriveImageUrl(pUrl);
+        await db.collection('teachers_photos').updateOne(
+          { teacherName: tName.trim() },
+          { $set: { teacherName: tName.trim(), photoUrl: cleanUrl, updatedAt: new Date() } },
+          { upsert: true }
+        );
+        await db.collection('users').updateMany(
+          { $or: [{ username: tName.trim() }, { tableTeacherName: tName.trim() }] },
+          { $set: { photoUrl: cleanUrl } }
+        );
+      }
+      return res.status(200).json({ success: true, message: 'Photos enregistrées avec succès.' });
+    }
+
+    if (!teacherName) {
+      return res.status(400).json({ success: false, message: 'Nom de l\'enseignant requis.' });
+    }
+
+    const cleanUrl = formatDriveImageUrl(photoUrl || '');
+    await db.collection('teachers_photos').updateOne(
+      { teacherName: teacherName.trim() },
+      { $set: { teacherName: teacherName.trim(), photoUrl: cleanUrl, section, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    await db.collection('users').updateMany(
+      { $or: [{ username: teacherName.trim() }, { tableTeacherName: teacherName.trim() }] },
+      { $set: { photoUrl: cleanUrl } }
+    );
+
+    res.status(200).json({ success: true, message: `Photo enregistrée pour ${teacherName}.`, photoUrl: cleanUrl });
+  } catch (error) {
+    console.error('Erreur POST /api/teachers-photos:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/my-teacher-photo', async (req, res) => {
+  try {
+    const { username, photoUrl, section = 'garcons' } = req.body;
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'Nom d\'utilisateur requis.' });
+    }
+    const db = await connectToDatabase();
+    const cleanUrl = formatDriveImageUrl(photoUrl || '');
+    
+    await db.collection('teachers_photos').updateOne(
+      { teacherName: username.trim() },
+      { $set: { teacherName: username.trim(), photoUrl: cleanUrl, section, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    await db.collection('users').updateMany(
+      { $or: [{ username: username.trim() }, { tableTeacherName: username.trim() }] },
+      { $set: { photoUrl: cleanUrl } }
+    );
+
+    res.status(200).json({ success: true, message: 'Votre photo a été mise à jour.', photoUrl: cleanUrl });
+  } catch (error) {
+    console.error('Erreur POST /api/my-teacher-photo:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -4598,6 +4723,80 @@ app.post('/api/generate-word', async (req, res) => {
 	    if (!res.headersSent) {
 	      res.status(500).json({ message: 'Erreur interne /generate-weekly-plans-zip.' });
 	    }
+	  }
+	});
+
+	// --------------------- Génération Plan Hebdomadaire Stylisé (Design & PDF) ---------------------
+
+	app.post('/api/generate-design-plan', async (req, res) => {
+	  try {
+	    const { week, classe, data, notes, section: rawSection = 'garcons', theme = 'indigo', showPhotos = true, download = false } = req.body;
+	    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
+	    const weekNumber = Number(week);
+	    if (!Number.isInteger(weekNumber) || !classe) {
+	      return res.status(400).json({ message: 'Numéro de semaine et classe obligatoires pour la génération du plan stylisé.' });
+	    }
+
+	    const db = await connectToDatabase();
+
+	    let planData = Array.isArray(data) ? data : [];
+	    if (planData.length === 0) {
+	      let planDoc = await db.collection('plans').findOne({ week: weekNumber, section: section });
+	      if (!planDoc) {
+	        planDoc = await db.collection('plans').findOne({ _id: `${section}_${weekNumber}` });
+	      }
+	      if (!planDoc) {
+	        planDoc = await db.collection('plans').findOne({ week: weekNumber });
+	      }
+	      planData = planDoc ? (planDoc.data || planDoc.planData || []) : [];
+	    }
+
+	    let classNotes = (typeof notes === 'string') ? notes : '';
+	    if (!classNotes) {
+	      try {
+	        const notesDoc = await db.collection('weekly_notes').findOne({ week: weekNumber, section: section });
+	        if (notesDoc && notesDoc.notes && notesDoc.notes[classe]) {
+	          classNotes = notesDoc.notes[classe];
+	        }
+	      } catch (ne) {
+	        console.warn('Erreur lecture weekly_notes:', ne.message);
+	      }
+	    }
+
+	    const photosDocs = await db.collection('teachers_photos').find({}).toArray();
+	    const teachersPhotos = {};
+	    photosDocs.forEach(d => {
+	      if (d.teacherName && d.photoUrl) teachersPhotos[d.teacherName] = d.photoUrl;
+	    });
+	    const usersWithPhotos = await db.collection('users').find({ photoUrl: { $exists: true, $ne: '' } }).toArray();
+	    usersWithPhotos.forEach(u => {
+	      if (u.username && u.photoUrl && !teachersPhotos[u.username]) teachersPhotos[u.username] = u.photoUrl;
+	      if (u.tableTeacherName && u.photoUrl && !teachersPhotos[u.tableTeacherName]) teachersPhotos[u.tableTeacherName] = u.photoUrl;
+	    });
+
+	    const html = generateDesignPlanHtml({
+	      week: weekNumber,
+	      classe,
+	      data: planData,
+	      notes: classNotes,
+	      section,
+	      theme,
+	      showPhotos,
+	      teachersPhotos
+	    });
+
+	    if (download) {
+	      const filename = `Plan_Hebdomadaire_Design_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.html`;
+	      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+	      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+	      return res.send(html);
+	    }
+
+	    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+	    return res.send(html);
+	  } catch (error) {
+	    console.error('❌ Erreur /api/generate-design-plan:', error);
+	    res.status(500).json({ message: 'Erreur lors de la génération du plan stylisé: ' + error.message });
 	  }
 	});
 

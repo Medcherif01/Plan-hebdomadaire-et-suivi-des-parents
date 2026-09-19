@@ -3514,7 +3514,7 @@
         function updateDynamicUIElements() { console.log("Updating dynamic UI for lang:", currentUserLanguage); const dateRangeEl=document.getElementById('weekDateRange'); const weekNum = parseInt(currentWeek, 10); const dates = specificWeekDateRanges[weekNum]; if(weekStartDate && dates?.end){ const s = weekStartDate; const e = new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ dateRangeEl.textContent = `${t('week_label')} ${currentWeek} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'From' : 'Du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`; } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (Err dates)`; } } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (${t('no_data')}: dates non définies)`; } createTableHeader(); displayPlanTable(filteredAndSortedData); const notesInput = document.getElementById('notesInput'); const notesClassSel = document.getElementById('notesClassSelector'); if (notesInput && notesClassSel) { if (notesClassSel.value) { const selText = notesClassSel.options[notesClassSel.selectedIndex].text; notesInput.placeholder = t('notes_placeholder', { classText: selText }); } else { notesInput.placeholder = t('select_class_placeholder'); } } }
 
         function switchAdminTab(tabName) {
-            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days', 'schedule'];
+            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days', 'schedule', 'teachers_photos'];
             tabs.forEach(t => {
                 const contentEl = document.getElementById(`adminTab_${t}`);
                 const btnEl = document.getElementById(`tabBtn_${t}`);
@@ -3530,6 +3530,8 @@
                     filterEl.value = currentSection || 'garcons';
                 }
                 if (typeof loadAdminUsersList === 'function') loadAdminUsersList();
+            } else if (tabName === 'teachers_photos') {
+                if (typeof renderAdminTeachersPhotosGallery === 'function') renderAdminTeachersPhotosGallery();
             } else if (tabName === 'calendar') {
                 populateAdminWeekSelectToEdit();
                 renderAdminWeeksTable();
@@ -3606,6 +3608,7 @@
             
             const roleBadge = currentUserRole === 'admin' ? ' [Administrateur Principal]' : (currentUserRole === 'supervisor' ? ' [Superviseur Direction]' : '');
             document.getElementById('loggedInUserInfo').textContent = t('connected_as', { user: loggedInUser }) + roleBadge;
+            if (typeof loadCurrentUserAvatar === 'function') loadCurrentUserAvatar(loggedInUser);
             
             const isAdminUser = (currentUserRole === 'admin' || loggedInUser === 'Med01');
             const isSupervisorUser = (currentUserRole === 'supervisor' || loggedInUser === 'Racha');
@@ -3622,6 +3625,7 @@
                 const tabReports = document.getElementById('tabBtn_reports');
                 const tabMessages = document.getElementById('tabBtn_messages');
                 const tabPublication = document.getElementById('tabBtn_publication');
+                const tabPhotos = document.getElementById('tabBtn_teachers_photos');
 
                 if (isSupervisorUser && !isAdminUser) {
                     // Masquer pour Racha les 5 boutons spécifiés
@@ -3630,12 +3634,13 @@
                     if (tabCalendar) tabCalendar.style.display = 'none';
                     if (tabStudents) tabStudents.style.display = 'none';
                     if (tabReports) tabReports.style.display = 'none';
+                    if (tabPhotos) tabPhotos.style.display = 'none';
                     if (tabMessages) tabMessages.style.display = 'inline-flex';
                     if (tabPublication) tabPublication.style.display = 'inline-flex';
 
                     switchAdminTab('messages');
                 } else {
-                    // Admin Med01 voit l'ensemble des 7 onglets
+                    // Admin Med01 voit l'ensemble des onglets
                     if (tabUpload) tabUpload.style.display = 'inline-flex';
                     if (tabTeachers) tabTeachers.style.display = 'inline-flex';
                     if (tabCalendar) tabCalendar.style.display = 'inline-flex';
@@ -3643,6 +3648,7 @@
                     if (tabReports) tabReports.style.display = 'inline-flex';
                     if (tabMessages) tabMessages.style.display = 'inline-flex';
                     if (tabPublication) tabPublication.style.display = 'inline-flex';
+                    if (tabPhotos) tabPhotos.style.display = 'inline-flex';
 
                     const adminSecSel = document.getElementById('adminUploadSectionSelect');
                     if (adminSecSel && currentSection) {
@@ -3890,6 +3896,9 @@
                 const safeUsername = (u.username || '').replace(/'/g, "\\'");
                 const safeTableTeacher = (u.tableTeacherName || '').replace(/'/g, "\\'");
                 const safePassword = (u.password || '').replace(/'/g, "\\'");
+                const safePhotoUrl = (u.photoUrl || '').replace(/'/g, "\\'");
+                
+                const photoThumb = u.photoUrl ? `<img src="${formatGoogleDriveImageUrl(u.photoUrl)}" style="width:26px; height:26px; border-radius:50%; object-fit:cover; margin-right:6px; vertical-align:middle; border:1.5px solid #3B82F6;" alt="Photo" onerror="this.style.display='none'">` : `<span style="width:26px; height:26px; border-radius:50%; background:#E2E8F0; color:#64748B; display:inline-flex; align-items:center; justify-content:center; font-size:0.75rem; margin-right:6px; vertical-align:middle;"><i class="fas fa-user"></i></span>`;
                 
                 const hasCustomTableTeacher = u.tableTeacherName && u.tableTeacherName.trim() !== '' && u.tableTeacherName.trim().toLowerCase() !== u.username.trim().toLowerCase();
                 const tableTeacherBadge = hasCustomTableTeacher
@@ -3898,7 +3907,7 @@
                 
                 html += `
                     <tr>
-                        <td><strong><i class="fas fa-id-badge" style="color:#2563EB; margin-right:6px;"></i>${escapeHtml(u.username)}</strong></td>
+                        <td><strong>${photoThumb}${escapeHtml(u.username)}</strong></td>
                         <td>${tableTeacherBadge}</td>
                         <td><code style="background:#F1F5F9; padding:3px 8px; border-radius:6px; font-weight:700; color:#0F172A;">${escapeHtml(u.password || 'Non défini')}</code></td>
                         <td><span style="font-weight:600;">${secLabel}</span></td>
@@ -3908,7 +3917,7 @@
                             </span>
                         </td>
                         <td>
-                            <button type="button" class="pro-button primary-button" onclick="adminEditUserPrefill('${safeUsername}', '${safePassword}', '${u.section}', '${userLang}', '${safeTableTeacher}')" style="padding:4px 9px; font-size:0.8rem; margin-right:5px;">
+                            <button type="button" class="pro-button primary-button" onclick="adminEditUserPrefill('${safeUsername}', '${safePassword}', '${u.section}', '${userLang}', '${safeTableTeacher}', '${safePhotoUrl}')" style="padding:4px 9px; font-size:0.8rem; margin-right:5px;">
                                 <i class="fas fa-edit"></i> Modifier
                             </button>
                             <button type="button" class="btn-sm-delete" onclick="adminDeleteUser('${safeUsername}', '${u.section}')" style="padding:4px 9px; font-size:0.8rem;">
@@ -3939,11 +3948,12 @@
             renderAdminUsersTable(filtered);
         }
 
-        function adminEditUserPrefill(username, password, section, language, tableTeacherName) {
+        function adminEditUserPrefill(username, password, section, language, tableTeacherName, photoUrl) {
             const userInput = document.getElementById('adminNewUsername');
             const tableTeacherInput = document.getElementById('adminNewTableTeacherName');
             const passInput = document.getElementById('adminNewPassword');
             const langSelect = document.getElementById('adminNewUserLanguage');
+            const photoInput = document.getElementById('adminNewUserPhoto');
             const filterEl = document.getElementById('adminSectionFilter');
             
             if (userInput) userInput.value = username;
@@ -3953,6 +3963,8 @@
             }
             if (passInput) passInput.value = password;
             if (langSelect) langSelect.value = language || 'fr';
+            if (photoInput) photoInput.value = photoUrl || '';
+            if (typeof updateAdminFormPhotoPreview === 'function') updateAdminFormPhotoPreview(photoUrl || '');
             if (filterEl && section) filterEl.value = section;
             
             if (userInput) {
@@ -3971,6 +3983,7 @@
             const tableTeacherInput = document.getElementById('adminNewTableTeacherName');
             const passInput = document.getElementById('adminNewPassword');
             const langSelect = document.getElementById('adminNewUserLanguage');
+            const photoInput = document.getElementById('adminNewUserPhoto');
             const filterEl = document.getElementById('adminSectionFilter');
             const statusDiv = document.getElementById('adminUsersStatus');
             
@@ -3978,6 +3991,7 @@
             let tableTeacherName = tableTeacherInput ? tableTeacherInput.value.trim() : '';
             const password = passInput ? passInput.value.trim() : '';
             const language = langSelect ? langSelect.value : 'fr';
+            const photoUrl = photoInput ? photoInput.value.trim() : '';
             const section = filterEl ? filterEl.value : currentSection;
             
             // Si l'un des deux noms est renseigné, l'autre prend la même valeur par défaut s'il est vide
@@ -4002,7 +4016,7 @@
                 const response = await fetch('/api/admin/users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password, section, language, tableTeacherName })
+                    body: JSON.stringify({ username, password, section, language, tableTeacherName, photoUrl })
                 });
                 const res = await response.json();
                 if (response.ok) {
@@ -4016,6 +4030,8 @@
                         tableTeacherInput.dataset.customized = "";
                     }
                     if (passInput) passInput.value = '';
+                    if (photoInput) photoInput.value = '';
+                    if (typeof updateAdminFormPhotoPreview === 'function') updateAdminFormPhotoPreview('');
                     loadAdminUsersList();
                 } else {
                     throw new Error(res.message);
@@ -9368,6 +9384,569 @@ async function executeFullClassExcelDownload(explicitClass) {
             btn.disabled = false;
             if (btnText) btnText.textContent = "Télécharger Excel (.xlsx)";
         }
+    }
+}
+
+
+// =========================================================================
+// NOUVEAU MODÈLE DESIGN STYLISÉ ET GESTION DES PHOTOS DES ENSEIGNANTS (DRIVE)
+// =========================================================================
+
+window.currentSelectedDesignTheme = 'indigo';
+
+/**
+ * Convertit un lien Google Drive ou URL classique en lien d'image direct
+ */
+function formatGoogleDriveImageUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    const cleanUrl = url.trim();
+    if (!cleanUrl) return '';
+
+    // Déjà une image directe
+    if (cleanUrl.startsWith('data:image/') || cleanUrl.includes('lh3.googleusercontent.com/d/')) {
+        return cleanUrl;
+    }
+
+    // Liens Google Drive
+    const driveFileMatch = cleanUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (driveFileMatch && driveFileMatch[1]) {
+        return `https://lh3.googleusercontent.com/d/${driveFileMatch[1]}`;
+    }
+
+    const driveIdMatch = cleanUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (driveIdMatch && driveIdMatch[1]) {
+        return `https://lh3.googleusercontent.com/d/${driveIdMatch[1]}`;
+    }
+
+    const driveUclink = cleanUrl.match(/\/uc\?.*id=([a-zA-Z0-9_-]+)/);
+    if (driveUclink && driveUclink[1]) {
+        return `https://lh3.googleusercontent.com/d/${driveUclink[1]}`;
+    }
+
+    return cleanUrl;
+}
+
+/**
+ * Aperçu en direct dans le formulaire d'ajout d'enseignant
+ */
+function updateAdminFormPhotoPreview(url) {
+    const previewImg = document.getElementById('adminNewUserPhotoPreview');
+    if (!previewImg) return;
+    const directUrl = formatGoogleDriveImageUrl(url);
+    if (directUrl) {
+        previewImg.src = directUrl;
+        previewImg.style.display = 'block';
+    } else {
+        previewImg.src = '';
+        previewImg.style.display = 'none';
+    }
+}
+
+/**
+ * Ouvre la boîte de dialogue pour générer le plan hebdomadaire stylisé
+ */
+function openDesignPlanModal(preselectedClass, preselectedWeek) {
+    const modal = document.getElementById('designPlanModal');
+    const weekSel = document.getElementById('designModalWeekSelector');
+    const classSel = document.getElementById('designModalClassSelector');
+    if (!modal) return;
+
+    const curWeek = preselectedWeek || currentWeek || getCurrentWeekNumber() || 1;
+    if (weekSel) {
+        weekSel.innerHTML = '';
+        for (let i = 1; i <= 38; i++) {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = `Semaine ${i}` + (i == curWeek ? ' (Semaine active)' : '');
+            if (i == curWeek) opt.selected = true;
+            weekSel.appendChild(opt);
+        }
+    }
+
+    const currentFilterClass = preselectedClass || document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value || '';
+    const section = currentSection || 'garcons';
+    const classes = getSectionClasses(section);
+
+    if (classSel) {
+        classSel.innerHTML = '';
+        classes.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c;
+            opt.textContent = c;
+            if (c === currentFilterClass) opt.selected = true;
+            classSel.appendChild(opt);
+        });
+    }
+
+    selectDesignTheme(window.currentSelectedDesignTheme || 'indigo');
+    modal.style.display = 'flex';
+}
+
+function closeDesignPlanModal() {
+    const modal = document.getElementById('designPlanModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function selectDesignTheme(theme) {
+    window.currentSelectedDesignTheme = theme || 'indigo';
+    const themes = ['indigo', 'emerald', 'multicolor', 'prestige'];
+    themes.forEach(t => {
+        const card = document.getElementById(`themeCard_${t}`);
+        if (card) {
+            if (t === theme) {
+                card.classList.add('active');
+                card.style.borderColor = '#2563EB';
+                card.style.boxShadow = '0 4px 14px rgba(37,99,235,0.2)';
+            } else {
+                card.classList.remove('active');
+                card.style.borderColor = '#CBD5E1';
+                card.style.boxShadow = 'none';
+            }
+        }
+    });
+}
+
+/**
+ * Exécute l'action choisie depuis le modal Design (Aperçu / Imprimer ou Télécharger HTML)
+ */
+async function executeDesignPlanAction(action) {
+    const weekSel = document.getElementById('designModalWeekSelector');
+    const classSel = document.getElementById('designModalClassSelector');
+    const showPhotosCheck = document.getElementById('designOptShowPhotos');
+    const highlightHwCheck = document.getElementById('designOptHighlightHomework');
+
+    const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
+    const selectedClass = classSel ? classSel.value : '';
+    const theme = window.currentSelectedDesignTheme || 'indigo';
+    const showPhotos = showPhotosCheck ? showPhotosCheck.checked : true;
+    const highlightHomework = highlightHwCheck ? highlightHwCheck.checked : true;
+
+    if (!selectedClass) {
+        alert("Veuillez sélectionner une classe.");
+        return;
+    }
+
+    await downloadFullClassDesign(selectedWeek, selectedClass, theme, showPhotos, highlightHomework, action || 'print');
+    closeDesignPlanModal();
+}
+
+/**
+ * Raccourci depuis le modal Word & Excel existant
+ */
+async function executeFullClassDesignDownload(explicitClass) {
+    const weekSel = document.getElementById('modalWordWeekSelector');
+    const classSel = document.getElementById('modalWordClassSelector');
+    const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
+    const selectedClass = explicitClass || (classSel ? classSel.value : '');
+
+    if (!selectedClass) {
+        alert("Veuillez sélectionner une classe.");
+        return;
+    }
+
+    closeFullClassWordModal();
+    await downloadFullClassDesign(selectedWeek, selectedClass, 'indigo', true, true, 'print');
+}
+
+/**
+ * Téléchargement direct en 1 clic pour la classe actuellement filtrée
+ */
+async function downloadSelectedClassFullDesign() {
+    const selClass = document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value;
+    if (selClass) {
+        const week = currentWeek || getCurrentWeekNumber() || 1;
+        await downloadFullClassDesign(week, selClass, 'indigo', true, true, 'print');
+    } else {
+        openDesignPlanModal();
+    }
+}
+
+/**
+ * Moteur d'appel et de génération du Plan Stylisé & Design
+ */
+async function downloadFullClassDesign(weekNum, className, theme, showPhotos, highlightHomework, action) {
+    if (!className) {
+        openDesignPlanModal();
+        return;
+    }
+
+    showProgressBar();
+    updateProgressBar(20);
+    displayAlert(`Génération du Plan Stylisé & Design pour la classe ${className} (Semaine ${weekNum})...`, false);
+
+    try {
+        const section = currentSection || 'garcons';
+        updateProgressBar(45);
+
+        const payload = {
+            week: Number(weekNum),
+            section: section,
+            classe: className,
+            theme: theme || 'indigo',
+            showPhotos: showPhotos !== false,
+            highlightHomework: highlightHomework !== false,
+            notes: weeklyClassNotes
+        };
+
+        const response = await fetch('/api/generate-design-plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ message: `Erreur ${response.status}` }));
+            throw new Error(err.message || `Erreur serveur (${response.status})`);
+        }
+
+        updateProgressBar(80);
+        const htmlContent = await response.text();
+
+        if (action === 'download') {
+            // Téléchargement du fichier HTML autonome
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            const filename = `Plan_Stylise_S${weekNum}_${section}_${className.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+            if (typeof saveAs === 'function') {
+                saveAs(blob, filename);
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            }
+            displayAlert(`✅ Fichier HTML stylisé téléchargé avec succès !`, false);
+        } else {
+            // Aperçu interactif et boîte d'impression PDF
+            const printWindow = window.open('', '_blank');
+            if (printWindow) {
+                printWindow.document.open();
+                printWindow.document.write(htmlContent);
+                printWindow.document.close();
+                printWindow.focus();
+                displayAlert(`✅ Plan Stylisé ouvert dans un nouvel onglet avec aperçu d'impression PDF !`, false);
+            } else {
+                // Si le popup est bloqué par le navigateur, créer une iframe invisible pour imprimer
+                const iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '0';
+                iframe.style.height = '0';
+                iframe.style.border = 'none';
+                document.body.appendChild(iframe);
+                iframe.contentWindow.document.open();
+                iframe.contentWindow.document.write(htmlContent);
+                iframe.contentWindow.document.close();
+                setTimeout(() => {
+                    iframe.contentWindow.focus();
+                    iframe.contentWindow.print();
+                    setTimeout(() => document.body.removeChild(iframe), 3000);
+                }, 500);
+                displayAlert(`✅ Boîte d'impression PDF prête !`, false);
+            }
+        }
+        updateProgressBar(100);
+    } catch (err) {
+        console.error("Erreur downloadFullClassDesign:", err);
+        displayAlert("Erreur lors de la génération du plan stylisé: " + err.message, true);
+    } finally {
+        setTimeout(hideProgressBar, 800);
+    }
+}
+
+/**
+ * Galerie complète des photos d'enseignants dans l'onglet Admin 10
+ */
+async function renderAdminTeachersPhotosGallery() {
+    const container = document.getElementById('teachersPhotosGalleryContainer');
+    const filterEl = document.getElementById('adminPhotoSectionFilter');
+    const statusMsg = document.getElementById('adminPhotosStatusMsg');
+    if (!container) return;
+
+    const section = (filterEl && filterEl.value) ? filterEl.value : (currentSection || 'garcons');
+    container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#64748B;"><i class="fas fa-spinner fa-spin fa-2x"></i><br><br>Chargement des photos des enseignants...</div>';
+
+    try {
+        const [usersRes, photosRes] = await Promise.all([
+            fetch(`/api/admin/users?section=${section}`).then(r => r.json()).catch(() => []),
+            fetch(`/api/teachers-photos?section=${section}`).then(r => r.json()).catch(() => ({}))
+        ]);
+
+        const users = usersRes || [];
+        const photosMap = photosRes || {};
+
+        if (users.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#64748B;">Aucun enseignant configuré pour cette section.</div>';
+            return;
+        }
+
+        let html = '';
+        users.forEach((u, idx) => {
+            const tName = u.tableTeacherName || u.username;
+            const currentPhoto = u.photoUrl || photosMap[tName] || photosMap[u.username] || '';
+            const directImg = formatGoogleDriveImageUrl(currentPhoto);
+            const safeName = escapeHtml(tName);
+            const inputId = `teacherPhotoInput_${idx}`;
+            const previewId = `teacherPhotoPreview_${idx}`;
+
+            html += `
+                <div class="teacher-photo-card" style="background:white; border:1.5px solid #E2E8F0; border-radius:14px; padding:16px; box-shadow:0 2px 8px rgba(0,0,0,0.04); display:flex; flex-direction:column; gap:12px; transition:transform 0.15s ease;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="position:relative; width:52px; height:52px; border-radius:50%; overflow:hidden; border:2.5px solid #3B82F6; background:#F1F5F9; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+                            <img id="${previewId}" src="${directImg || ''}" alt="${safeName}" style="width:100%; height:100%; object-fit:cover; display:${directImg ? 'block' : 'none'};" onerror="this.style.display='none'; document.getElementById('${previewId}_icon').style.display='block';">
+                            <i id="${previewId}_icon" class="fas fa-user" style="font-size:1.4rem; color:#94A3B8; display:${directImg ? 'none' : 'block'};"></i>
+                        </div>
+                        <div style="min-width:0; flex:1;">
+                            <div style="font-weight:800; color:#1E293B; font-size:0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${safeName}">${safeName}</div>
+                            <div style="font-size:0.78rem; color:#64748B;">Identifiant : <strong>${escapeHtml(u.username)}</strong></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:0.8rem; font-weight:700; color:#475569; display:block; margin-bottom:4px;">
+                            <i class="fab fa-google-drive" style="color:#0EA5E9;"></i> Lien Google Drive :
+                        </label>
+                        <input type="text" id="${inputId}" data-teacher-name="${escapeHtml(tName)}" data-user-name="${escapeHtml(u.username)}" value="${escapeHtml(currentPhoto)}" placeholder="https://drive.google.com/file/d/..." oninput="previewTeacherGalleryPhoto('${inputId}', '${previewId}')" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-size:0.82rem; background:#F8FAFC;">
+                    </div>
+                    <div style="display:flex; gap:8px; justify-content:flex-end;">
+                        <button type="button" class="pro-button" onclick="previewTeacherGalleryPhoto('${inputId}', '${previewId}', true)" style="padding:6px 10px; font-size:0.78rem; background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE; border-radius:6px; font-weight:700;">
+                            <i class="fas fa-eye"></i> Tester
+                        </button>
+                        <button type="button" class="pro-button success-button" onclick="saveSingleTeacherPhoto('${escapeHtml(tName)}', '${inputId}')" style="padding:6px 12px; font-size:0.78rem; font-weight:700; border-radius:6px;">
+                            <i class="fas fa-save"></i> Enregistrer
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+        if (statusMsg) statusMsg.innerHTML = '';
+    } catch (err) {
+        console.error("Erreur renderAdminTeachersPhotosGallery:", err);
+        container.innerHTML = `<div style="grid-column: 1/-1; color:red; padding:20px; text-align:center;">Erreur: ${err.message}</div>`;
+    }
+}
+
+function previewTeacherGalleryPhoto(inputId, previewId, notify) {
+    const input = document.getElementById(inputId);
+    const img = document.getElementById(previewId);
+    const icon = document.getElementById(`${previewId}_icon`);
+    if (!input || !img) return;
+
+    const url = formatGoogleDriveImageUrl(input.value);
+    if (url) {
+        img.src = url;
+        img.style.display = 'block';
+        if (icon) icon.style.display = 'none';
+        if (notify) displayAlert("✅ Lien Google Drive valide et converti en image directe !", false);
+    } else {
+        img.src = '';
+        img.style.display = 'none';
+        if (icon) icon.style.display = 'block';
+        if (notify) displayAlert("⚠️ Aucun lien ou format non reconnu.", true);
+    }
+}
+
+async function saveSingleTeacherPhoto(teacherName, inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+
+    const photoUrl = input.value.trim();
+    const section = document.getElementById('adminPhotoSectionFilter')?.value || currentSection || 'garcons';
+    const userName = input.dataset.userName || teacherName;
+
+    try {
+        const response = await fetch('/api/teachers-photos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ teacherName, userName, photoUrl, section })
+        });
+        const res = await response.json();
+        if (response.ok) {
+            displayAlert(`✅ Photo enregistrée pour ${teacherName} !`, false);
+        } else {
+            throw new Error(res.message);
+        }
+    } catch (err) {
+        displayAlert(`Erreur: ${err.message}`, true);
+    }
+}
+
+async function saveAllTeachersPhotos() {
+    const container = document.getElementById('teachersPhotosGalleryContainer');
+    const statusMsg = document.getElementById('adminPhotosStatusMsg');
+    if (!container) return;
+
+    const inputs = container.querySelectorAll('input[data-teacher-name]');
+    if (inputs.length === 0) return;
+
+    if (statusMsg) statusMsg.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement de toutes les photos en cours...</span>';
+
+    try {
+        const section = document.getElementById('adminPhotoSectionFilter')?.value || currentSection || 'garcons';
+        let savedCount = 0;
+
+        for (const input of inputs) {
+            const teacherName = input.dataset.teacherName;
+            const userName = input.dataset.userName;
+            const photoUrl = input.value.trim();
+            await fetch('/api/teachers-photos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ teacherName, userName, photoUrl, section })
+            });
+            savedCount++;
+        }
+
+        if (statusMsg) {
+            statusMsg.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> ${savedCount} photos enregistrées avec succès !</span>`;
+            setTimeout(() => { if (statusMsg) statusMsg.innerHTML = ''; }, 4000);
+        }
+        displayAlert(`✅ Toutes les photos d'enseignants ont été enregistrées !`, false);
+    } catch (err) {
+        if (statusMsg) statusMsg.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${err.message}</span>`;
+    }
+}
+
+/**
+ * Modal individuel pour l'enseignant connecté
+ */
+async function openTeacherPhotoModal() {
+    const modal = document.getElementById('teacherPhotoModal');
+    const nameEl = document.getElementById('myPhotoModalTeacherName');
+    const linkInput = document.getElementById('myPhotoDriveLinkInput');
+    const previewImg = document.getElementById('myPhotoModalPreview');
+    const placeholderIcon = document.getElementById('myPhotoModalPlaceholder');
+    const statusMsg = document.getElementById('myPhotoStatusMsg');
+    if (!modal) return;
+
+    const teacherDisplayName = loggedInTeacherTable || loggedInUser || 'Enseignant';
+    if (nameEl) nameEl.textContent = teacherDisplayName;
+    if (statusMsg) statusMsg.innerHTML = '';
+
+    // Préremplir la photo actuelle
+    try {
+        const section = currentSection || 'garcons';
+        const res = await fetch(`/api/teachers-photos?section=${section}`);
+        if (res.ok) {
+            const photos = await res.json();
+            const currentUrl = photos[teacherDisplayName] || photos[loggedInUser] || '';
+            if (linkInput) linkInput.value = currentUrl;
+            previewMyPhotoDriveLink(currentUrl);
+        }
+    } catch (e) {
+        console.warn("Erreur chargement photo perso:", e);
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeTeacherPhotoModal() {
+    const modal = document.getElementById('teacherPhotoModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function previewMyPhotoDriveLink(url) {
+    const previewImg = document.getElementById('myPhotoModalPreview');
+    const placeholder = document.getElementById('myPhotoModalPlaceholder');
+    if (!previewImg || !placeholder) return;
+
+    const direct = formatGoogleDriveImageUrl(url);
+    if (direct) {
+        previewImg.src = direct;
+        previewImg.style.display = 'block';
+        placeholder.style.display = 'none';
+    } else {
+        previewImg.src = '';
+        previewImg.style.display = 'none';
+        placeholder.style.display = 'block';
+    }
+}
+
+async function saveMyTeacherPhoto() {
+    const linkInput = document.getElementById('myPhotoDriveLinkInput');
+    const statusMsg = document.getElementById('myPhotoStatusMsg');
+    const photoUrl = linkInput ? linkInput.value.trim() : '';
+    const section = currentSection || 'garcons';
+    const teacherName = loggedInTeacherTable || loggedInUser;
+
+    if (statusMsg) statusMsg.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement de votre photo...</span>';
+
+    try {
+        const res = await fetch('/api/my-teacher-photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: loggedInUser,
+                teacherName: teacherName,
+                photoUrl: photoUrl,
+                section: section
+            })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            if (statusMsg) {
+                statusMsg.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Photo enregistrée avec succès !</span>`;
+            }
+            loadCurrentUserAvatar(loggedInUser);
+            setTimeout(() => {
+                closeTeacherPhotoModal();
+            }, 1200);
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (err) {
+        if (statusMsg) {
+            statusMsg.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${err.message}</span>`;
+        }
+    }
+}
+
+/**
+ * Met à jour l'avatar dans la barre d'en-tête de l'utilisateur
+ */
+async function loadCurrentUserAvatar(username) {
+    const avatarImg = document.getElementById('headerUserAvatar');
+    const avatarFallback = document.getElementById('headerUserAvatarFallback');
+    if (!avatarImg || !avatarFallback) return;
+
+    if (!username) {
+        avatarImg.style.display = 'none';
+        avatarFallback.style.display = 'inline-flex';
+        return;
+    }
+
+    try {
+        const section = currentSection || 'garcons';
+        const res = await fetch(`/api/teachers-photos?section=${section}`);
+        if (res.ok) {
+            const photos = await res.json();
+            const teacherDisplayName = loggedInTeacherTable || username;
+            const photoUrl = photos[teacherDisplayName] || photos[username] || '';
+            const direct = formatGoogleDriveImageUrl(photoUrl);
+
+            if (direct) {
+                avatarImg.src = direct;
+                avatarImg.onload = () => {
+                    avatarImg.style.display = 'block';
+                    avatarFallback.style.display = 'none';
+                };
+                avatarImg.onerror = () => {
+                    avatarImg.style.display = 'none';
+                    avatarFallback.style.display = 'inline-flex';
+                };
+            } else {
+                avatarImg.style.display = 'none';
+                avatarFallback.style.display = 'inline-flex';
+            }
+        }
+    } catch (e) {
+        avatarImg.style.display = 'none';
+        avatarFallback.style.display = 'inline-flex';
     }
 }
 
