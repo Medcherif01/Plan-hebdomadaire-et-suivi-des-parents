@@ -4774,6 +4774,20 @@ app.post('/api/generate-word', async (req, res) => {
 	      if (u.tableTeacherName && u.photoUrl && !teachersPhotos[u.tableTeacherName]) teachersPhotos[u.tableTeacherName] = u.photoUrl;
 	    });
 
+	    const datesNode = specificWeekDateRangesNode[weekNumber];
+	    let weekStartDateNode = null;
+	    let plageSemaineText = '';
+	    if (datesNode?.start) {
+	      weekStartDateNode = new Date(datesNode.start + 'T00:00:00Z');
+	      if (datesNode?.end) {
+	        const startD = new Date(datesNode.start + 'T00:00:00Z');
+	        const endD = new Date(datesNode.end + 'T00:00:00Z');
+	        if (!isNaN(startD.getTime()) && !isNaN(endD.getTime())) {
+	          plageSemaineText = `du ${formatDateFrenchNode(startD)} à ${formatDateFrenchNode(endD)}`;
+	        }
+	      }
+	    }
+
 	    const html = generateDesignPlanHtml({
 	      week: weekNumber,
 	      classe,
@@ -4782,7 +4796,10 @@ app.post('/api/generate-word', async (req, res) => {
 	      section,
 	      theme,
 	      showPhotos,
-	      teachersPhotos
+	      teachersPhotos,
+	      weekStartDate: weekStartDateNode,
+	      weekDateRange: plageSemaineText,
+	      semester: 1
 	    });
 
 	    if (download) {

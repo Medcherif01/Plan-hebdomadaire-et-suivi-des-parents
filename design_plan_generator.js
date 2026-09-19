@@ -1,5 +1,6 @@
 // ============================================================================
-// DESIGN PLAN GENERATOR - Modèle Stylisé & Haute Définition pour Impression / PDF
+// DESIGN PLAN GENERATOR - Modèle Stylisé Haute Définition A4 pour Impression / PDF
+// Conforme au modèle Word officiel : Marges 1.5 cm, 3 colonnes, 1 page par jour
 // ============================================================================
 
 const subjectColors = {
@@ -9,6 +10,8 @@ const subjectColors = {
   'arabe': { bg: '#ECFDF5', border: '#34D399', text: '#065F46', icon: 'fa-feather-alt', label: 'العربية' },
   'anglais': { bg: '#F0F9FF', border: '#38BDF8', text: '#0369A1', icon: 'fa-language', label: 'English' },
   'sciences': { bg: '#F0FDF4', border: '#4ADE80', text: '#14532D', icon: 'fa-atom', label: 'Sciences' },
+  'svt': { bg: '#F0FDF4', border: '#4ADE80', text: '#14532D', icon: 'fa-leaf', label: 'SVT' },
+  'physique': { bg: '#F5F3FF', border: '#A78BFA', text: '#4C1D95', icon: 'fa-bolt', label: 'Physique-Chimie' },
   'histoire': { bg: '#FFFBEB', border: '#FBBF24', text: '#78350F', icon: 'fa-landmark', label: 'Histoire-Géo' },
   'geographie': { bg: '#FFFBEB', border: '#FBBF24', text: '#78350F', icon: 'fa-globe-americas', label: 'Histoire-Géo' },
   'islamique': { bg: '#ECFDF5', border: '#10B981', text: '#047857', icon: 'fa-mosque', label: 'التربية الإسلامية' },
@@ -52,6 +55,31 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function formatDateFrench(date) {
+  if (!date || isNaN(date.getTime())) return "";
+  const days = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+  const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+  const dayName = days[date.getUTCDay()];
+  const dayNum = String(date.getUTCDate()).padStart(2, '0');
+  const monthName = months[date.getUTCMonth()];
+  const yearNum = date.getUTCFullYear();
+  return `${dayName} ${dayNum} ${monthName} ${yearNum}`;
+}
+
+function getDateForDayName(weekStartDate, dayName) {
+  if (!weekStartDate || isNaN(weekStartDate.getTime())) return null;
+  const dayOrder = { "Dimanche": 0, "Lundi": 1, "Mardi": 2, "Mercredi": 3, "Jeudi": 4 };
+  const offset = dayOrder[dayName];
+  if (offset === undefined) return null;
+  const specificDate = new Date(Date.UTC(
+    weekStartDate.getUTCFullYear(),
+    weekStartDate.getUTCMonth(),
+    weekStartDate.getUTCDate()
+  ));
+  specificDate.setUTCDate(specificDate.getUTCDate() + offset);
+  return specificDate;
+}
+
 function formatPeriodHour(periodeNum) {
   const p = parseInt(periodeNum, 10);
   switch (p) {
@@ -75,15 +103,10 @@ function generateDesignPlanHtml({
   theme = 'indigo',
   showPhotos = true,
   teachersPhotos = {},
-  weekDateRange = ''
+  weekStartDate = null,
+  weekDateRange = '',
+  semester = 1
 }) {
-  const sectionLabels = {
-    garcons: 'Section Garçons 👦',
-    filles: 'Section Filles 👧',
-    primaire: 'Section Primaire & Maternelle 👶🎒'
-  };
-  const currentSectionLabel = sectionLabels[section] || 'Section Garçons';
-
   const dayOrder = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
   const arabicDays = {
     'Dimanche': 'الأحد',
@@ -97,11 +120,6 @@ function generateDesignPlanHtml({
   const groupedByDay = {};
   dayOrder.forEach(d => { groupedByDay[d] = []; });
 
-  let totalSessions = 0;
-  let totalHomework = 0;
-  const teachersSet = new Set();
-  const subjectsSet = new Set();
-
   data.forEach(item => {
     if (!item) return;
     const rawDay = item['Jour'] || item['jour'] || item['day'] || '';
@@ -110,18 +128,6 @@ function generateDesignPlanHtml({
       groupedByDay[matchedDay] = [];
     }
     groupedByDay[matchedDay].push(item);
-    totalSessions++;
-
-    const hw = item['Devoirs'] || item['devoirs'] || '';
-    if (hw && hw.trim() !== '' && !hw.toLowerCase().includes('aucun') && !hw.toLowerCase().includes('لا يوجد')) {
-      totalHomework++;
-    }
-
-    const t = item['Enseignant'] || item['enseignant'] || '';
-    if (t) teachersSet.add(t.trim());
-
-    const m = item['Matière'] || item['matiere'] || '';
-    if (m) subjectsSet.add(m.trim());
   });
 
   // Trier par période chaque jour
@@ -135,35 +141,64 @@ function generateDesignPlanHtml({
     }
   });
 
-  const printTimestamp = new Date().toLocaleString('fr-FR', {
-    dateStyle: 'full',
-    timeStyle: 'short'
-  });
+  // Déterminer la date de début si objet ou string
+  let weekStartObj = null;
+  if (weekStartDate instanceof Date && !isNaN(weekStartDate.getTime())) {
+    weekStartObj = weekStartDate;
+  } else if (typeof weekStartDate === 'string' && weekStartDate.trim() !== '') {
+    const parsed = new Date(weekStartDate.includes('T') ? weekStartDate : weekStartDate + 'T00:00:00Z');
+    if (!isNaN(parsed.getTime())) weekStartObj = parsed;
+  }
+
+  // Libellé de la plage de la semaine
+  let plageSemaineDisplay = weekDateRange;
+  if (!plageSemaineDisplay) {
+    if (weekStartObj) {
+      const endD = new Date(weekStartObj.getTime());
+      endD.setUTCDate(endD.getUTCDate() + 4);
+      plageSemaineDisplay = `du ${formatDateFrench(weekStartObj)} à ${formatDateFrench(endD)}`;
+    } else {
+      plageSemaineDisplay = `du Dimanche ...... à Jeudi ......`;
+    }
+  }
+
+  // Filtrer les jours qui ont des cours ou afficher les 5 jours de la semaine scolaire
+  const activeDays = dayOrder.filter(d => (groupedByDay[d] && groupedByDay[d].length > 0));
+  const daysToRender = activeDays.length > 0 ? activeDays : dayOrder;
+  const totalPages = daysToRender.length;
 
   return `<!DOCTYPE html>
 <html lang="fr" data-theme="${escapeHtml(theme)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Plan Hebdomadaire Stylisé - Semaine ${week} - ${escapeHtml(classe)}</title>
-  <!-- Google Fonts : Typographie bilingue moderne -->
+  <title>Plan Hebdomadaire - Semaine ${week} - ${escapeHtml(classe)}</title>
+  <!-- Google Fonts professionnels : Outfit, Plus Jakarta Sans et Cairo -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800&family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
   <style>
+    /* ========================================================================
+       CONFIGURATION PAGE A4 & MARGES EXACTES DE 1.5 CM
+       ======================================================================== */
+    @page {
+      size: A4 portrait;
+      margin: 1.5cm 1.5cm 1.5cm 1.5cm;
+    }
+
     :root {
-      /* Palette Indigo par défaut */
       --primary-color: #1E3A8A;
       --primary-gradient: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%);
-      --accent-color: #3B82F6;
+      --accent-color: #2563EB;
       --accent-light: #EFF6FF;
-      --border-color: #CBD5E1;
-      --bg-canvas: #F8FAFC;
-      --card-bg: #FFFFFF;
+      --border-dark: #334155;
+      --border-light: #CBD5E1;
       --text-main: #0F172A;
-      --text-muted: #64748B;
+      --text-muted: #475569;
+      --lesson-topic-color: #991B1B;
       --homework-bg: #FEF3C7;
       --homework-border: #F59E0B;
       --homework-text: #92400E;
@@ -172,34 +207,33 @@ function generateDesignPlanHtml({
     [data-theme="emerald"] {
       --primary-color: #065F46;
       --primary-gradient: linear-gradient(135deg, #065F46 0%, #059669 100%);
-      --accent-color: #10B981;
+      --accent-color: #059669;
       --accent-light: #ECFDF5;
-      --border-color: #A7F3D0;
       --homework-bg: #FEF9C3;
       --homework-border: #EAB308;
       --homework-text: #854D0E;
     }
 
-    [data-theme="multicolor"] {
-      --primary-color: #312E81;
-      --primary-gradient: linear-gradient(135deg, #312E81 0%, #4F46E5 100%);
-      --accent-color: #6366F1;
-      --accent-light: #EEF2FF;
-      --border-color: #C7D2FE;
-      --homework-bg: #FFFBEB;
-      --homework-border: #F59E0B;
-      --homework-text: #B45309;
-    }
-
     [data-theme="prestige"] {
       --primary-color: #881337;
       --primary-gradient: linear-gradient(135deg, #881337 0%, #BE123C 100%);
-      --accent-color: #D97706;
-      --accent-light: #FFFBEB;
-      --border-color: #FECDD3;
+      --accent-color: #BE123C;
+      --accent-light: #FFF1F2;
+      --lesson-topic-color: #881337;
       --homework-bg: #FEF2F2;
-      --homework-border: #EF4444;
+      --homework-border: #F87171;
       --homework-text: #991B1B;
+    }
+
+    [data-theme="classic"] {
+      --primary-color: #000000;
+      --primary-gradient: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+      --accent-color: #0F172A;
+      --accent-light: #F1F5F9;
+      --lesson-topic-color: #000000;
+      --homework-bg: #F8FAFC;
+      --homework-border: #94A3B8;
+      --homework-text: #0F172A;
     }
 
     * {
@@ -209,49 +243,45 @@ function generateDesignPlanHtml({
     }
 
     body {
-      font-family: 'Outfit', 'Plus Jakarta Sans', 'Cairo', sans-serif;
-      background-color: var(--bg-canvas);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #E2E8F0;
       color: var(--text-main);
-      line-height: 1.5;
-      padding-bottom: 60px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* BARRE D'ACTIONS FLOTTANTE EN HAUT (NON IMPRIMABLE) */
-    .action-toolbar-top {
+    /* BARRE D'ACTION FLOTTANTE EN HAUT (NON IMPRIMABLE) */
+    .screen-toolbar {
       position: sticky;
       top: 0;
-      z-index: 999;
-      background: rgba(15, 23, 42, 0.95);
-      backdrop-filter: blur(12px);
-      padding: 12px 24px;
+      z-index: 1000;
+      background: #0F172A;
+      color: white;
+      padding: 10px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
       gap: 12px;
-      color: white;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-      border-bottom: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
     }
 
-    .toolbar-title {
-      font-weight: 700;
-      font-size: 1rem;
+    .toolbar-info {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
+      font-size: 0.95rem;
+      font-weight: 700;
     }
 
-    .toolbar-actions {
+    .toolbar-controls {
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
     }
 
-    .btn-action {
-      background: #2563EB;
-      color: white;
+    .btn-toolbar {
       border: none;
       padding: 8px 16px;
       border-radius: 8px;
@@ -260,602 +290,582 @@ function generateDesignPlanHtml({
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
       transition: all 0.2s ease;
     }
 
-    .btn-action:hover {
-      opacity: 0.9;
+    .btn-print-primary {
+      background: linear-gradient(135deg, #10B981, #059669);
+      color: white;
+      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+    }
+    .btn-print-primary:hover {
+      filter: brightness(1.1);
       transform: translateY(-1px);
     }
 
-    .btn-print {
-      background: linear-gradient(135deg, #10B981, #059669);
-      box-shadow: 0 2px 8px rgba(16,185,129,0.3);
+    .btn-download-html {
+      background: #2563EB;
+      color: white;
+    }
+    .btn-download-html:hover {
+      background: #1D4ED8;
     }
 
-    .btn-theme {
-      background: rgba(255,255,255,0.15);
-      border: 1px solid rgba(255,255,255,0.25);
-    }
-
-    .theme-picker {
+    .theme-selector {
       display: inline-flex;
-      background: rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.12);
       padding: 3px;
       border-radius: 8px;
       gap: 4px;
     }
 
-    .theme-btn {
+    .theme-opt-btn {
       background: transparent;
       border: none;
       color: white;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       font-weight: 600;
       padding: 5px 10px;
       border-radius: 6px;
       cursor: pointer;
     }
 
-    .theme-btn.active {
+    .theme-opt-btn.active {
       background: white;
       color: #0F172A;
     }
 
-    /* CONTENEUR PRINCIPAL DU PLAN */
-    .plan-page-container {
-      max-width: 1280px;
-      margin: 24px auto;
-      padding: 0 16px;
+    /* CONTENEUR GLOBAL DES FEUILLES A4 */
+    .all-pages-wrapper {
+      padding: 20px 0;
     }
 
-    /* EN-TÊTE INSTITUTIONNEL ÉLÉGANT */
-    .plan-header-card {
-      background: var(--card-bg);
-      border-radius: 16px;
-      border: 1px solid var(--border-color);
-      box-shadow: 0 4px 18px rgba(0,0,0,0.04);
-      padding: 24px 28px;
-      margin-bottom: 24px;
+    /* ========================================================================
+       FEUILLE A4 STRICTE (210mm x 297mm) AVEC MARGE 1.5 CM
+       ======================================================================== */
+    .a4-page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto 30px auto;
+      padding: 1.5cm; /* Marge exacte de 1.5 cm sur les 4 côtés */
+      background: #FFFFFF;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      box-sizing: border-box;
       position: relative;
-      overflow: hidden;
-    }
-
-    .plan-header-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 6px;
-      background: var(--primary-gradient);
-    }
-
-    .header-top-row {
       display: flex;
+      flex-direction: column;
       justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 16px;
-      margin-bottom: 18px;
+      page-break-after: always;
+      break-after: page;
     }
 
-    .school-identity {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .school-emblem {
-      width: 54px;
-      height: 54px;
-      border-radius: 14px;
-      background: var(--primary-gradient);
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.6rem;
-      box-shadow: 0 4px 12px rgba(30,58,138,0.25);
-    }
-
-    .school-titles h1 {
-      font-size: 1.35rem;
-      font-weight: 800;
-      color: var(--primary-color);
-      letter-spacing: -0.02em;
-    }
-
-    .school-titles p {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      font-weight: 600;
-    }
-
-    .header-badges-group {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .badge-pill {
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .badge-week {
-      background: var(--primary-gradient);
-      color: white;
-      box-shadow: 0 2px 8px rgba(37,99,235,0.25);
-    }
-
-    .badge-class {
-      background: var(--accent-light);
-      color: var(--primary-color);
-      border: 1.5px solid var(--border-color);
-    }
-
-    .badge-section {
-      background: #F1F5F9;
-      color: #334155;
-      border: 1px solid #CBD5E1;
-    }
-
-    /* BARRE DE STATISTIQUES RÉCAPITULATIVE */
-    .summary-stats-strip {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 12px;
-      padding-top: 16px;
-      border-top: 1px solid #F1F5F9;
-    }
-
-    .stat-pill {
-      background: #F8FAFC;
-      border: 1px solid #E2E8F0;
-      border-radius: 10px;
-      padding: 10px 14px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .stat-icon-circle {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      background: var(--accent-light);
-      color: var(--primary-color);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.95rem;
-    }
-
-    .stat-text .stat-num {
-      font-size: 1.05rem;
-      font-weight: 800;
-      color: var(--text-main);
-      line-height: 1.1;
-    }
-
-    .stat-text .stat-lbl {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      font-weight: 600;
-    }
-
-    /* SECTION DES JOURS */
-    .day-block-card {
-      background: var(--card-bg);
-      border-radius: 14px;
-      border: 1px solid var(--border-color);
+    .a4-page:last-child {
       margin-bottom: 20px;
-      overflow: hidden;
-      box-shadow: 0 3px 12px rgba(0,0,0,0.03);
-      page-break-inside: avoid;
-      break-inside: avoid;
     }
 
-    .day-header-banner {
-      background: #F1F5F9;
-      border-bottom: 1.5px solid var(--border-color);
-      padding: 12px 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
+    /* ------------------------------------------------------------------------
+       1. EN-TÊTE STRUCTURÉ COMME SUR LE MODÈLE WORD
+       ------------------------------------------------------------------------ */
+    .word-header-container {
+      margin-bottom: 12px;
+      border-bottom: 2px solid var(--primary-color);
+      padding-bottom: 8px;
     }
 
-    .day-name-fr {
-      font-size: 1.05rem;
-      font-weight: 800;
+    .word-main-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.55rem;
+      font-weight: 900;
       color: var(--primary-color);
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-align: center;
+      margin-bottom: 8px;
     }
 
-    .day-name-ar {
-      font-family: 'Cairo', sans-serif;
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      direction: rtl;
-    }
-
-    /* TABLEAU DES SÉANCES DU JOUR */
-    .lessons-table {
+    .word-meta-table {
       width: 100%;
       border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+
+    .word-meta-table td {
+      padding: 3px 0;
+      vertical-align: middle;
+    }
+
+    .meta-left {
       text-align: left;
+      width: 50%;
+    }
+
+    .meta-right {
+      text-align: right;
+      width: 50%;
+    }
+
+    .meta-label {
+      font-weight: 800;
+      color: #1E293B;
+      text-transform: uppercase;
       font-size: 0.88rem;
     }
 
-    .lessons-table th {
-      background: #F8FAFC;
-      color: #475569;
+    .meta-value {
       font-weight: 700;
-      font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      padding: 10px 14px;
-      border-bottom: 1.5px solid var(--border-color);
+      color: var(--primary-color);
+      font-size: 0.95rem;
     }
 
-    .lessons-table td {
-      padding: 12px 14px;
-      border-bottom: 1px solid #E2E8F0;
+    .meta-date-range {
+      font-weight: 600;
+      color: #334155;
+    }
+
+    /* ------------------------------------------------------------------------
+       2. TABLEAU DES NOTES (DESIGN SOIGNÉ & PROFESSIONNEL)
+       ------------------------------------------------------------------------ */
+    .word-notes-block {
+      margin-bottom: 12px;
+    }
+
+    .notes-styled-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid #F59E0B;
+      background: #FFFBEB;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .notes-styled-table th {
+      background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+      color: #FFFFFF;
+      padding: 5px 10px;
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .notes-styled-table td {
+      padding: 8px 12px;
+      font-size: 0.86rem;
+      color: #78350F;
+      line-height: 1.45;
+      font-weight: 500;
+      white-space: pre-wrap;
+    }
+
+    /* ------------------------------------------------------------------------
+       3. BANDEAU DE DATE DU JOUR (EX: Lundi 21 Septembre 2026)
+       ------------------------------------------------------------------------ */
+    .day-banner-strip {
+      background: #F8FAFC;
+      border: 1.5px solid var(--border-light);
+      border-left: 5px solid var(--primary-color);
+      padding: 7px 14px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-radius: 4px;
+    }
+
+    .day-title-french {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--primary-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .day-title-arabic {
+      font-family: 'Cairo', sans-serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #475569;
+      direction: rtl;
+    }
+
+    /* ------------------------------------------------------------------------
+       4. TABLEAU OFFICIEL DES SÉANCES DU JOUR (3 COLONNES EXACTES)
+       MATIÈRES | TRAVAIL DE CLASSE | DEVOIRS
+       ------------------------------------------------------------------------ */
+    .main-table-wrapper {
+      flex: 1;
+    }
+
+    .lessons-table-a4 {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid var(--border-dark);
+      font-size: 0.84rem;
+    }
+
+    .lessons-table-a4 thead th {
+      background: #F1F5F9;
+      color: #0F172A;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 0.88rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 8px 10px;
+      border: 1.5px solid var(--border-dark);
+      text-align: center;
+    }
+
+    .lessons-table-a4 tbody td {
+      border: 1px solid #CBD5E1;
+      padding: 8px 10px;
       vertical-align: top;
     }
 
-    .lessons-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .lessons-table tr:nth-child(even) {
+    .lessons-table-a4 tbody tr:nth-child(even) {
       background: #FAFAFC;
     }
 
-    /* COLONNES SPÉCIFIQUES */
-    .col-period {
-      width: 110px;
-      white-space: nowrap;
+    /* COLONNE 1 : MATIÈRES */
+    .col-matieres-td {
+      width: 28%;
+      border-right: 1.5px solid var(--border-dark) !important;
     }
 
-    .period-badge-tag {
-      background: #0F172A;
-      color: white;
-      font-size: 0.75rem;
+    .subject-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .subject-name-tag {
       font-weight: 800;
-      padding: 3px 8px;
-      border-radius: 6px;
-      display: inline-block;
-      margin-bottom: 2px;
-    }
-
-    .period-hour-txt {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      font-weight: 600;
-    }
-
-    .col-subject {
-      width: 160px;
-    }
-
-    .subject-pill {
+      font-size: 0.86rem;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 5px 10px;
-      border-radius: 8px;
-      font-weight: 700;
-      font-size: 0.82rem;
+      gap: 5px;
+      padding: 2px 7px;
+      border-radius: 5px;
       border: 1px solid transparent;
       white-space: nowrap;
     }
 
-    .col-teacher {
-      width: 150px;
+    .period-badge-pill {
+      font-size: 0.72rem;
+      font-weight: 800;
+      background: #0F172A;
+      color: white;
+      padding: 1px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
     }
 
-    .teacher-badge-container {
-      display: inline-flex;
+    .period-time-txt {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+
+    /* ENSEIGNANT AVEC PHOTO GOOGLE DRIVE */
+    .teacher-item-box {
+      display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px dashed #E2E8F0;
     }
 
-    .teacher-avatar-photo {
-      width: 32px;
-      height: 32px;
+    .teacher-photo-thumb {
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       object-fit: cover;
-      border: 1.5px solid var(--border-color);
-      background: #E2E8F0;
+      border: 1.5px solid var(--accent-color);
       flex-shrink: 0;
+      background: #E2E8F0;
     }
 
-    .teacher-avatar-fallback {
-      width: 32px;
-      height: 32px;
+    .teacher-fallback-thumb {
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       background: var(--accent-light);
       color: var(--primary-color);
-      font-size: 0.75rem;
-      font-weight: 800;
+      border: 1.5px solid var(--accent-color);
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 800;
       flex-shrink: 0;
-      border: 1px solid var(--border-color);
     }
 
-    .teacher-name-txt {
+    .teacher-name-print {
       font-weight: 700;
-      font-size: 0.84rem;
-      color: var(--text-main);
+      font-size: 0.82rem;
+      color: #1E293B;
+      line-height: 1.2;
     }
 
-    .col-lesson {
-      min-width: 180px;
+    .support-info-txt {
+      font-size: 0.75rem;
+      color: #475569;
+      font-style: italic;
+      margin-top: 4px;
+    }
+
+    /* COLONNE 2 : TRAVAIL DE CLASSE */
+    .col-classwork-td {
+      width: 44%;
+      border-right: 1.5px solid var(--border-dark) !important;
     }
 
     .lesson-title-strong {
-      font-weight: 700;
-      color: #B91C1C; /* Rouge bordeaux institutionnel pour les titres */
-      font-size: 0.9rem;
+      font-weight: 800;
+      font-size: 0.88rem;
+      color: var(--lesson-topic-color);
+      margin-bottom: 4px;
+      line-height: 1.35;
       display: block;
-      margin-bottom: 2px;
     }
 
-    .col-classwork {
-      min-width: 180px;
-      color: #334155;
+    .classwork-detail-txt {
+      font-size: 0.84rem;
+      color: #1E293B;
+      line-height: 1.45;
+      white-space: pre-wrap;
     }
 
-    .col-support {
-      width: 130px;
-      font-style: italic;
-      color: #475569;
-      font-size: 0.82rem;
+    /* COLONNE 3 : DEVOIRS */
+    .col-homework-td {
+      width: 28%;
     }
 
-    .col-homework {
-      min-width: 190px;
-    }
-
-    .homework-highlight-card {
+    .homework-item-card {
       background: var(--homework-bg);
       border: 1px solid var(--homework-border);
-      border-radius: 8px;
-      padding: 7px 10px;
+      border-radius: 6px;
+      padding: 6px 8px;
       color: var(--homework-text);
       font-weight: 600;
       font-size: 0.82rem;
+      line-height: 1.35;
     }
 
-    .homework-header-tag {
+    .homework-tag-label {
+      font-size: 0.7rem;
       font-weight: 800;
-      font-size: 0.72rem;
       text-transform: uppercase;
-      letter-spacing: 0.03em;
       display: flex;
       align-items: center;
-      gap: 5px;
-      margin-bottom: 3px;
+      gap: 4px;
+      margin-bottom: 2px;
+      color: var(--homework-text);
     }
 
-    /* NOTES DE CLASSE BANNER */
-    .class-notes-section {
-      background: #FFFBEB;
-      border: 1.5px solid #FCD34D;
-      border-radius: 14px;
-      padding: 18px 22px;
-      margin-bottom: 24px;
-      page-break-inside: avoid;
+    .no-homework-txt {
+      color: #94A3B8;
+      font-size: 0.8rem;
+      font-style: italic;
     }
 
-    .class-notes-title {
-      font-weight: 800;
-      color: #92400E;
-      font-size: 0.95rem;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-
-    .class-notes-content {
-      font-size: 0.9rem;
-      color: #78350F;
-      white-space: pre-wrap;
-      line-height: 1.6;
-    }
-
-    /* PIED DE PAGE IMPRIMABLE */
-    .plan-footer-box {
-      border-top: 1.5px solid var(--border-color);
-      padding-top: 16px;
+    /* ------------------------------------------------------------------------
+       5. PIED DE PAGE IMPRIMABLE
+       ------------------------------------------------------------------------ */
+    .a4-page-footer {
+      margin-top: 10px;
+      padding-top: 6px;
+      border-top: 1px solid #CBD5E1;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 16px;
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      page-break-inside: avoid;
+      font-size: 0.74rem;
+      color: #64748B;
     }
 
-    .signature-area {
-      border: 1px dashed var(--border-color);
-      border-radius: 8px;
-      padding: 10px 18px;
-      text-align: center;
-      min-width: 220px;
-      background: white;
+    .footer-stamp-box {
+      font-weight: 700;
+      color: #334155;
     }
 
-    /* GESTION IMPRESSION & PDF */
+    /* ========================================================================
+       RÈGLES D'IMPRESSION STRICTES (@media print)
+       ======================================================================== */
     @media print {
-      body {
-        background: white !important;
-        padding: 0 !important;
-      }
-      .action-toolbar-top {
-        display: none !important;
-      }
-      .plan-page-container {
-        max-width: 100% !important;
+      html, body {
+        background: #FFFFFF !important;
         margin: 0 !important;
         padding: 0 !important;
+        color: #000000 !important;
       }
-      .plan-header-card, .day-block-card, .class-notes-section {
+
+      .no-print {
+        display: none !important;
+      }
+
+      .all-pages-wrapper {
+        padding: 0 !important;
+      }
+
+      .a4-page {
+        width: 100% !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important; /* Le navigateur applique les 1.5 cm de @page */
         box-shadow: none !important;
-        border-color: #CBD5E1 !important;
+        border: none !important;
+        page-break-after: always !important;
+        break-after: page !important;
       }
+
+      .a4-page:last-child {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+      }
+
       * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-      }
-      @page {
-        size: A4 portrait;
-        margin: 8mm 8mm 8mm 8mm;
       }
     }
   </style>
 </head>
 <body>
 
-  <!-- BARRE D'ACTIONS RAPIDE (NON IMPRIMÉE) -->
-  <div class="action-toolbar-top no-print">
-    <div class="toolbar-title">
-      <i class="fas fa-palette" style="color: #60A5FA;"></i>
-      <span>Plan Hebdomadaire Stylisé • Semaine ${week} • ${escapeHtml(classe)}</span>
+  <!-- BARRE D'ACTIONS NON IMPRIMABLE -->
+  <div class="screen-toolbar no-print">
+    <div class="toolbar-info">
+      <i class="fas fa-file-pdf" style="color:#60A5FA;"></i>
+      <span>Plan Hebdomadaire Stylisé • Semaine ${week} • Classe : ${escapeHtml(classe)}</span>
     </div>
-    <div class="toolbar-actions">
-      <!-- Choix de thèmes visuels -->
-      <div class="theme-picker">
-        <button type="button" class="theme-btn ${theme === 'indigo' ? 'active' : ''}" onclick="setTheme('indigo')">Indigo</button>
-        <button type="button" class="theme-btn ${theme === 'emerald' ? 'active' : ''}" onclick="setTheme('emerald')">Émeraude</button>
-        <button type="button" class="theme-btn ${theme === 'multicolor' ? 'active' : ''}" onclick="setTheme('multicolor')">Multicolore</button>
-        <button type="button" class="theme-btn ${theme === 'prestige' ? 'active' : ''}" onclick="setTheme('prestige')">Bordeaux</button>
+    <div class="toolbar-controls">
+      <!-- Sélecteur de Thème Visuel -->
+      <div class="theme-selector">
+        <button type="button" class="theme-opt-btn ${theme === 'indigo' ? 'active' : ''}" onclick="setTheme('indigo')">Indigo</button>
+        <button type="button" class="theme-opt-btn ${theme === 'emerald' ? 'active' : ''}" onclick="setTheme('emerald')">Émeraude</button>
+        <button type="button" class="theme-opt-btn ${theme === 'prestige' ? 'active' : ''}" onclick="setTheme('prestige')">Bordeaux</button>
+        <button type="button" class="theme-opt-btn ${theme === 'classic' ? 'active' : ''}" onclick="setTheme('classic')">Classique</button>
       </div>
-      <!-- Bouton Téléchargement HTML autonome -->
-      <button type="button" class="btn-action" onclick="downloadSelfHtml()">
-        <i class="fas fa-download"></i> <span>Enregistrer le fichier HTML</span>
+      <!-- Enregistrer HTML autonome -->
+      <button type="button" class="btn-toolbar btn-download-html" onclick="downloadSelfHtml()">
+        <i class="fas fa-download"></i> <span>Enregistrer HTML</span>
       </button>
-      <!-- Bouton Impression / PDF Direct -->
-      <button type="button" class="btn-action btn-print" onclick="window.print()">
+      <!-- Bouton Impression / Exportation PDF -->
+      <button type="button" class="btn-toolbar btn-print-primary" onclick="window.print()">
         <i class="fas fa-print"></i> <span>Imprimer / Sauvegarder en PDF</span>
       </button>
     </div>
   </div>
 
-  <div class="plan-page-container">
+  <div class="all-pages-wrapper">
+    ${daysToRender.map((dayName, index) => {
+      const rows = groupedByDay[dayName] || [];
+      const pageNum = index + 1;
+      const isFirstPage = (index === 0);
 
-    <!-- EN-TÊTE INSTITUTIONNEL -->
-    <header class="plan-header-card">
-      <div class="header-top-row">
-        <div class="school-identity">
-          <div class="school-emblem">
-            <i class="fas fa-school"></i>
-          </div>
-          <div class="school-titles">
-            <h1>ÉCOLE & COLLÈGE - PLAN DE TRAVAIL HEBDOMADAIRE</h1>
-            <p>Année Scolaire 2025 - 2026 • Suivi Pédagogique des Écoles</p>
-          </div>
-        </div>
-        <div class="header-badges-group">
-          <span class="badge-pill badge-week"><i class="fas fa-calendar-week"></i> Semaine ${week}</span>
-          <span class="badge-pill badge-class"><i class="fas fa-chalkboard-user"></i> Classe : ${escapeHtml(classe)}</span>
-          <span class="badge-pill badge-section"><i class="fas fa-users"></i> ${escapeHtml(currentSectionLabel)}</span>
-        </div>
-      </div>
+      // Calculer la date complète du jour (ex: Lundi 21 Septembre 2026)
+      let formattedDayDate = dayName;
+      if (weekStartObj) {
+        const dayDateObj = getDateForDayName(weekStartObj, dayName);
+        if (dayDateObj) {
+          formattedDayDate = formatDateFrench(dayDateObj);
+        }
+      }
 
-      <!-- RÉSUMÉ EN CHIFFRES -->
-      <div class="summary-stats-strip">
-        <div class="stat-pill">
-          <div class="stat-icon-circle"><i class="fas fa-clock"></i></div>
-          <div class="stat-text">
-            <div class="stat-num">${totalSessions}</div>
-            <div class="stat-lbl">Séances programmées</div>
-          </div>
-        </div>
-        <div class="stat-pill">
-          <div class="stat-icon-circle"><i class="fas fa-pencil-alt"></i></div>
-          <div class="stat-text">
-            <div class="stat-num">${totalHomework}</div>
-            <div class="stat-lbl">Devoirs & Travaux</div>
-          </div>
-        </div>
-        <div class="stat-pill">
-          <div class="stat-icon-circle"><i class="fas fa-book"></i></div>
-          <div class="stat-text">
-            <div class="stat-num">${subjectsSet.size}</div>
-            <div class="stat-lbl">Matières actives</div>
-          </div>
-        </div>
-        <div class="stat-pill">
-          <div class="stat-icon-circle"><i class="fas fa-user-tie"></i></div>
-          <div class="stat-text">
-            <div class="stat-num">${teachersSet.size}</div>
-            <div class="stat-lbl">Enseignants</div>
-          </div>
-        </div>
-      </div>
-    </header>
+      return `
+      <section class="a4-page" id="page_day_${dayName.toLowerCase()}">
+        
+        <!-- EN-TÊTE OFFICIEL WORD SUR CHAQUE PAGE -->
+        <header class="word-header-container">
+          <div class="word-main-title">PLAN HEBDOMADAIRE</div>
+          <table class="word-meta-table">
+            <tr>
+              <td class="meta-left">
+                <span class="meta-label">CLASSE : </span>
+                <span class="meta-value">${escapeHtml(classe)}</span>
+              </td>
+              <td class="meta-right">
+                <span class="meta-label">SEMESTRE : </span>
+                <span class="meta-value">${escapeHtml(String(semester || 1))}</span>
+              </td>
+            </tr>
+            <tr>
+              <td class="meta-left">
+                <span class="meta-label">Semaine : </span>
+                <span class="meta-value">${week}</span>
+              </td>
+              <td class="meta-right">
+                <span class="meta-date-range">${escapeHtml(plageSemaineDisplay)}</span>
+              </td>
+            </tr>
+          </table>
+        </header>
 
-    <!-- LISTE DES JOURS ET SÉANCES -->
-    <main class="days-container">
-      ${dayOrder.map(dayName => {
-        const rows = groupedByDay[dayName] || [];
-        if (rows.length === 0) return '';
-
-        return `
-        <section class="day-block-card">
-          <div class="day-header-banner">
-            <div class="day-name-fr">
-              <i class="fas fa-calendar-day" style="color:var(--accent-color);"></i>
-              <span>${dayName}</span>
-            </div>
-            <div class="day-name-ar">
-              <span>${arabicDays[dayName] || dayName}</span>
-            </div>
+        <!-- TABLEAU DES NOTES (SUR LA PREMIÈRE PAGE OU RAPPELÉ) -->
+        ${isFirstPage ? `
+          <div class="word-notes-block">
+            <table class="notes-styled-table">
+              <thead>
+                <tr>
+                  <th style="text-align:left;"><i class="fas fa-clipboard-list"></i> Remarques & Notes de la semaine</th>
+                  <th style="text-align:right; font-family:'Cairo', sans-serif;">ملاحظات الأسبوع</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="2">
+                    ${escapeHtml(notes && notes.trim() !== '' ? notes : 'Aucune consigne particulière pour cette semaine.')}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+        ` : ''}
 
-          <table class="lessons-table">
+        <!-- BANDEAU DU JOUR EN COURS (EX: Lundi 21 Septembre 2026) -->
+        <div class="day-banner-strip">
+          <div class="day-title-french">
+            <i class="fas fa-calendar-day"></i>
+            <span>${escapeHtml(formattedDayDate)}</span>
+          </div>
+          <div class="day-title-arabic">
+            <span>${arabicDays[dayName] || dayName}</span>
+          </div>
+        </div>
+
+        <!-- TABLEAU DU JOUR À 3 COLONNES : MATIÈRES | TRAVAIL DE CLASSE | DEVOIRS -->
+        <div class="main-table-wrapper">
+          <table class="lessons-table-a4">
             <thead>
               <tr>
-                <th class="col-period">Période</th>
-                <th class="col-subject">Matière</th>
-                <th class="col-teacher">Enseignant</th>
-                <th class="col-lesson">Leçon / Thème</th>
-                <th class="col-classwork">Travaux de Classe</th>
-                <th class="col-support">Support</th>
-                <th class="col-homework">Devoirs à la Maison</th>
+                <th class="th-matieres">MATIÈRES</th>
+                <th class="th-classwork">TRAVAIL DE CLASSE</th>
+                <th class="th-homework">DEVOIRS</th>
               </tr>
             </thead>
             <tbody>
-              ${rows.map(row => {
+              ${rows.length === 0 ? `
+                <tr>
+                  <td colspan="3" style="text-align:center; padding:30px; color:#94A3B8; font-style:italic;">
+                    Aucune séance programmée pour cette journée.
+                  </td>
+                </tr>
+              ` : rows.map(row => {
                 const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
                 const horaire = formatPeriodHour(periodeVal);
                 const matiere = row['Matière'] || row['matiere'] || 'Cours';
                 const styleMat = getSubjectStyle(matiere);
                 const enseignant = row['Enseignant'] || row['enseignant'] || '';
-                
-                // Photo enseignant (Google Drive convertie ou fallback)
+
+                // Récupération de la photo Google Drive si disponible
                 let photoUrl = teachersPhotos[enseignant] || '';
                 if (photoUrl) photoUrl = formatDriveImageUrl(photoUrl);
-
                 const teacherInitial = enseignant ? enseignant.charAt(0).toUpperCase() : '?';
 
                 const lecon = row['Leçon'] || row['lecon'] || '';
@@ -866,44 +876,45 @@ function generateDesignPlanHtml({
 
                 return `
                 <tr>
-                  <td class="col-period">
-                    <span class="period-badge-tag">Période ${escapeHtml(periodeVal)}</span>
-                    ${horaire ? `<div class="period-hour-txt">${horaire}</div>` : ''}
-                  </td>
-                  <td class="col-subject">
-                    <span class="subject-pill" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
-                      <i class="fas ${styleMat.icon}"></i>
-                      <span>${escapeHtml(matiere)}</span>
-                    </span>
-                  </td>
-                  <td class="col-teacher">
-                    <div class="teacher-badge-container">
-                      ${(showPhotos && photoUrl) 
-                        ? `<img src="${photoUrl}" alt="${escapeHtml(enseignant)}" class="teacher-avatar-photo" onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(enseignant)}&background=2563EB&color=fff';">`
-                        : `<span class="teacher-avatar-fallback">${teacherInitial}</span>`
-                      }
-                      <span class="teacher-name-txt">${escapeHtml(enseignant)}</span>
+                  <!-- 1. MATIÈRES -->
+                  <td class="col-matieres-td">
+                    <div class="subject-header-row">
+                      <span class="subject-name-tag" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
+                        <i class="fas ${styleMat.icon}"></i>
+                        <span>${escapeHtml(matiere)}</span>
+                      </span>
+                      <span class="period-badge-pill">P${escapeHtml(periodeVal)}</span>
                     </div>
+                    ${horaire ? `<div class="period-time-txt">${horaire}</div>` : ''}
+
+                    <div class="teacher-item-box">
+                      ${(showPhotos && photoUrl) 
+                        ? `<img src="${photoUrl}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(enseignant)}&background=1E3A8A&color=fff';">`
+                        : `<span class="teacher-fallback-thumb">${teacherInitial}</span>`
+                      }
+                      <div class="teacher-name-print">${escapeHtml(enseignant)}</div>
+                    </div>
+
+                    ${support ? `<div class="support-info-txt"><i class="fas fa-paperclip"></i> Support : ${escapeHtml(support)}</div>` : ''}
                   </td>
-                  <td class="col-lesson">
-                    <span class="lesson-title-strong">${escapeHtml(lecon)}</span>
+
+                  <!-- 2. TRAVAIL DE CLASSE -->
+                  <td class="col-classwork-td">
+                    ${lecon ? `<strong class="lesson-title-strong"><i class="fas fa-book-reader" style="font-size:0.75rem;"></i> ${escapeHtml(lecon)}</strong>` : ''}
+                    <div class="classwork-detail-txt">${escapeHtml(travaux || '—')}</div>
                   </td>
-                  <td class="col-classwork">
-                    ${escapeHtml(travaux)}
-                  </td>
-                  <td class="col-support">
-                    ${escapeHtml(support)}
-                  </td>
-                  <td class="col-homework">
+
+                  <!-- 3. DEVOIRS -->
+                  <td class="col-homework-td">
                     ${hasHw ? `
-                      <div class="homework-highlight-card">
-                        <div class="homework-header-tag">
-                          <i class="fas fa-pencil-alt"></i> <span>Devoir requis</span>
+                      <div class="homework-item-card">
+                        <div class="homework-tag-label">
+                          <i class="fas fa-pencil-alt"></i> <span>À faire :</span>
                         </div>
                         <div>${escapeHtml(devoirs)}</div>
                       </div>
                     ` : `
-                      <span style="color:#94A3B8; font-size:0.8rem;">${escapeHtml(devoirs || '—')}</span>
+                      <span class="no-homework-txt">${escapeHtml(devoirs || '—')}</span>
                     `}
                   </td>
                 </tr>
@@ -911,40 +922,24 @@ function generateDesignPlanHtml({
               }).join('')}
             </tbody>
           </table>
-        </section>
-        `;
-      }).join('')}
-    </main>
-
-    <!-- NOTES ET OBSERVATIONS DE LA CLASSE -->
-    ${notes && notes.trim() !== '' ? `
-      <section class="class-notes-section">
-        <div class="class-notes-title">
-          <i class="fas fa-sticky-note"></i>
-          <span>Notes & Observations importantes pour la classe</span>
         </div>
-        <div class="class-notes-content">${escapeHtml(notes)}</div>
+
+        <!-- PIED DE PAGE DE CHAQUE FEUILLE A4 -->
+        <footer class="a4-page-footer">
+          <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
+          <div class="footer-stamp-box">Visa de la Direction</div>
+          <div>Page <strong>${pageNum}</strong> / ${totalPages}</div>
+        </footer>
+
       </section>
-    ` : ''}
-
-    <!-- PIED DE PAGE INSTITUTIONNEL -->
-    <footer class="plan-footer-box">
-      <div>
-        <div><strong>Document officiel de coordination pédagogique</strong></div>
-        <div>Édité le ${printTimestamp} • Application Plans Hebdomadaires</div>
-      </div>
-      <div class="signature-area">
-        <div style="font-weight:700; color:#334155; margin-bottom:14px;">Visa & Cachet de la Direction</div>
-        <div style="height:24px;"></div>
-      </div>
-    </footer>
-
+      `;
+    }).join('')}
   </div>
 
   <script>
     function setTheme(t) {
       document.documentElement.setAttribute('data-theme', t);
-      document.querySelectorAll('.theme-btn').forEach(btn => {
+      document.querySelectorAll('.theme-opt-btn').forEach(btn => {
         btn.classList.toggle('active', btn.textContent.toLowerCase().includes(t.substring(0, 3)));
       });
     }
@@ -955,7 +950,7 @@ function generateDesignPlanHtml({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'Plan_Hebdomadaire_Design_S${week}_' + '${escapeHtml(classe).replace(/[^a-zA-Z0-9]/g, '_')}' + '.html';
+      a.download = 'Plan_Hebdomadaire_A4_S${week}_' + '${escapeHtml(classe).replace(/[^a-zA-Z0-9]/g, '_')}' + '.html';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -969,5 +964,7 @@ function generateDesignPlanHtml({
 module.exports = {
   generateDesignPlanHtml,
   formatDriveImageUrl,
-  getSubjectStyle
+  getSubjectStyle,
+  formatDateFrench,
+  getDateForDayName
 };

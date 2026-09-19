@@ -19,6 +19,37 @@
         let currentSortOrder = 'asc';
         let showCrossSectionView = false;
 
+        // Cache global des photos des enseignants pour l'ensemble de l'application (Discussion Parents, Fiches, etc.)
+        window.globalTeachersPhotosMap = {};
+
+        async function fetchGlobalTeachersPhotos() {
+            try {
+                const res = await fetch('/api/teachers-photos');
+                if (res.ok) {
+                    const data = await res.json();
+                    window.globalTeachersPhotosMap = (data && data.photos) ? data.photos : {};
+                }
+            } catch (e) {
+                console.warn('Erreur chargement photos enseignants:', e);
+            }
+            return window.globalTeachersPhotosMap;
+        }
+
+        function getTeacherDirectPhotoUrl(teacherName) {
+            if (!teacherName || typeof teacherName !== 'string') return '';
+            const clean = teacherName.trim();
+            if (!window.globalTeachersPhotosMap || Object.keys(window.globalTeachersPhotosMap).length === 0) return '';
+            if (window.globalTeachersPhotosMap[clean]) {
+                return formatGoogleDriveImageUrl(window.globalTeachersPhotosMap[clean]);
+            }
+            const lower = clean.toLowerCase();
+            const foundKey = Object.keys(window.globalTeachersPhotosMap).find(k => k.toLowerCase() === lower);
+            if (foundKey) {
+                return formatGoogleDriveImageUrl(window.globalTeachersPhotosMap[foundKey]);
+            }
+            return '';
+        }
+
         // Listes strictes des enseignants par section
         const maleTeachersList = [
             'Mohamed', 'Abas', 'Jaber', 'Imad', 'Kamel', 'Majed', 'Mohamed Ali', 'Morched', 
@@ -4068,6 +4099,7 @@
         // --- Initialisation ---
         document.addEventListener('DOMContentLoaded', () => {
             console.log("DOM chargé.");
+            fetchGlobalTeachersPhotos();
             fetchWeeksConfiguration();
             updateSectionBadges();
             initPlanTableScrollSync();
@@ -7087,19 +7119,34 @@ async function loadTeachersContactGrid() {
         }
 
         const t = parentI18n[currentUserLanguage] || parentI18n.fr;
-        const iconBg = currentSection === 'filles' ? 'linear-gradient(135deg, #EC4899, #DB2777)' : (currentSection === 'primaire' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #6366F1, #4F46E5)');
+        const iconBg = currentSection === 'filles' ? 'linear-gradient(135deg, #EC4899, #DB2777)' : (currentSection === 'primaire' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #2563EB, #1D4ED8)');
 
-        grid.innerHTML = teachers.map(teacher => `
-            <div class="teacher-contact-card" onclick="openContactTeacherModal('${teacher.replace(/'/g, "\\'")}')" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:14px; padding:16px; text-align:center; cursor:pointer; transition:all 0.25s ease; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
-                <div style="width:48px; height:48px; background:${iconBg}; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.3rem; margin:0 auto 10px auto;">
-                    <i class="fas fa-chalkboard-teacher"></i>
+        // S'assurer que le cache des photos est chargé
+        if (!window.globalTeachersPhotosMap || Object.keys(window.globalTeachersPhotosMap).length === 0) {
+            await fetchGlobalTeachersPhotos();
+        }
+
+        grid.innerHTML = teachers.map(teacher => {
+            const photoUrl = getTeacherDirectPhotoUrl(teacher);
+            const initial = teacher ? teacher.charAt(0).toUpperCase() : '?';
+            return `
+            <div class="teacher-contact-card" onclick="openContactTeacherModal('${teacher.replace(/'/g, "\\'")}')" style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:16px; padding:18px 14px; text-align:center; cursor:pointer; transition:all 0.25s ease; box-shadow:0 2px 8px rgba(0,0,0,0.04); display:flex; flex-direction:column; align-items:center;">
+                <div style="width:58px; height:58px; margin:0 auto 10px auto; border-radius:50%; overflow:hidden; position:relative; box-shadow:0 3px 8px rgba(0,0,0,0.1); border:2px solid #CBD5E1;">
+                    ${photoUrl ? `
+                        <img src="${photoUrl}" alt="${escapeHtml(teacher)}" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'width:100%; height:100%; background:${iconBg}; color:white; display:flex; align-items:center; justify-content:center; font-size:1.3rem; font-weight:700;\\'>${escapeHtml(initial)}</div>';">
+                    ` : `
+                        <div style="width:100%; height:100%; background:${iconBg}; color:white; display:flex; align-items:center; justify-content:center; font-size:1.3rem; font-weight:700;">
+                            ${escapeHtml(initial)}
+                        </div>
+                    `}
                 </div>
-                <h4 style="margin:0 0 6px 0; color:#1E1B4B; font-size:1rem; font-weight:700;">${teacher}</h4>
-                <div style="display:inline-flex; align-items:center; gap:5px; background:#ECFDF5; color:#065F46; padding:4px 10px; border-radius:8px; font-size:0.8rem; font-weight:700;">
+                <h4 style="margin:0 0 6px 0; color:#1E1B4B; font-size:1.02rem; font-weight:800; line-height:1.25;">${escapeHtml(teacher)}</h4>
+                <div style="display:inline-flex; align-items:center; gap:5px; background:#ECFDF5; color:#065F46; padding:4px 10px; border-radius:8px; font-size:0.8rem; font-weight:700; margin-top:auto;">
                     <i class="fas fa-paper-plane"></i> <span>${t.sendMessageBtn}</span>
                 </div>
             </div>
-        `).join('');
+            `;
+        }).join('');
     } catch (e) {
         console.error('Erreur loadTeachersContactGrid:', e);
     }
@@ -7107,13 +7154,33 @@ async function loadTeachersContactGrid() {
 
 let targetTeacherForMessage = null;
 
-function openContactTeacherModal(teacherName) {
+async function openContactTeacherModal(teacherName) {
     targetTeacherForMessage = teacherName;
     const t = parentI18n[currentUserLanguage] || parentI18n.fr;
     
+    // S'assurer que les photos sont chargées
+    if (!window.globalTeachersPhotosMap || Object.keys(window.globalTeachersPhotosMap).length === 0) {
+        await fetchGlobalTeachersPhotos();
+    }
+
     const titleHeading = document.getElementById('contactModalTeacherHeading');
     if (titleHeading) {
         titleHeading.innerText = currentUserLanguage === 'ar' ? `مراسلة الأستاذ(ة) ${teacherName}` : `Contacter ${teacherName}`;
+    }
+
+    // Affichage de la photo et du nom de l'enseignant dans le modal de contact
+    const modalTeacherName = document.getElementById('contactModalTeacherName');
+    if (modalTeacherName) modalTeacherName.textContent = teacherName;
+
+    const modalAvatar = document.getElementById('contactModalTeacherAvatar');
+    if (modalAvatar) {
+        const photoUrl = getTeacherDirectPhotoUrl(teacherName);
+        const initial = teacherName ? teacherName.charAt(0).toUpperCase() : '?';
+        if (photoUrl) {
+            modalAvatar.innerHTML = `<img src="${photoUrl}" alt="${escapeHtml(teacherName)}" style="width:100%; height:100%; object-fit:cover; border-radius:50%; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight:800;\\'>${escapeHtml(initial)}</span>';">`;
+        } else {
+            modalAvatar.innerHTML = `<span style="font-weight:800; font-size:1.1rem; color:#2563EB;">${escapeHtml(initial)}</span>`;
+        }
     }
 
     // Pré-remplir les données du parent si connectées ou enregistrées
@@ -7587,6 +7654,12 @@ async function openParentMessengerModal(preselectedTeacher = null) {
         activeParentChatTeacher = preselectedTeacher;
     }
 
+    try {
+        await fetchGlobalTeachersPhotos();
+    } catch (e) {
+        console.warn('fetchGlobalTeachersPhotos error:', e);
+    }
+
     populateNewChatTeacherSelect();
     await loadParentConversations();
     checkParentUnreadMessagesNotification();
@@ -7795,8 +7868,15 @@ function renderParentConversationsList(convos) {
 
         html += `
             <div class="messenger-convo-item ${isActive ? 'active' : ''}" onclick="selectParentConversation('${escapeHtml(c.teacherName)}')" id="convoItem_${escapeHtml(c.teacherName)}">
-                <div style="position:relative; width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.1rem; flex-shrink:0;">
-                    ${escapeHtml(c.teacherName.charAt(0).toUpperCase())}
+                <div style="position:relative; width:46px; height:46px; border-radius:50%; flex-shrink:0; background:#EEF2FF; border:1.5px solid #CBD5E1;">
+                    ${(() => {
+                        const photoUrl = getTeacherDirectPhotoUrl(c.teacherName);
+                        const initial = c.teacherName ? c.teacherName.charAt(0).toUpperCase() : '?';
+                        if (photoUrl) {
+                            return `<img src="${photoUrl}" alt="${escapeHtml(c.teacherName)}" style="width:100%; height:100%; border-radius:50%; object-fit:cover; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'width:100%; height:100%; border-radius:50%; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.1rem;\\'>${escapeHtml(initial)}</div>';">`;
+                        }
+                        return `<div style="width:100%; height:100%; border-radius:50%; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.1rem;">${escapeHtml(initial)}</div>`;
+                    })()}
                     ${c.unreadRepliesCount > 0 ? `<span class="red-notification-badge" style="position:absolute; top:-3px; right:-3px; border:2px solid white;">${c.unreadRepliesCount}</span>` : ''}
                 </div>
                 <div style="flex:1; min-width:0;">
@@ -7834,7 +7914,15 @@ async function selectParentConversation(teacherName) {
 
     if (headerTitle) headerTitle.textContent = teacherName;
     if (headerSub) headerSub.textContent = "Enseignant • En ligne";
-    if (headerAvatar) headerAvatar.textContent = teacherName.charAt(0).toUpperCase();
+    if (headerAvatar) {
+        const headerPhoto = getTeacherDirectPhotoUrl(teacherName);
+        const headerInit = teacherName ? teacherName.charAt(0).toUpperCase() : '?';
+        if (headerPhoto) {
+            headerAvatar.innerHTML = `<img src="${headerPhoto}" alt="${escapeHtml(teacherName)}" style="width:100%; height:100%; border-radius:50%; object-fit:cover; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight:800; font-size:1.1rem;\\'>${escapeHtml(headerInit)}</span>';">`;
+        } else {
+            headerAvatar.innerHTML = `<span style="font-weight:800; font-size:1.1rem;">${escapeHtml(headerInit)}</span>`;
+        }
+    }
     if (inputBar) inputBar.style.display = 'block';
 
     const relevantMsgs = (parentMessengerData || []).filter(m => (m.teacherName || '') === teacherName);
@@ -7912,14 +8000,24 @@ async function selectParentConversation(teacherName) {
                     </div>
                 `;
             } else {
+                const replyingTeacher = ev.teacherName || teacherName;
+                const bubbleTeacherPhoto = getTeacherDirectPhotoUrl(replyingTeacher);
+                const bubbleTeacherInit = replyingTeacher ? replyingTeacher.charAt(0).toUpperCase() : '?';
+
                 html += `
                     <div class="messenger-row left">
-                        <div style="width:30px; height:30px; border-radius:50%; background:#2563EB; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; margin-right:8px; align-self:flex-end; flex-shrink:0;">
-                            ${escapeHtml((ev.teacherName || teacherName).charAt(0).toUpperCase())}
+                        <div style="width:34px; height:34px; border-radius:50%; margin-right:8px; align-self:flex-end; flex-shrink:0; overflow:hidden; border:1.5px solid #2563EB; background:#E2E8F0;">
+                            ${bubbleTeacherPhoto ? `
+                                <img src="${bubbleTeacherPhoto}" alt="${escapeHtml(replyingTeacher)}" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'width:100%; height:100%; background:#2563EB; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem;\\'>${escapeHtml(bubbleTeacherInit)}</div>';">
+                            ` : `
+                                <div style="width:100%; height:100%; background:#2563EB; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem;">
+                                    ${escapeHtml(bubbleTeacherInit)}
+                                </div>
+                            `}
                         </div>
                         <div class="messenger-bubble teacher">
-                            <div style="font-size:0.72rem; color:#2563EB; font-weight:700; margin-bottom:2px;">
-                                <i class="fas fa-chalkboard-teacher"></i> ${escapeHtml(ev.teacherName || teacherName)}
+                            <div style="font-size:0.75rem; color:#2563EB; font-weight:700; margin-bottom:3px; display:flex; align-items:center; gap:5px;">
+                                <i class="fas fa-chalkboard-teacher"></i> <span>${escapeHtml(replyingTeacher)}</span>
                             </div>
                             <div style="white-space:pre-wrap; line-height:1.45;">${escapeHtml(ev.text)}</div>
                             <div class="messenger-time" style="color:#64748B;">${timeStr}</div>
@@ -9833,8 +9931,9 @@ async function openTeacherPhotoModal() {
         const section = currentSection || 'garcons';
         const res = await fetch(`/api/teachers-photos?section=${section}`);
         if (res.ok) {
-            const photos = await res.json();
-            const currentUrl = photos[teacherDisplayName] || photos[loggedInUser] || '';
+            const data = await res.json();
+            const photosMap = (data && data.photos) ? data.photos : data;
+            const currentUrl = photosMap[teacherDisplayName] || photosMap[loggedInUser] || '';
             if (linkInput) linkInput.value = currentUrl;
             previewMyPhotoDriveLink(currentUrl);
         }
@@ -9924,9 +10023,10 @@ async function loadCurrentUserAvatar(username) {
         const section = currentSection || 'garcons';
         const res = await fetch(`/api/teachers-photos?section=${section}`);
         if (res.ok) {
-            const photos = await res.json();
+            const data = await res.json();
+            const photosMap = (data && data.photos) ? data.photos : data;
             const teacherDisplayName = loggedInTeacherTable || username;
-            const photoUrl = photos[teacherDisplayName] || photos[username] || '';
+            const photoUrl = photosMap[teacherDisplayName] || photosMap[username] || '';
             const direct = formatGoogleDriveImageUrl(photoUrl);
 
             if (direct) {
