@@ -3,6 +3,24 @@
 // Conforme au modèle Word officiel : Marges 1.5 cm, 3 colonnes, 1 page par jour
 // ============================================================================
 
+const fs = require('fs');
+const path = require('path');
+
+let headerBannerDataUri = '';
+try {
+  const bannerPathJpg = path.join(__dirname, 'public/header_a4.jpg');
+  const bannerPathPng = path.join(__dirname, 'public/header_a4.png');
+  if (fs.existsSync(bannerPathJpg)) {
+    const buf = fs.readFileSync(bannerPathJpg);
+    headerBannerDataUri = `data:image/jpeg;base64,${buf.toString('base64')}`;
+  } else if (fs.existsSync(bannerPathPng)) {
+    const buf = fs.readFileSync(bannerPathPng);
+    headerBannerDataUri = `data:image/png;base64,${buf.toString('base64')}`;
+  }
+} catch (e) {
+  console.warn('Erreur chargement bannière en-tête A4:', e.message);
+}
+
 const subjectColors = {
   'francais': { bg: '#EEF2FF', border: '#818CF8', text: '#312E81', icon: 'fa-book-open', label: 'Français' },
   'maths': { bg: '#EFF6FF', border: '#60A5FA', text: '#1E40AF', icon: 'fa-calculator', label: 'Mathématiques' },
@@ -91,7 +109,8 @@ function generateDesignPlanHtml({
   teachersPhotos = {},
   weekStartDate = null,
   weekDateRange = '',
-  semester = 1
+  semester = 1,
+  specialDays = []
 }) {
   const dayOrder = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
   const arabicDays = {
@@ -369,54 +388,94 @@ function generateDesignPlanHtml({
        1. EN-TÊTE STRUCTURÉ COMME SUR LE MODÈLE WORD
        ------------------------------------------------------------------------ */
     .word-header-container {
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       border-bottom: 2px solid var(--primary-color);
-      padding-bottom: 8px;
+      padding-bottom: 6px;
+    }
+
+    .a4-top-banner {
+      width: 100%;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+
+    .a4-header-banner-img {
+      width: 100%;
+      max-height: 24mm;
+      object-fit: contain;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .header-center-pill-wrapper {
+      text-align: center;
+      margin: 4px 0 6px 0;
+    }
+
+    .header-week-range-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #F0F9FF;
+      border: 1.5px solid #38BDF8;
+      color: #0369A1;
+      font-family: 'Outfit', 'Cairo', sans-serif;
+      font-size: 0.94rem;
+      font-weight: 800;
+      padding: 4px 20px;
+      border-radius: 20px;
+      box-shadow: 0 2px 6px rgba(56, 189, 248, 0.12);
+      letter-spacing: 0.02em;
     }
 
     .word-main-title {
       font-family: 'Outfit', sans-serif;
-      font-size: 1.55rem;
+      font-size: 1.45rem;
       font-weight: 900;
       color: var(--primary-color);
       letter-spacing: 0.05em;
       text-transform: uppercase;
       text-align: center;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .word-meta-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.92rem;
+      font-size: 0.88rem;
     }
 
     .word-meta-table td {
-      padding: 3px 0;
+      padding: 2px 0;
       vertical-align: middle;
     }
 
     .meta-left {
       text-align: left;
-      width: 50%;
+      width: 35%;
+    }
+
+    .meta-center {
+      text-align: center;
+      width: 30%;
     }
 
     .meta-right {
       text-align: right;
-      width: 50%;
+      width: 35%;
     }
 
     .meta-label {
       font-weight: 800;
       color: #1E293B;
       text-transform: uppercase;
-      font-size: 0.88rem;
+      font-size: 0.84rem;
     }
 
     .meta-value {
       font-weight: 700;
       color: var(--primary-color);
-      font-size: 0.95rem;
+      font-size: 0.92rem;
     }
 
     .meta-date-range {
@@ -448,6 +507,95 @@ function generateDesignPlanHtml({
       font-weight: 800;
       letter-spacing: 0.03em;
       text-transform: uppercase;
+    }
+
+    /* ------------------------------------------------------------------------
+       2.B CASES FUSIONNÉES AVEC PHOTOS
+       ------------------------------------------------------------------------ */
+    .merged-day-special-cell {
+      padding: 16px !important;
+      background: #FFFFFF !important;
+      text-align: center;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    .merged-special-container {
+      background: #F8FAFC;
+      border: 1.5px solid #CBD5E1;
+      border-radius: 8px;
+      padding: 14px 16px;
+      text-align: center;
+    }
+
+    .merged-badge-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .merged-type-pill {
+      font-size: 0.76rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #EFF6FF;
+      color: #1D4ED8;
+      border: 1px solid #93C5FD;
+    }
+
+    .merged-day-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--primary-color);
+    }
+
+    .merged-day-desc {
+      font-size: 0.9rem;
+      color: #334155;
+      margin-bottom: 10px;
+      line-height: 1.45;
+    }
+
+    .merged-photos-gallery {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 10px;
+      page-break-inside: avoid !important;
+    }
+
+    .merged-photo-card {
+      background: white;
+      border: 1px solid #CBD5E1;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      max-width: 260px;
+      flex: 0 1 240px;
+    }
+
+    .merged-photo-img {
+      width: 100%;
+      height: 155px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .merged-photo-caption {
+      padding: 5px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #475569;
+      text-align: center;
     }
 
     .notes-styled-table td {
@@ -855,30 +1003,56 @@ function generateDesignPlanHtml({
         }
       }
 
+      // Vérifier si cette journée fait l'objet d'une fusion (ex: Pas de cours, Vacances, Sortie, Événement avec photos)
+      const normDay = dayName.trim().toLowerCase();
+      const normClass = String(classe || '').trim().toLowerCase();
+      const matchedSpecialDay = (Array.isArray(specialDays) ? specialDays : []).find(sd => {
+        if (!sd) return false;
+        const sdDay = String(sd.day || '').trim().toLowerCase();
+        const sdClass = String(sd.classe || 'all').trim().toLowerCase();
+        const matchesDay = sdDay.includes(normDay) || normDay.includes(sdDay);
+        const matchesClass = sdClass === 'all' || sdClass === 'toutes' || sdClass === normClass || normClass.includes(sdClass);
+        return matchesDay && matchesClass;
+      });
+
+      const specialPhotos = (matchedSpecialDay && Array.isArray(matchedSpecialDay.photos))
+        ? matchedSpecialDay.photos.filter(p => p && (typeof p === 'string' ? p.trim() : (p.url || p.src || p.data)))
+        : [];
+
       return `
       <section class="a4-page" id="page_day_${dayName.toLowerCase()}">
         
-        <!-- EN-TÊTE OFFICIEL WORD SUR CHAQUE PAGE -->
+        <!-- EN-TÊTE OFFICIEL WORD / A4 SUR CHAQUE PAGE -->
         <header class="word-header-container">
-          <div class="word-main-title">PLAN HEBDOMADAIRE</div>
+          ${headerBannerDataUri ? `
+            <div class="a4-top-banner">
+              <img src="${headerBannerDataUri}" alt="Les Écoles Internationales Al Kawthar" class="a4-header-banner-img" />
+            </div>
+          ` : `
+            <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
+          `}
+
+          <!-- Date centrée avec police et couleur distinctes -->
+          <div class="header-center-pill-wrapper">
+            <div class="header-week-range-badge">
+              <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
+            </div>
+          </div>
+
           <table class="word-meta-table">
             <tr>
               <td class="meta-left">
                 <span class="meta-label">CLASSE : </span>
                 <span class="meta-value">${escapeHtml(classe)}</span>
               </td>
+              <td class="meta-center">
+                <span class="meta-label">PLAN HEBDOMADAIRE</span>
+              </td>
               <td class="meta-right">
                 <span class="meta-label">SEMESTRE : </span>
                 <span class="meta-value">${escapeHtml(String(semester || 1))}</span>
-              </td>
-            </tr>
-            <tr>
-              <td class="meta-left">
-                <span class="meta-label">Semaine : </span>
+                <span style="margin-left:14px;" class="meta-label">SEMAINE : </span>
                 <span class="meta-value">${week}</span>
-              </td>
-              <td class="meta-right">
-                <span class="meta-date-range">${escapeHtml(plageSemaineDisplay)}</span>
               </td>
             </tr>
           </table>
@@ -890,8 +1064,8 @@ function generateDesignPlanHtml({
             <table class="notes-styled-table">
               <thead>
                 <tr>
-                  <th style="text-align:left;"><i class="fas fa-clipboard-list"></i> Remarques & Notes de la semaine</th>
-                  <th style="text-align:right; font-family:'Cairo', sans-serif;">ملاحظات الأسبوع</th>
+                  <th style="text-align:left;"><i class="fas fa-clipboard-list"></i> Notes pour la classe (saisi par les enseignants)</th>
+                  <th style="text-align:right; font-family:'Cairo', sans-serif;">ملاحظات للفصل (مسجلة من قبل المعلمين)</th>
                 </tr>
               </thead>
               <tbody>
@@ -927,13 +1101,71 @@ function generateDesignPlanHtml({
               </tr>
             </thead>
             <tbody>
-              ${rows.length === 0 ? `
+              ${matchedSpecialDay ? `
+                <tr>
+                  <td colspan="3" class="merged-day-special-cell">
+                    <div class="merged-special-container">
+                      <div class="merged-badge-header">
+                        <span class="merged-type-pill">
+                          <i class="fas fa-info-circle"></i> <span>${escapeHtml(matchedSpecialDay.type === 'holiday' ? 'Vacances / Jour Férié' : (matchedSpecialDay.type === 'activity' ? 'Activité / Sortie' : (matchedSpecialDay.type === 'event' ? 'Célébration' : 'Journée Sans Cours')))}</span>
+                        </span>
+                        <span class="merged-day-title">${escapeHtml(matchedSpecialDay.title || 'Journée Spéciale')}</span>
+                      </div>
+                      ${(matchedSpecialDay.description || matchedSpecialDay.message) ? `
+                        <div class="merged-day-desc">${escapeHtml(matchedSpecialDay.description || matchedSpecialDay.message)}</div>
+                      ` : ''}
+                      ${specialPhotos.length > 0 ? `
+                        <div class="merged-photos-gallery">
+                          ${specialPhotos.map(p => {
+                            const rawUrl = typeof p === 'string' ? p : (p.url || p.src || p.data || '');
+                            const photoUrl = formatDriveImageUrl(rawUrl);
+                            const photoCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
+                            return `
+                              <div class="merged-photo-card">
+                                <img src="${photoUrl}" alt="${escapeHtml(photoCap || 'Photo')}" class="merged-photo-img" onerror="this.parentElement.style.display='none';" />
+                                ${photoCap ? `<div class="merged-photo-caption">${escapeHtml(photoCap)}</div>` : ''}
+                              </div>
+                            `;
+                          }).join('')}
+                        </div>
+                      ` : ''}
+                    </div>
+                  </td>
+                </tr>
+              ` : (rows.length === 0 ? `
                 <tr>
                   <td colspan="3" style="text-align:center; padding:30px; color:#94A3B8; font-style:italic;">
                     Aucune séance programmée pour cette journée.
                   </td>
                 </tr>
               ` : rows.map(row => {
+                // Si la ligne indique une case fusionnée avec photos
+                const rowPhotos = Array.isArray(row.photos) ? row.photos : (row.photo ? [row.photo] : (row.photoUrl ? [row.photoUrl] : []));
+                if ((row.isMerged || row.merged) && rowPhotos.length > 0) {
+                  return `
+                  <tr>
+                    <td colspan="3" class="merged-day-special-cell">
+                      <div class="merged-special-container">
+                        <div class="merged-day-title">${escapeHtml(row['Leçon'] || row.lecon || row['Matière'] || 'Séance Spéciale')}</div>
+                        ${(row['Travaux de classe'] || row.travaux) ? `<div class="merged-day-desc">${escapeHtml(row['Travaux de classe'] || row.travaux)}</div>` : ''}
+                        <div class="merged-photos-gallery">
+                          ${rowPhotos.map(p => {
+                            const pUrl = formatDriveImageUrl(typeof p === 'string' ? p : (p.url || p.src));
+                            const pCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
+                            return `
+                              <div class="merged-photo-card">
+                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Photo')}" class="merged-photo-img" onerror="this.parentElement.style.display='none';" />
+                                ${pCap ? `<div class="merged-photo-caption">${escapeHtml(pCap)}</div>` : ''}
+                              </div>
+                            `;
+                          }).join('')}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  `;
+                }
+
                 const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
                 const matiere = row['Matière'] || row['matiere'] || 'Cours';
                 const styleMat = getSubjectStyle(matiere);
@@ -1001,9 +1233,9 @@ function generateDesignPlanHtml({
                   </td>
                 </tr>
                 `;
-              }).join('')}
+              }).join(''))}
             </tbody>
-          </table>
+            </table>
         </div>
 
         <!-- PIED DE PAGE DE CHAQUE FEUILLE A4 AVEC NUMÉRO DE PAGE -->
