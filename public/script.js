@@ -22,6 +22,68 @@
         // Cache global des photos des enseignants pour l'ensemble de l'application (Discussion Parents, Fiches, etc.)
         window.globalTeachersPhotosMap = {};
 
+        // Helper Cycle Maternelle (Règle utilisateur 3 : PS, MS, GS semaine actuelle = semaine des autres - 1)
+        function isMaternelleClass(className) {
+            if (!className) return false;
+            const c = String(className).trim().toUpperCase();
+            const clean = c.replace(/[\s\-_]+/g, '');
+            return clean === 'PS' || clean === 'MS' || clean === 'GS' ||
+                   clean === 'PETITESECTION' || clean === 'MOYENNESECTION' || clean === 'GRANDESECTION' ||
+                   clean.includes('MATERNELLE') ||
+                   clean.includes('روضة') || clean.includes('روضه') ||
+                   clean === 'PS1' || clean === 'MS1' || clean === 'GS1' ||
+                   clean === 'PS2' || clean === 'MS2' || clean === 'GS2';
+        }
+        window.isMaternelleClass = isMaternelleClass;
+
+        // Helper Jour Férié (Règle utilisateur 2 : ne pas générer de plan pour les jours fériés)
+        function isHolidayRow(rowData, specialDaysList = [], week = null, section = null) {
+            if (!rowData || typeof rowData !== 'object') return false;
+
+            const holidayRegex = /(f[eé]ri[eé]|vacance|cong[eé]|f[eê]te|a[iï]d|eid|sans\s*cours|pas\s*de\s*cours|journ[eé]e\s*p[eé]dagogique|عطلة|إجازة|عيد|لا\s*توجد\s*دروس)/i;
+
+            const lecon = String(rowData['Leçon'] || rowData['lecon'] || rowData['Lecon'] || '').trim();
+            const travaux = String(rowData['Travaux de classe'] || rowData['travaux'] || rowData['Travaux'] || '').trim();
+            const matiere = String(rowData['Matière'] || rowData['matiere'] || rowData['Matiere'] || '').trim();
+            const devoirs = String(rowData['Devoirs'] || rowData['devoirs'] || '').trim();
+            const objectifs = String(rowData['Objectifs'] || rowData['objectifs'] || '').trim();
+
+            if (holidayRegex.test(lecon) || holidayRegex.test(travaux) || holidayRegex.test(matiere) || holidayRegex.test(devoirs) || holidayRegex.test(objectifs)) {
+                return true;
+            }
+
+            const jour = String(rowData['Jour'] || rowData['jour'] || '').trim();
+            const classe = String(rowData['Classe'] || rowData['classe'] || '').trim();
+
+            const list = Array.isArray(specialDaysList) && specialDaysList.length > 0 ? specialDaysList : (window.parentSpecialDays || []);
+            if (Array.isArray(list) && list.length > 0 && jour) {
+                const normDay = jour.toLowerCase().replace(/[^a-zà-ÿ]/g, '');
+                const normCls = classe.toLowerCase().replace(/[\s\-_]+/g, '');
+                const normSec = String(section || rowData._section || currentSection || '').toLowerCase();
+
+                const isMatch = list.some(sd => {
+                    if (!sd) return false;
+                    if (week && sd.week && Number(sd.week) !== Number(week)) return false;
+                    if (normSec && sd.section && sd.section !== 'all' && sd.section.toLowerCase() !== normSec) return false;
+
+                    const sdDay = String(sd.day || '').toLowerCase().replace(/[^a-zà-ÿ]/g, '');
+                    if (!normDay.includes(sdDay) && !sdDay.includes(normDay)) return false;
+
+                    const sdCls = String(sd.classe || 'all').toLowerCase().replace(/[\s\-_]+/g, '');
+                    if (sdCls !== 'all' && sdCls !== normCls && !normCls.includes(sdCls) && !sdCls.includes(normCls)) return false;
+
+                    const isNoSchool = Boolean(sd.isNoSchool || sd.type === 'no_courses' || sd.type === 'holiday');
+                    const textMatch = holidayRegex.test(sd.title || '') || holidayRegex.test(sd.description || '') || holidayRegex.test(sd.message || '');
+                    return isNoSchool || textMatch;
+                });
+
+                if (isMatch) return true;
+            }
+
+            return false;
+        }
+        window.isHolidayRow = isHolidayRow;
+
         async function fetchGlobalTeachersPhotos() {
             try {
                 const res = await fetch('/api/teachers-photos');
@@ -2776,6 +2838,17 @@
                 aiButton.disabled = true;
             }
             
+            // Règle 2 : Ne pas générer de plan de leçon pour les jours fériés ou chômés
+            if (isHolidayRow(rowData, window.parentSpecialDays, currentWeek, currentSection)) {
+                console.log("Séance sur jour férié, génération ignorée:", rowData);
+                displayAlert("⚠️ Cette séance correspond à un jour férié ou chômé. Aucun plan de leçon n'a été généré.", true);
+                if (aiButton) {
+                    aiButton.innerHTML = originalButtonHtml;
+                    aiButton.disabled = originalButtonDisabledState;
+                }
+                return;
+            }
+
             try {
                 const response = await fetch('/api/generate-ai-lesson-plan', {
                     method: 'POST',
@@ -2835,6 +2908,10 @@
                     }
                 } else {
                     const errorResult = await response.json().catch(() => ({ message: "Erreur inconnue du serveur." }));
+                    if (errorResult.isHoliday) {
+                        displayAlert(`⚠️ ${errorResult.message || "Jour férié : aucun plan de leçon généré."}`, true);
+                        return;
+                    }
                     throw new Error(errorResult.message || `Erreur serveur ${response.status}`);
                 }
             } catch (error) {
@@ -2946,6 +3023,14 @@
                         try {
                             tr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                         } catch (e) {}
+                    }
+
+                    // Règle 2 : Ignorer la génération si la séance tombe sur un jour férié ou chômé
+                    if (isHolidayRow(rowObj, window.parentSpecialDays, currentWeek, rowObj._section || currentSection)) {
+                        console.log(`[Batch AI] Ligne ${i + 1} ignorée (jour férié): ${classVal} - ${dayVal} - ${subjectVal}`);
+                        skippedCount++;
+                        if (tr) tr.classList.remove('row-generating');
+                        continue;
                     }
 
                     // Gérer le thème de la leçon (générer un thème adapté si absent pour éviter toute erreur)
@@ -3726,14 +3811,26 @@
                     if (Object.keys(incompleteTeachersInfo).length > 0) {
                         const listDiv = document.getElementById('incompleteTeachersDisplay');
                         const btn = document.getElementById('toggleIncompleteBtn');
+                        // Règle 6 : Laisser par défaut la liste des manques NON affichée
                         if (listDiv && btn) {
-                            listDiv.style.display = 'block';
-                            btn.querySelector('i').className = 'fas fa-xmark';
+                            listDiv.style.display = 'none';
+                            btn.querySelector('i').className = 'fas fa-list-check';
                             const btnTextSpan = btn.querySelector('.btn-text');
-                            if (btnTextSpan) btnTextSpan.textContent = t('hide_incomplete');
+                            if (btnTextSpan) btnTextSpan.textContent = t('display_incomplete');
                         }
-                        displayAlert(`⚠️ Attention: ${Object.keys(incompleteTeachersInfo).length} enseignant(s) n'ont pas encore terminé leurs travaux de classe pour cette semaine!`, true);
-                        await notifyIncompleteTeachers(weekToLoad, incompleteTeachersInfo);
+
+                        // Règle 6 : Réduire l'alerte à au maximum UNE SEULE FOIS PAR JOUR
+                        const todayDateStr = new Date().toISOString().slice(0, 10);
+                        const alertStorageKey = 'last_incomplete_alert_date_' + (loggedInUser || 'user') + '_' + weekToLoad;
+                        const lastAlertDate = localStorage.getItem(alertStorageKey);
+
+                        if (lastAlertDate !== todayDateStr) {
+                            displayAlert(`⚠️ Attention: ${Object.keys(incompleteTeachersInfo).length} enseignant(s) n'ont pas encore terminé leurs travaux de classe pour cette semaine!`, true);
+                            await notifyIncompleteTeachers(weekToLoad, incompleteTeachersInfo);
+                            localStorage.setItem(alertStorageKey, todayDateStr);
+                        } else {
+                            console.log(`ℹ️ [Alerte Incomplets] Alerte quotidienne déjà affichée aujourd'hui (${todayDateStr}) pour la semaine ${weekToLoad}.`);
+                        }
                     }
                 }, 500);
             }
@@ -4530,9 +4627,11 @@ function toggleParentSection() {
 
 // Calcule la semaine par défaut pour l'espace parent :
 // Le vendredi, affiche le jeudi de la semaine passée (ex: vendredi de la semaine 4 -> semaine 3 et jour Jeudi)
-function getParentDefaultWeekNumber() {
+// Pour le cycle maternelle (PS, MS, GS) : toujours semaine des autres classes - 1 (Règle utilisateur 3)
+function getParentDefaultWeekNumber(className = null) {
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0=Dimanche, 5=Vendredi, 6=Samedi
+    let baseWeek = 1;
     if (dayOfWeek === 5) { // Vendredi
         const prevThursday = new Date(today);
         prevThursday.setDate(prevThursday.getDate() - 1);
@@ -4542,18 +4641,47 @@ function getParentDefaultWeekNumber() {
         if (w >= currentNextWeek && currentNextWeek > 1) {
             w = currentNextWeek - 1;
         }
-        return Math.max(1, w || 1);
+        baseWeek = Math.max(1, w || 1);
+    } else {
+        baseWeek = (typeof getCurrentWeekNumber === 'function') ? (getCurrentWeekNumber() || 1) : 1;
     }
-    return (typeof getCurrentWeekNumber === 'function') ? (getCurrentWeekNumber() || 1) : 1;
+
+    // Règle 3 : Pour le cycle maternelle PS, MS, GS, toujours la semaine actuelle des autres classes - 1
+    if (className && isMaternelleClass(className)) {
+        return Math.max(1, baseWeek - 1);
+    }
+    return baseWeek;
 }
 window.getParentDefaultWeekNumber = getParentDefaultWeekNumber;
+
+function handleParentClassChange() {
+    const classSelect = document.getElementById('parentClassSelector');
+    const weekSelect = document.getElementById('parentWeekSelector');
+    const selectedClass = classSelect ? classSelect.value : '';
+    if (isMaternelleClass(selectedClass)) {
+        const matWeek = getParentDefaultWeekNumber(selectedClass);
+        if (weekSelect) {
+            weekSelect.value = String(matWeek);
+            window.userHasManuallySelectedParentWeek = false;
+        }
+    } else if (!window.userHasManuallySelectedParentWeek) {
+        const stdWeek = getParentDefaultWeekNumber();
+        if (weekSelect) {
+            weekSelect.value = String(stdWeek);
+        }
+    }
+    loadParentWeeklyPlan();
+}
+window.handleParentClassChange = handleParentClassChange;
 
 function populateParentWeekSelector() {
     const select = document.getElementById('parentWeekSelector');
     if (!select) return;
     
     // Pour les parents : vendredi bascule sur la semaine passée (du jeudi dernier)
-    const defaultParentWeek = getParentDefaultWeekNumber();
+    const classSelect = document.getElementById('parentClassSelector');
+    const selectedClass = classSelect ? classSelect.value : null;
+    const defaultParentWeek = getParentDefaultWeekNumber(selectedClass);
     const activeWeek = window.userHasManuallySelectedParentWeek && select.value 
         ? parseInt(select.value, 10) 
         : defaultParentWeek;
@@ -4617,8 +4745,11 @@ async function loadParentWeeklyPlan() {
         
         if (!weekSelect || !classSelect || !container) return;
         
-        // Par défaut pour les parents : la semaine par défaut (sur semaine passée si vendredi)
-        const defaultParentW = getParentDefaultWeekNumber();
+        const classes = getSectionClasses(currentSection);
+        const selectedClass = classSelect.value || classes[0];
+
+        // Par défaut pour les parents : la semaine par défaut (sur semaine passée si vendredi, et N-1 pour Maternelle PS, MS, GS)
+        const defaultParentW = getParentDefaultWeekNumber(selectedClass);
         if (!window.userHasManuallySelectedParentWeek) {
             weekSelect.value = String(defaultParentW);
         }
@@ -4631,8 +4762,6 @@ async function loadParentWeeklyPlan() {
                 parentActiveDay = getTodaySchoolDayName();
             }
         }
-        const classes = getSectionClasses(currentSection);
-        const selectedClass = classSelect.value || classes[0];
         const section = currentSection || 'garcons';
         
         if (sectionToggleBtnText) {
@@ -9058,7 +9187,16 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
     const chipsContainer = document.getElementById('modalWordQuickClassChips');
     if (!modal) return;
 
-    const curWeek = preselectedWeek || currentWeek || getCurrentWeekNumber() || 1;
+    const currentFilterClass = preselectedClass || document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value || '';
+    const section = currentSection || 'garcons';
+    const classes = getSectionClasses(section);
+
+    let baseWeek = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
+    if (isMaternelleClass(currentFilterClass) && !preselectedWeek) {
+        baseWeek = Math.max(1, baseWeek - 1);
+    }
+    const curWeek = preselectedWeek || baseWeek;
+
     if (weekSel) {
         weekSel.innerHTML = '';
         for (let i = 1; i <= 38; i++) {
@@ -9069,10 +9207,6 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
             weekSel.appendChild(opt);
         }
     }
-
-    const currentFilterClass = preselectedClass || document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value || '';
-    const section = currentSection || 'garcons';
-    const classes = getSectionClasses(section);
 
     // Identifier les classes enseignées par l'utilisateur connecté
     const teacherClasses = new Set();
@@ -9089,6 +9223,16 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
         });
     }
 
+    function syncWeekForWordClass(cls) {
+        if (!preselectedWeek && weekSel) {
+            let w = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
+            if (isMaternelleClass(cls)) {
+                w = Math.max(1, w - 1);
+            }
+            weekSel.value = w;
+        }
+    }
+
     // Remplir le sélecteur déroulant
     if (classSel) {
         classSel.innerHTML = '';
@@ -9100,6 +9244,10 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
             if (c === currentFilterClass) opt.selected = true;
             classSel.appendChild(opt);
         });
+
+        classSel.onchange = () => {
+            syncWeekForWordClass(classSel.value);
+        };
     }
 
     // Remplir les puces / boutons de téléchargement rapide en 1 clic
@@ -9136,6 +9284,7 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
 
             chipBtn.onclick = () => {
                 if (classSel) classSel.value = c;
+                syncWeekForWordClass(c);
                 // Highlighting selected chip
                 Array.from(chipsContainer.children).forEach(ch => ch.style.outline = 'none');
                 chipBtn.style.outline = '2px solid #2563EB';
@@ -9549,7 +9698,16 @@ function openDesignPlanModal(preselectedClass, preselectedWeek) {
     const classSel = document.getElementById('designModalClassSelector');
     if (!modal) return;
 
-    const curWeek = preselectedWeek || currentWeek || getCurrentWeekNumber() || 1;
+    const currentFilterClass = preselectedClass || document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value || '';
+    const section = currentSection || 'garcons';
+    const classes = getSectionClasses(section);
+
+    let baseWeek = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
+    if (isMaternelleClass(currentFilterClass) && !preselectedWeek) {
+        baseWeek = Math.max(1, baseWeek - 1);
+    }
+    const curWeek = preselectedWeek || baseWeek;
+
     if (weekSel) {
         weekSel.innerHTML = '';
         for (let i = 1; i <= 38; i++) {
@@ -9561,9 +9719,15 @@ function openDesignPlanModal(preselectedClass, preselectedWeek) {
         }
     }
 
-    const currentFilterClass = preselectedClass || document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value || '';
-    const section = currentSection || 'garcons';
-    const classes = getSectionClasses(section);
+    function syncWeekForDesignClass(cls) {
+        if (!preselectedWeek && weekSel) {
+            let w = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
+            if (isMaternelleClass(cls)) {
+                w = Math.max(1, w - 1);
+            }
+            weekSel.value = w;
+        }
+    }
 
     if (classSel) {
         classSel.innerHTML = '';
@@ -9574,6 +9738,10 @@ function openDesignPlanModal(preselectedClass, preselectedWeek) {
             if (c === currentFilterClass) opt.selected = true;
             classSel.appendChild(opt);
         });
+
+        classSel.onchange = () => {
+            syncWeekForDesignClass(classSel.value);
+        };
     }
 
     selectDesignTheme(window.currentSelectedDesignTheme || 'indigo');

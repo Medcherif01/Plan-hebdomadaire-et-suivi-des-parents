@@ -80,20 +80,6 @@ function getDateForDayName(weekStartDate, dayName) {
   return specificDate;
 }
 
-function formatPeriodHour(periodeNum) {
-  const p = parseInt(periodeNum, 10);
-  switch (p) {
-    case 1: return '08:00 - 08:55';
-    case 2: return '08:55 - 09:50';
-    case 3: return '10:10 - 11:05';
-    case 4: return '11:05 - 12:00';
-    case 5: return '12:00 - 12:55';
-    case 6: return '13:15 - 14:10';
-    case 7: return '14:10 - 15:05';
-    default: return '';
-  }
-}
-
 function generateDesignPlanHtml({
   week = 1,
   classe = 'Classe',
@@ -116,13 +102,24 @@ function generateDesignPlanHtml({
     'Jeudi': 'الخميس'
   };
 
+  // S'assurer que chaque classe est traitée SEULE et strictement isolée
+  let classFilteredData = Array.isArray(data) ? data : [];
+  if (classe && typeof classe === 'string' && classe.trim() !== '' && !['toutes', 'all', 'classe', 'tous'].includes(classe.trim().toLowerCase())) {
+    const targetNorm = classe.trim().toLowerCase().replace(/[\s\-_]+/g, '');
+    classFilteredData = classFilteredData.filter(item => {
+      if (!item) return false;
+      const c = String(item['Classe'] || item['classe'] || item['class'] || '').trim().toLowerCase().replace(/[\s\-_]+/g, '');
+      return c === targetNorm || c.includes(targetNorm) || targetNorm.includes(c);
+    });
+  }
+
   // Grouper les séances par jour
   const groupedByDay = {};
   dayOrder.forEach(d => { groupedByDay[d] = []; });
 
-  data.forEach(item => {
+  classFilteredData.forEach(item => {
     if (!item) return;
-    const rawDay = item['Jour'] || item['jour'] || item['day'] || '';
+    const rawDay = String(item['Jour'] || item['jour'] || item['day'] || '').trim();
     let matchedDay = dayOrder.find(d => rawDay.toLowerCase().includes(d.toLowerCase())) || rawDay;
     if (!groupedByDay[matchedDay]) {
       groupedByDay[matchedDay] = [];
@@ -130,12 +127,14 @@ function generateDesignPlanHtml({
     groupedByDay[matchedDay].push(item);
   });
 
-  // Trier par période chaque jour
+  // Trier rigoureusement par ordre de l'emploi du temps (P1, P2, P3...)
   dayOrder.forEach(d => {
     if (groupedByDay[d]) {
       groupedByDay[d].sort((a, b) => {
-        const pA = parseInt(a['Période'] || a['periode'] || a['Période (Heure)'] || 0, 10);
-        const pB = parseInt(b['Période'] || b['periode'] || b['Période (Heure)'] || 0, 10);
+        const rawA = String(a['Période'] || a['periode'] || a['Période (Heure)'] || '0').replace(/[^0-9]/g, '');
+        const rawB = String(b['Période'] || b['periode'] || b['Période (Heure)'] || '0').replace(/[^0-9]/g, '');
+        const pA = parseInt(rawA, 10) || 0;
+        const pB = parseInt(rawB, 10) || 0;
         return pA - pB;
       });
     }
@@ -182,11 +181,11 @@ function generateDesignPlanHtml({
   
   <style>
     /* ========================================================================
-       CONFIGURATION PAGE A4 & MARGES EXACTES DE 1.5 CM
+       CONFIGURATION PAGE A4 & MARGES EXACTES DE 1 CM (TOUTES DIRECTIONS)
        ======================================================================== */
     @page {
       size: A4 portrait;
-      margin: 1.5cm 1.5cm 1.5cm 1.5cm;
+      margin: 1cm 1cm 1cm 1cm;
     }
 
     :root {
@@ -342,13 +341,13 @@ function generateDesignPlanHtml({
     }
 
     /* ========================================================================
-       FEUILLE A4 STRICTE (210mm x 297mm) AVEC MARGE 1.5 CM
+       FEUILLE A4 STRICTE (210mm x 297mm) AVEC MARGE 1 CM (TOUTES DIRECTIONS)
        ======================================================================== */
     .a4-page {
       width: 210mm;
       min-height: 297mm;
       margin: 0 auto 30px auto;
-      padding: 1.5cm; /* Marge exacte de 1.5 cm sur les 4 côtés */
+      padding: 1cm; /* Marge exacte de 1 cm sur les 4 côtés */
       background: #FFFFFF;
       box-shadow: 0 8px 24px rgba(0,0,0,0.12);
       box-sizing: border-box;
@@ -358,6 +357,8 @@ function generateDesignPlanHtml({
       justify-content: space-between;
       page-break-after: always;
       break-after: page;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
 
     .a4-page:last-child {
@@ -497,6 +498,8 @@ function generateDesignPlanHtml({
        ------------------------------------------------------------------------ */
     .main-table-wrapper {
       flex: 1;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
 
     .lessons-table-a4 {
@@ -504,6 +507,12 @@ function generateDesignPlanHtml({
       border-collapse: collapse;
       border: 1.5px solid var(--border-dark);
       font-size: 0.84rem;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    .lessons-table-a4 thead {
+      display: table-header-group;
     }
 
     .lessons-table-a4 thead th {
@@ -523,6 +532,13 @@ function generateDesignPlanHtml({
       border: 1px solid #CBD5E1;
       padding: 8px 10px;
       vertical-align: top;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    .lessons-table-a4 tbody tr {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
 
     .lessons-table-a4 tbody tr:nth-child(even) {
@@ -562,13 +578,6 @@ function generateDesignPlanHtml({
       padding: 1px 6px;
       border-radius: 4px;
       white-space: nowrap;
-    }
-
-    .period-time-txt {
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      margin-bottom: 5px;
-      font-weight: 600;
     }
 
     /* ENSEIGNANT AVEC PHOTO GOOGLE DRIVE */
@@ -642,6 +651,40 @@ function generateDesignPlanHtml({
       white-space: pre-wrap;
     }
 
+    /* SUPPORT ÉGALEMENT DANS LA CASE TRAVAUX DE CLASSE */
+    .classwork-support-chip {
+      margin-top: 8px;
+      padding: 5px 10px;
+      background: #F1F5F9;
+      border-left: 3px solid var(--accent-color);
+      border-radius: 5px;
+      font-size: 0.78rem;
+      color: #334155;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+    }
+
+    .classwork-support-chip i {
+      color: var(--accent-color);
+      font-size: 0.76rem;
+    }
+
+    .support-chip-label {
+      font-weight: 800;
+      color: #0F172A;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+    }
+
+    .support-chip-val {
+      font-weight: 600;
+      color: #2563EB;
+      word-break: break-word;
+    }
+
     /* COLONNE 3 : DEVOIRS */
     .col-homework-td {
       width: 28%;
@@ -687,6 +730,8 @@ function generateDesignPlanHtml({
       align-items: center;
       font-size: 0.74rem;
       color: #64748B;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
 
     .footer-stamp-box {
@@ -694,10 +739,25 @@ function generateDesignPlanHtml({
       color: #334155;
     }
 
+    .page-number-box {
+      font-weight: 700;
+      color: var(--primary-color);
+      background: var(--accent-light);
+      border: 1px solid var(--border-light);
+      padding: 2px 10px;
+      border-radius: 6px;
+      font-size: 0.76rem;
+    }
+
     /* ========================================================================
        RÈGLES D'IMPRESSION STRICTES (@media print)
        ======================================================================== */
     @media print {
+      @page {
+        size: A4 portrait;
+        margin: 1cm 1cm 1cm 1cm;
+      }
+
       html, body {
         background: #FFFFFF !important;
         margin: 0 !important;
@@ -717,11 +777,13 @@ function generateDesignPlanHtml({
         width: 100% !important;
         min-height: auto !important;
         margin: 0 !important;
-        padding: 0 !important; /* Le navigateur applique les 1.5 cm de @page */
+        padding: 0 !important; /* Le navigateur applique les 1 cm de @page */
         box-shadow: none !important;
         border: none !important;
         page-break-after: always !important;
         break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
 
       .a4-page:last-child {
@@ -729,8 +791,23 @@ function generateDesignPlanHtml({
         break-after: avoid !important;
       }
 
+      .lessons-table-a4,
+      .lessons-table-a4 tbody,
+      .lessons-table-a4 tr,
+      .lessons-table-a4 td,
+      .main-table-wrapper,
+      .word-notes-block,
+      .day-banner-strip,
+      .a4-page-footer {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+
       * {
         -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
         print-color-adjust: exact !important;
       }
     }
@@ -858,7 +935,6 @@ function generateDesignPlanHtml({
                 </tr>
               ` : rows.map(row => {
                 const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
-                const horaire = formatPeriodHour(periodeVal);
                 const matiere = row['Matière'] || row['matiere'] || 'Cours';
                 const styleMat = getSubjectStyle(matiere);
                 const enseignant = row['Enseignant'] || row['enseignant'] || '';
@@ -885,7 +961,6 @@ function generateDesignPlanHtml({
                       </span>
                       <span class="period-badge-pill">P${escapeHtml(periodeVal)}</span>
                     </div>
-                    ${horaire ? `<div class="period-time-txt">${horaire}</div>` : ''}
 
                     <div class="teacher-item-box">
                       ${(showPhotos && photoUrl) 
@@ -898,10 +973,17 @@ function generateDesignPlanHtml({
                     ${support ? `<div class="support-info-txt"><i class="fas fa-paperclip"></i> Support : ${escapeHtml(support)}</div>` : ''}
                   </td>
 
-                  <!-- 2. TRAVAIL DE CLASSE -->
+                  <!-- 2. TRAVAIL DE CLASSE (AVEC SUPPORT INTÉGRÉ) -->
                   <td class="col-classwork-td">
                     ${lecon ? `<strong class="lesson-title-strong"><i class="fas fa-book-reader" style="font-size:0.75rem;"></i> ${escapeHtml(lecon)}</strong>` : ''}
                     <div class="classwork-detail-txt">${escapeHtml(travaux || '—')}</div>
+                    ${(support && support.trim() !== '' && support.trim() !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد')) ? `
+                      <div class="classwork-support-chip">
+                        <i class="fas fa-paperclip"></i>
+                        <span class="support-chip-label">Support :</span>
+                        <span class="support-chip-val">${escapeHtml(support)}</span>
+                      </div>
+                    ` : ''}
                   </td>
 
                   <!-- 3. DEVOIRS -->
@@ -924,11 +1006,11 @@ function generateDesignPlanHtml({
           </table>
         </div>
 
-        <!-- PIED DE PAGE DE CHAQUE FEUILLE A4 -->
+        <!-- PIED DE PAGE DE CHAQUE FEUILLE A4 AVEC NUMÉRO DE PAGE -->
         <footer class="a4-page-footer">
           <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
           <div class="footer-stamp-box">Visa de la Direction</div>
-          <div>Page <strong>${pageNum}</strong> / ${totalPages}</div>
+          <div class="page-number-box">Page <strong>${pageNum}</strong> / ${totalPages}</div>
         </footer>
 
       </section>

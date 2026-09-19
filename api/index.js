@@ -20,6 +20,12 @@ const webpush = require('web-push');
 const path = require('path');
 const moment = require('moment');
 const crypto = require('crypto');
+let GoogleGenAI;
+try {
+  GoogleGenAI = require('@google/genai').GoogleGenAI;
+} catch (e) {
+  GoogleGenAI = null;
+}
 const { generateDesignPlanHtml } = require(path.join(__dirname, '../design_plan_generator'));
 // ========================================================================
 // ====================== AIDES POUR GÉNÉRATION WORD ======================
@@ -4751,6 +4757,15 @@ app.post('/api/generate-word', async (req, res) => {
 	      planData = planDoc ? (planDoc.data || planDoc.planData || []) : [];
 	    }
 
+	    // Règle 5 : Traiter chaque classe SEULE de façon strictement isolée
+	    if (classe && typeof classe === 'string' && !['toutes', 'all', 'classe'].includes(classe.trim().toLowerCase())) {
+	      const targetNorm = classe.trim().toLowerCase().replace(/[\s\-_]+/g, '');
+	      planData = planData.filter(r => {
+	        const c = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim().toLowerCase().replace(/[\s\-_]+/g, '');
+	        return c === targetNorm || c.includes(targetNorm) || targetNorm.includes(c);
+	      });
+	    }
+
 	    let classNotes = (typeof notes === 'string') ? notes : '';
 	    if (!classNotes) {
 	      try {
@@ -5141,6 +5156,30 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
 
       for (const cfg of geminiConfigs) {
         try {
+          // Utiliser le SDK @google/genai si disponible
+          if (GoogleGenAI) {
+            try {
+              const ai = new GoogleGenAI({ apiKey: currentGeminiKey });
+              const aiResp = await ai.models.generateContent({
+                model: cfg.model,
+                contents: prompt,
+              });
+              const aiText = aiResp?.text ? aiResp.text.trim() : null;
+              if (aiText) {
+                globalGeminiKeyIndex = (gIdx + 1) % totalGemini;
+                console.log(`✅ [${contextLog}] Succès avec SDK @google/genai ${keyDisplay} (modèle: ${cfg.model})`);
+                return { content: aiText, provider: `GEMINI (clé ${gIdx + 1}/${totalGemini})`, model: cfg.model };
+              }
+            } catch (sdkErr) {
+              // Si erreur 429 quota, marquer et propager
+              if (sdkErr.status === 429 || (sdkErr.message && sdkErr.message.includes('429'))) {
+                lastError = new Error(`Quota GEMINI clé #${gIdx + 1} épuisé (429)`);
+                keyHasQuotaError = true;
+                break;
+              }
+            }
+          }
+
           const url = `https://generativelanguage.googleapis.com/${cfg.apiVersion}/models/${cfg.model}:generateContent?key=${currentGeminiKey}`;
           const response = await fetch(url, {
             method: 'POST',
@@ -5252,6 +5291,64 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
   throw new Error(`⚠️ QUOTA API ÉPUISÉ : Toutes les clés API (${geminiKeys.length} GEMINI + ${groqKeys.length} GROQ) ont atteint leur limite. Veuillez vérifier vos clés ou réessayer. Détails: ${lastError?.message || ''}`);
 }
 
+// --------------------- Helper Jour Férié & Cycle Maternelle ---------------------
+function isMaternelleClassServer(className) {
+  if (!className) return false;
+  const c = String(className).trim().toUpperCase();
+  const clean = c.replace(/[\s\-_]+/g, '');
+  return clean === 'PS' || clean === 'MS' || clean === 'GS' ||
+         clean === 'PETITESECTION' || clean === 'MOYENNESECTION' || clean === 'GRANDESECTION' ||
+         clean.includes('MATERNELLE') ||
+         clean.includes('روضة') || clean.includes('روضه') ||
+         clean === 'PS1' || clean === 'MS1' || clean === 'GS1' ||
+         clean === 'PS2' || clean === 'MS2' || clean === 'GS2';
+}
+
+function isHolidayRowServer(rowData, specialDaysList = [], week = null, section = null) {
+  if (!rowData || typeof rowData !== 'object') return false;
+
+  const holidayRegex = /(f[eé]ri[eé]|vacance|cong[eé]|f[eê]te|a[iï]d|eid|sans\s*cours|pas\s*de\s*cours|journ[eé]e\s*p[eé]dagogique|عطلة|إجازة|عيد|لا\s*توجد\s*دروس)/i;
+
+  const lecon = String(rowData['Leçon'] || rowData['lecon'] || rowData['Lecon'] || '').trim();
+  const travaux = String(rowData['Travaux de classe'] || rowData['travaux'] || rowData['Travaux'] || '').trim();
+  const matiere = String(rowData['Matière'] || rowData['matiere'] || rowData['Matiere'] || '').trim();
+  const devoirs = String(rowData['Devoirs'] || rowData['devoirs'] || '').trim();
+  const objectifs = String(rowData['Objectifs'] || rowData['objectifs'] || '').trim();
+
+  if (holidayRegex.test(lecon) || holidayRegex.test(travaux) || holidayRegex.test(matiere) || holidayRegex.test(devoirs) || holidayRegex.test(objectifs)) {
+    return true;
+  }
+
+  const jour = String(rowData['Jour'] || rowData['jour'] || '').trim();
+  const classe = String(rowData['Classe'] || rowData['classe'] || '').trim();
+
+  if (Array.isArray(specialDaysList) && specialDaysList.length > 0 && jour) {
+    const normDay = jour.toLowerCase().replace(/[^a-zà-ÿ]/g, '');
+    const normCls = classe.toLowerCase().replace(/[\s\-_]+/g, '');
+    const normSec = String(section || rowData.section || '').toLowerCase();
+
+    const isMatch = specialDaysList.some(sd => {
+      if (!sd) return false;
+      if (week && sd.week && Number(sd.week) !== Number(week)) return false;
+      if (normSec && sd.section && sd.section !== 'all' && sd.section.toLowerCase() !== normSec) return false;
+
+      const sdDay = String(sd.day || '').toLowerCase().replace(/[^a-zà-ÿ]/g, '');
+      if (!normDay.includes(sdDay) && !sdDay.includes(normDay)) return false;
+
+      const sdCls = String(sd.classe || 'all').toLowerCase().replace(/[\s\-_]+/g, '');
+      if (sdCls !== 'all' && sdCls !== normCls && !normCls.includes(sdCls) && !sdCls.includes(normCls)) return false;
+
+      const isNoSchool = Boolean(sd.isNoSchool || sd.type === 'no_courses' || sd.type === 'holiday');
+      const textMatch = holidayRegex.test(sd.title || '') || holidayRegex.test(sd.description || '') || holidayRegex.test(sd.message || '');
+      return isNoSchool || textMatch;
+    });
+
+    if (isMatch) return true;
+  }
+
+  return false;
+}
+
 // --------------------- Génération IA (REST, v1, modèle dynamique) ------
 
 app.post('/api/generate-ai-lesson-plan', async (req, res) => {
@@ -5271,6 +5368,27 @@ app.post('/api/generate-ai-lesson-plan', async (req, res) => {
     if (!rowData || typeof rowData !== 'object' || !week) {
       console.error('❌ [AI Lesson Plan] Données invalides:', { week, hasRowData: !!rowData });
       return res.status(400).json({ message: "Les données de la ligne ou de la semaine sont manquantes." });
+    }
+
+    const weekNumber = Number(week);
+    const db = await connectToDatabase();
+
+    // Règle 2 : Ne pas générer de plan de leçon si la séance tombe un jour férié ou chômé
+    const specialDays = await db.collection('special_days').find({
+      $or: [
+        { week: weekNumber },
+        { week: String(weekNumber) }
+      ]
+    }).toArray();
+
+    if (isHolidayRowServer(rowData, specialDays, weekNumber, req.body.section)) {
+      const cls = rowData.Classe || rowData.classe || '';
+      const jr = rowData.Jour || rowData.jour || '';
+      console.log(`⏸️ [AI Lesson Plan] Séance ignorée car jour férié/chômé: ${cls} - ${jr}`);
+      return res.status(400).json({
+        isHoliday: true,
+        message: "Cette séance correspond à un jour férié ou chômé. Aucun plan de leçon n'a été généré pour cette date."
+      });
     }
     
     console.log(`✅ [AI Lesson Plan] Génération pour semaine ${week}`);
@@ -5300,7 +5418,6 @@ app.post('/api/generate-ai-lesson-plan', async (req, res) => {
 
     // Date formatée
     let formattedDate = "";
-    const weekNumber = Number(week);
     const datesNode = specificWeekDateRangesNode[weekNumber];
     if (jour && datesNode?.start) {
       const weekStartDateNode = new Date(datesNode.start + 'T00:00:00Z');
@@ -5561,6 +5678,14 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
     const weekNumber = Number(week);
     console.log(`✅ [Multiple AI Lesson Plans] Génération de ${rowsData.length} plans pour semaine ${weekNumber}`);
 
+    const db = await connectToDatabase();
+    const specialDays = await db.collection('special_days').find({
+      $or: [
+        { week: weekNumber },
+        { week: String(weekNumber) }
+      ]
+    }).toArray();
+
     // Déterminer les enseignants distincts
     const teacherKey = findKey(rowsData[0] || {}, 'Enseignant') || 'Enseignant';
     const distinctTeachers = Array.from(new Set([
@@ -5568,24 +5693,33 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
       ...rowsData.map(r => (r[teacherKey] || r.Enseignant || '').trim())
     ].filter(Boolean)));
 
-    // Préparer toutes les lignes valides (sans rejeter si leçon courte)
+    // Préparer toutes les lignes valides (en éliminant les jours fériés)
     const validRows = [];
     const skippedRows = [];
     
     for (let i = 0; i < rowsData.length; i++) {
       const rowData = rowsData[i];
       if (rowData && typeof rowData === 'object') {
-        validRows.push({ index: i, rowData });
+        if (isHolidayRowServer(rowData, specialDays, weekNumber, req.body.section)) {
+          const cls = rowData.Classe || rowData.classe || '';
+          const jr = rowData.Jour || rowData.jour || '';
+          const mat = rowData.Matière || rowData.matiere || '';
+          skippedRows.push({ index: i + 1, reason: `Jour férié / chômé (${cls} - ${jr} - ${mat})` });
+          console.log(`⏸️ [Multiple AI] Ligne ${i + 1} ignorée (jour férié): ${cls} - ${jr} - ${mat}`);
+        } else {
+          validRows.push({ index: i, rowData });
+        }
       } else {
         skippedRows.push({ index: i+1, reason: 'Ligne invalide' });
       }
     }
     
-    console.log(`📊 [Multiple AI] ${validRows.length} lignes valides pour ${distinctTeachers.length} enseignant(s)`);
+    console.log(`📊 [Multiple AI] ${validRows.length} lignes valides pour ${distinctTeachers.length} enseignant(s) (${skippedRows.length} ignorées)`);
     
     if (validRows.length === 0) {
       return res.status(400).json({ 
-        message: "Aucune ligne valide à générer."
+        isHoliday: true,
+        message: "Toutes les séances sélectionnées correspondent à des jours fériés ou chômés. Aucun plan de leçon n'a été généré."
       });
     }
 
@@ -5632,10 +5766,8 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
     let errorCount = 0;
     let fromDbCount = 0;
 
-    let db = null;
     const lessonPlanCache = new Map();
     try {
-      db = await connectToDatabase();
       if (db) {
         // Pré-charger en lot les fiches déjà existantes dans MongoDB pour un batch ultra-rapide
         const allPossibleIds = [];
