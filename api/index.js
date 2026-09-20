@@ -1937,6 +1937,92 @@ function invalidateStudentsCache(section) {
   }
 }
 
+let isStudentsSanitized = false;
+async function cleanAndSeparateStudentSections(db) {
+  if (isStudentsSanitized) return;
+  isStudentsSanitized = true;
+  try {
+    const col = db.collection('students');
+    
+    // Noms de filles de defaultGirlsStudents
+    const girlNames = [
+      "fatima", "mariam", "sarah", "salma", "khadija", "zainab", "nour", "amina",
+      "houda", "leila", "zohra", "aya", "yasmine", "hiba", "rania", "ines",
+      "rana", "malak", "dina", "lina", "kenza", "nouran", "chaimae", "rim", "asma"
+    ];
+    // Noms de garçons de defaultBoysStudents
+    const boyNames = [
+      "faysal", "bilal", "jad", "manaf", "ahmed", "yasser", "eyad", "ali",
+      "seifeddine", "mohamed", "wajih", "ahmad", "adam", "mohamed younes", "mohamed amine",
+      "samir", "abdulrahman", "youssef", "rayane", "anis", "taha", "hamza",
+      "ilyas", "kareem", "mehdi", "zaid", "walid"
+    ];
+
+    // 1. Supprimer toutes les filles qui se trouveraient enregistrées dans la section 'garcons'
+    for (const gName of girlNames) {
+      await col.deleteMany({
+        section: 'garcons',
+        name: { $regex: new RegExp(`^${gName}$`, 'i') }
+      });
+    }
+
+    // 2. Supprimer tous les garçons qui se trouveraient enregistrés dans la section 'filles'
+    for (const bName of boyNames) {
+      await col.deleteMany({
+        section: 'filles',
+        name: { $regex: new RegExp(`^${bName}$`, 'i') }
+      });
+    }
+
+    // 3. S'assurer que tous les élèves garçons sont enregistrés avec section: 'garcons'
+    for (const [cls, list] of Object.entries(defaultBoysStudents)) {
+      for (const s of list) {
+        const id = `garcons_${cls}_${s.name.replace(/\s+/g, '_')}`;
+        await col.updateOne(
+          { _id: id },
+          { $set: { _id: id, name: s.name, photo: s.photo || '', birthday: s.birthday || '01/2014', class: cls, section: 'garcons' } },
+          { upsert: true }
+        );
+      }
+    }
+
+    // 4. S'assurer que toutes les élèves filles sont enregistrées avec section: 'filles'
+    for (const [cls, list] of Object.entries(defaultGirlsStudents)) {
+      for (const s of list) {
+        const id = `filles_${cls}_${s.name.replace(/\s+/g, '_')}`;
+        await col.updateOne(
+          { _id: id },
+          { $set: { _id: id, name: s.name, photo: s.photo || '', birthday: s.birthday || '01/2014', class: cls, section: 'filles' } },
+          { upsert: true }
+        );
+      }
+    }
+
+    // 5. S'assurer que tous les élèves primaire sont enregistrés avec section: 'primaire'
+    for (const [cls, list] of Object.entries(defaultPrimaireStudents)) {
+      for (const s of list) {
+        const id = `primaire_${cls}_${s.name.replace(/\s+/g, '_')}`;
+        await col.updateOne(
+          { _id: id },
+          { $set: { _id: id, name: s.name, photo: s.photo || '', birthday: s.birthday || '01/2016', class: cls, section: 'primaire' } },
+          { upsert: true }
+        );
+      }
+    }
+
+    // 6. Supprimer les documents avec section invalide
+    await col.deleteMany({ section: { $nin: ['garcons', 'filles', 'primaire'] } });
+
+    // Vider le cache mémoire
+    if (typeof studentsMemoryCache !== 'undefined' && studentsMemoryCache.clear) {
+      studentsMemoryCache.clear();
+    }
+    console.log("✅ Isolation stricte des sections des élèves effectuée.");
+  } catch (err) {
+    console.warn("Note nettoyage sections élèves:", err.message);
+  }
+}
+
 function normalizeStudentClass(cls) {
   if (!cls) return '';
   const str = String(cls).trim();
@@ -1961,15 +2047,19 @@ app.get('/api/admin/students', async (req, res) => {
     let section = req.query.section || 'garcons';
     const targetClass = req.query.class;
     const canonicalClass = normalizeStudentClass(targetClass);
-    
-    // Auto-détection de la section si contenue dans le nom de la classe
-    if (targetClass && typeof targetClass === 'string') {
+
+    // Ne dériver la section de targetClass QUE si req.query.section n'était pas fourni ou vaut 'all'
+    if (!req.query.section && targetClass && typeof targetClass === 'string') {
       const lower = targetClass.toLowerCase();
       if (lower.includes('garçon') || lower.includes('garcon')) section = 'garcons';
       else if (lower.includes('fille')) section = 'filles';
       else if (lower.includes('primaire') || ['ps','ms','gs','pp1','pp2','pp3','pp4','pp5'].includes(canonicalClass.toLowerCase())) {
-        if (!['garcons', 'filles'].includes(section)) section = 'primaire';
+        section = 'primaire';
       }
+    }
+    // Validation stricte de la section
+    if (!['garcons', 'filles', 'primaire', 'all'].includes(section)) {
+      section = 'garcons';
     }
 
     const cacheKey = `${section}_${canonicalClass || targetClass || 'all'}`;
@@ -1982,30 +2072,7 @@ app.get('/api/admin/students', async (req, res) => {
     }
 
     const db = await connectToDatabase();
-
-    // Auto-seeding si la section n'a encore aucun élève enregistré
-    const totalInSection = await db.collection('students').countDocuments({ section: section });
-    if (totalInSection === 0) {
-      const seedList = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
-      for (const [cls, list] of Object.entries(seedList)) {
-        for (const s of list) {
-          const studentObj = {
-            _id: `${section}_${cls}_${s.name}`,
-            name: s.name,
-            photo: s.photo,
-            birthday: s.birthday,
-            class: cls,
-            section: section,
-            createdAt: new Date()
-          };
-          await db.collection('students').updateOne(
-            { _id: studentObj._id },
-            { $set: studentObj },
-            { upsert: true }
-          );
-        }
-      }
-    }
+    await cleanAndSeparateStudentSections(db);
 
     let query = {};
     if (section && section !== 'all') {
@@ -2031,28 +2098,17 @@ app.get('/api/admin/students', async (req, res) => {
 
     let students = await db.collection('students').find(query).sort({ name: 1 }).toArray();
 
-    // Si aucun élève trouvé avec la section spécifique, chercher toutes sections pour cette classe
-    if (students.length === 0 && targetClass && targetClass !== 'all') {
-      const fallbackQuery = {
-        $or: [
-          { class: targetClass },
-          { class: canonicalClass },
-          { class: { $regex: new RegExp(canonicalClass || targetClass, 'i') } }
-        ]
-      };
-      students = await db.collection('students').find(fallbackQuery).sort({ name: 1 }).toArray();
-    }
-
-    // Si toujours 0 élèves trouvés pour cette classe, auto-seeder des élèves pour cette classe !
-    if (students.length === 0 && targetClass && targetClass !== 'all') {
+    // STRICT: Aucune fuite entre sections ! Si 0 élèves trouvés pour cette classe dans CETTE section, auto-seeder pour CETTE section !
+    if (students.length === 0 && targetClass && targetClass !== 'all' && section !== 'all') {
       const clsKey = canonicalClass || targetClass;
       const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
       let listToSeed = seedDict[clsKey];
       if (!listToSeed || listToSeed.length === 0) {
-        // Liste par défaut générée
         const defaultNames = section === 'filles' 
           ? ["Sarah A.", "Mariam B.", "Khadija C.", "Fatima D.", "Nour E.", "Salma F."]
-          : ["Mohamed A.", "Ahmed B.", "Youssef C.", "Omar D.", "Ali E.", "Hamza F."];
+          : (section === 'primaire'
+              ? ["Adam P.", "Lina P.", "Zaid P.", "Maya P.", "Yassine P.", "Nour P."]
+              : ["Mohamed A.", "Ahmed B.", "Youssef C.", "Omar D.", "Ali E.", "Hamza F."]);
         listToSeed = defaultNames.map((nm, idx) => ({
           name: nm,
           photo: "",
@@ -2183,11 +2239,12 @@ app.post('/api/admin/students/move', async (req, res) => {
 
     // Si l'élève n'était pas encore persisté dans la BD mais fait partie des données initiales
     if (!student && targetName) {
-      for (const [cls, list] of Object.entries(defaultStudents)) {
+      const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
+      for (const [cls, list] of Object.entries(seedDict)) {
         const match = list.find(s => s.name.trim().toLowerCase() === targetName.toLowerCase());
         if (match) {
           student = {
-            _id: `${section}_${cls}_${match.name}`,
+            _id: `${section}_${cls}_${match.name.replace(/\s+/g, '_')}`,
             name: match.name,
             photo: match.photo,
             birthday: match.birthday,
@@ -2712,10 +2769,6 @@ app.get('/api/evaluations', async (req, res) => {
     }
 
     let evaluations = await db.collection('evaluations').find(query).toArray();
-    if ((!evaluations || evaluations.length === 0) && section === 'garcons') {
-      delete query.section;
-      evaluations = await db.collection('evaluations').find(query).toArray();
-    }
 
     let responseData = { 
       homeworks, 
@@ -2741,6 +2794,7 @@ app.get('/api/evaluations', async (req, res) => {
       responseData.weeklyEvaluations = await db.collection('evaluations').find({
         studentName: studentName,
         class: className,
+        section: section,
         date: { $gte: firstDayStr, $lte: lastDayStr }
       }).toArray();
     }
@@ -2761,7 +2815,7 @@ app.post('/api/evaluations', async (req, res) => {
     const db = await connectToDatabase();
     const operations = evaluations.map(ev => ({
       updateOne: {
-        filter: { date: ev.date, studentName: ev.studentName, class: ev.class, subject: ev.subject },
+        filter: { date: ev.date, studentName: ev.studentName, class: ev.class, subject: ev.subject, section: section },
         update: { $set: { ...ev, section: section, updatedAt: new Date() } },
         upsert: true
       }
