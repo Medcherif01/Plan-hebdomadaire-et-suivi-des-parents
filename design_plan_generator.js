@@ -180,10 +180,44 @@ function generateDesignPlanHtml({
     }
   }
 
-  // Filtrer les jours qui ont des cours ou afficher les 5 jours de la semaine scolaire
-  const activeDays = dayOrder.filter(d => (groupedByDay[d] && groupedByDay[d].length > 0));
+  // Récupérer et résoudre rigoureusement les notes de classe (saisies par les enseignants)
+  let resolvedNotes = '';
+  if (typeof notes === 'string' && notes.trim() !== '') {
+    resolvedNotes = notes.trim();
+  } else if (notes && typeof notes === 'object') {
+    if (notes[classe] && typeof notes[classe] === 'string' && notes[classe].trim() !== '') {
+      resolvedNotes = notes[classe].trim();
+    } else {
+      const targetNorm = String(classe || '').trim().toLowerCase().replace(/[\s\-_]+/g, '');
+      for (const [k, v] of Object.entries(notes)) {
+        if (typeof v === 'string' && v.trim() !== '') {
+          const kNorm = String(k).trim().toLowerCase().replace(/[\s\-_]+/g, '');
+          if (kNorm === targetNorm || kNorm.includes(targetNorm) || targetNorm.includes(kNorm)) {
+            resolvedNotes = v.trim();
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Filtrer les jours scolaires actifs (qui ont des cours ou sont des journées spéciales)
+  const normClass = String(classe || '').trim().toLowerCase();
+  const activeDays = dayOrder.filter(d => {
+    const hasRows = (groupedByDay[d] && groupedByDay[d].length > 0);
+    const normDay = d.trim().toLowerCase();
+    const isSpecial = (Array.isArray(specialDays) ? specialDays : []).some(sd => {
+      if (!sd) return false;
+      const sdDay = String(sd.day || '').trim().toLowerCase();
+      const sdClass = String(sd.classe || 'all').trim().toLowerCase();
+      return (sdDay.includes(normDay) || normDay.includes(sdDay)) &&
+             (sdClass === 'all' || sdClass === 'toutes' || sdClass === normClass || normClass.includes(sdClass));
+    });
+    return hasRows || isSpecial;
+  });
   const daysToRender = activeDays.length > 0 ? activeDays : dayOrder;
-  const totalPages = daysToRender.length;
+  // +1 pour inclure la page finale récapitulative des manuels et livres à rapporter pour les devoirs
+  const totalPages = daysToRender.length + 1;
 
   return `<!DOCTYPE html>
 <html lang="fr" data-theme="${escapeHtml(theme)}">
@@ -487,7 +521,9 @@ function generateDesignPlanHtml({
        2. TABLEAU DES NOTES (DESIGN SOIGNÉ & PROFESSIONNEL)
        ------------------------------------------------------------------------ */
     .word-notes-block {
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
 
     .notes-styled-table {
@@ -507,6 +543,156 @@ function generateDesignPlanHtml({
       font-weight: 800;
       letter-spacing: 0.03em;
       text-transform: uppercase;
+    }
+
+    .notes-styled-table td {
+      padding: 8px 12px;
+      vertical-align: top;
+      background: #FFFDF5;
+    }
+
+    .teacher-notes-text {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #1E293B;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .empty-notes-text {
+      color: #64748B;
+      font-style: italic;
+      font-size: 0.82rem;
+    }
+
+    /* ------------------------------------------------------------------------
+       NOUVEAU : TABLEAU RÉCAPITULATIF DES LIVRES & CARTABLE (FIN DE PLAN)
+       ------------------------------------------------------------------------ */
+    .backpack-tip-box {
+      background: #EFF6FF;
+      border: 1.5px solid #93C5FD;
+      border-left: 5px solid #2563EB;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .backpack-tip-icon {
+      font-size: 1.6rem;
+      color: #2563EB;
+      flex-shrink: 0;
+    }
+
+    .backpack-tip-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.92rem;
+      font-weight: 800;
+      color: #1E3A8A;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+
+    .ar-tip-title {
+      font-family: 'Cairo', sans-serif;
+      font-size: 0.94rem;
+      color: #1D4ED8;
+      direction: rtl;
+    }
+
+    .backpack-tip-desc {
+      margin: 0;
+      font-size: 0.78rem;
+      color: #334155;
+      line-height: 1.35;
+    }
+
+    .backpack-recap-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid var(--border-dark);
+      font-size: 0.82rem;
+    }
+
+    .backpack-recap-table thead th {
+      background: #1E3A8A;
+      color: #FFFFFF;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 0.82rem;
+      letter-spacing: 0.03em;
+      padding: 6px 8px;
+      border: 1px solid #1E293B;
+      text-align: left;
+    }
+
+    .backpack-recap-table tbody td {
+      border: 1px solid #CBD5E1;
+      padding: 6px 8px;
+      vertical-align: middle;
+      font-size: 0.81rem;
+      line-height: 1.35;
+    }
+
+    .backpack-recap-table tbody tr:nth-child(even) {
+      background: #F8FAFC;
+    }
+
+    .backpack-day-cell {
+      background: #F1F5F9;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .day-cell-badge {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      color: #1E3A8A;
+      font-size: 0.86rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .day-cell-ar {
+      font-family: 'Cairo', sans-serif;
+      font-size: 0.8rem;
+      color: #64748B;
+      direction: rtl;
+    }
+
+    .backpack-homework-desc {
+      font-weight: 500;
+      color: #334155;
+      font-size: 0.8rem;
+    }
+
+    .backpack-book-card {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #EFF6FF;
+      color: #1E3A8A;
+      border: 1px solid #BFDBFE;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.79rem;
+    }
+
+    .check-box-square {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #64748B;
+      border-radius: 4px;
+      margin: 0 auto;
+      background: #FFFFFF;
     }
 
     /* ------------------------------------------------------------------------
@@ -646,17 +832,17 @@ function generateDesignPlanHtml({
        ------------------------------------------------------------------------ */
     .main-table-wrapper {
       flex: 1;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
+      page-break-inside: auto;
+      break-inside: auto;
     }
 
     .lessons-table-a4 {
       width: 100%;
       border-collapse: collapse;
       border: 1.5px solid var(--border-dark);
-      font-size: 0.84rem;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
+      font-size: 0.82rem;
+      page-break-inside: auto;
+      break-inside: auto;
     }
 
     .lessons-table-a4 thead {
@@ -668,17 +854,17 @@ function generateDesignPlanHtml({
       color: #0F172A;
       font-family: 'Outfit', sans-serif;
       font-weight: 800;
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       letter-spacing: 0.04em;
       text-transform: uppercase;
-      padding: 8px 10px;
+      padding: 6px 8px;
       border: 1.5px solid var(--border-dark);
       text-align: center;
     }
 
     .lessons-table-a4 tbody td {
       border: 1px solid #CBD5E1;
-      padding: 8px 10px;
+      padding: 6px 8px;
       vertical-align: top;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
@@ -903,7 +1089,7 @@ function generateDesignPlanHtml({
     @media print {
       @page {
         size: A4 portrait;
-        margin: 1cm 1cm 1cm 1cm;
+        margin: 8mm 8mm 8mm 8mm;
       }
 
       html, body {
@@ -911,6 +1097,9 @@ function generateDesignPlanHtml({
         margin: 0 !important;
         padding: 0 !important;
         color: #000000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        width: 100% !important;
       }
 
       .no-print {
@@ -919,33 +1108,61 @@ function generateDesignPlanHtml({
 
       .all-pages-wrapper {
         padding: 0 !important;
+        margin: 0 !important;
       }
 
       .a4-page {
         width: 100% !important;
         min-height: auto !important;
+        height: auto !important;
         margin: 0 !important;
-        padding: 0 !important; /* Le navigateur applique les 1 cm de @page */
+        padding: 0 0 2mm 0 !important;
         box-shadow: none !important;
         border: none !important;
-        page-break-after: always !important;
+        page-break-after: page !important;
         break-after: page !important;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+        display: block !important;
+      }
+
+      .a4-page:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+      }
+
+      .lessons-table-a4,
+      .backpack-recap-table {
+        width: 100% !important;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+      }
+
+      .lessons-table-a4 thead,
+      .backpack-recap-table thead {
+        display: table-header-group !important;
+      }
+
+      .lessons-table-a4 tr,
+      .backpack-recap-table tr {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
       }
 
-      .a4-page:last-child {
-        page-break-after: avoid !important;
-        break-after: avoid !important;
+      .lessons-table-a4 td,
+      .lessons-table-a4 th,
+      .backpack-recap-table td,
+      .backpack-recap-table th {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
 
-      .lessons-table-a4,
-      .lessons-table-a4 tbody,
-      .lessons-table-a4 tr,
-      .lessons-table-a4 td,
-      .main-table-wrapper,
-      .word-notes-block,
+      .word-header-container,
       .day-banner-strip,
+      .word-notes-block,
+      .backpack-tip-box,
       .a4-page-footer {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
@@ -953,9 +1170,6 @@ function generateDesignPlanHtml({
 
       * {
         -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-    }
         print-color-adjust: exact !important;
       }
     }
@@ -1064,14 +1278,16 @@ function generateDesignPlanHtml({
             <table class="notes-styled-table">
               <thead>
                 <tr>
-                  <th style="text-align:left;"><i class="fas fa-clipboard-list"></i> Notes pour la classe (saisi par les enseignants)</th>
-                  <th style="text-align:right; font-family:'Cairo', sans-serif;">ملاحظات للفصل (مسجلة من قبل المعلمين)</th>
+                  <th style="text-align:left;"><i class="fas fa-clipboard-list"></i> Remarques &amp; Notes de la semaine (saisi par les enseignants)</th>
+                  <th style="text-align:right; font-family:'Cairo', sans-serif;">ملاحظات الأسبوع (مسجلة من قبل المعلمين)</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td colspan="2">
-                    ${escapeHtml(notes && notes.trim() !== '' ? notes : 'Aucune consigne particulière pour cette semaine.')}
+                    ${(resolvedNotes && resolvedNotes.trim() !== '') 
+                      ? `<div class="teacher-notes-text">${escapeHtml(resolvedNotes)}</div>`
+                      : `<div class="empty-notes-text"><i class="fas fa-info-circle"></i> Aucune consigne particulière pour cette semaine.</div>`}
                   </td>
                 </tr>
               </tbody>
@@ -1201,8 +1417,6 @@ function generateDesignPlanHtml({
                       }
                       <div class="teacher-name-print">${escapeHtml(enseignant)}</div>
                     </div>
-
-                    ${support ? `<div class="support-info-txt"><i class="fas fa-paperclip"></i> Support : ${escapeHtml(support)}</div>` : ''}
                   </td>
 
                   <!-- 2. TRAVAIL DE CLASSE (AVEC SUPPORT INTÉGRÉ) -->
@@ -1248,6 +1462,161 @@ function generateDesignPlanHtml({
       </section>
       `;
     }).join('')}
+
+    <!-- ====================================================================
+         4. NOUVELLE PAGE RÉCAPITULATIVE : MANUELS & LIVRES À RAPPORTER POUR LES DEVOIRS
+         ==================================================================== -->
+    <section class="a4-page backpack-summary-page" id="page_backpack_recap">
+      <!-- EN-TÊTE OFFICIEL WORD / A4 -->
+      <header class="word-header-container">
+        ${headerBannerDataUri ? `
+          <div class="a4-top-banner">
+            <img src="${headerBannerDataUri}" alt="Les Écoles Internationales Al Kawthar" class="a4-header-banner-img" />
+          </div>
+        ` : `
+          <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
+        `}
+
+        <div class="header-center-pill-wrapper">
+          <div class="header-week-range-badge">
+            <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
+          </div>
+        </div>
+
+        <table class="word-meta-table">
+          <tr>
+            <td class="meta-left">
+              <span class="meta-label">CLASSE : </span>
+              <span class="meta-value">${escapeHtml(classe)}</span>
+            </td>
+            <td class="meta-center">
+              <span class="meta-label">RÉCAPITULATIF CARTABLE &amp; LIVRES POUR LES DEVOIRS</span>
+            </td>
+            <td class="meta-right">
+              <span class="meta-label">SEMESTRE : </span>
+              <span class="meta-value">${escapeHtml(String(semester || 1))}</span>
+              <span style="margin-left:14px;" class="meta-label">SEMAINE : </span>
+              <span class="meta-value">${week}</span>
+            </td>
+          </tr>
+        </table>
+      </header>
+
+      <!-- BANDEAU CONSEIL & RAPPEL POUR LES PARENTS ET ÉLÈVES -->
+      <div class="backpack-tip-box">
+        <div class="backpack-tip-icon">
+          <i class="fas fa-backpack"></i>
+        </div>
+        <div class="backpack-tip-content">
+          <div class="backpack-tip-title">
+            <span>ORGANISATION DU CARTABLE : LIVRES &amp; CAHIERS À RAPPORTER À LA MAISON</span>
+            <span class="ar-tip-title">جدول تنظيم الحقيبة المدرسية والكتب للواجبات المنزلية</span>
+          </div>
+          <p class="backpack-tip-desc">
+            Pour éviter d'oublier vos livres à l'école, vérifiez chaque jour votre cartable grâce à ce tableau récapitulatif des devoirs de la semaine.
+            <br><span style="font-family:'Cairo', sans-serif; direction:rtl; display:inline-block;">لتفادي نسيان الكتب والكراسات بالمدرسة، يرجى مراجعة وتجهيز الحقيبة يومياً وفق هذا الجدول.</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- TABLEAU RÉCAPITULATIF -->
+      <div class="main-table-wrapper">
+        <table class="backpack-recap-table">
+          <thead>
+            <tr>
+              <th style="width: 18%;">JOUR / اليوم</th>
+              <th style="width: 22%;">MATIÈRE / المادة</th>
+              <th style="width: 28%;">DEVOIR PRÉVU / الواجب المطلوب</th>
+              <th style="width: 24%;">LIVRE / CAHIER À PRENDRE / الكتاب أو الكراس</th>
+              <th style="width: 8%; text-align:center;">VÉRIFIÉ / تأكيد</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${daysToRender.map(dayName => {
+              const dayRows = groupedByDay[dayName] || [];
+              const hwRows = dayRows.filter(r => {
+                const devoirs = String(r['Devoirs'] || r['devoirs'] || '').trim();
+                return devoirs !== '' && devoirs !== '-' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
+              });
+
+              if (hwRows.length === 0) {
+                return `
+                <tr class="backpack-empty-day-row">
+                  <td class="backpack-day-cell">
+                    <div class="day-cell-badge">
+                      <span>${escapeHtml(dayName)}</span>
+                      <span class="day-cell-ar">${arabicDays[dayName] || ''}</span>
+                    </div>
+                  </td>
+                  <td colspan="3" style="color:#64748B; font-style:italic; padding:8px 12px;">
+                    <i class="fas fa-check-circle" style="color:#10B981; margin-right:6px;"></i>
+                    Aucun devoir nécessitant de livre à rapporter à la maison pour ce jour. / لا توجد واجبات تتطلب إحضار كتب
+                  </td>
+                  <td style="text-align:center;">
+                    <i class="fas fa-check" style="color:#10B981; font-size:1.1rem;"></i>
+                  </td>
+                </tr>
+                `;
+              }
+
+              return hwRows.map((r, idx) => {
+                const matiere = r['Matière'] || r['matiere'] || 'Cours';
+                const styleMat = getSubjectStyle(matiere);
+                const devoirs = r['Devoirs'] || r['devoirs'] || '';
+                const support = String(r['Support'] || r['support'] || '').trim();
+                const hasSupport = support && support !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد');
+                
+                // Déterminer le livre/cahier à rapporter
+                let bookText = '';
+                if (hasSupport) {
+                  bookText = support;
+                } else {
+                  bookText = `Manuel & Cahier de ${matiere}`;
+                }
+
+                return `
+                <tr>
+                  ${idx === 0 ? `
+                    <td rowspan="${hwRows.length}" class="backpack-day-cell" style="vertical-align:middle;">
+                      <div class="day-cell-badge">
+                        <span>${escapeHtml(dayName)}</span>
+                        <span class="day-cell-ar">${arabicDays[dayName] || ''}</span>
+                      </div>
+                    </td>
+                  ` : ''}
+                  <td>
+                    <span class="subject-name-tag" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
+                      <i class="fas ${styleMat.icon}"></i>
+                      <span>${escapeHtml(matiere)}</span>
+                    </span>
+                  </td>
+                  <td>
+                    <div class="backpack-homework-desc">${escapeHtml(devoirs)}</div>
+                  </td>
+                  <td>
+                    <div class="backpack-book-card">
+                      <i class="fas fa-book-bookmark" style="color:#2563EB;"></i>
+                      <span>${escapeHtml(bookText)}</span>
+                    </div>
+                  </td>
+                  <td style="text-align:center;">
+                    <div class="check-box-square"></div>
+                  </td>
+                </tr>
+                `;
+              }).join('');
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PIED DE PAGE -->
+      <footer class="a4-page-footer">
+        <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
+        <div class="footer-stamp-box">Visa de la Direction</div>
+        <div class="page-number-box">Page <strong>${totalPages}</strong> / ${totalPages}</div>
+      </footer>
+    </section>
   </div>
 
   <script>

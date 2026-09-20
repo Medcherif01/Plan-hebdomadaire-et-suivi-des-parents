@@ -9434,6 +9434,16 @@ async function downloadSelectedNotesClassFullWord() {
     }
 }
 
+async function downloadSelectedNotesClassFullDesign() {
+    const selClass = document.getElementById('notesClassSelector')?.value || document.getElementById('filterClasse')?.value;
+    if (selClass) {
+        const week = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
+        await downloadFullClassDesign(week, selClass, 'indigo', true, true, 'print');
+    } else {
+        openDesignPlanModal();
+    }
+}
+
 async function downloadSelectedClassFullExcel() {
     const selClass = document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value;
     if (selClass) {
@@ -9956,6 +9966,17 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
         const section = currentSection || 'garcons';
         updateProgressBar(45);
 
+        // Récupérer la note active de cette classe (en mémoire ou saisie en direct dans le bloc notes)
+        let activeNoteForClass = '';
+        if (weeklyClassNotes && weeklyClassNotes[className]) {
+            activeNoteForClass = weeklyClassNotes[className];
+        }
+        const selClassInBox = document.getElementById('notesClassSelector')?.value;
+        const noteInTextarea = document.getElementById('notesInput')?.value;
+        if (!activeNoteForClass && selClassInBox === className && noteInTextarea && noteInTextarea.trim() !== '') {
+            activeNoteForClass = noteInTextarea.trim();
+        }
+
         const payload = {
             week: Number(weekNum),
             section: section,
@@ -9963,7 +9984,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             theme: theme || 'indigo',
             showPhotos: showPhotos !== false,
             highlightHomework: highlightHomework !== false,
-            notes: weeklyClassNotes
+            notes: activeNoteForClass || weeklyClassNotes
         };
 
         const response = await fetch('/api/generate-design-plan', {

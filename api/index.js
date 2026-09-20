@@ -4789,7 +4789,67 @@ app.post('/api/generate-word', async (req, res) => {
 	      });
 	    }
 
-	    let classNotes = (typeof notes === 'string') ? notes : '';
+	    let classNotes = '';
+	    // 1. Si `notes` a été fourni directement en chaîne
+	    if (typeof notes === 'string' && notes.trim() !== '') {
+	      classNotes = notes.trim();
+	    } else if (notes && typeof notes === 'object') {
+	      // 2. Si `notes` a été fourni en dictionnaire (ex: { "PEI2 Garçons": "..." })
+	      if (notes[classe] && typeof notes[classe] === 'string' && notes[classe].trim() !== '') {
+	        classNotes = notes[classe].trim();
+	      } else {
+	        const normTarget = String(classe).toLowerCase().replace(/[\s\-_]+/g, '');
+	        for (const [k, v] of Object.entries(notes)) {
+	          if (typeof v === 'string' && v.trim() !== '') {
+	            const normK = String(k).toLowerCase().replace(/[\s\-_]+/g, '');
+	            if (normK === normTarget || normK.includes(normTarget) || normTarget.includes(normK)) {
+	              classNotes = v.trim();
+	              break;
+	            }
+	          }
+	        }
+	      }
+	    }
+
+	    // 3. Si toujours non trouvé, chercher dans la collection 'plans' (où /api/save-notes enregistre classNotes)
+	    if (!classNotes) {
+	      try {
+	        const planDocs = await db.collection('plans').find({
+	          $or: [
+	            { _id: `${section}_${weekNumber}` },
+	            { _id: `${section}_${String(weekNumber)}` },
+	            { week: weekNumber, section: section },
+	            { week: String(weekNumber), section: section },
+	            { week: weekNumber }
+	          ]
+	        }).toArray();
+
+	        for (const pDoc of planDocs) {
+	          const cNotes = pDoc.classNotes || pDoc.notes;
+	          if (cNotes && typeof cNotes === 'object') {
+	            if (cNotes[classe] && typeof cNotes[classe] === 'string' && cNotes[classe].trim() !== '') {
+	              classNotes = cNotes[classe].trim();
+	              break;
+	            }
+	            const normTarget = String(classe).toLowerCase().replace(/[\s\-_]+/g, '');
+	            for (const [k, v] of Object.entries(cNotes)) {
+	              if (typeof v === 'string' && v.trim() !== '') {
+	                const normK = String(k).toLowerCase().replace(/[\s\-_]+/g, '');
+	                if (normK === normTarget || normK.includes(normTarget) || normTarget.includes(normK)) {
+	                  classNotes = v.trim();
+	                  break;
+	                }
+	              }
+	            }
+	            if (classNotes) break;
+	          }
+	        }
+	      } catch (ne) {
+	        console.warn('Erreur lecture classNotes depuis plans:', ne.message);
+	      }
+	    }
+
+	    // 4. Repli sur 'weekly_notes' si existant
 	    if (!classNotes) {
 	      try {
 	        const notesDoc = await db.collection('weekly_notes').findOne({ week: weekNumber, section: section });
@@ -4799,6 +4859,17 @@ app.post('/api/generate-word', async (req, res) => {
 	      } catch (ne) {
 	        console.warn('Erreur lecture weekly_notes:', ne.message);
 	      }
+	    }
+
+	    // Récupérer les journées spéciales / fusionnées
+	    let specialDays = [];
+	    try {
+	      specialDays = await db.collection('special_days').find({ 
+	        section: section, 
+	        week: weekNumber 
+	      }).toArray();
+	    } catch (sde) {
+	      console.warn('Erreur lecture special_days dans generate-design-plan:', sde.message);
 	    }
 
 	    const photosDocs = await db.collection('teachers_photos').find({}).toArray();
@@ -4837,7 +4908,8 @@ app.post('/api/generate-word', async (req, res) => {
 	      teachersPhotos,
 	      weekStartDate: weekStartDateNode,
 	      weekDateRange: plageSemaineText,
-	      semester: 1
+	      semester: 1,
+	      specialDays: specialDays || []
 	    });
 
 	    if (download) {
