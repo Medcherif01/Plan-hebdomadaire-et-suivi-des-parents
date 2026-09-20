@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <defs>
+    <!-- Dégradé cyan lumineux Al Kawthar -->
+    <linearGradient id="akCyanGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="45%" stop-color="#00A3E0" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+    <linearGradient id="akCyanGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7DD3FC" />
+      <stop offset="60%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#0369A1" />
+    </linearGradient>
+
+    <!-- Arc supérieur pour AL KAWTHAR (de gauche à droite en passant par le haut) -->
+    <path id="arcTop" d="M 80,250 A 170,170 0 0,1 420,250" fill="none" />
+    <!-- Arc inférieur pour LES ÉCOLES INTERNATIONALES (de gauche à droite en passant par le bas) -->
+    <path id="arcBottom" d="M 85,250 A 165,165 0 0,0 415,250" fill="none" />
+  </defs>
+
+  <!-- Cercle de fond blanc -->
+  <circle cx="250" cy="250" r="242" fill="#FFFFFF" />
+
+  <!-- Double bordure extérieure bleu marine -->
+  <circle cx="250" cy="250" r="236" fill="none" stroke="#082A5E" stroke-width="4.5" />
+  <circle cx="250" cy="250" r="226" fill="none" stroke="#082A5E" stroke-width="2" />
+
+  <!-- Anneau intérieur -->
+  <circle cx="250" cy="250" r="148" fill="none" stroke="#082A5E" stroke-width="2.5" />
+
+  <!-- Disque central bleu nuit -->
+  <circle cx="250" cy="250" r="142" fill="#062047" />
+
+  <!-- Points séparateurs latéraux -->
+  <circle cx="68" cy="246" r="6.5" fill="#082A5E" />
+  <circle cx="432" cy="246" r="6.5" fill="#082A5E" />
+
+  <!-- Texte supérieur : AL KAWTHAR -->
+  <text font-family="'Cinzel', 'Times New Roman', 'Georgia', serif" font-size="42" font-weight="bold" fill="#082A5E" letter-spacing="8">
+    <textPath href="#arcTop" startOffset="50%" text-anchor="middle">
+      AL KAWTHAR
+    </textPath>
+  </text>
+
+  <!-- Texte inférieur : LES ÉCOLES INTERNATIONALES -->
+  <text font-family="'Outfit', 'Montserrat', 'Helvetica', sans-serif" font-size="20" font-weight="700" fill="#082A5E" letter-spacing="3.5">
+    <textPath href="#arcBottom" startOffset="50%" text-anchor="middle">
+      LES ÉCOLES INTERNATIONALES
+    </textPath>
+  </text>
+
+  <!-- Emblème central Al Kawthar : Vagues et croissants dynamiques cyan -->
+  <g id="kawtharEmblem" transform="translate(250, 250)">
+    <!-- Arc supérieur gauche dynamique -->
+    <path d="M -95 -25 C -55 -105, 55 -100, 95 -30 C 85 -18, 70 -30, 48 -58 C 8 -92, -52 -82, -82 -12 Z" fill="url(#akCyanGrad)" />
+    <!-- Grande parabole ascendante droite -->
+    <path d="M -60 100 C -20 80, 50 30, 75 -45 C 85 -55, 90 -40, 82 -25 C 60 45, -5 95, -45 115 Z" fill="url(#akCyanGrad)" />
+    <!-- Croissant central croisé -->
+    <path d="M -85 -10 C -40 -10, 30 20, 65 75 C 55 85, 45 75, 20 40 C -15 0, -55 -2, -80 5 Z" fill="url(#akCyanGrad2)" />
+    <!-- Boucle fluide inférieure -->
+    <path d="M -90 -5 C -65 50, -5 85, 50 75 C 40 85, -15 95, -70 60 C -95 35, -100 10, -90 -5 Z" fill="url(#akCyanGrad)" opacity="0.9" />
+  </g>
+</svg>

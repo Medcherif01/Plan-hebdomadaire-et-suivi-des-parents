@@ -4927,6 +4927,41 @@ app.post('/api/generate-word', async (req, res) => {
 	  }
 	});
 
+	// --------------------- Proxy Sécurisé Photos Google Drive ---------------------
+	app.get('/api/proxy-drive-image/:id', async (req, res) => {
+	  try {
+	    const fileId = req.params.id;
+	    if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) {
+	      return res.status(400).send('ID Drive invalide');
+	    }
+	    const directUrl = `https://lh3.googleusercontent.com/d/${fileId}=s400`;
+	    const driveResp = await fetch(directUrl, {
+	      headers: {
+	        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+	      }
+	    });
+	    if (driveResp.ok) {
+	      const contentType = driveResp.headers.get('content-type') || 'image/jpeg';
+	      res.setHeader('Content-Type', contentType);
+	      res.setHeader('Cache-Control', 'public, max-age=86400');
+	      return driveResp.body.pipe(res);
+	    }
+	    // Repli vers uc?export=view
+	    const fallbackUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+	    const fbResp = await fetch(fallbackUrl);
+	    if (fbResp.ok) {
+	      const contentType = fbResp.headers.get('content-type') || 'image/jpeg';
+	      res.setHeader('Content-Type', contentType);
+	      res.setHeader('Cache-Control', 'public, max-age=86400');
+	      return fbResp.body.pipe(res);
+	    }
+	    return res.status(404).send('Photo non trouvée sur Drive');
+	  } catch (err) {
+	    console.warn('Proxy image Drive warn:', err.message);
+	    return res.status(500).send('Erreur proxy image');
+	  }
+	});
+
 	// --------------------- Téléchargement Plan de Leçon (DOCX) ---------------------
 
 	app.get('/api/download-weekly-plan/:week/:classe', async (req, res) => {

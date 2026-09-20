@@ -1,24 +1,62 @@
 // ============================================================================
 // DESIGN PLAN GENERATOR - Modèle Stylisé Haute Définition A4 pour Impression / PDF
-// Conforme au modèle Word officiel : Marges 1.5 cm, 3 colonnes, 1 page par jour
+// Conforme au modèle Word A4 officiel : Marges 1.0 cm partout, 3 colonnes, 1 page par jour
+// Avec logo officiel Al Kawthar, photos Google Drive fiables et pied de page scellé
 // ============================================================================
 
 const fs = require('fs');
 const path = require('path');
 
-let headerBannerDataUri = '';
+// Chargement du Logo Al Kawthar officiel (SVG vectoriel parfait)
+let logoAlKawtharUri = '';
 try {
-  const bannerPathJpg = path.join(__dirname, 'public/header_a4.jpg');
-  const bannerPathPng = path.join(__dirname, 'public/header_a4.png');
-  if (fs.existsSync(bannerPathJpg)) {
-    const buf = fs.readFileSync(bannerPathJpg);
-    headerBannerDataUri = `data:image/jpeg;base64,${buf.toString('base64')}`;
-  } else if (fs.existsSync(bannerPathPng)) {
-    const buf = fs.readFileSync(bannerPathPng);
-    headerBannerDataUri = `data:image/png;base64,${buf.toString('base64')}`;
+  const logoSvgPath = path.join(__dirname, 'public/logo-alkawthar.svg');
+  if (fs.existsSync(logoSvgPath)) {
+    const svgStr = fs.readFileSync(logoSvgPath, 'utf8');
+    logoAlKawtharUri = `data:image/svg+xml;base64,${Buffer.from(svgStr).toString('base64')}`;
   }
 } catch (e) {
-  console.warn('Erreur chargement bannière en-tête A4:', e.message);
+  console.warn('Erreur chargement logo SVG Al Kawthar:', e.message);
+}
+
+// Fallback intégré haute fidélité du logo au cas où le fichier n'est pas sur le disque
+if (!logoAlKawtharUri) {
+  const inlineSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <defs>
+    <linearGradient id="akCyanGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="45%" stop-color="#00A3E0" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+    <linearGradient id="akCyanGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7DD3FC" />
+      <stop offset="60%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#0369A1" />
+    </linearGradient>
+    <path id="arcTop" d="M 80,250 A 170,170 0 0,1 420,250" fill="none" />
+    <path id="arcBottom" d="M 85,250 A 165,165 0 0,0 415,250" fill="none" />
+  </defs>
+  <circle cx="250" cy="250" r="242" fill="#FFFFFF" />
+  <circle cx="250" cy="250" r="236" fill="none" stroke="#082A5E" stroke-width="4.5" />
+  <circle cx="250" cy="250" r="226" fill="none" stroke="#082A5E" stroke-width="2" />
+  <circle cx="250" cy="250" r="148" fill="none" stroke="#082A5E" stroke-width="2.5" />
+  <circle cx="250" cy="250" r="142" fill="#062047" />
+  <circle cx="68" cy="246" r="6.5" fill="#082A5E" />
+  <circle cx="432" cy="246" r="6.5" fill="#082A5E" />
+  <text font-family="'Cinzel', 'Times New Roman', serif" font-size="42" font-weight="bold" fill="#082A5E" letter-spacing="8">
+    <textPath href="#arcTop" startOffset="50%" text-anchor="middle">AL KAWTHAR</textPath>
+  </text>
+  <text font-family="'Outfit', 'Montserrat', 'Helvetica', sans-serif" font-size="20" font-weight="700" fill="#082A5E" letter-spacing="3.5">
+    <textPath href="#arcBottom" startOffset="50%" text-anchor="middle">LES ÉCOLES INTERNATIONALES</textPath>
+  </text>
+  <g transform="translate(250, 250)">
+    <path d="M -95 -25 C -55 -105, 55 -100, 95 -30 C 85 -18, 70 -30, 48 -58 C 8 -92, -52 -82, -82 -12 Z" fill="url(#akCyanGrad)" />
+    <path d="M -60 100 C -20 80, 50 30, 75 -45 C 85 -55, 90 -40, 82 -25 C 60 45, -5 95, -45 115 Z" fill="url(#akCyanGrad)" />
+    <path d="M -85 -10 C -40 -10, 30 20, 65 75 C 55 85, 45 75, 20 40 C -15 0, -55 -2, -80 5 Z" fill="url(#akCyanGrad2)" />
+    <path d="M -90 -5 C -65 50, -5 85, 50 75 C 40 85, -15 95, -70 60 C -95 35, -100 10, -90 -5 Z" fill="url(#akCyanGrad)" opacity="0.9" />
+  </g>
+</svg>`;
+  logoAlKawtharUri = `data:image/svg+xml;base64,${Buffer.from(inlineSvg).toString('base64')}`;
 }
 
 const subjectColors = {
@@ -52,15 +90,47 @@ function getSubjectStyle(subjectName) {
   return subjectColors.defaut;
 }
 
+// Formatage robuste et haute compatibilité des URLs Google Drive
 function formatDriveImageUrl(url) {
   if (!url || typeof url !== 'string') return '';
   const clean = url.trim();
   if (clean.startsWith('data:image/')) return clean;
-  const driveMatch = clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  
+  // Extraction de l'ID du fichier Google Drive
+  const driveMatch = clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || 
+                     clean.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+                     clean.match(/file\/d\/([a-zA-Z0-9_-]+)/);
   if (driveMatch && driveMatch[1]) {
-    return `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+    const fileId = driveMatch[1];
+    // Utiliser le CDN direct Google lh3 avec paramètre taille s400
+    return `https://lh3.googleusercontent.com/d/${fileId}=s400`;
   }
   return clean;
+}
+
+// Résolution souple du lien photo de l'enseignant
+function findTeacherPhotoUrl(enseignant, photosMap) {
+  if (!enseignant || !photosMap || typeof photosMap !== 'object') return '';
+  const raw = String(enseignant).trim();
+  if (photosMap[raw]) return formatDriveImageUrl(photosMap[raw]);
+
+  // Nettoyage pour correspondance insensible à la casse et préfixes
+  const clean = raw.toLowerCase()
+    .replace(/^(m\.|mme|mr|prof|professeur|enseignant)\s+/i, '')
+    .replace(/[\s\-_.]+/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  for (const [key, val] of Object.entries(photosMap)) {
+    if (!val) continue;
+    const keyClean = String(key).toLowerCase()
+      .replace(/^(m\.|mme|mr|prof|professeur|enseignant)\s+/i, '')
+      .replace(/[\s\-_.]+/g, '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (clean === keyClean || clean.includes(keyClean) || keyClean.includes(clean)) {
+      return formatDriveImageUrl(val);
+    }
+  }
+  return '';
 }
 
 function escapeHtml(str) {
@@ -98,194 +168,142 @@ function getDateForDayName(weekStartDate, dayName) {
   return specificDate;
 }
 
-function generateDesignPlanHtml({
-  week = 1,
-  classe = 'Classe',
-  data = [],
-  notes = '',
-  section = 'garcons',
-  theme = 'indigo',
-  showPhotos = true,
-  teachersPhotos = {},
-  weekStartDate = null,
-  weekDateRange = '',
-  semester = 1,
-  specialDays = []
-}) {
-  const dayOrder = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
+/**
+ * Génère le code HTML complet du document stylisé A4
+ */
+function generateDesignPlanHtml(options = {}) {
+  const {
+    week = 1,
+    classe = 'PEI1',
+    data = [],
+    notes = '',
+    section = 'garcons',
+    theme = 'indigo',
+    showPhotos = true,
+    teachersPhotos = {},
+    weekStartDate = null,
+    weekDateRange = '',
+    semester = 1,
+    specialDays = []
+  } = options;
+
+  let resolvedNotes = '';
+  if (typeof notes === 'string') {
+    resolvedNotes = notes;
+  } else if (notes && typeof notes === 'object') {
+    resolvedNotes = notes[classe] || notes[classe.toUpperCase()] || notes[classe.toLowerCase()] || notes.general || '';
+  }
+
+  const dayOrder = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
   const arabicDays = {
-    'Dimanche': 'الأحد',
-    'Lundi': 'الإثنين',
-    'Mardi': 'الثلاثاء',
-    'Mercredi': 'الأربعاء',
-    'Jeudi': 'الخميس'
+    "Dimanche": "الأحد",
+    "Lundi": "الإثنين",
+    "Mardi": "الثلاثاء",
+    "Mercredi": "الأربعاء",
+    "Jeudi": "الخميس"
   };
 
-  // S'assurer que chaque classe est traitée SEULE et strictement isolée
-  let classFilteredData = Array.isArray(data) ? data : [];
-  if (classe && typeof classe === 'string' && classe.trim() !== '' && !['toutes', 'all', 'classe', 'tous'].includes(classe.trim().toLowerCase())) {
-    const targetNorm = classe.trim().toLowerCase().replace(/[\s\-_]+/g, '');
-    classFilteredData = classFilteredData.filter(item => {
-      if (!item) return false;
-      const c = String(item['Classe'] || item['classe'] || item['class'] || '').trim().toLowerCase().replace(/[\s\-_]+/g, '');
-      return c === targetNorm || c.includes(targetNorm) || targetNorm.includes(c);
-    });
-  }
-
-  // Grouper les séances par jour
   const groupedByDay = {};
-  dayOrder.forEach(d => { groupedByDay[d] = []; });
-
-  classFilteredData.forEach(item => {
-    if (!item) return;
-    const rawDay = String(item['Jour'] || item['jour'] || item['day'] || '').trim();
-    let matchedDay = dayOrder.find(d => rawDay.toLowerCase().includes(d.toLowerCase())) || rawDay;
-    if (!groupedByDay[matchedDay]) {
-      groupedByDay[matchedDay] = [];
-    }
-    groupedByDay[matchedDay].push(item);
-  });
-
-  // Trier rigoureusement par ordre de l'emploi du temps (P1, P2, P3...)
-  dayOrder.forEach(d => {
-    if (groupedByDay[d]) {
-      groupedByDay[d].sort((a, b) => {
-        const rawA = String(a['Période'] || a['periode'] || a['Période (Heure)'] || '0').replace(/[^0-9]/g, '');
-        const rawB = String(b['Période'] || b['periode'] || b['Période (Heure)'] || '0').replace(/[^0-9]/g, '');
-        const pA = parseInt(rawA, 10) || 0;
-        const pB = parseInt(rawB, 10) || 0;
-        return pA - pB;
-      });
-    }
-  });
-
-  // Déterminer la date de début si objet ou string
-  let weekStartObj = null;
-  if (weekStartDate instanceof Date && !isNaN(weekStartDate.getTime())) {
-    weekStartObj = weekStartDate;
-  } else if (typeof weekStartDate === 'string' && weekStartDate.trim() !== '') {
-    const parsed = new Date(weekStartDate.includes('T') ? weekStartDate : weekStartDate + 'T00:00:00Z');
-    if (!isNaN(parsed.getTime())) weekStartObj = parsed;
-  }
-
-  // Libellé de la plage de la semaine
-  let plageSemaineDisplay = weekDateRange;
-  if (!plageSemaineDisplay) {
-    if (weekStartObj) {
-      const endD = new Date(weekStartObj.getTime());
-      endD.setUTCDate(endD.getUTCDate() + 4);
-      plageSemaineDisplay = `du ${formatDateFrench(weekStartObj)} à ${formatDateFrench(endD)}`;
-    } else {
-      plageSemaineDisplay = `du Dimanche ...... à Jeudi ......`;
-    }
-  }
-
-  // Récupérer et résoudre rigoureusement les notes de classe (saisies par les enseignants)
-  let resolvedNotes = '';
-  if (typeof notes === 'string' && notes.trim() !== '') {
-    resolvedNotes = notes.trim();
-  } else if (notes && typeof notes === 'object') {
-    if (notes[classe] && typeof notes[classe] === 'string' && notes[classe].trim() !== '') {
-      resolvedNotes = notes[classe].trim();
-    } else {
-      const targetNorm = String(classe || '').trim().toLowerCase().replace(/[\s\-_]+/g, '');
-      for (const [k, v] of Object.entries(notes)) {
-        if (typeof v === 'string' && v.trim() !== '') {
-          const kNorm = String(k).trim().toLowerCase().replace(/[\s\-_]+/g, '');
-          if (kNorm === targetNorm || kNorm.includes(targetNorm) || targetNorm.includes(kNorm)) {
-            resolvedNotes = v.trim();
-            break;
-          }
-        }
+  data.forEach(item => {
+    let rawDay = item['Jour'] || item.jour || item['jour'] || '';
+    if (!rawDay) return;
+    for (const d of dayOrder) {
+      if (rawDay.toLowerCase().includes(d.toLowerCase())) {
+        if (!groupedByDay[d]) groupedByDay[d] = [];
+        groupedByDay[d].push(item);
+        break;
       }
     }
+  });
+
+  const daysToRender = dayOrder.filter(dayName => groupedByDay[dayName] && groupedByDay[dayName].length > 0);
+  if (daysToRender.length === 0) {
+    dayOrder.forEach(d => {
+      if (groupedByDay[d]) daysToRender.push(d);
+    });
+  }
+  if (daysToRender.length === 0) {
+    daysToRender.push("Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi");
   }
 
-  // Filtrer les jours scolaires actifs (qui ont des cours ou sont des journées spéciales)
-  const normClass = String(classe || '').trim().toLowerCase();
-  const activeDays = dayOrder.filter(d => {
-    const hasRows = (groupedByDay[d] && groupedByDay[d].length > 0);
-    const normDay = d.trim().toLowerCase();
-    const isSpecial = (Array.isArray(specialDays) ? specialDays : []).some(sd => {
-      if (!sd) return false;
-      const sdDay = String(sd.day || '').trim().toLowerCase();
-      const sdClass = String(sd.classe || 'all').trim().toLowerCase();
-      return (sdDay.includes(normDay) || normDay.includes(sdDay)) &&
-             (sdClass === 'all' || sdClass === 'toutes' || sdClass === normClass || normClass.includes(sdClass));
-    });
-    return hasRows || isSpecial;
-  });
-  const daysToRender = activeDays.length > 0 ? activeDays : dayOrder;
-  // +1 pour inclure la page finale récapitulative des manuels et livres à rapporter pour les devoirs
-  const totalPages = daysToRender.length + 1;
+  const totalPages = daysToRender.length + 1; // +1 pour la page de récapitulatif des devoirs/cartable
+
+  let weekStartObj = null;
+  if (weekStartDate) {
+    weekStartObj = new Date(weekStartDate);
+  }
+
+  let plageSemaineDisplay = weekDateRange;
+  if (!plageSemaineDisplay && weekStartObj) {
+    const endObj = new Date(weekStartObj);
+    endObj.setUTCDate(endObj.getUTCDate() + 4);
+    plageSemaineDisplay = `du ${formatDateFrench(weekStartObj)} à ${formatDateFrench(endObj)}`;
+  } else if (!plageSemaineDisplay) {
+    plageSemaineDisplay = `Semaine ${week}`;
+  }
 
   return `<!DOCTYPE html>
 <html lang="fr" data-theme="${escapeHtml(theme)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Plan Hebdomadaire - Semaine ${week} - ${escapeHtml(classe)}</title>
-  <!-- Google Fonts professionnels : Outfit, Plus Jakarta Sans et Cairo -->
+  <title>Plan Hebdomadaire S${week} - ${escapeHtml(classe)} (A4 Stylisé)</title>
+  
+  <!-- Polices Google Fonts Professionnelles -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800&family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Outfit:wght@400;500;600;700;800;900&family=Cairo:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <style>
-    /* ========================================================================
-       CONFIGURATION PAGE A4 & MARGES EXACTES DE 1 CM (TOUTES DIRECTIONS)
-       ======================================================================== */
-    @page {
-      size: A4 portrait;
-      margin: 1cm 1cm 1cm 1cm;
-    }
 
+  <style>
     :root {
-      --primary-color: #1E3A8A;
-      --primary-gradient: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%);
-      --accent-color: #2563EB;
-      --accent-light: #EFF6FF;
+      --primary-color: #0F2E5C;
+      --primary-light: #F0F4FA;
+      --primary-dark: #091D3A;
+      --accent-color: #0284C7;
+      --accent-light: #E0F2FE;
       --border-dark: #334155;
       --border-light: #CBD5E1;
       --text-main: #0F172A;
       --text-muted: #475569;
-      --lesson-topic-color: #991B1B;
-      --homework-bg: #FEF3C7;
-      --homework-border: #F59E0B;
-      --homework-text: #92400E;
+      --day-header-bg: #0F2E5C;
+      --day-header-text: #FFFFFF;
+      --homework-bg: #FEF2F2;
+      --homework-border: #FCA5A5;
+      --homework-text: #991B1B;
+      --lesson-topic-color: #0369A1;
     }
 
     [data-theme="emerald"] {
-      --primary-color: #065F46;
-      --primary-gradient: linear-gradient(135deg, #065F46 0%, #059669 100%);
+      --primary-color: #064E3B;
+      --primary-light: #ECFDF5;
+      --primary-dark: #022C22;
       --accent-color: #059669;
-      --accent-light: #ECFDF5;
-      --homework-bg: #FEF9C3;
-      --homework-border: #EAB308;
-      --homework-text: #854D0E;
+      --accent-light: #D1FAE5;
+      --day-header-bg: #064E3B;
+      --lesson-topic-color: #047857;
     }
 
-    [data-theme="prestige"] {
-      --primary-color: #881337;
-      --primary-gradient: linear-gradient(135deg, #881337 0%, #BE123C 100%);
-      --accent-color: #BE123C;
-      --accent-light: #FFF1F2;
-      --lesson-topic-color: #881337;
-      --homework-bg: #FEF2F2;
-      --homework-border: #F87171;
-      --homework-text: #991B1B;
+    [data-theme="navy"] {
+      --primary-color: #1E293B;
+      --primary-light: #F8FAFC;
+      --primary-dark: #0F172A;
+      --accent-color: #475569;
+      --accent-light: #E2E8F0;
+      --day-header-bg: #1E293B;
+      --lesson-topic-color: #334155;
     }
 
-    [data-theme="classic"] {
-      --primary-color: #000000;
-      --primary-gradient: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
-      --accent-color: #0F172A;
-      --accent-light: #F1F5F9;
-      --lesson-topic-color: #000000;
-      --homework-bg: #F8FAFC;
-      --homework-border: #94A3B8;
-      --homework-text: #0F172A;
+    [data-theme="burgundy"] {
+      --primary-color: #831843;
+      --primary-light: #FDF2F8;
+      --primary-dark: #500724;
+      --accent-color: #BE185D;
+      --accent-light: #FCE7F3;
+      --day-header-bg: #831843;
+      --lesson-topic-color: #9D174D;
     }
 
     * {
@@ -295,65 +313,62 @@ function generateDesignPlanHtml({
     }
 
     body {
-      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Plus Jakarta Sans', 'Outfit', 'Segoe UI', sans-serif;
       background-color: #E2E8F0;
       color: var(--text-main);
-      line-height: 1.45;
       -webkit-font-smoothing: antialiased;
+      line-height: 1.35;
     }
 
-    /* BARRE D'ACTION FLOTTANTE EN HAUT (NON IMPRIMABLE) */
+    /* BARRE D'ACTIONS ÉCRAN (NON IMPRIMABLE) */
     .screen-toolbar {
       position: sticky;
       top: 0;
       z-index: 1000;
       background: #0F172A;
-      color: white;
+      color: #FFFFFF;
       padding: 10px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 12px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      border-bottom: 2px solid #38BDF8;
     }
 
     .toolbar-info {
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-size: 0.95rem;
+      gap: 12px;
       font-weight: 700;
+      font-size: 0.92rem;
     }
 
     .toolbar-controls {
       display: flex;
       align-items: center;
       gap: 10px;
-      flex-wrap: wrap;
     }
 
-    .btn-toolbar {
-      border: none;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-weight: 700;
-      font-size: 0.85rem;
-      cursor: pointer;
+    .btn-action {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.82rem;
+      cursor: pointer;
+      border: none;
       transition: all 0.2s ease;
+      text-decoration: none;
     }
 
-    .btn-print-primary {
-      background: linear-gradient(135deg, #10B981, #059669);
+    .btn-print {
+      background: #10B981;
       color: white;
-      box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
     }
-    .btn-print-primary:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
+    .btn-print:hover {
+      background: #059669;
     }
 
     .btn-download-html {
@@ -376,10 +391,10 @@ function generateDesignPlanHtml({
       background: transparent;
       border: none;
       color: white;
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       font-weight: 600;
-      padding: 5px 10px;
-      border-radius: 6px;
+      padding: 4px 8px;
+      border-radius: 5px;
       cursor: pointer;
     }
 
@@ -390,24 +405,26 @@ function generateDesignPlanHtml({
 
     /* CONTENEUR GLOBAL DES FEUILLES A4 */
     .all-pages-wrapper {
-      padding: 20px 0;
+      padding: 24px 0;
     }
 
     /* ========================================================================
-       FEUILLE A4 STRICTE (210mm x 297mm) AVEC MARGE 1 CM (TOUTES DIRECTIONS)
+       FEUILLE A4 STRICTE (210mm x 297mm) AVEC MARGE 1.0 CM PARTOUT (STYLE WORD)
        ======================================================================== */
     .a4-page {
       width: 210mm;
-      min-height: 297mm;
+      height: 297mm;
+      max-height: 297mm;
       margin: 0 auto 30px auto;
-      padding: 1cm; /* Marge exacte de 1 cm sur les 4 côtés */
+      padding: 10mm; /* Marge exacte de 1.0 cm sur les 4 côtés */
       background: #FFFFFF;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.14);
       box-sizing: border-box;
       position: relative;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
+      overflow: hidden;
       page-break-after: always;
       break-after: page;
       page-break-inside: avoid !important;
@@ -419,469 +436,279 @@ function generateDesignPlanHtml({
     }
 
     /* ------------------------------------------------------------------------
-       1. EN-TÊTE STRUCTURÉ COMME SUR LE MODÈLE WORD
+       1. EN-TÊTE OFFICIEL WORD AL KAWTHAR (LOGO + TITRE BILINGUE + MÉTADONNÉES)
        ------------------------------------------------------------------------ */
     .word-header-container {
-      margin-bottom: 8px;
+      margin-bottom: 5px;
       border-bottom: 2px solid var(--primary-color);
-      padding-bottom: 6px;
+      padding-bottom: 5px;
+      flex-shrink: 0;
     }
 
-    .a4-top-banner {
-      width: 100%;
-      text-align: center;
-      margin-bottom: 6px;
+    .header-main-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
     }
 
-    .a4-header-banner-img {
-      width: 100%;
-      max-height: 24mm;
+    /* GAUCHE : LOGO OFFICIEL AL KAWTHAR */
+    .header-logo-col {
+      flex-shrink: 0;
+      width: 58px;
+      height: 58px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .header-school-logo {
+      width: 56px;
+      height: 56px;
       object-fit: contain;
       display: block;
-      margin: 0 auto;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
     }
 
-    .header-center-pill-wrapper {
+    /* CENTRE : TITRE OFFICIEL ET PLAGE DE DATES */
+    .header-titles-col {
+      flex: 1;
       text-align: center;
-      margin: 4px 0 6px 0;
+    }
+
+    .word-main-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.18rem;
+      font-weight: 900;
+      color: var(--primary-color);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1.15;
+    }
+
+    .word-sub-title-ar {
+      font-family: 'Cairo', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #0369A1;
+      direction: rtl;
+      line-height: 1.2;
+      margin-top: 1px;
     }
 
     .header-week-range-badge {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       background: #F0F9FF;
-      border: 1.5px solid #38BDF8;
+      border: 1px solid #38BDF8;
       color: #0369A1;
       font-family: 'Outfit', 'Cairo', sans-serif;
-      font-size: 0.94rem;
+      font-size: 0.80rem;
       font-weight: 800;
-      padding: 4px 20px;
-      border-radius: 20px;
-      box-shadow: 0 2px 6px rgba(56, 189, 248, 0.12);
-      letter-spacing: 0.02em;
+      padding: 1px 12px;
+      border-radius: 12px;
+      margin-top: 3px;
     }
 
-    .word-main-title {
-      font-family: 'Outfit', sans-serif;
-      font-size: 1.45rem;
-      font-weight: 900;
-      color: var(--primary-color);
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      text-align: center;
-      margin-bottom: 6px;
-    }
-
-    .word-meta-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.88rem;
-    }
-
-    .word-meta-table td {
-      padding: 2px 0;
-      vertical-align: middle;
-    }
-
-    .meta-left {
-      text-align: left;
-      width: 35%;
-    }
-
-    .meta-center {
-      text-align: center;
-      width: 30%;
-    }
-
-    .meta-right {
+    /* DROITE : MÉTADONNÉES CLASSE / SEMAINE */
+    .header-meta-col {
+      flex-shrink: 0;
       text-align: right;
-      width: 35%;
+      min-width: 140px;
     }
 
-    .meta-label {
+    .meta-tag-row {
+      font-size: 0.78rem;
+      line-height: 1.25;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .meta-tag-label {
       font-weight: 800;
       color: #1E293B;
       text-transform: uppercase;
-      font-size: 0.84rem;
+      font-size: 0.74rem;
     }
 
-    .meta-value {
-      font-weight: 700;
+    .meta-tag-val {
+      font-weight: 800;
       color: var(--primary-color);
-      font-size: 0.92rem;
     }
 
-    .meta-date-range {
-      font-weight: 600;
-      color: #334155;
+    .meta-class-highlight {
+      font-size: 0.95rem;
+      color: #2563EB;
+      background: #EFF6FF;
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid #BFDBFE;
+    }
+
+    .meta-tag-sep {
+      color: #94A3B8;
+      margin: 0 2px;
+    }
+
+    .meta-doc-type {
+      font-size: 0.70rem;
+      font-weight: 800;
+      color: #64748B;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      margin-top: 2px;
     }
 
     /* ------------------------------------------------------------------------
-       2. TABLEAU DES NOTES (DESIGN SOIGNÉ & PROFESSIONNEL)
+       2. TABLEAU DES NOTES (COMPACTÉ POUR TENIR SUR LA PAGE 1 SANS DÉBORDER)
        ------------------------------------------------------------------------ */
     .word-notes-block {
-      margin-bottom: 10px;
+      margin-bottom: 5px;
+      flex-shrink: 0;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
-    .notes-styled-table {
-      width: 100%;
-      border-collapse: collapse;
+    .notes-styled-container {
       border: 1.5px solid #F59E0B;
-      background: #FFFBEB;
-      border-radius: 6px;
+      background: #FFFDF5;
+      border-radius: 5px;
       overflow: hidden;
     }
 
-    .notes-styled-table th {
-      background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    .notes-header-bar {
+      background: linear-gradient(135deg, #D97706 0%, #B45309 100%);
       color: #FFFFFF;
-      padding: 5px 10px;
-      font-size: 0.82rem;
+      padding: 2.5px 8px;
+      font-size: 0.76rem;
       font-weight: 800;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
 
-    .notes-styled-table td {
-      padding: 8px 12px;
-      vertical-align: top;
-      background: #FFFDF5;
+    .notes-header-fr {
+      display: flex;
+      align-items: center;
+      gap: 5px;
     }
 
-    .teacher-notes-text {
-      font-size: 0.88rem;
+    .notes-header-ar {
+      font-family: 'Cairo', sans-serif;
+      direction: rtl;
+    }
+
+    .notes-body-content {
+      padding: 4px 8px;
+      font-size: 0.76rem;
       font-weight: 600;
       color: #1E293B;
-      line-height: 1.5;
+      line-height: 1.25;
+      max-height: 25mm;
+      overflow: hidden;
       white-space: pre-wrap;
     }
 
     .empty-notes-text {
       color: #64748B;
       font-style: italic;
-      font-size: 0.82rem;
+      font-size: 0.74rem;
     }
 
     /* ------------------------------------------------------------------------
-       NOUVEAU : TABLEAU RÉCAPITULATIF DES LIVRES & CARTABLE (FIN DE PLAN)
-       ------------------------------------------------------------------------ */
-    .backpack-tip-box {
-      background: #EFF6FF;
-      border: 1.5px solid #93C5FD;
-      border-left: 5px solid #2563EB;
-      border-radius: 8px;
-      padding: 8px 12px;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .backpack-tip-icon {
-      font-size: 1.6rem;
-      color: #2563EB;
-      flex-shrink: 0;
-    }
-
-    .backpack-tip-title {
-      font-family: 'Outfit', sans-serif;
-      font-size: 0.92rem;
-      font-weight: 800;
-      color: #1E3A8A;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 2px;
-    }
-
-    .ar-tip-title {
-      font-family: 'Cairo', sans-serif;
-      font-size: 0.94rem;
-      color: #1D4ED8;
-      direction: rtl;
-    }
-
-    .backpack-tip-desc {
-      margin: 0;
-      font-size: 0.78rem;
-      color: #334155;
-      line-height: 1.35;
-    }
-
-    .backpack-recap-table {
-      width: 100%;
-      border-collapse: collapse;
-      border: 1.5px solid var(--border-dark);
-      font-size: 0.82rem;
-    }
-
-    .backpack-recap-table thead th {
-      background: #1E3A8A;
-      color: #FFFFFF;
-      font-family: 'Outfit', sans-serif;
-      font-weight: 800;
-      font-size: 0.82rem;
-      letter-spacing: 0.03em;
-      padding: 6px 8px;
-      border: 1px solid #1E293B;
-      text-align: left;
-    }
-
-    .backpack-recap-table tbody td {
-      border: 1px solid #CBD5E1;
-      padding: 6px 8px;
-      vertical-align: middle;
-      font-size: 0.81rem;
-      line-height: 1.35;
-    }
-
-    .backpack-recap-table tbody tr:nth-child(even) {
-      background: #F8FAFC;
-    }
-
-    .backpack-day-cell {
-      background: #F1F5F9;
-      font-weight: 700;
-      text-align: center;
-    }
-
-    .day-cell-badge {
-      font-family: 'Outfit', sans-serif;
-      font-weight: 800;
-      color: #1E3A8A;
-      font-size: 0.86rem;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .day-cell-ar {
-      font-family: 'Cairo', sans-serif;
-      font-size: 0.8rem;
-      color: #64748B;
-      direction: rtl;
-    }
-
-    .backpack-homework-desc {
-      font-weight: 500;
-      color: #334155;
-      font-size: 0.8rem;
-    }
-
-    .backpack-book-card {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #EFF6FF;
-      color: #1E3A8A;
-      border: 1px solid #BFDBFE;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-weight: 700;
-      font-size: 0.79rem;
-    }
-
-    .check-box-square {
-      width: 18px;
-      height: 18px;
-      border: 2px solid #64748B;
-      border-radius: 4px;
-      margin: 0 auto;
-      background: #FFFFFF;
-    }
-
-    /* ------------------------------------------------------------------------
-       2.B CASES FUSIONNÉES AVEC PHOTOS
-       ------------------------------------------------------------------------ */
-    .merged-day-special-cell {
-      padding: 16px !important;
-      background: #FFFFFF !important;
-      text-align: center;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-
-    .merged-special-container {
-      background: #F8FAFC;
-      border: 1.5px solid #CBD5E1;
-      border-radius: 8px;
-      padding: 14px 16px;
-      text-align: center;
-    }
-
-    .merged-badge-header {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      margin-bottom: 8px;
-    }
-
-    .merged-type-pill {
-      font-size: 0.76rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      padding: 3px 10px;
-      border-radius: 20px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #EFF6FF;
-      color: #1D4ED8;
-      border: 1px solid #93C5FD;
-    }
-
-    .merged-day-title {
-      font-family: 'Outfit', sans-serif;
-      font-size: 1.15rem;
-      font-weight: 800;
-      color: var(--primary-color);
-    }
-
-    .merged-day-desc {
-      font-size: 0.9rem;
-      color: #334155;
-      margin-bottom: 10px;
-      line-height: 1.45;
-    }
-
-    .merged-photos-gallery {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 12px;
-      margin-top: 10px;
-      page-break-inside: avoid !important;
-    }
-
-    .merged-photo-card {
-      background: white;
-      border: 1px solid #CBD5E1;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-      max-width: 260px;
-      flex: 0 1 240px;
-    }
-
-    .merged-photo-img {
-      width: 100%;
-      height: 155px;
-      object-fit: cover;
-      display: block;
-    }
-
-    .merged-photo-caption {
-      padding: 5px 8px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #475569;
-      text-align: center;
-    }
-
-    .notes-styled-table td {
-      padding: 8px 12px;
-      font-size: 0.86rem;
-      color: #78350F;
-      line-height: 1.45;
-      font-weight: 500;
-      white-space: pre-wrap;
-    }
-
-    /* ------------------------------------------------------------------------
-       3. BANDEAU DE DATE DU JOUR (EX: Lundi 21 Septembre 2026)
+       3. BANDEAU DU JOUR EN COURS (STYLE WORD CONTRASTÉ)
        ------------------------------------------------------------------------ */
     .day-banner-strip {
-      background: #F8FAFC;
-      border: 1.5px solid var(--border-light);
-      border-left: 5px solid var(--primary-color);
-      padding: 7px 14px;
-      margin-bottom: 10px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      background: var(--day-header-bg);
+      color: var(--day-header-text);
+      padding: 3px 10px;
       border-radius: 4px;
+      margin-bottom: 5px;
+      flex-shrink: 0;
     }
 
     .day-title-french {
       font-family: 'Outfit', sans-serif;
-      font-size: 1.15rem;
       font-weight: 800;
-      color: var(--primary-color);
+      font-size: 0.88rem;
+      letter-spacing: 0.02em;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
 
     .day-title-arabic {
       font-family: 'Cairo', sans-serif;
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: #475569;
+      font-weight: 800;
+      font-size: 0.95rem;
       direction: rtl;
     }
 
     /* ------------------------------------------------------------------------
-       4. TABLEAU OFFICIEL DES SÉANCES DU JOUR (3 COLONNES EXACTES)
-       MATIÈRES | TRAVAIL DE CLASSE | DEVOIRS
+       4. TABLEAU DU JOUR À 3 COLONNES (CALIBRÉ POUR 8 COURS STRICTS SUR A4)
        ------------------------------------------------------------------------ */
     .main-table-wrapper {
       flex: 1;
-      page-break-inside: auto;
-      break-inside: auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
 
     .lessons-table-a4 {
       width: 100%;
       border-collapse: collapse;
       border: 1.5px solid var(--border-dark);
-      font-size: 0.82rem;
-      page-break-inside: auto;
-      break-inside: auto;
-    }
-
-    .lessons-table-a4 thead {
-      display: table-header-group;
+      font-size: 0.77rem;
+      table-layout: fixed;
     }
 
     .lessons-table-a4 thead th {
-      background: #F1F5F9;
-      color: #0F172A;
-      font-family: 'Outfit', sans-serif;
+      background: #1E293B;
+      color: #FFFFFF;
       font-weight: 800;
-      font-size: 0.85rem;
-      letter-spacing: 0.04em;
+      font-size: 0.76rem;
+      padding: 3.5px 6px;
+      border: 1px solid var(--border-dark);
       text-transform: uppercase;
-      padding: 6px 8px;
-      border: 1.5px solid var(--border-dark);
+      letter-spacing: 0.03em;
       text-align: center;
     }
 
-    .lessons-table-a4 tbody td {
-      border: 1px solid #CBD5E1;
-      padding: 6px 8px;
-      vertical-align: top;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
+    .th-matieres { width: 26%; }
+    .th-classwork { width: 46%; }
+    .th-homework { width: 28%; }
 
     .lessons-table-a4 tbody tr {
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
+      border-bottom: 1px solid #CBD5E1;
+    }
+
+    .lessons-table-a4 tbody tr:last-child {
+      border-bottom: none;
     }
 
     .lessons-table-a4 tbody tr:nth-child(even) {
-      background: #FAFAFC;
+      background-color: #F8FAFC;
     }
 
-    /* COLONNE 1 : MATIÈRES */
+    .lessons-table-a4 tbody td {
+      padding: 3px 6px;
+      vertical-align: top;
+      border-right: 1px solid #CBD5E1;
+    }
+
+    .lessons-table-a4 tbody td:last-child {
+      border-right: none;
+    }
+
+    /* COLONNE 1 : MATIÈRE & ENSEIGNANT AVEC PHOTO DRIVE */
     .col-matieres-td {
-      width: 28%;
+      background: #FFFFFF;
       border-right: 1.5px solid var(--border-dark) !important;
     }
 
@@ -889,54 +716,55 @@ function generateDesignPlanHtml({
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .subject-name-tag {
       font-weight: 800;
-      font-size: 0.86rem;
+      font-size: 0.78rem;
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      padding: 2px 7px;
-      border-radius: 5px;
+      gap: 4px;
+      padding: 1px 5px;
+      border-radius: 4px;
       border: 1px solid transparent;
       white-space: nowrap;
+      line-height: 1.15;
     }
 
     .period-badge-pill {
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       font-weight: 800;
       background: #0F172A;
       color: white;
-      padding: 1px 6px;
-      border-radius: 4px;
+      padding: 1px 5px;
+      border-radius: 3px;
       white-space: nowrap;
     }
 
-    /* ENSEIGNANT AVEC PHOTO GOOGLE DRIVE */
     .teacher-item-box {
       display: flex;
       align-items: center;
-      gap: 7px;
-      margin-top: 4px;
-      padding-top: 4px;
+      gap: 6px;
+      margin-top: 2px;
+      padding-top: 2px;
       border-top: 1px dashed #E2E8F0;
     }
 
     .teacher-photo-thumb {
-      width: 30px;
-      height: 30px;
+      width: 26px;
+      height: 26px;
       border-radius: 50%;
       object-fit: cover;
       border: 1.5px solid var(--accent-color);
       flex-shrink: 0;
       background: #E2E8F0;
+      display: block;
     }
 
     .teacher-fallback-thumb {
-      width: 30px;
-      height: 30px;
+      width: 26px;
+      height: 26px;
       border-radius: 50%;
       background: var(--accent-light);
       color: var(--primary-color);
@@ -944,126 +772,118 @@ function generateDesignPlanHtml({
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       font-weight: 800;
       flex-shrink: 0;
     }
 
     .teacher-name-print {
       font-weight: 700;
-      font-size: 0.82rem;
+      font-size: 0.76rem;
       color: #1E293B;
-      line-height: 1.2;
+      line-height: 1.15;
+      word-break: break-word;
     }
 
-    .support-info-txt {
-      font-size: 0.75rem;
-      color: #475569;
-      font-style: italic;
-      margin-top: 4px;
-    }
-
-    /* COLONNE 2 : TRAVAIL DE CLASSE */
+    /* COLONNE 2 : TRAVAIL DE CLASSE & SUPPORT DÉPLACÉ DEDANS */
     .col-classwork-td {
-      width: 44%;
       border-right: 1.5px solid var(--border-dark) !important;
     }
 
     .lesson-title-strong {
       font-weight: 800;
-      font-size: 0.88rem;
+      font-size: 0.80rem;
       color: var(--lesson-topic-color);
-      margin-bottom: 4px;
-      line-height: 1.35;
+      margin-bottom: 2px;
+      line-height: 1.2;
       display: block;
     }
 
     .classwork-detail-txt {
-      font-size: 0.84rem;
+      font-size: 0.76rem;
       color: #1E293B;
-      line-height: 1.45;
+      line-height: 1.25;
       white-space: pre-wrap;
     }
 
-    /* SUPPORT ÉGALEMENT DANS LA CASE TRAVAUX DE CLASSE */
     .classwork-support-chip {
-      margin-top: 8px;
-      padding: 5px 10px;
+      margin-top: 3px;
+      padding: 2px 6px;
       background: #F1F5F9;
       border-left: 3px solid var(--accent-color);
-      border-radius: 5px;
-      font-size: 0.78rem;
+      border-radius: 3px;
+      font-size: 0.70rem;
       color: #334155;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
       max-width: 100%;
     }
 
     .classwork-support-chip i {
       color: var(--accent-color);
-      font-size: 0.76rem;
+      font-size: 0.68rem;
     }
 
     .support-chip-label {
       font-weight: 800;
       color: #0F172A;
       text-transform: uppercase;
-      font-size: 0.72rem;
-      letter-spacing: 0.02em;
+      font-size: 0.68rem;
     }
 
     .support-chip-val {
-      font-weight: 600;
+      font-weight: 700;
       color: #2563EB;
       word-break: break-word;
     }
 
     /* COLONNE 3 : DEVOIRS */
     .col-homework-td {
-      width: 28%;
+      background: #FFFFFF;
     }
 
     .homework-item-card {
       background: var(--homework-bg);
       border: 1px solid var(--homework-border);
-      border-radius: 6px;
-      padding: 6px 8px;
+      border-radius: 4px;
+      padding: 3px 6px;
       color: var(--homework-text);
       font-weight: 600;
-      font-size: 0.82rem;
-      line-height: 1.35;
+      font-size: 0.75rem;
+      line-height: 1.25;
     }
 
     .homework-tag-label {
-      font-size: 0.7rem;
+      font-size: 0.66rem;
       font-weight: 800;
       text-transform: uppercase;
       display: flex;
       align-items: center;
       gap: 4px;
-      margin-bottom: 2px;
+      margin-bottom: 1px;
       color: var(--homework-text);
     }
 
     .no-homework-txt {
       color: #94A3B8;
-      font-size: 0.8rem;
+      font-size: 0.74rem;
       font-style: italic;
     }
 
     /* ------------------------------------------------------------------------
-       5. PIED DE PAGE IMPRIMABLE
+       5. PIED DE PAGE STRICTEMENT SCELLÉ EN BAS DE CHAQUE PAGE A4
        ------------------------------------------------------------------------ */
     .a4-page-footer {
-      margin-top: 10px;
-      padding-top: 6px;
-      border-top: 1px solid #CBD5E1;
+      margin-top: auto;
+      padding-top: 4px;
+      border-top: 1.5px solid #CBD5E1;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.74rem;
+      font-size: 0.72rem;
       color: #64748B;
+      flex-shrink: 0;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
@@ -1074,35 +894,229 @@ function generateDesignPlanHtml({
     }
 
     .page-number-box {
-      font-weight: 700;
+      font-weight: 800;
       color: var(--primary-color);
       background: var(--accent-light);
       border: 1px solid var(--border-light);
-      padding: 2px 10px;
+      padding: 1px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+    }
+
+    /* ------------------------------------------------------------------------
+       6. TABLEAU RÉCAPITULATIF CARTABLE & LIVRES (PAGE FINALE)
+       ------------------------------------------------------------------------ */
+    .backpack-tip-box {
+      background: #EFF6FF;
+      border: 1.5px solid #93C5FD;
+      border-left: 5px solid #2563EB;
       border-radius: 6px;
+      padding: 6px 10px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .backpack-tip-icon {
+      font-size: 1.4rem;
+      color: #2563EB;
+      flex-shrink: 0;
+    }
+
+    .backpack-tip-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: #1E3A8A;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+
+    .ar-tip-title {
+      font-family: 'Cairo', sans-serif;
+      direction: rtl;
+      font-size: 0.86rem;
+    }
+
+    .backpack-tip-desc {
+      font-size: 0.74rem;
+      color: #334155;
+      line-height: 1.3;
+    }
+
+    .backpack-recap-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid #1E293B;
       font-size: 0.76rem;
+      table-layout: fixed;
+    }
+
+    .backpack-recap-table th {
+      background: #1E3A8A;
+      color: #FFFFFF;
+      padding: 4px 6px;
+      font-weight: 800;
+      font-size: 0.74rem;
+      border: 1px solid #1E293B;
+      text-align: left;
+    }
+
+    .backpack-recap-table td {
+      border: 1px solid #CBD5E1;
+      padding: 4px 6px;
+      vertical-align: middle;
+    }
+
+    .backpack-day-cell {
+      background: #F8FAFC;
+      font-weight: 800;
+      color: #0F172A;
+      text-align: center;
+    }
+
+    .day-cell-badge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .day-cell-ar {
+      font-family: 'Cairo', sans-serif;
+      font-size: 0.72rem;
+      color: #2563EB;
+    }
+
+    .backpack-homework-desc {
+      font-weight: 600;
+      color: #991B1B;
+      line-height: 1.25;
+    }
+
+    .backpack-book-card {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 700;
+      color: #1E293B;
+    }
+
+    .check-box-square {
+      width: 16px;
+      height: 16px;
+      border: 1.5px solid #0284C7;
+      border-radius: 3px;
+      margin: 0 auto;
+      background: #FFFFFF;
+    }
+
+    /* JOURNÉE SPÉCIALE / FUSIONNÉE */
+    .merged-day-special-cell {
+      background: #FFFBEB;
+      border: 2px solid #F59E0B !important;
+      padding: 12px !important;
+    }
+
+    .merged-special-container {
+      text-align: center;
+    }
+
+    .merged-badge-header {
+      margin-bottom: 8px;
+    }
+
+    .merged-type-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #FEF3C7;
+      color: #92400E;
+      border: 1px solid #FCD34D;
+      font-size: 0.78rem;
+      font-weight: 800;
+      padding: 2px 10px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+
+    .merged-day-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: #78350F;
+      margin-top: 4px;
+    }
+
+    .merged-day-desc {
+      font-size: 0.84rem;
+      color: #451A03;
+      margin: 6px auto;
+      max-width: 90%;
+      line-height: 1.35;
+    }
+
+    .merged-photos-gallery {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .merged-photo-card {
+      background: #FFFFFF;
+      padding: 4px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      border: 1px solid #E2E8F0;
+      max-width: 140px;
+    }
+
+    .merged-photo-img {
+      width: 100%;
+      height: 85px;
+      object-fit: cover;
+      border-radius: 4px;
+      display: block;
+    }
+
+    .merged-photo-caption {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #334155;
+      text-align: center;
+      margin-top: 3px;
     }
 
     /* ========================================================================
-       RÈGLES D'IMPRESSION STRICTES (@media print)
+       RÈGLES D'IMPRESSION STRICTES (@media print) - FORMAT WORD A4 NORMAL
+       Marge physique 10mm (1.0 cm) partout, pied de page toujours en bas
        ======================================================================== */
     @media print {
       @page {
         size: A4 portrait;
-        margin: 8mm 8mm 8mm 8mm;
+        margin: 10mm 10mm 10mm 10mm; /* Marge exacte de 1.0 cm partout */
       }
 
       html, body {
         background: #FFFFFF !important;
         margin: 0 !important;
         padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
         color: #000000 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        width: 100% !important;
       }
 
-      .no-print {
+      .no-print, .screen-toolbar {
         display: none !important;
       }
 
@@ -1111,33 +1125,38 @@ function generateDesignPlanHtml({
         margin: 0 !important;
       }
 
+      /* Chaque section .a4-page fait exactement la hauteur utile d'une page A4 (277mm) */
       .a4-page {
         width: 100% !important;
-        min-height: auto !important;
-        height: auto !important;
+        height: 277mm !important;
+        max-height: 277mm !important;
+        min-height: 277mm !important;
         margin: 0 !important;
-        padding: 0 0 2mm 0 !important;
+        padding: 0 !important; /* Le 10mm est déjà appliqué par @page { margin: 10mm } */
         box-shadow: none !important;
         border: none !important;
-        page-break-after: page !important;
+        page-break-after: always !important;
         break-after: page !important;
-        page-break-inside: auto !important;
-        break-inside: auto !important;
-        display: block !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
       }
 
       .a4-page:last-child {
         page-break-after: auto !important;
         break-after: auto !important;
-        margin-bottom: 0 !important;
-        padding-bottom: 0 !important;
       }
 
       .lessons-table-a4,
       .backpack-recap-table {
         width: 100% !important;
-        page-break-inside: auto !important;
-        break-inside: auto !important;
+        table-layout: fixed !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
 
       .lessons-table-a4 thead,
@@ -1151,14 +1170,6 @@ function generateDesignPlanHtml({
         break-inside: avoid !important;
       }
 
-      .lessons-table-a4 td,
-      .lessons-table-a4 th,
-      .backpack-recap-table td,
-      .backpack-recap-table th {
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-      }
-
       .word-header-container,
       .day-banner-strip,
       .word-notes-block,
@@ -1166,6 +1177,12 @@ function generateDesignPlanHtml({
       .a4-page-footer {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
+      }
+
+      .a4-page-footer {
+        margin-top: auto !important;
+        padding-top: 4px !important;
+        border-top: 1.5px solid #94A3B8 !important;
       }
 
       * {
@@ -1180,7 +1197,7 @@ function generateDesignPlanHtml({
   <!-- BARRE D'ACTIONS NON IMPRIMABLE -->
   <div class="screen-toolbar no-print">
     <div class="toolbar-info">
-      <i class="fas fa-file-pdf" style="color:#60A5FA;"></i>
+      <i class="fas fa-file-pdf" style="color:#38BDF8; font-size:1.15rem;"></i>
       <span>Plan Hebdomadaire Stylisé • Semaine ${week} • Classe : ${escapeHtml(classe)}</span>
     </div>
     <div class="toolbar-controls">
@@ -1188,15 +1205,17 @@ function generateDesignPlanHtml({
       <div class="theme-selector">
         <button type="button" class="theme-opt-btn ${theme === 'indigo' ? 'active' : ''}" onclick="setTheme('indigo')">Indigo</button>
         <button type="button" class="theme-opt-btn ${theme === 'emerald' ? 'active' : ''}" onclick="setTheme('emerald')">Émeraude</button>
-        <button type="button" class="theme-opt-btn ${theme === 'prestige' ? 'active' : ''}" onclick="setTheme('prestige')">Bordeaux</button>
-        <button type="button" class="theme-opt-btn ${theme === 'classic' ? 'active' : ''}" onclick="setTheme('classic')">Classique</button>
+        <button type="button" class="theme-opt-btn ${theme === 'navy' ? 'active' : ''}" onclick="setTheme('navy')">Marine</button>
+        <button type="button" class="theme-opt-btn ${theme === 'burgundy' ? 'active' : ''}" onclick="setTheme('burgundy')">Bordeaux</button>
       </div>
-      <!-- Enregistrer HTML autonome -->
-      <button type="button" class="btn-toolbar btn-download-html" onclick="downloadSelfHtml()">
+
+      <!-- Bouton Télécharger HTML -->
+      <button type="button" class="btn-action btn-download-html" onclick="downloadSelfHtml()">
         <i class="fas fa-download"></i> <span>Enregistrer HTML</span>
       </button>
-      <!-- Bouton Impression / Exportation PDF -->
-      <button type="button" class="btn-toolbar btn-print-primary" onclick="window.print()">
+
+      <!-- Bouton d'impression / Enregistrer en PDF -->
+      <button type="button" class="btn-action btn-print" onclick="window.print()">
         <i class="fas fa-print"></i> <span>Imprimer / Sauvegarder en PDF</span>
       </button>
     </div>
@@ -1217,7 +1236,7 @@ function generateDesignPlanHtml({
         }
       }
 
-      // Vérifier si cette journée fait l'objet d'une fusion (ex: Pas de cours, Vacances, Sortie, Événement avec photos)
+      // Vérifier si cette journée fait l'objet d'une fusion (Pas de cours, Vacances, Sortie, Événement)
       const normDay = dayName.trim().toLowerCase();
       const normClass = String(classe || '').trim().toLowerCase();
       const matchedSpecialDay = (Array.isArray(specialDays) ? specialDays : []).find(sd => {
@@ -1236,66 +1255,59 @@ function generateDesignPlanHtml({
       return `
       <section class="a4-page" id="page_day_${dayName.toLowerCase()}">
         
-        <!-- EN-TÊTE OFFICIEL WORD / A4 SUR CHAQUE PAGE -->
+        <!-- EN-TÊTE OFFICIEL WORD AL KAWTHAR AVEC LOGO OFFICIEL SUR CHAQUE PAGE -->
         <header class="word-header-container">
-          ${headerBannerDataUri ? `
-            <div class="a4-top-banner">
-              <img src="${headerBannerDataUri}" alt="Les Écoles Internationales Al Kawthar" class="a4-header-banner-img" />
+          <div class="header-main-row">
+            <!-- GAUCHE : LOGO OFFICIEL DE L'ÉCOLE -->
+            <div class="header-logo-col">
+              <img src="${logoAlKawtharUri}" alt="Logo Les Écoles Internationales Al Kawthar" class="header-school-logo" />
             </div>
-          ` : `
-            <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
-          `}
 
-          <!-- Date centrée avec police et couleur distinctes -->
-          <div class="header-center-pill-wrapper">
-            <div class="header-week-range-badge">
-              <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
+            <!-- CENTRE : TITRES OFFICIELS & DATE -->
+            <div class="header-titles-col">
+              <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
+              <div class="word-sub-title-ar">مدارس الكوثر العالمية • AL KAWTHAR INTERNATIONAL SCHOOLS</div>
+              <div class="header-week-range-badge">
+                <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
+              </div>
+            </div>
+
+            <!-- DROITE : MÉTADONNÉES CLASSE / SEMAINE -->
+            <div class="header-meta-col">
+              <div class="meta-tag-row">
+                <span class="meta-tag-label">CLASSE :</span>
+                <span class="meta-tag-val meta-class-highlight">${escapeHtml(classe)}</span>
+              </div>
+              <div class="meta-tag-row">
+                <span class="meta-tag-label">SEMAINE :</span>
+                <span class="meta-tag-val">${week}</span>
+                <span class="meta-tag-sep">|</span>
+                <span class="meta-tag-label">SEMESTRE :</span>
+                <span class="meta-tag-val">${escapeHtml(String(semester || 1))}</span>
+              </div>
+              <div class="meta-doc-type">PLAN HEBDOMADAIRE</div>
             </div>
           </div>
-
-          <table class="word-meta-table">
-            <tr>
-              <td class="meta-left">
-                <span class="meta-label">CLASSE : </span>
-                <span class="meta-value">${escapeHtml(classe)}</span>
-              </td>
-              <td class="meta-center">
-                <span class="meta-label">PLAN HEBDOMADAIRE</span>
-              </td>
-              <td class="meta-right">
-                <span class="meta-label">SEMESTRE : </span>
-                <span class="meta-value">${escapeHtml(String(semester || 1))}</span>
-                <span style="margin-left:14px;" class="meta-label">SEMAINE : </span>
-                <span class="meta-value">${week}</span>
-              </td>
-            </tr>
-          </table>
         </header>
 
-        <!-- TABLEAU DES NOTES (SUR LA PREMIÈRE PAGE OU RAPPELÉ) -->
+        <!-- TABLEAU DES NOTES (SUR LA PREMIÈRE PAGE, COMPACTÉ POUR TENIR DANS LES 277MM) -->
         ${isFirstPage ? `
           <div class="word-notes-block">
-            <table class="notes-styled-table">
-              <thead>
-                <tr>
-                  <th style="text-align:left;"><i class="fas fa-clipboard-list"></i> Remarques &amp; Notes de la semaine (saisi par les enseignants)</th>
-                  <th style="text-align:right; font-family:'Cairo', sans-serif;">ملاحظات الأسبوع (مسجلة من قبل المعلمين)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colspan="2">
-                    ${(resolvedNotes && resolvedNotes.trim() !== '') 
-                      ? `<div class="teacher-notes-text">${escapeHtml(resolvedNotes)}</div>`
-                      : `<div class="empty-notes-text"><i class="fas fa-info-circle"></i> Aucune consigne particulière pour cette semaine.</div>`}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="notes-styled-container">
+              <div class="notes-header-bar">
+                <div class="notes-header-fr"><i class="fas fa-clipboard-list"></i> Remarques &amp; Notes de la semaine (saisi par les enseignants)</div>
+                <div class="notes-header-ar">ملاحظات الأسبوع (مسجلة من قبل المعلمين)</div>
+              </div>
+              <div class="notes-body-content">
+                ${(resolvedNotes && resolvedNotes.trim() !== '') 
+                  ? `<div class="teacher-notes-text">${escapeHtml(resolvedNotes)}</div>`
+                  : `<div class="empty-notes-text"><i class="fas fa-info-circle"></i> Aucune consigne particulière pour cette semaine.</div>`}
+              </div>
+            </div>
           </div>
         ` : ''}
 
-        <!-- BANDEAU DU JOUR EN COURS (EX: Lundi 21 Septembre 2026) -->
+        <!-- BANDEAU DU JOUR EN COURS (EX: Dimanche 20 Septembre 2026) -->
         <div class="day-banner-strip">
           <div class="day-title-french">
             <i class="fas fa-calendar-day"></i>
@@ -1325,7 +1337,7 @@ function generateDesignPlanHtml({
                         <span class="merged-type-pill">
                           <i class="fas fa-info-circle"></i> <span>${escapeHtml(matchedSpecialDay.type === 'holiday' ? 'Vacances / Jour Férié' : (matchedSpecialDay.type === 'activity' ? 'Activité / Sortie' : (matchedSpecialDay.type === 'event' ? 'Célébration' : 'Journée Sans Cours')))}</span>
                         </span>
-                        <span class="merged-day-title">${escapeHtml(matchedSpecialDay.title || 'Journée Spéciale')}</span>
+                        <div class="merged-day-title">${escapeHtml(matchedSpecialDay.title || 'Journée Spéciale')}</div>
                       </div>
                       ${(matchedSpecialDay.description || matchedSpecialDay.message) ? `
                         <div class="merged-day-desc">${escapeHtml(matchedSpecialDay.description || matchedSpecialDay.message)}</div>
@@ -1333,13 +1345,12 @@ function generateDesignPlanHtml({
                       ${specialPhotos.length > 0 ? `
                         <div class="merged-photos-gallery">
                           ${specialPhotos.map(p => {
-                            const rawUrl = typeof p === 'string' ? p : (p.url || p.src || p.data || '');
-                            const photoUrl = formatDriveImageUrl(rawUrl);
-                            const photoCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
+                            const pUrl = formatDriveImageUrl(typeof p === 'string' ? p : (p.url || p.src || p.data));
+                            const pCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
                             return `
                               <div class="merged-photo-card">
-                                <img src="${photoUrl}" alt="${escapeHtml(photoCap || 'Photo')}" class="merged-photo-img" onerror="this.parentElement.style.display='none';" />
-                                ${photoCap ? `<div class="merged-photo-caption">${escapeHtml(photoCap)}</div>` : ''}
+                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Photo')}" class="merged-photo-img" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.parentElement.style.display='none';" />
+                                ${pCap ? `<div class="merged-photo-caption">${escapeHtml(pCap)}</div>` : ''}
                               </div>
                             `;
                           }).join('')}
@@ -1350,13 +1361,13 @@ function generateDesignPlanHtml({
                 </tr>
               ` : (rows.length === 0 ? `
                 <tr>
-                  <td colspan="3" style="text-align:center; padding:30px; color:#94A3B8; font-style:italic;">
-                    Aucune séance programmée pour cette journée.
+                  <td colspan="3" style="text-align:center; padding: 25px; color:#64748B; font-style:italic;">
+                    <i class="fas fa-calendar-times" style="font-size:1.3rem; margin-bottom:6px; display:block; color:#94A3B8;"></i>
+                    Aucun cours programmé pour ce jour.
                   </td>
                 </tr>
               ` : rows.map(row => {
-                // Si la ligne indique une case fusionnée avec photos
-                const rowPhotos = Array.isArray(row.photos) ? row.photos : (row.photo ? [row.photo] : (row.photoUrl ? [row.photoUrl] : []));
+                const rowPhotos = Array.isArray(row.photos) ? row.photos : (Array.isArray(row.images) ? row.images : []);
                 if ((row.isMerged || row.merged) && rowPhotos.length > 0) {
                   return `
                   <tr>
@@ -1370,7 +1381,7 @@ function generateDesignPlanHtml({
                             const pCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
                             return `
                               <div class="merged-photo-card">
-                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Photo')}" class="merged-photo-img" onerror="this.parentElement.style.display='none';" />
+                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Photo')}" class="merged-photo-img" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.parentElement.style.display='none';" />
                                 ${pCap ? `<div class="merged-photo-caption">${escapeHtml(pCap)}</div>` : ''}
                               </div>
                             `;
@@ -1387,9 +1398,8 @@ function generateDesignPlanHtml({
                 const styleMat = getSubjectStyle(matiere);
                 const enseignant = row['Enseignant'] || row['enseignant'] || '';
 
-                // Récupération de la photo Google Drive si disponible
-                let photoUrl = teachersPhotos[enseignant] || '';
-                if (photoUrl) photoUrl = formatDriveImageUrl(photoUrl);
+                // Résolution robuste de la photo Google Drive de l'enseignant
+                const photoUrl = findTeacherPhotoUrl(enseignant, teachersPhotos);
                 const teacherInitial = enseignant ? enseignant.charAt(0).toUpperCase() : '?';
 
                 const lecon = row['Leçon'] || row['lecon'] || '';
@@ -1412,16 +1422,17 @@ function generateDesignPlanHtml({
 
                     <div class="teacher-item-box">
                       ${(showPhotos && photoUrl) 
-                        ? `<img src="${photoUrl}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" onerror="this.onerror=null; this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(enseignant)}&background=1E3A8A&color=fff';">`
+                        ? `<img src="${photoUrl}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">
+                           <span class="teacher-fallback-thumb" style="display:none;">${teacherInitial}</span>`
                         : `<span class="teacher-fallback-thumb">${teacherInitial}</span>`
                       }
                       <div class="teacher-name-print">${escapeHtml(enseignant)}</div>
                     </div>
                   </td>
 
-                  <!-- 2. TRAVAIL DE CLASSE (AVEC SUPPORT INTÉGRÉ) -->
+                  <!-- 2. TRAVAIL DE CLASSE (AVEC SUPPORT DÉPLACÉ DEDANS) -->
                   <td class="col-classwork-td">
-                    ${lecon ? `<strong class="lesson-title-strong"><i class="fas fa-book-reader" style="font-size:0.75rem;"></i> ${escapeHtml(lecon)}</strong>` : ''}
+                    ${lecon ? `<strong class="lesson-title-strong"><i class="fas fa-book-reader" style="font-size:0.70rem;"></i> ${escapeHtml(lecon)}</strong>` : ''}
                     <div class="classwork-detail-txt">${escapeHtml(travaux || '—')}</div>
                     ${(support && support.trim() !== '' && support.trim() !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد')) ? `
                       <div class="classwork-support-chip">
@@ -1436,23 +1447,21 @@ function generateDesignPlanHtml({
                   <td class="col-homework-td">
                     ${hasHw ? `
                       <div class="homework-item-card">
-                        <div class="homework-tag-label">
-                          <i class="fas fa-pencil-alt"></i> <span>À faire :</span>
-                        </div>
+                        <span class="homework-tag-label"><i class="fas fa-pencil-alt"></i> À faire :</span>
                         <div>${escapeHtml(devoirs)}</div>
                       </div>
                     ` : `
-                      <span class="no-homework-txt">${escapeHtml(devoirs || '—')}</span>
+                      <span class="no-homework-txt">Aucun</span>
                     `}
                   </td>
                 </tr>
                 `;
               }).join(''))}
             </tbody>
-            </table>
+          </table>
         </div>
 
-        <!-- PIED DE PAGE DE CHAQUE FEUILLE A4 AVEC NUMÉRO DE PAGE -->
+        <!-- PIED DE PAGE SCELLÉ EN BAS DE LA PAGE A4 AVEC NUMÉRO DE PAGE -->
         <footer class="a4-page-footer">
           <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
           <div class="footer-stamp-box">Visa de la Direction</div>
@@ -1464,42 +1473,37 @@ function generateDesignPlanHtml({
     }).join('')}
 
     <!-- ====================================================================
-         4. NOUVELLE PAGE RÉCAPITULATIVE : MANUELS & LIVRES À RAPPORTER POUR LES DEVOIRS
+         PAGE FINALE : RÉCAPITULATIF CARTABLE & LIVRES À RAPPORTER POUR LES DEVOIRS
          ==================================================================== -->
     <section class="a4-page backpack-summary-page" id="page_backpack_recap">
-      <!-- EN-TÊTE OFFICIEL WORD / A4 -->
+      <!-- EN-TÊTE OFFICIEL WORD AL KAWTHAR -->
       <header class="word-header-container">
-        ${headerBannerDataUri ? `
-          <div class="a4-top-banner">
-            <img src="${headerBannerDataUri}" alt="Les Écoles Internationales Al Kawthar" class="a4-header-banner-img" />
+        <div class="header-main-row">
+          <div class="header-logo-col">
+            <img src="${logoAlKawtharUri}" alt="Logo Les Écoles Internationales Al Kawthar" class="header-school-logo" />
           </div>
-        ` : `
-          <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
-        `}
-
-        <div class="header-center-pill-wrapper">
-          <div class="header-week-range-badge">
-            <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
+          <div class="header-titles-col">
+            <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
+            <div class="word-sub-title-ar">مدارس الكوثر العالمية • AL KAWTHAR INTERNATIONAL SCHOOLS</div>
+            <div class="header-week-range-badge">
+              <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
+            </div>
+          </div>
+          <div class="header-meta-col">
+            <div class="meta-tag-row">
+              <span class="meta-tag-label">CLASSE :</span>
+              <span class="meta-tag-val meta-class-highlight">${escapeHtml(classe)}</span>
+            </div>
+            <div class="meta-tag-row">
+              <span class="meta-tag-label">SEMAINE :</span>
+              <span class="meta-tag-val">${week}</span>
+              <span class="meta-tag-sep">|</span>
+              <span class="meta-tag-label">SEMESTRE :</span>
+              <span class="meta-tag-val">${escapeHtml(String(semester || 1))}</span>
+            </div>
+            <div class="meta-doc-type">RÉCAPITULATIF CARTABLE</div>
           </div>
         </div>
-
-        <table class="word-meta-table">
-          <tr>
-            <td class="meta-left">
-              <span class="meta-label">CLASSE : </span>
-              <span class="meta-value">${escapeHtml(classe)}</span>
-            </td>
-            <td class="meta-center">
-              <span class="meta-label">RÉCAPITULATIF CARTABLE &amp; LIVRES POUR LES DEVOIRS</span>
-            </td>
-            <td class="meta-right">
-              <span class="meta-label">SEMESTRE : </span>
-              <span class="meta-value">${escapeHtml(String(semester || 1))}</span>
-              <span style="margin-left:14px;" class="meta-label">SEMAINE : </span>
-              <span class="meta-value">${week}</span>
-            </td>
-          </tr>
-        </table>
       </header>
 
       <!-- BANDEAU CONSEIL & RAPPEL POUR LES PARENTS ET ÉLÈVES -->
@@ -1514,7 +1518,7 @@ function generateDesignPlanHtml({
           </div>
           <p class="backpack-tip-desc">
             Pour éviter d'oublier vos livres à l'école, vérifiez chaque jour votre cartable grâce à ce tableau récapitulatif des devoirs de la semaine.
-            <br><span style="font-family:'Cairo', sans-serif; direction:rtl; display:inline-block;">لتفادي نسيان الكتب والكراسات بالمدرسة، يرجى مراجعة وتجهيز الحقيبة يومياً وفق هذا الجدول.</span>
+            <br><span style="font-family:'Cairo', sans-serif; direction:rtl; display:inline-block;">لتفادي نسيan الكتب والكراسات بالمدرسة، يرجى مراجعة وتجهيز الحقيبة يومياً وفق هذا الجدول.</span>
           </p>
         </div>
       </div>
@@ -1524,11 +1528,11 @@ function generateDesignPlanHtml({
         <table class="backpack-recap-table">
           <thead>
             <tr>
-              <th style="width: 18%;">JOUR / اليوم</th>
+              <th style="width: 17%;">JOUR / اليوم</th>
               <th style="width: 22%;">MATIÈRE / المادة</th>
-              <th style="width: 28%;">DEVOIR PRÉVU / الواجب المطلوب</th>
+              <th style="width: 29%;">DEVOIR PRÉVU / الواجب المطلوب</th>
               <th style="width: 24%;">LIVRE / CAHIER À PRENDRE / الكتاب أو الكراس</th>
-              <th style="width: 8%; text-align:center;">VÉRIFIÉ / تأكيد</th>
+              <th style="width: 8%; text-align:center;">VÉRIFIÉ</th>
             </tr>
           </thead>
           <tbody>
@@ -1548,12 +1552,12 @@ function generateDesignPlanHtml({
                       <span class="day-cell-ar">${arabicDays[dayName] || ''}</span>
                     </div>
                   </td>
-                  <td colspan="3" style="color:#64748B; font-style:italic; padding:8px 12px;">
-                    <i class="fas fa-check-circle" style="color:#10B981; margin-right:6px;"></i>
+                  <td colspan="3" style="color:#64748B; font-style:italic; padding:6px 10px;">
+                    <i class="fas fa-check-circle" style="color:#10B981; margin-right:5px;"></i>
                     Aucun devoir nécessitant de livre à rapporter à la maison pour ce jour. / لا توجد واجبات تتطلب إحضار كتب
                   </td>
                   <td style="text-align:center;">
-                    <i class="fas fa-check" style="color:#10B981; font-size:1.1rem;"></i>
+                    <i class="fas fa-check" style="color:#10B981; font-size:1rem;"></i>
                   </td>
                 </tr>
                 `;
@@ -1566,7 +1570,6 @@ function generateDesignPlanHtml({
                 const support = String(r['Support'] || r['support'] || '').trim();
                 const hasSupport = support && support !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد');
                 
-                // Déterminer le livre/cahier à rapporter
                 let bookText = '';
                 if (hasSupport) {
                   bookText = support;
@@ -1610,7 +1613,7 @@ function generateDesignPlanHtml({
         </table>
       </div>
 
-      <!-- PIED DE PAGE -->
+      <!-- PIED DE PAGE SCELLÉ EN BAS -->
       <footer class="a4-page-footer">
         <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
         <div class="footer-stamp-box">Visa de la Direction</div>
