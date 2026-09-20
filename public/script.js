@@ -8967,10 +8967,11 @@ let activeEvalStudents = [];
 
 let activeTeacherHwFilters = {
     teacher: '',
-    classe: 'all',
-    matiere: 'all',
-    jour: 'all',
+    section: 'all',
     week: 'all',
+    classe: 'all',
+    jour: 'all',
+    matiere: 'all',
     status: 'all',
     search: ''
 };
@@ -9048,7 +9049,8 @@ async function loadTeacherHomeworksDashboard() {
             ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) 
             : false;
 
-        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        const section = activeTeacherHwFilters.section || (typeof currentSection !== 'undefined' && currentSection) || 'all';
+        activeTeacherHwFilters.section = section;
         const teacherParamFromLogin = loggedInTeacherTable || (typeof loggedInUser !== 'undefined' ? loggedInUser : '');
 
         // Pour un enseignant régulier : STRICTEMENT VÉROUILLÉ SUR SON NOM
@@ -9096,17 +9098,20 @@ async function loadTeacherHomeworksDashboard() {
 
         const secEl = document.getElementById('teacherEvalActiveSection');
         if (secEl) {
-            secEl.textContent = section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'primaire' ? 'Section Primaire & Maternelle (ابتدائي وروضة)' : 'Section Filles (بنات)');
+            secEl.textContent = section === 'all'
+                ? 'Toutes les Écoles / Sections'
+                : (section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'primaire' ? 'Section Primaire & Maternelle (ابتدائي وروضة)' : 'Section Filles (بنات)'));
         }
 
-        // Rendu des barres d'icônes dynamiques
+        // Rendu des filtres hiérarchiques : Écoles -> Semaines -> Classes -> Jours -> Matières
+        renderTeacherSchoolIcons();
         if (isAdminOrSupervisor) {
             renderTeacherAdminSwitcher(allSectionTeachersList);
         }
-        renderTeacherClassesIcons();
-        renderTeacherSubjectsIcons();
-        renderTeacherDaysIcons();
         renderTeacherWeeksIcons();
+        renderTeacherClassesIcons();
+        renderTeacherDaysIcons();
+        renderTeacherSubjectsIcons();
 
         // Rendu du tableau de bord avec les filtres actifs
         renderTeacherHomeworksDashboard();
@@ -9122,6 +9127,63 @@ async function loadTeacherHomeworksDashboard() {
             </div>
         `;
     }
+}
+
+// 0. Barre d'icônes : ÉCOLES / SECTIONS
+function renderTeacherSchoolIcons() {
+    const container = document.getElementById('teacherSchoolIconsContainer');
+    if (!container) return;
+
+    const counts = { all: allTeacherHomeworks.length, garcons: 0, filles: 0, primaire: 0 };
+    allTeacherHomeworks.forEach(h => {
+        const sec = (h.section || '').toLowerCase();
+        if (sec.includes('garcon') || sec === 'garcons') counts.garcons += 1;
+        else if (sec.includes('fille') || sec === 'filles') counts.filles += 1;
+        else if (sec.includes('prim') || sec === 'primaire') counts.primaire += 1;
+    });
+
+    const bAll = document.getElementById('badgeSchoolAll');
+    if (bAll) bAll.textContent = counts.all;
+    const bGarcons = document.getElementById('badgeSchoolGarcons');
+    if (bGarcons) bGarcons.textContent = counts.garcons;
+    const bFilles = document.getElementById('badgeSchoolFilles');
+    if (bFilles) bFilles.textContent = counts.filles;
+    const bPrimaire = document.getElementById('badgeSchoolPrimaire');
+    if (bPrimaire) bPrimaire.textContent = counts.primaire;
+
+    const activeSec = activeTeacherHwFilters.section || 'all';
+    const btns = container.querySelectorAll('.teacher-icon-btn');
+    btns.forEach(b => {
+        const bSchool = b.getAttribute('data-school');
+        if (bSchool === activeSec) {
+            b.classList.add('active');
+        } else {
+            b.classList.remove('active');
+        }
+    });
+
+    const countLabel = document.getElementById('teacherSchoolCountLabel');
+    if (countLabel) {
+        if (activeSec === 'all') {
+            countLabel.textContent = `Toutes les écoles (${allTeacherHomeworks.length} devoirs au total)`;
+        } else {
+            const secName = activeSec === 'garcons' ? 'Section Garçons (بنين)' : (activeSec === 'filles' ? 'Section Filles (بنات)' : 'Section Primaire');
+            countLabel.textContent = `${secName} (${counts[activeSec] || 0} devoirs)`;
+        }
+    }
+}
+
+function setTeacherHwSchoolFilter(school) {
+    activeTeacherHwFilters.section = school;
+    // Drill down: réinitialiser semaine, classe, jour et matière pour un affichage net
+    activeTeacherHwFilters.week = 'all';
+    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.jour = 'all';
+    activeTeacherHwFilters.matiere = 'all';
+    if (school !== 'all') {
+        currentSection = school;
+    }
+    loadTeacherHomeworksDashboard();
 }
 
 // 1. Barre d'icônes : ENSEIGNANTS (Admin / Superviseur uniquement)
@@ -9153,10 +9215,10 @@ function renderTeacherAdminSwitcher(teachersList) {
 
 function switchActiveTeacherForHomework(teacherName) {
     activeTeacherHwFilters.teacher = teacherName;
+    activeTeacherHwFilters.week = 'all';
     activeTeacherHwFilters.classe = 'all';
     activeTeacherHwFilters.matiere = 'all';
     activeTeacherHwFilters.jour = 'all';
-    activeTeacherHwFilters.week = 'all';
     activeTeacherHwFilters.status = 'all';
     activeTeacherHwFilters.search = '';
     const searchInput = document.getElementById('teacherHwSearchInput');
@@ -9164,40 +9226,155 @@ function switchActiveTeacherForHomework(teacherName) {
     loadTeacherHomeworksDashboard();
 }
 
-// 2. Barre d'icônes : CLASSES
+// 2. Barre d'icônes : SEMAINES (Hiérarchie Niveau 1 après l'École)
+function renderTeacherWeeksIcons() {
+    const container = document.getElementById('teacherWeeksIconsContainer');
+    const countLabel = document.getElementById('teacherWeeksCountLabel');
+    if (!container) return;
+
+    // Ne prendre en compte que les devoirs de l'école/section sélectionnée
+    let targetHws = allTeacherHomeworks;
+    if (activeTeacherHwFilters.section !== 'all') {
+        targetHws = targetHws.filter(h => {
+            const sec = (h.section || '').toLowerCase();
+            return sec.includes(activeTeacherHwFilters.section.toLowerCase());
+        });
+    }
+
+    const weekMap = new Map();
+    targetHws.forEach(h => {
+        const w = String(h.week || '1');
+        if (!weekMap.has(w)) {
+            weekMap.set(w, { total: 0, evaluated: 0, rangeText: h.weekRangeText || '' });
+        }
+        const item = weekMap.get(w);
+        item.total += 1;
+        if (h.isEvaluated) item.evaluated += 1;
+        if (!item.rangeText && h.weekRangeText) item.rangeText = h.weekRangeText;
+    });
+
+    const weeks = Array.from(weekMap.keys()).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+    if (countLabel) {
+        countLabel.textContent = `(${weeks.length} semaine${weeks.length > 1 ? 's' : ''} avec devoirs)`;
+    }
+
+    if (weeks.length === 0) {
+        container.innerHTML = `
+            <div style="color:#64748B; font-size:0.88rem; padding:6px 0; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-info-circle" style="color:#3B82F6;"></i> Aucun devoir trouvé pour cette sélection.
+            </div>
+        `;
+        return;
+    }
+
+    let html = `
+        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.week === 'all' ? 'active' : ''}" onclick="setTeacherHwWeekFilter('all')">
+            <i class="fas fa-calendar-week" style="color:#0284C7;"></i>
+            <span>Toutes les Semaines</span>
+            <span class="hw-badge">${targetHws.length}</span>
+        </button>
+    `;
+
+    weeks.forEach(w => {
+        const item = weekMap.get(w);
+        const isActive = (String(activeTeacherHwFilters.week) === String(w));
+        const allDone = item.evaluated === item.total && item.total > 0;
+        const iconColor = isActive ? '#FFFFFF' : (allDone ? '#10B981' : '#0284C7');
+
+        html += `
+            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwWeekFilter('${w}')" title="${item.rangeText ? item.rangeText : 'Semaine ' + w}">
+                <i class="fas ${allDone ? 'fa-check-circle' : 'fa-calendar-day'}" style="color:${iconColor};"></i>
+                <span>Semaine ${w}</span>
+                ${item.rangeText ? `<small style="font-size:0.75rem; opacity:0.85;">(${escapeHtml(item.rangeText)})</small>` : ''}
+                <span class="hw-badge" style="${allDone ? 'background:#10B981; color:white;' : ''}">${item.evaluated}/${item.total}</span>
+            </button>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function setTeacherHwWeekFilter(week) {
+    activeTeacherHwFilters.week = week;
+    // Drill-down : En cliquant sur une semaine, on affine les classes et jours disponibles
+    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.jour = 'all';
+    renderTeacherWeeksIcons();
+    renderTeacherClassesIcons();
+    renderTeacherDaysIcons();
+    renderTeacherSubjectsIcons();
+    renderTeacherHomeworksDashboard();
+}
+
+// 3. Barre d'icônes : CLASSES (Hiérarchie Niveau 2 après la Semaine)
 function renderTeacherClassesIcons() {
     const container = document.getElementById('teacherClassesIconsContainer');
     const countLabel = document.getElementById('teacherClassesCountLabel');
     if (!container) return;
 
-    const classCounts = {};
-    allTeacherHomeworks.forEach(h => {
-        const c = h.classe || 'Autre';
-        classCounts[c] = (classCounts[c] || 0) + 1;
+    // Ne filtrer que les classes de la semaine active et de l'école active
+    let targetHws = allTeacherHomeworks;
+    if (activeTeacherHwFilters.section !== 'all') {
+        targetHws = targetHws.filter(h => {
+            const sec = (h.section || '').toLowerCase();
+            return sec.includes(activeTeacherHwFilters.section.toLowerCase());
+        });
+    }
+    if (activeTeacherHwFilters.week !== 'all') {
+        targetHws = targetHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
+    }
+
+    const classMap = new Map();
+    targetHws.forEach(h => {
+        const c = h.classe || 'Général';
+        if (!classMap.has(c)) {
+            classMap.set(c, { total: 0, evaluated: 0 });
+        }
+        const item = classMap.get(c);
+        item.total += 1;
+        if (h.isEvaluated) item.evaluated += 1;
     });
 
-    const classes = Object.keys(classCounts).sort(compareClasses);
-    if (countLabel) countLabel.textContent = `(${classes.length} classe${classes.length > 1 ? 's' : ''})`;
+    const classes = Array.from(classMap.keys()).sort(compareClasses);
+    if (countLabel) {
+        const weekPrefix = activeTeacherHwFilters.week !== 'all' ? `dans Semaine ${activeTeacherHwFilters.week}` : 'au total';
+        countLabel.textContent = `(${classes.length} classe${classes.length > 1 ? 's' : ''} ${weekPrefix})`;
+    }
+
+    if (classes.length === 0) {
+        container.innerHTML = `
+            <div style="color:#64748B; font-size:0.88rem; padding:6px 0; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-info-circle"></i> Aucune classe avec devoirs pour cette sélection.
+            </div>
+        `;
+        return;
+    }
+
+    // Réinitialiser la classe active si elle n'est pas dans la liste disponible
+    if (activeTeacherHwFilters.classe !== 'all' && !classMap.has(activeTeacherHwFilters.classe)) {
+        activeTeacherHwFilters.classe = 'all';
+    }
 
     let html = `
         <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.classe === 'all' ? 'active' : ''}" onclick="setTeacherHwClassFilter('all')">
             <i class="fas fa-layer-group" style="color:#2563EB;"></i>
-            <span>Toutes les Classes</span>
-            <span class="hw-badge">${allTeacherHomeworks.length}</span>
+            <span>${activeTeacherHwFilters.week !== 'all' ? 'Toutes les Classes de la Semaine' : 'Toutes les Classes'}</span>
+            <span class="hw-badge">${targetHws.length}</span>
         </button>
     `;
 
     classes.forEach(c => {
+        const item = classMap.get(c);
         const isActive = (activeTeacherHwFilters.classe === c);
         const ar = (typeof classTranslations !== 'undefined' && classTranslations[c]) ? classTranslations[c] : '';
         const displayLabel = ar ? `${c} (${ar})` : c;
-        const count = classCounts[c] || 0;
+        const allDone = item.evaluated === item.total && item.total > 0;
 
         html += `
             <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwClassFilter('${escapeHtml(c)}')">
-                <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i>
+                <i class="fas fa-graduation-cap" style="color:${isActive ? '#FFFFFF' : (allDone ? '#10B981' : '#4F46E5')};"></i>
                 <span>${escapeHtml(displayLabel)}</span>
-                <span class="hw-badge">${count}</span>
+                <span class="hw-badge" style="${allDone ? 'background:#10B981; color:white;' : ''}">${item.evaluated}/${item.total}</span>
             </button>
         `;
     });
@@ -9207,18 +9384,111 @@ function renderTeacherClassesIcons() {
 
 function setTeacherHwClassFilter(classe) {
     activeTeacherHwFilters.classe = classe;
+    // Drill-down : En choisissant la classe, on affine les jours et matières
+    activeTeacherHwFilters.jour = 'all';
     renderTeacherClassesIcons();
+    renderTeacherDaysIcons();
+    renderTeacherSubjectsIcons();
     renderTeacherHomeworksDashboard();
 }
 
-// 3. Barre d'icônes : MATIÈRES
+// 4. Barre d'icônes : JOURS DE LA SEMAINE (Hiérarchie Niveau 3 après la Classe)
+function renderTeacherDaysIcons() {
+    const container = document.getElementById('teacherDaysIconsContainer');
+    const countLabel = document.getElementById('teacherDaysCountLabel');
+    if (!container) return;
+
+    // Filtrer par école, semaine et classe
+    let targetHws = allTeacherHomeworks;
+    if (activeTeacherHwFilters.section !== 'all') {
+        targetHws = targetHws.filter(h => {
+            const sec = (h.section || '').toLowerCase();
+            return sec.includes(activeTeacherHwFilters.section.toLowerCase());
+        });
+    }
+    if (activeTeacherHwFilters.week !== 'all') {
+        targetHws = targetHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
+    }
+    if (activeTeacherHwFilters.classe !== 'all') {
+        targetHws = targetHws.filter(h => h.classe === activeTeacherHwFilters.classe);
+    }
+
+    const dayCounts = {};
+    targetHws.forEach(h => {
+        const dInfo = getDayIconAndDetails(h.jour);
+        dayCounts[dInfo.key] = (dayCounts[dInfo.key] || 0) + 1;
+    });
+
+    const activeDaysCount = Object.keys(dayCounts).length;
+    if (countLabel) {
+        const clsPrefix = activeTeacherHwFilters.classe !== 'all' ? `pour classe ${activeTeacherHwFilters.classe}` : '';
+        countLabel.textContent = `(${activeDaysCount} jour${activeDaysCount > 1 ? 's' : ''} avec devoirs ${clsPrefix})`;
+    }
+
+    let html = `
+        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.jour === 'all' ? 'active' : ''}" onclick="setTeacherHwDayFilter('all')">
+            <i class="fas fa-calendar-alt" style="color:#10B981;"></i>
+            <span>Tous les Jours</span>
+            <span class="hw-badge">${targetHws.length}</span>
+        </button>
+    `;
+
+    const standardDays = [
+        { key: 'Dimanche', label: 'Dimanche', ar: 'الأحد', icon: 'fas fa-sun', color: '#F59E0B' },
+        { key: 'Lundi', label: 'Lundi', ar: 'الإثنين', icon: 'fas fa-seedling', color: '#10B981' },
+        { key: 'Mardi', label: 'Mardi', ar: 'الثلاثاء', icon: 'fas fa-bolt', color: '#6366F1' },
+        { key: 'Mercredi', label: 'Mercredi', ar: 'الأربعاء', icon: 'fas fa-leaf', color: '#06B6D4' },
+        { key: 'Jeudi', label: 'Jeudi', ar: 'الخميس', icon: 'fas fa-star', color: '#EC4899' }
+    ];
+
+    standardDays.forEach(d => {
+        const count = dayCounts[d.key] || 0;
+        const isActive = (activeTeacherHwFilters.jour === d.key);
+
+        html += `
+            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwDayFilter('${d.key}')" style="${count === 0 ? 'opacity:0.55;' : 'font-weight:700;'}">
+                <i class="${d.icon}" style="color:${isActive ? '#FFFFFF' : d.color};"></i>
+                <span>${d.label} <small style="opacity:0.85;">(${d.ar})</small></span>
+                <span class="hw-badge" style="${count > 0 ? 'background:#DBEAFE; color:#1D4ED8;' : ''}">${count}</span>
+            </button>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function setTeacherHwDayFilter(jour) {
+    activeTeacherHwFilters.jour = jour;
+    renderTeacherDaysIcons();
+    renderTeacherSubjectsIcons();
+    renderTeacherHomeworksDashboard();
+}
+
+// 5. Barre d'icônes : MATIÈRES
 function renderTeacherSubjectsIcons() {
     const container = document.getElementById('teacherSubjectsIconsContainer');
     const countLabel = document.getElementById('teacherSubjectsCountLabel');
     if (!container) return;
 
+    let targetHws = allTeacherHomeworks;
+    if (activeTeacherHwFilters.section !== 'all') {
+        targetHws = targetHws.filter(h => {
+            const sec = (h.section || '').toLowerCase();
+            return sec.includes(activeTeacherHwFilters.section.toLowerCase());
+        });
+    }
+    if (activeTeacherHwFilters.week !== 'all') {
+        targetHws = targetHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
+    }
+    if (activeTeacherHwFilters.classe !== 'all') {
+        targetHws = targetHws.filter(h => h.classe === activeTeacherHwFilters.classe);
+    }
+    if (activeTeacherHwFilters.jour !== 'all') {
+        targetHws = targetHws.filter(h => getDayIconAndDetails(h.jour).key === activeTeacherHwFilters.jour);
+    }
+
     const subjectCounts = {};
-    allTeacherHomeworks.forEach(h => {
+    targetHws.forEach(h => {
         const m = h.matiere || 'Matière Générale';
         subjectCounts[m] = (subjectCounts[m] || 0) + 1;
     });
@@ -9230,7 +9500,7 @@ function renderTeacherSubjectsIcons() {
         <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.matiere === 'all' ? 'active' : ''}" onclick="setTeacherHwSubjectFilter('all')">
             <i class="fas fa-book" style="color:#8B5CF6;"></i>
             <span>Toutes les Matières</span>
-            <span class="hw-badge">${allTeacherHomeworks.length}</span>
+            <span class="hw-badge">${targetHws.length}</span>
         </button>
     `;
 
@@ -9257,109 +9527,6 @@ function setTeacherHwSubjectFilter(matiere) {
     renderTeacherHomeworksDashboard();
 }
 
-// 4. Barre d'icônes : JOURS DE LA SEMAINE
-function renderTeacherDaysIcons() {
-    const container = document.getElementById('teacherDaysIconsContainer');
-    if (!container) return;
-
-    const dayCounts = {
-        'Dimanche': 0,
-        'Lundi': 0,
-        'Mardi': 0,
-        'Mercredi': 0,
-        'Jeudi': 0
-    };
-
-    allTeacherHomeworks.forEach(h => {
-        const dayInfo = getDayIconAndDetails(h.jour);
-        if (dayCounts[dayInfo.key] !== undefined) {
-            dayCounts[dayInfo.key] += 1;
-        }
-    });
-
-    let html = `
-        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.jour === 'all' ? 'active' : ''}" onclick="setTeacherHwDayFilter('all')">
-            <i class="fas fa-calendar-alt" style="color:#10B981;"></i>
-            <span>Tous les Jours</span>
-            <span class="hw-badge">${allTeacherHomeworks.length}</span>
-        </button>
-    `;
-
-    const standardDays = [
-        { key: 'Dimanche', label: 'Dimanche', ar: 'الأحد', icon: 'fas fa-sun', color: '#F59E0B' },
-        { key: 'Lundi', label: 'Lundi', ar: 'الإثنين', icon: 'fas fa-seedling', color: '#10B981' },
-        { key: 'Mardi', label: 'Mardi', ar: 'الثلاثاء', icon: 'fas fa-bolt', color: '#6366F1' },
-        { key: 'Mercredi', label: 'Mercredi', ar: 'الأربعاء', icon: 'fas fa-leaf', color: '#06B6D4' },
-        { key: 'Jeudi', label: 'Jeudi', ar: 'الخميس', icon: 'fas fa-star', color: '#EC4899' }
-    ];
-
-    standardDays.forEach(d => {
-        const isActive = (activeTeacherHwFilters.jour === d.key);
-        const count = dayCounts[d.key] || 0;
-
-        html += `
-            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwDayFilter('${d.key}')">
-                <i class="${d.icon}" style="color:${isActive ? '#FFFFFF' : d.color};"></i>
-                <span>${d.label} <small style="opacity:0.85;">(${d.ar})</small></span>
-                <span class="hw-badge">${count}</span>
-            </button>
-        `;
-    });
-
-    container.innerHTML = html;
-}
-
-function setTeacherHwDayFilter(jour) {
-    activeTeacherHwFilters.jour = jour;
-    renderTeacherDaysIcons();
-    renderTeacherHomeworksDashboard();
-}
-
-// 5. Barre d'icônes : SEMAINES
-function renderTeacherWeeksIcons() {
-    const container = document.getElementById('teacherWeeksIconsContainer');
-    const countLabel = document.getElementById('teacherWeeksCountLabel');
-    if (!container) return;
-
-    const weekCounts = {};
-    allTeacherHomeworks.forEach(h => {
-        const w = String(h.week || '1');
-        weekCounts[w] = (weekCounts[w] || 0) + 1;
-    });
-
-    const weeks = Object.keys(weekCounts).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
-    if (countLabel) countLabel.textContent = `(${weeks.length} semaine${weeks.length > 1 ? 's' : ''})`;
-
-    let html = `
-        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.week === 'all' ? 'active' : ''}" onclick="setTeacherHwWeekFilter('all')">
-            <i class="fas fa-calendar-week" style="color:#0284C7;"></i>
-            <span>Toutes les Semaines</span>
-            <span class="hw-badge">${allTeacherHomeworks.length}</span>
-        </button>
-    `;
-
-    weeks.forEach(w => {
-        const isActive = (String(activeTeacherHwFilters.week) === String(w));
-        const count = weekCounts[w] || 0;
-
-        html += `
-            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwWeekFilter('${w}')">
-                <i class="fas fa-calendar-day" style="color:#0284C7;"></i>
-                <span>Semaine ${w}</span>
-                <span class="hw-badge">${count}</span>
-            </button>
-        `;
-    });
-
-    container.innerHTML = html;
-}
-
-function setTeacherHwWeekFilter(week) {
-    activeTeacherHwFilters.week = week;
-    renderTeacherWeeksIcons();
-    renderTeacherHomeworksDashboard();
-}
-
 // 6. Statut d'évaluation
 function setTeacherHwStatusFilter(status) {
     activeTeacherHwFilters.status = status;
@@ -9377,20 +9544,22 @@ function setTeacherHwStatusFilter(status) {
 
 // Réinitialiser tous les filtres
 function resetAllTeacherHwFilters() {
-    activeTeacherHwFilters.classe = 'all';
-    activeTeacherHwFilters.matiere = 'all';
-    activeTeacherHwFilters.jour = 'all';
+    activeTeacherHwFilters.section = 'all';
     activeTeacherHwFilters.week = 'all';
+    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.jour = 'all';
+    activeTeacherHwFilters.matiere = 'all';
     activeTeacherHwFilters.status = 'all';
     activeTeacherHwFilters.search = '';
 
     const searchInput = document.getElementById('teacherHwSearchInput');
     if (searchInput) searchInput.value = '';
 
-    renderTeacherClassesIcons();
-    renderTeacherSubjectsIcons();
-    renderTeacherDaysIcons();
+    renderTeacherSchoolIcons();
     renderTeacherWeeksIcons();
+    renderTeacherClassesIcons();
+    renderTeacherDaysIcons();
+    renderTeacherSubjectsIcons();
     setTeacherHwStatusFilter('all');
 }
 
@@ -9425,17 +9594,21 @@ function renderTeacherHomeworksDashboard() {
     const tagsContainer = document.getElementById('teacherActiveFiltersTags');
     if (tagsContainer) {
         let tagsHtml = '';
+        if (activeTeacherHwFilters.section !== 'all') {
+            const secName = activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : 'Primaire');
+            tagsHtml += `<span style="background:#EFF6FF; color:#1D4ED8; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-school"></i> École: ${secName} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwSchoolFilter('all')"></i></span>`;
+        }
+        if (activeTeacherHwFilters.week !== 'all') {
+            tagsHtml += `<span style="background:#F0F9FF; color:#0284C7; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Semaine ${escapeHtml(activeTeacherHwFilters.week)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwWeekFilter('all')"></i></span>`;
+        }
         if (activeTeacherHwFilters.classe !== 'all') {
             tagsHtml += `<span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Classe: ${escapeHtml(activeTeacherHwFilters.classe)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwClassFilter('all')"></i></span>`;
-        }
-        if (activeTeacherHwFilters.matiere !== 'all') {
-            tagsHtml += `<span style="background:#F5F3FF; color:#7C3AED; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Matière: ${escapeHtml(activeTeacherHwFilters.matiere)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwSubjectFilter('all')"></i></span>`;
         }
         if (activeTeacherHwFilters.jour !== 'all') {
             tagsHtml += `<span style="background:#ECFDF5; color:#059669; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Jour: ${escapeHtml(activeTeacherHwFilters.jour)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwDayFilter('all')"></i></span>`;
         }
-        if (activeTeacherHwFilters.week !== 'all') {
-            tagsHtml += `<span style="background:#F0F9FF; color:#0284C7; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Semaine ${escapeHtml(activeTeacherHwFilters.week)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwWeekFilter('all')"></i></span>`;
+        if (activeTeacherHwFilters.matiere !== 'all') {
+            tagsHtml += `<span style="background:#F5F3FF; color:#7C3AED; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Matière: ${escapeHtml(activeTeacherHwFilters.matiere)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwSubjectFilter('all')"></i></span>`;
         }
         if (activeTeacherHwFilters.status !== 'all') {
             const stLabel = activeTeacherHwFilters.status === 'evaluated' ? 'Évalués (Vert)' : 'À Évaluer';
@@ -9449,6 +9622,13 @@ function renderTeacherHomeworksDashboard() {
 
     // Filtrer la liste des devoirs
     const filtered = allTeacherHomeworks.filter(hw => {
+        if (activeTeacherHwFilters.section !== 'all') {
+            const hwSec = (hw.section || '').toLowerCase();
+            const filterSec = activeTeacherHwFilters.section.toLowerCase();
+            if (!hwSec.includes(filterSec) && hwSec !== filterSec) return false;
+        }
+
+        if (activeTeacherHwFilters.week !== 'all' && String(hw.week) !== String(activeTeacherHwFilters.week)) return false;
         if (activeTeacherHwFilters.classe !== 'all' && hw.classe !== activeTeacherHwFilters.classe) return false;
         if (activeTeacherHwFilters.matiere !== 'all' && hw.matiere !== activeTeacherHwFilters.matiere) return false;
         
@@ -9457,7 +9637,6 @@ function renderTeacherHomeworksDashboard() {
             if (dInfo.key !== activeTeacherHwFilters.jour) return false;
         }
 
-        if (activeTeacherHwFilters.week !== 'all' && String(hw.week) !== String(activeTeacherHwFilters.week)) return false;
         if (activeTeacherHwFilters.status === 'evaluated' && !hw.isEvaluated) return false;
         if (activeTeacherHwFilters.status === 'pending' && hw.isEvaluated) return false;
 
@@ -9482,8 +9661,8 @@ function renderTeacherHomeworksDashboard() {
                 <div style="width:60px; height:60px; background:#F1F5F9; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-bottom:14px;">
                     <i class="fas fa-clipboard-check fa-2x" style="color:#94A3B8;"></i>
                 </div>
-                <h4 style="font-size:1.15rem; color:#1E293B; margin:0 0 6px 0; font-weight:700;">Aucun devoir ne correspond à ces critères d'icônes</h4>
-                <p style="font-size:0.92rem; margin:0 0 16px 0; color:#64748B;">Cliquez sur "Toutes les Classes", "Toutes les Matières" ou réinitialisez les filtres.</p>
+                <h4 style="font-size:1.15rem; color:#1E293B; margin:0 0 6px 0; font-weight:700;">Aucun devoir ne correspond à cette sélection</h4>
+                <p style="font-size:0.92rem; margin:0 0 16px 0; color:#64748B;">Cliquez sur "Toutes les Semaines", "Toutes les Classes" ou réinitialisez les filtres.</p>
                 <button type="button" class="pro-button primary-button" onclick="resetAllTeacherHwFilters()">
                     <i class="fas fa-undo"></i> Réinitialiser tous les filtres
                 </button>
@@ -9491,6 +9670,48 @@ function renderTeacherHomeworksDashboard() {
         `;
         return;
     }
+
+    // Fil d'Ariane (Parcours École -> Semaine -> Classe -> Jour)
+    let breadcrumbsHtml = `
+        <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:12px 18px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.02); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                <span style="font-weight:700; color:#64748B; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-sitemap" style="color:#2563EB;"></i> Parcours :
+                </span>
+
+                <button type="button" onclick="setTeacherHwSchoolFilter('all')" title="Filtrer ou afficher toutes les écoles" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-school"></i> ${activeTeacherHwFilters.section === 'all' ? 'Toutes Écoles' : (activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : 'Primaire'))}
+                </button>
+
+                <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
+
+                <button type="button" onclick="setTeacherHwWeekFilter('all')" title="Filtrer ou afficher toutes les semaines" style="background:${activeTeacherHwFilters.week !== 'all' ? '#F0F9FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.week !== 'all' ? '#0284C7' : '#475569'}; border:1px solid ${activeTeacherHwFilters.week !== 'all' ? '#BAE6FD' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-calendar-week"></i> ${activeTeacherHwFilters.week !== 'all' ? 'Semaine ' + escapeHtml(activeTeacherHwFilters.week) : 'Toutes Semaines'}
+                </button>
+
+                <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
+
+                <button type="button" onclick="setTeacherHwClassFilter('all')" title="Filtrer ou afficher toutes les classes" style="background:${activeTeacherHwFilters.classe !== 'all' ? '#EEF2FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.classe !== 'all' ? '#4F46E5' : '#475569'}; border:1px solid ${activeTeacherHwFilters.classe !== 'all' ? '#C7D2FE' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-graduation-cap"></i> ${activeTeacherHwFilters.classe !== 'all' ? 'Classe ' + escapeHtml(activeTeacherHwFilters.classe) : 'Toutes Classes'}
+                </button>
+
+                <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
+
+                <button type="button" onclick="setTeacherHwDayFilter('all')" title="Filtrer ou afficher tous les jours" style="background:${activeTeacherHwFilters.jour !== 'all' ? '#ECFDF5' : '#F8FAFC'}; color:${activeTeacherHwFilters.jour !== 'all' ? '#059669' : '#475569'}; border:1px solid ${activeTeacherHwFilters.jour !== 'all' ? '#A7F3D0' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-calendar-day"></i> ${activeTeacherHwFilters.jour !== 'all' ? escapeHtml(activeTeacherHwFilters.jour) : 'Tous Jours'}
+                </button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:700; color:#1E293B; font-size:0.82rem; background:#F8FAFC; border:1px solid #E2E8F0; padding:4px 10px; border-radius:8px;">
+                    ${filtered.length} devoir${filtered.length > 1 ? 's' : ''} affiché${filtered.length > 1 ? 's' : ''}
+                </span>
+                <button type="button" class="pro-button outline-button" onclick="resetAllTeacherHwFilters()" style="padding:4px 8px; font-size:0.78rem; height:28px;">
+                    <i class="fas fa-undo"></i> Réinitialiser
+                </button>
+            </div>
+        </div>
+    `;
 
     // Grouper par Semaine puis par Classe
     const weeksMap = new Map();
@@ -9516,7 +9737,7 @@ function renderTeacherHomeworksDashboard() {
         return (parseInt(a[0]) || 0) - (parseInt(b[0]) || 0);
     });
 
-    let html = '';
+    let html = breadcrumbsHtml;
 
     sortedWeeks.forEach(([wKey, wData]) => {
         let totalInWeek = 0;
@@ -9569,9 +9790,11 @@ function renderTeacherHomeworksDashboard() {
                             <span style="display:inline-block; width:10px; height:10px; background:#4F46E5; border-radius:50%;"></span>
                             <i class="fas fa-users" style="color:#6366F1;"></i> Classe : <strong>${classTitle}</strong>
                         </h4>
-                        <span style="font-size:0.82rem; font-weight:700; color:#64748B; background:#F8FAFC; padding:4px 10px; border-radius:8px; border:1px solid #E2E8F0;">
-                            ${homeworksList.length} Devoir(s)
-                        </span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:0.82rem; font-weight:700; color:#64748B; background:#F8FAFC; padding:4px 10px; border-radius:8px; border:1px solid #E2E8F0;">
+                                ${homeworksList.length} Devoir(s)
+                            </span>
+                        </div>
                     </div>
 
                     <!-- Grille des devoirs donnés pour cette classe -->
@@ -9589,6 +9812,8 @@ function renderTeacherHomeworksDashboard() {
                 const subjInfo = getSubjectIconAndColor(hw.matiere);
                 const dayInfo = getDayIconAndDetails(hw.jour);
 
+                const secBadge = hw.section === 'garcons' ? 'Garçons' : (hw.section === 'filles' ? 'Filles' : (hw.section === 'primaire' ? 'Primaire' : ''));
+
                 html += `
                     <div style="background:${cardBg}; border:${cardBorder}; border-radius:14px; padding:18px; box-shadow:${shadow}; display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s, box-shadow 0.2s; position:relative;">
                         
@@ -9599,12 +9824,13 @@ function renderTeacherHomeworksDashboard() {
                                     <i class="${subjInfo.icon}"></i> ${escapeHtml(hw.matiere || 'Matière')}
                                 </span>
                                 ${hw.jour ? `<span style="background:#F8FAFC; color:#334155; border:1px solid #E2E8F0; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem; display:inline-flex; align-items:center; gap:4px;"><i class="${dayInfo.icon}" style="color:${dayInfo.color};"></i> ${escapeHtml(hw.jour)}</span>` : ''}
+                                ${secBadge ? `<span style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.75rem;"><i class="fas fa-school"></i> ${escapeHtml(secBadge)}</span>` : ''}
                                 ${hw.periode ? `<span style="background:#FEF3C7; color:#92400E; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem;">Période ${escapeHtml(hw.periode)}</span>` : ''}
                             </div>
 
                             ${isEvaluated ? `
                                 <span style="background:#10B981; color:white; padding:4px 10px; border-radius:8px; font-weight:800; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(16,185,129,0.3);">
-                                    <i class="fas fa-check-circle"></i> Évalué (Vert)
+                                    <i class="fas fa-check-circle"></i> Évalué
                                 </span>
                             ` : `
                                 <span style="background:#F59E0B; color:white; padding:4px 10px; border-radius:8px; font-weight:800; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px;">
@@ -9630,17 +9856,22 @@ function renderTeacherHomeworksDashboard() {
                             </div>
                         </div>
 
-                        <!-- Date et bouton d'action -->
+                        <!-- Date et boutons d'action -->
                         <div style="margin-top:auto;">
                             <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:#64748B; margin-bottom:12px;">
                                 <span><i class="far fa-calendar-alt"></i> Date : <strong>${hw.formattedDateFr || hw.date}</strong></span>
                                 <span><i class="fas fa-user-tie"></i> ${escapeHtml(hw.enseignant || 'Enseignant')}</span>
                             </div>
 
-                            <button type="button" class="pro-button ${isEvaluated ? 'success-button' : 'primary-button'}" onclick="openTeacherEvalModal(${globalIndex})" style="width:100%; padding:10px 14px; font-weight:700; font-size:0.9rem; justify-content:center; gap:8px;">
-                                <i class="fas ${isEvaluated ? 'fa-check-double' : 'fa-edit'}"></i>
-                                <span>${isEvaluated ? 'Modifier / Revoir l\'Évaluation' : 'Saisir l\'Évaluation des Élèves'}</span>
-                            </button>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <button type="button" class="pro-button ${isEvaluated ? 'success-button' : 'primary-button'}" onclick="openTeacherEvalModal(${globalIndex})" style="flex:1; padding:10px 14px; font-weight:700; font-size:0.88rem; justify-content:center; gap:8px;">
+                                    <i class="fas ${isEvaluated ? 'fa-check-double' : 'fa-edit'}"></i>
+                                    <span>${isEvaluated ? 'Modifier / Revoir' : 'Saisir l\'Évaluation'}</span>
+                                </button>
+                                <button type="button" class="pro-button" onclick="if(typeof openTeacherMessagesModal==='function'){ openTeacherMessagesModal(); } else if(typeof openParentMessengerModal==='function'){ openParentMessengerModal(); }" title="Messagerie avec les parents" style="padding:10px 13px; background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; border-radius:10px; cursor:pointer;" onmouseover="this.style.background='#DBEAFE'" onmouseout="this.style.background='#EFF6FF'">
+                                    <i class="fas fa-comment-dots"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;

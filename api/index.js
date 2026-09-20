@@ -2321,8 +2321,11 @@ app.get('/api/teacher-homeworks', async (req, res) => {
     const { teacher, tableTeacher, section = 'garcons', week } = req.query;
     const db = await connectToDatabase();
 
-    // 1. Charger les plans de la section
-    let query = { section };
+    // 1. Charger les plans de la section ou de toutes les sections
+    let query = {};
+    if (section && section !== 'all' && section !== 'toutes' && section !== 'Tous') {
+      query.section = section;
+    }
     if (week && !isNaN(parseInt(week, 10))) {
       query.week = parseInt(week, 10);
     }
@@ -2365,9 +2368,10 @@ app.get('/api/teacher-homeworks', async (req, res) => {
     }
 
     // Charger toutes les évaluations existantes pour vérifier le statut évalué/non évalué
-    const allEvaluations = await db.collection('evaluations').find({
-      $or: [{ section }, { section: { $exists: false } }]
-    }).toArray();
+    const evalQuery = (section && section !== 'all' && section !== 'toutes' && section !== 'Tous')
+      ? { $or: [{ section }, { section: { $exists: false } }] }
+      : {};
+    const allEvaluations = await db.collection('evaluations').find(evalQuery).toArray();
     const evalMap = new Set();
     const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
@@ -2443,6 +2447,7 @@ app.get('/api/teacher-homeworks', async (req, res) => {
             if (isMatch) {
               teacherHws.push({
                 week: wNum,
+                section: doc.section || section || 'garcons',
                 weekTitle: wDates.title || `Semaine ${wNum}`,
                 weekTitleAr: wDates.titleAr || `الأسبوع ${wNum}`,
                 weekStartDate: wDates.start,

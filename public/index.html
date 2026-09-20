@@ -1890,9 +1890,41 @@
                         </div>
                     </div>
 
-                    <!-- Hub de Navigation par Icônes : Classes, Matières, Jours, Semaines, etc. -->
+                    <!-- Hub de Navigation Hiérarchique par Icônes : Écoles -> Semaines -> Classes -> Jours -->
                     <div class="teacher-filter-hub" id="teacherFilterHub">
                         
+                        <!-- 0. Rangée d'icônes : ÉCOLES / SECTIONS -->
+                        <div class="teacher-filter-row" style="background:#F8FAFC; padding:12px 16px; border-radius:12px; border:1.5px solid #E2E8F0; margin-bottom:12px;">
+                            <div class="teacher-filter-row-header">
+                                <span style="font-weight:700; color:#1E293B; font-size:0.95rem;">
+                                    <i class="fas fa-school" style="color:#2563EB;"></i> 0. École / Section :
+                                </span>
+                                <span id="teacherSchoolCountLabel" style="font-size:0.78rem; color:#64748B; font-weight:600; text-transform:none;">Filtrer par établissement scolaire</span>
+                            </div>
+                            <div id="teacherSchoolIconsContainer" class="teacher-icon-bar" style="margin-top:6px;">
+                                <button type="button" class="teacher-icon-btn active" data-school="all" onclick="setTeacherHwSchoolFilter('all')">
+                                    <i class="fas fa-globe-americas" style="color:#2563EB;"></i>
+                                    <span>Toutes les Écoles / Sections</span>
+                                    <span class="hw-badge" id="badgeSchoolAll">0</span>
+                                </button>
+                                <button type="button" class="teacher-icon-btn" data-school="garcons" onclick="setTeacherHwSchoolFilter('garcons')">
+                                    <i class="fas fa-male" style="color:#3B82F6;"></i>
+                                    <span>Section Garçons (بنين)</span>
+                                    <span class="hw-badge" id="badgeSchoolGarcons">0</span>
+                                </button>
+                                <button type="button" class="teacher-icon-btn" data-school="filles" onclick="setTeacherHwSchoolFilter('filles')">
+                                    <i class="fas fa-female" style="color:#EC4899;"></i>
+                                    <span>Section Filles (بنات)</span>
+                                    <span class="hw-badge" id="badgeSchoolFilles">0</span>
+                                </button>
+                                <button type="button" class="teacher-icon-btn" data-school="primaire" onclick="setTeacherHwSchoolFilter('primaire')">
+                                    <i class="fas fa-child" style="color:#10B981;"></i>
+                                    <span>Section Primaire & Maternelle</span>
+                                    <span class="hw-badge" id="badgeSchoolPrimaire">0</span>
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- Sélecteur Enseignant (Visible uniquement pour Admin / Superviseur) -->
                         <div id="teacherAdminSwitcherRow" class="teacher-filter-row" style="display:none; padding-bottom:14px; border-bottom:1px dashed #E2E8F0;">
                             <div class="teacher-filter-row-header">
@@ -1904,47 +1936,47 @@
                             </div>
                         </div>
 
-                        <!-- 1. Rangée d'icônes : CLASSES -->
-                        <div class="teacher-filter-row">
+                        <!-- 1. Rangée d'icônes : SEMAINES SCOLAIRES (où l'enseignant a des devoirs) -->
+                        <div class="teacher-filter-row" id="rowTeacherWeeks">
                             <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-graduation-cap" style="color:#2563EB;"></i> Classes</span>
-                                <span id="teacherClassesCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;"></span>
+                                <span><i class="fas fa-calendar-week" style="color:#0284C7;"></i> 1. Semaines avec Devoirs</span>
+                                <span id="teacherWeeksCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">Cliquez sur une semaine pour voir ses classes</span>
                             </div>
-                            <div id="teacherClassesIconsContainer" class="teacher-icon-bar">
-                                <!-- Peuplé dynamiquement avec les icônes de classes -->
+                            <div id="teacherWeeksIconsContainer" class="teacher-icon-bar">
+                                <!-- Peuplé dynamiquement avec les semaines où l'enseignant a des devoirs -->
                             </div>
                         </div>
 
-                        <!-- 2. Rangée d'icônes : MATIÈRES -->
-                        <div class="teacher-filter-row">
+                        <!-- 2. Rangée d'icônes : CLASSES (de la semaine sélectionnée) -->
+                        <div class="teacher-filter-row" id="rowTeacherClasses">
                             <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-book" style="color:#8B5CF6;"></i> Matières</span>
+                                <span><i class="fas fa-graduation-cap" style="color:#2563EB;"></i> 2. Classes de la Semaine</span>
+                                <span id="teacherClassesCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">Cliquez sur une classe pour voir ses jours</span>
+                            </div>
+                            <div id="teacherClassesIconsContainer" class="teacher-icon-bar">
+                                <!-- Peuplé dynamiquement avec les icônes de classes de la semaine -->
+                            </div>
+                        </div>
+
+                        <!-- 3. Rangée d'icônes : JOURS DE LA SEMAINE (de la classe sélectionnée) -->
+                        <div class="teacher-filter-row" id="rowTeacherDays">
+                            <div class="teacher-filter-row-header">
+                                <span><i class="fas fa-calendar-day" style="color:#10B981;"></i> 3. Jours de Cours</span>
+                                <span id="teacherDaysCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">Jours où des devoirs ont été donnés</span>
+                            </div>
+                            <div id="teacherDaysIconsContainer" class="teacher-icon-bar">
+                                <!-- Peuplé dynamiquement avec les icônes des jours de la classe -->
+                            </div>
+                        </div>
+
+                        <!-- 4. Rangée d'icônes : MATIÈRES -->
+                        <div class="teacher-filter-row" id="rowTeacherSubjects">
+                            <div class="teacher-filter-row-header">
+                                <span><i class="fas fa-book" style="color:#8B5CF6;"></i> 4. Matières</span>
                                 <span id="teacherSubjectsCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;"></span>
                             </div>
                             <div id="teacherSubjectsIconsContainer" class="teacher-icon-bar">
                                 <!-- Peuplé dynamiquement avec les icônes de matières -->
-                            </div>
-                        </div>
-
-                        <!-- 3. Rangée d'icônes : JOURS DE LA SEMAINE -->
-                        <div class="teacher-filter-row">
-                            <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-calendar-day" style="color:#10B981;"></i> Jours de la Semaine</span>
-                                <span style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">Dimanche à Jeudi</span>
-                            </div>
-                            <div id="teacherDaysIconsContainer" class="teacher-icon-bar">
-                                <!-- Peuplé dynamiquement avec les icônes des jours -->
-                            </div>
-                        </div>
-
-                        <!-- 4. Rangée d'icônes : SEMAINES -->
-                        <div class="teacher-filter-row">
-                            <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-calendar-week" style="color:#0284C7;"></i> Semaines Scolaires</span>
-                                <span id="teacherWeeksCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;"></span>
-                            </div>
-                            <div id="teacherWeeksIconsContainer" class="teacher-icon-bar">
-                                <!-- Peuplé dynamiquement avec les icônes des semaines -->
                             </div>
                         </div>
 
