@@ -2276,9 +2276,49 @@ app.post('/api/admin/students/move', async (req, res) => {
 // API PORTAIL DEVOIRS ET ÉVALUATIONS (AVEC TRANSFERT AUTOMATIQUE)
 // ============================================================================
 
+function isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher) {
+  if (!rowEns || !String(rowEns).trim()) return false;
+  if (!targetTeacher || targetTeacher === 'all') return true;
+
+  const normEns = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const rNorm = normEns(rowEns);
+  const tNorm = normEns(targetTeacher);
+  const tableNorm = tableTeacher ? normEns(tableTeacher) : '';
+
+  // 1. Égalité stricte exacte ou via nom de table
+  if (rNorm === tNorm || (tableNorm && rNorm === tableNorm)) return true;
+
+  // 2. Gestion de l'enseignante de musique (Farah)
+  const isMusic = (n) => n.includes('musique') || n.includes('farah') || n.includes('موسيقى');
+  if (isMusic(tNorm) || (tableNorm && isMusic(tableNorm))) {
+    return isMusic(rNorm);
+  }
+
+  // 3. Gestion Amal Arabe vs Amal générale
+  const isAmalArabe = (n) => (n.includes('amal') || n.includes('أمل') || n.includes('امل')) && (n.includes('arabe') || n.includes('عربي') || n.includes('عربية'));
+  const isAmalSole = (n) => (n.includes('amal') || n.includes('أمل') || n.includes('امل')) && !isAmalArabe(n);
+
+  if (isAmalArabe(tNorm) || (tableNorm && isAmalArabe(tableNorm))) {
+    return isAmalArabe(rNorm);
+  }
+  if (isAmalSole(tNorm) || (tableNorm && isAmalSole(tableNorm))) {
+    return isAmalSole(rNorm);
+  }
+
+  // 4. Sous-chaîne significative (au moins 3 caractères) pour les noms composés
+  if (tNorm.length >= 3 && (rNorm.includes(tNorm) || tNorm.includes(rNorm))) {
+    return true;
+  }
+  if (tableNorm && tableNorm.length >= 3 && (rNorm.includes(tableNorm) || tableNorm.includes(rNorm))) {
+    return true;
+  }
+
+  return false;
+}
+
 app.get('/api/teacher-homeworks', async (req, res) => {
   try {
-    const { teacher, section = 'garcons', week } = req.query;
+    const { teacher, tableTeacher, section = 'garcons', week } = req.query;
     const db = await connectToDatabase();
 
     // 1. Charger les plans de la section
@@ -2302,6 +2342,28 @@ app.get('/api/teacher-homeworks', async (req, res) => {
       });
     }
 
+    // Charger photos des enseignants pour affichage dans l'en-tête et les cartes
+    const photosDocs = await db.collection('teachers_photos').find({}).toArray();
+    const teachersPhotosMap = {};
+    photosDocs.forEach(d => {
+      if (d.teacherName && d.photoUrl) {
+        teachersPhotosMap[d.teacherName.trim()] = d.photoUrl;
+      }
+    });
+    try {
+      const usersWithPhotos = await db.collection('users').find({ photoUrl: { $exists: true, $ne: '' } }).toArray();
+      usersWithPhotos.forEach(u => {
+        if (u.username && u.photoUrl && !teachersPhotosMap[u.username.trim()]) {
+          teachersPhotosMap[u.username.trim()] = u.photoUrl;
+        }
+        if (u.tableTeacherName && u.photoUrl && !teachersPhotosMap[u.tableTeacherName.trim()]) {
+          teachersPhotosMap[u.tableTeacherName.trim()] = u.photoUrl;
+        }
+      });
+    } catch (ue) {
+      console.warn('Note photos utilisateurs:', ue.message);
+    }
+
     // Charger toutes les évaluations existantes pour vérifier le statut évalué/non évalué
     const allEvaluations = await db.collection('evaluations').find({
       $or: [{ section }, { section: { $exists: false } }]
@@ -2319,7 +2381,8 @@ app.get('/api/teacher-homeworks', async (req, res) => {
     });
 
     const teacherHws = [];
-    const targetTeacher = (teacher || '').trim().toLowerCase();
+    const sectionTeachersMap = new Map();
+    const targetTeacher = (teacher || '').trim();
 
     planDocs.forEach(doc => {
       const wNum = doc.week;
@@ -2328,36 +2391,56 @@ app.get('/api/teacher-homeworks', async (req, res) => {
 
       if (Array.isArray(doc.data)) {
         doc.data.forEach(row => {
-          const rowEns = row[findKey(row, 'Enseignant')] || '';
-          const rowDevoirs = row[findKey(row, 'Devoirs')] || '';
-          const rowClasse = row[findKey(row, 'Classe')] || '';
-          const rowMatiere = row[findKey(row, 'Matière')] || '';
-          const rowJour = row[findKey(row, 'Jour')] || '';
-          const rowPeriode = row[findKey(row, 'Période')] || '';
-          const rowLecon = row[findKey(row, 'Leçon')] || '';
-          const rowTravaux = row[findKey(row, 'Travaux de classe')] || '';
+          const rowEns = (row[findKey(row, 'Enseignant')] || '').trim();
+          const rowDevoirs = (row[findKey(row, 'Devoirs')] || '').trim();
+          const rowClasse = (row[findKey(row, 'Classe')] || '').trim();
+          const rowMatiere = (row[findKey(row, 'Matière')] || '').trim();
+          const rowJour = (row[findKey(row, 'Jour')] || '').trim();
+          const rowPeriode = (row[findKey(row, 'Période')] || '').trim();
+          const rowLecon = (row[findKey(row, 'Leçon')] || '').trim();
+          const rowTravaux = (row[findKey(row, 'Travaux de classe')] || '').trim();
 
-          if (rowDevoirs && String(rowDevoirs).trim() !== '') {
-            const isMatch = (!targetTeacher || targetTeacher === 'all' || targetTeacher === 'med01' || String(rowEns).trim().toLowerCase() === targetTeacher);
+          if (rowDevoirs && rowDevoirs !== '') {
+            // Recenser l'enseignant pour la liste de sélection (admin / superviseurs)
+            if (rowEns) {
+              if (!sectionTeachersMap.has(rowEns)) {
+                sectionTeachersMap.set(rowEns, {
+                  name: rowEns,
+                  photoUrl: teachersPhotosMap[rowEns] || '',
+                  count: 0,
+                  evaluatedCount: 0
+                });
+              }
+            }
+
+            // Vérification stricte : uniquement l'enseignant demandé !
+            const isMatch = isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher);
+
+            let exactDate = '';
+            let formattedDateFr = '';
+            const dayName = extractDayNameFromString(rowJour) || rowJour;
+            if (weekStartDate && dayName) {
+              const dObj = getDateForDayNameNode(weekStartDate, dayName);
+              if (dObj && !isNaN(dObj.getTime())) {
+                exactDate = dObj.toISOString().split('T')[0];
+                formattedDateFr = formatDateFrenchNode(dObj);
+              }
+            }
+            if (!exactDate && wDates.start) {
+              exactDate = wDates.start;
+            }
+
+            const evalKeyFull = `${norm(rowClasse)}_${exactDate}_${norm(rowMatiere)}`;
+            const evalKeyClassDate = `${norm(rowClasse)}_${exactDate}`;
+            const isEvaluated = evalMap.has(evalKeyFull) || evalMap.has(evalKeyClassDate);
+
+            if (rowEns && sectionTeachersMap.has(rowEns)) {
+              const tStats = sectionTeachersMap.get(rowEns);
+              tStats.count += 1;
+              if (isEvaluated) tStats.evaluatedCount += 1;
+            }
+
             if (isMatch) {
-              let exactDate = '';
-              let formattedDateFr = '';
-              const dayName = extractDayNameFromString(rowJour) || rowJour;
-              if (weekStartDate && dayName) {
-                const dObj = getDateForDayNameNode(weekStartDate, dayName);
-                if (dObj && !isNaN(dObj.getTime())) {
-                  exactDate = dObj.toISOString().split('T')[0];
-                  formattedDateFr = formatDateFrenchNode(dObj);
-                }
-              }
-              if (!exactDate && wDates.start) {
-                exactDate = wDates.start;
-              }
-
-              const evalKeyFull = `${norm(rowClasse)}_${exactDate}_${norm(rowMatiere)}`;
-              const evalKeyClassDate = `${norm(rowClasse)}_${exactDate}`;
-              const isEvaluated = evalMap.has(evalKeyFull) || evalMap.has(evalKeyClassDate);
-
               teacherHws.push({
                 week: wNum,
                 weekTitle: wDates.title || `Semaine ${wNum}`,
@@ -2372,6 +2455,7 @@ app.get('/api/teacher-homeworks', async (req, res) => {
                 travaux: rowTravaux,
                 devoir: rowDevoirs,
                 enseignant: rowEns,
+                teacherPhotoUrl: teachersPhotosMap[rowEns] || '',
                 date: exactDate,
                 formattedDateFr: formattedDateFr || `${rowJour} (S${wNum})`,
                 isEvaluated: isEvaluated
@@ -2389,10 +2473,17 @@ app.get('/api/teacher-homeworks', async (req, res) => {
       return String(a.date || '').localeCompare(String(b.date || ''));
     });
 
-    res.status(200).json({ homeworks: teacherHws });
+    const sectionTeachers = Array.from(sectionTeachersMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+    res.status(200).json({
+      success: true,
+      homeworks: teacherHws,
+      sectionTeachers,
+      currentTeacher: targetTeacher
+    });
   } catch (error) {
     console.error('Erreur GET /api/teacher-homeworks:', error);
-    res.status(500).json({ error: error.message, homeworks: [] });
+    res.status(500).json({ success: false, error: error.message, homeworks: [], sectionTeachers: [] });
   }
 });
 
@@ -2922,13 +3013,23 @@ app.post('/api/photo-3', async (req, res) => {
 
 app.post('/api/send-message', async (req, res) => {
   try {
-    const { teacherName, parentName, parentPhone, message, timestamp, section = 'garcons' } = req.body;
+    const { teacherName, parentName, parentPhone, message, timestamp, section = 'garcons', studentName, studentClass } = req.body;
     if (!teacherName || !parentName || !message) return res.status(400).json({ error: 'Données incomplètes' });
     const db = await connectToDatabase();
-    await db.collection('teacher_messages').insertOne({
-      teacherName, parentName, parentPhone: parentPhone || '', message, date: timestamp || new Date().toISOString(), read: false, section, createdAt: new Date()
-    });
-    res.status(200).json({ message: 'Message envoyé avec succès' });
+    const doc = {
+      teacherName: String(teacherName).trim(),
+      parentName: String(parentName).trim(),
+      parentPhone: String(parentPhone || '').trim(),
+      studentName: String(studentName || '').trim(),
+      studentClass: String(studentClass || '').trim(),
+      message: String(message).trim(),
+      date: timestamp || new Date().toISOString(),
+      read: false,
+      section,
+      createdAt: new Date()
+    };
+    const result = await db.collection('teacher_messages').insertOne(doc);
+    res.status(200).json({ message: 'Message envoyé avec succès', id: result.insertedId, doc });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -2939,12 +3040,12 @@ app.get('/api/get-messages', async (req, res) => {
     const { teacherName, section = 'garcons' } = req.query;
     const db = await connectToDatabase();
     let query = {};
-    if (section && section !== 'all') {
-      query.$or = [{ section: section }, { section: { $exists: false } }];
-    }
     if (teacherName && teacherName !== 'all') {
-      const escapedT = teacherName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      query.teacherName = { $regex: new RegExp(`^${escapedT}$`, 'i') };
+      const cleanT = String(teacherName).replace(/^(M\.|Mme|Mr|Prof|Professeur|Oustadh|الاستاذ|الأستاذ)\s+/i, '').trim();
+      const escapedT = cleanT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.teacherName = { $regex: new RegExp(escapedT, 'i') };
+    } else if (section && section !== 'all') {
+      query.$or = [{ section: section }, { section: { $exists: false } }];
     }
     const messages = await db.collection('teacher_messages').find(query).sort({ createdAt: -1 }).toArray();
     
@@ -2988,10 +3089,21 @@ app.get('/api/get-messages', async (req, res) => {
 
 app.post('/api/mark-messages-read', async (req, res) => {
   try {
-    const { teacherName, section = 'garcons' } = req.body;
-    if (!teacherName) return res.status(400).json({ error: 'Nom enseignant requis' });
+    const { teacherName, section = 'garcons', messageId } = req.body;
     const db = await connectToDatabase();
-    await db.collection('teacher_messages').updateMany({ teacherName, section, read: false }, { $set: { read: true } });
+    if (messageId) {
+      const { ObjectId } = require('mongodb');
+      let query = { _id: messageId };
+      if (ObjectId.isValid(messageId)) {
+        query = { $or: [{ _id: new ObjectId(messageId) }, { _id: messageId }] };
+      }
+      await db.collection('teacher_messages').updateOne(query, { $set: { read: true } });
+      return res.status(200).json({ message: 'Message marqué comme lu' });
+    }
+    if (!teacherName) return res.status(400).json({ error: 'Nom enseignant requis' });
+    const cleanT = String(teacherName).replace(/^(M\.|Mme|Mr|Prof|Professeur|Oustadh|الاستاذ|الأستاذ)\s+/i, '').trim();
+    const regexT = new RegExp(cleanT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    await db.collection('teacher_messages').updateMany({ teacherName: regexT, read: false }, { $set: { read: true } });
     res.status(200).json({ message: 'Messages marqués comme lus' });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -3003,10 +3115,55 @@ app.get('/api/unread-count', async (req, res) => {
     const { teacherName, section = 'garcons' } = req.query;
     if (!teacherName) return res.status(400).json({ error: 'Nom enseignant requis' });
     const db = await connectToDatabase();
-    const count = await db.collection('teacher_messages').countDocuments({ teacherName, section, read: false });
+    let query = { read: false };
+    if (teacherName !== 'all') {
+      const cleanT = String(teacherName).replace(/^(M\.|Mme|Mr|Prof|Professeur|Oustadh|الاستاذ|الأستاذ)\s+/i, '').trim();
+      query.teacherName = { $regex: new RegExp(cleanT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') };
+    }
+    const count = await db.collection('teacher_messages').countDocuments(query);
     res.status(200).json({ count });
   } catch (e) {
     res.status(500).json({ count: 0 });
+  }
+});
+
+// Endpoint permettant à l'enseignant d'initier un message direct à un parent d'élève
+app.post('/api/teacher-send-message', async (req, res) => {
+  try {
+    const { teacherName, parentName, parentPhone, studentName, studentClass, message, section = 'garcons' } = req.body;
+    if (!teacherName || !message || String(message).trim() === '') {
+      return res.status(400).json({ error: 'Nom enseignant et texte du message requis' });
+    }
+    const db = await connectToDatabase();
+    const doc = {
+      teacherName: String(teacherName).trim(),
+      parentName: String(parentName || "Parent d'élève").trim(),
+      parentPhone: String(parentPhone || '').trim(),
+      studentName: String(studentName || '').trim(),
+      studentClass: String(studentClass || '').trim(),
+      message: String(message).trim(),
+      date: new Date().toISOString(),
+      read: true,
+      fromTeacher: true,
+      section,
+      createdAt: new Date()
+    };
+    const result = await db.collection('teacher_messages').insertOne(doc);
+    
+    // Insérer dans teacher_replies pour déclencher la notification non-lue du parent
+    await db.collection('teacher_replies').insertOne({
+      messageId: String(result.insertedId),
+      teacherName: String(teacherName).trim(),
+      parentPhone: String(parentPhone || '').trim(),
+      replyText: String(message).trim(),
+      readByParent: false,
+      createdAt: new Date()
+    });
+
+    res.status(200).json({ success: true, message: 'Message envoyé au parent avec succès', id: result.insertedId, doc });
+  } catch (e) {
+    console.error('Erreur /api/teacher-send-message:', e);
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -3048,8 +3205,8 @@ app.post('/api/parent-login', async (req, res) => {
 
 app.get('/api/parent-messages', async (req, res) => {
   try {
-    const { phone, name } = req.query;
-    if (!phone && !name) return res.status(200).json({ messages: [] });
+    const { phone, name, studentName } = req.query;
+    if (!phone && !name && !studentName) return res.status(200).json({ messages: [], data: [] });
     const db = await connectToDatabase();
     
     let queryConditions = [];
@@ -3057,12 +3214,15 @@ app.get('/api/parent-messages', async (req, res) => {
       const cleanPhone = phone.trim();
       queryConditions.push({ parentPhone: cleanPhone });
       const digitsOnly = cleanPhone.replace(/[^0-9]/g, '');
-      if (digitsOnly.length >= 8) {
-        queryConditions.push({ parentPhone: { $regex: new RegExp(digitsOnly.slice(-8)) } });
+      if (digitsOnly.length >= 7) {
+        queryConditions.push({ parentPhone: { $regex: new RegExp(digitsOnly.slice(-7)) } });
       }
     }
     if (name && name.trim()) {
       queryConditions.push({ parentName: { $regex: new RegExp(name.trim(), 'i') } });
+    }
+    if (studentName && studentName.trim()) {
+      queryConditions.push({ studentName: { $regex: new RegExp(studentName.trim(), 'i') } });
     }
 
     const query = queryConditions.length > 1 ? { $or: queryConditions } : (queryConditions[0] || {});
@@ -3100,10 +3260,10 @@ app.get('/api/parent-messages', async (req, res) => {
       replies: repliesMap[String(m._id)] || []
     }));
 
-    res.status(200).json({ messages: enrichedMessages });
+    res.status(200).json({ messages: enrichedMessages, data: enrichedMessages });
   } catch (e) {
     console.error('Erreur /api/parent-messages:', e);
-    res.status(500).json({ messages: [] });
+    res.status(500).json({ messages: [], data: [] });
   }
 });
 
@@ -3667,8 +3827,27 @@ app.post('/api/save-plan', async (req, res) => {
     const db = await connectToDatabase();
     const docId = `${section}_${weekNumber}`;
     const now = new Date();
-    // Estampiller chaque ligne avec la section cible pour garantir une isolation stricte
-    const stampedData = data.map(item => (item && typeof item === 'object') ? { ...item, _section: section } : item);
+
+    // Récupérer le plan existant pour préserver les notes, leçons et devoirs saisis par les enseignants
+    const existingDoc = await db.collection('plans').findOne({ _id: docId });
+    const existingData = (existingDoc && Array.isArray(existingDoc.data)) ? existingDoc.data : [];
+
+    const mergedData = data.map(item => {
+      if (!item || typeof item !== 'object') return item;
+      const stamped = { ...item, _section: section };
+      const match = existingData.find(oldRow => matchPlanRow(oldRow, stamped));
+      if (match) {
+        const preserved = { ...stamped };
+        ['Leçon', 'Devoirs', 'Remarques', 'Notes', 'Travaux de classe', 'Support', 'Observation'].forEach(field => {
+          if ((!preserved[field] || String(preserved[field]).trim() === '') && match[field] && String(match[field]).trim() !== '') {
+            preserved[field] = match[field];
+          }
+        });
+        return preserved;
+      }
+      return stamped;
+    });
+
     await db.collection('plans').updateOne(
       { _id: docId },
       { 
@@ -3676,13 +3855,13 @@ app.post('/api/save-plan', async (req, res) => {
           _id: docId,
           week: weekNumber, 
           section: section, 
-          data: stampedData, 
+          data: mergedData, 
           updatedAt: now 
         } 
       },
       { upsert: true }
     );
-    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${stampedData.length} lignes enregistrées UNIQUEMENT pour la section ${section}.`);
+    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${mergedData.length} lignes enregistrées (notes enseignants préservées).`);
     res.status(200).json({ 
       success: true,
       message: `Plan S${weekNumber} pour la section ${section} enregistré avec succès.`,
@@ -3711,29 +3890,58 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
     }
     const db = await connectToDatabase();
     const now = new Date();
-    // Estampiller chaque ligne avec la section cible pour garantir une isolation stricte
-    const stampedData = data.map(item => (item && typeof item === 'object') ? { ...item, _section: section } : item);
 
-    const operations = validWeeks.map(w => ({
-      updateOne: {
-        filter: { _id: `${section}_${w}` },
-        update: { 
-          $set: { 
-            _id: `${section}_${w}`,
-            week: w, 
-            section: section, 
-            data: stampedData, 
-            updatedAt: now 
-          } 
-        },
-        upsert: true
-      }
-    }));
+    // Récupérer les documents existants pour ces semaines afin de PRÉSERVER les notes et données saisies par les enseignants !
+    const existingDocs = await db.collection('plans').find({ _id: { $in: validWeeks.map(w => `${section}_${w}`) } }).toArray();
+    const existingMap = new Map();
+    existingDocs.forEach(d => existingMap.set(d._id, d));
+
+    const operations = validWeeks.map(w => {
+      const docId = `${section}_${w}`;
+      const existingDoc = existingMap.get(docId);
+      const existingData = (existingDoc && Array.isArray(existingDoc.data)) ? existingDoc.data : [];
+
+      // Fusionner les données pour ne JAMAIS supprimer ou écraser les notes, leçons ou devoirs saisis par les enseignants
+      const mergedData = data.map(newItem => {
+        if (!newItem || typeof newItem !== 'object') return newItem;
+        const stamped = { ...newItem, _section: section };
+
+        // Trouver la ligne existante correspondante
+        const match = existingData.find(oldRow => matchPlanRow(oldRow, stamped));
+        if (match) {
+          const preserved = { ...stamped };
+          ['Leçon', 'Devoirs', 'Remarques', 'Notes', 'Travaux de classe', 'Support', 'Observation'].forEach(field => {
+            if ((!preserved[field] || String(preserved[field]).trim() === '') && match[field] && String(match[field]).trim() !== '') {
+              preserved[field] = match[field];
+            }
+          });
+          return preserved;
+        }
+        return stamped;
+      });
+
+      return {
+        updateOne: {
+          filter: { _id: docId },
+          update: { 
+            $set: { 
+              _id: docId,
+              week: w, 
+              section: section, 
+              data: mergedData, 
+              updatedAt: now 
+            }
+          },
+          upsert: true
+        }
+      };
+    });
+
     await db.collection('plans').bulkWrite(operations);
-    console.log(`[Multi-Weeks Upload] ${data.length} lignes appliquées aux semaines ${validWeeks.join(', ')} UNIQUEMENT pour la section ${section}.`);
+    console.log(`[Multi-Weeks Upload] ${data.length} lignes appliquées aux semaines ${validWeeks.join(', ')} (notes enseignants 100% préservées).`);
     res.status(200).json({ 
       success: true,
-      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section}.`,
+      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section} avec préservation des notes.`,
       savedWeeks: validWeeks,
       section: section
     });
@@ -3750,12 +3958,18 @@ app.post('/api/save-notes', async (req, res) => {
   try {
     const db = await connectToDatabase();
     const docId = `${section}_${weekNumber}`;
+    const existingDoc = await db.collection('plans').findOne({ _id: docId });
+    const existingNote = (existingDoc && existingDoc.classNotes && existingDoc.classNotes[classe]) ? existingDoc.classNotes[classe] : '';
+    
+    // Si la nouvelle note est nulle/indéfinie, préserver l'existante
+    let finalNote = notes !== undefined && notes !== null ? String(notes) : existingNote;
+
     await db.collection('plans').updateOne(
       { _id: docId },
-      { $set: { week: weekNumber, section: section, [`classNotes.${classe}`]: notes, updatedAt: new Date() } },
+      { $set: { week: weekNumber, section: section, [`classNotes.${classe}`]: finalNote, updatedAt: new Date() } },
       { upsert: true }
     );
-    res.status(200).json({ message: 'Notes enregistrées.' });
+    res.status(200).json({ message: 'Notes enregistrées.', notes: finalNote });
   } catch (error) {
     console.error('Erreur MongoDB /save-notes:', error);
     res.status(500).json({ message: 'Erreur serveur.' });

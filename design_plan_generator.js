@@ -413,8 +413,7 @@ function generateDesignPlanHtml(options = {}) {
        ======================================================================== */
     .a4-page {
       width: 210mm;
-      height: 297mm;
-      max-height: 297mm;
+      min-height: 297mm;
       margin: 0 auto 30px auto;
       padding: 10mm; /* Marge exacte de 1.0 cm sur les 4 côtés */
       background: #FFFFFF;
@@ -424,7 +423,7 @@ function generateDesignPlanHtml(options = {}) {
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      overflow: hidden;
+      overflow: visible;
       page-break-after: always;
       break-after: page;
       page-break-inside: avoid !important;
@@ -602,14 +601,20 @@ function generateDesignPlanHtml(options = {}) {
     }
 
     .notes-body-content {
-      padding: 4px 8px;
-      font-size: 0.76rem;
+      padding: 6px 10px;
+      font-size: 0.78rem;
       font-weight: 600;
       color: #1E293B;
-      line-height: 1.25;
-      max-height: 25mm;
-      overflow: hidden;
+      line-height: 1.35;
+      overflow: visible;
       white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .teacher-notes-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.35;
     }
 
     .empty-notes-text {
@@ -1128,9 +1133,9 @@ function generateDesignPlanHtml(options = {}) {
       /* Chaque section .a4-page fait exactement la hauteur utile d'une page A4 (277mm) */
       .a4-page {
         width: 100% !important;
-        height: 277mm !important;
-        max-height: 277mm !important;
         min-height: 277mm !important;
+        height: auto !important;
+        max-height: none !important;
         margin: 0 !important;
         padding: 0 !important; /* Le 10mm est déjà appliqué par @page { margin: 10mm } */
         box-shadow: none !important;
@@ -1142,7 +1147,7 @@ function generateDesignPlanHtml(options = {}) {
         display: flex !important;
         flex-direction: column !important;
         justify-content: space-between !important;
-        overflow: hidden !important;
+        overflow: visible !important;
         box-sizing: border-box !important;
       }
 

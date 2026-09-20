@@ -7371,7 +7371,7 @@ async function loadTeachersContactGrid() {
             const photoUrl = getTeacherDirectPhotoUrl(teacher);
             const initial = teacher ? teacher.charAt(0).toUpperCase() : '?';
             return `
-            <div class="teacher-contact-card" onclick="openContactTeacherModal('${teacher.replace(/'/g, "\\'")}')" style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:16px; padding:18px 14px; text-align:center; cursor:pointer; transition:all 0.25s ease; box-shadow:0 2px 8px rgba(0,0,0,0.04); display:flex; flex-direction:column; align-items:center;">
+            <div class="teacher-contact-card" onclick="openParentMessengerModal('${teacher.replace(/'/g, "\\'")}')" style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:16px; padding:18px 14px; text-align:center; cursor:pointer; transition:all 0.25s ease; box-shadow:0 2px 8px rgba(0,0,0,0.04); display:flex; flex-direction:column; align-items:center;">
                 <div style="width:58px; height:58px; margin:0 auto 10px auto; border-radius:50%; overflow:hidden; position:relative; box-shadow:0 3px 8px rgba(0,0,0,0.1); border:2px solid #CBD5E1;">
                     ${photoUrl ? `
                         <img src="${photoUrl}" alt="${escapeHtml(teacher)}" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'width:100%; height:100%; background:${iconBg}; color:white; display:flex; align-items:center; justify-content:center; font-size:1.3rem; font-weight:700;\\'>${escapeHtml(initial)}</div>';">
@@ -7396,6 +7396,11 @@ async function loadTeachersContactGrid() {
 let targetTeacherForMessage = null;
 
 async function openContactTeacherModal(teacherName) {
+    if (typeof openParentMessengerModal === 'function') {
+        openParentMessengerModal(teacherName);
+        return;
+    }
+
     targetTeacherForMessage = teacherName;
     const t = parentI18n[currentUserLanguage] || parentI18n.fr;
     
@@ -7504,8 +7509,10 @@ async function submitParentMessage() {
 
 let currentTeacherMessages = [];
 let currentTeacherMsgFilter = 'all';
+let activeTeacherChatConvoKey = null;
+let teacherMessengerPollTimer = null;
 
-async function openTeacherMessagesModal() {
+async function openTeacherMessagesModal(preselectedConvoKey = null) {
     const modal = document.getElementById('teacherMessagesModal');
     if (!modal) return;
 
@@ -7516,21 +7523,52 @@ async function openTeacherMessagesModal() {
     }
 
     modal.style.display = 'block';
+    
+    if (teacherMessengerPollTimer) clearInterval(teacherMessengerPollTimer);
+    teacherMessengerPollTimer = setInterval(refreshTeacherMessagesSilently, 5000);
+
     await loadTeacherMessages();
+
+    if (preselectedConvoKey) {
+        selectTeacherConversation(preselectedConvoKey);
+    }
 }
 
 function closeTeacherMessagesModal() {
     const modal = document.getElementById('teacherMessagesModal');
     if (modal) modal.style.display = 'none';
+    if (teacherMessengerPollTimer) {
+        clearInterval(teacherMessengerPollTimer);
+        teacherMessengerPollTimer = null;
+    }
+}
+
+async function refreshTeacherMessagesSilently() {
+    const modal = document.getElementById('teacherMessagesModal');
+    if (!modal || modal.style.display === 'none') return;
+    try {
+        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? loggedInUser : 'all';
+        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        const res = await fetch(`/api/get-messages?teacherName=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
+        if (!res.ok) return;
+        currentTeacherMessages = await res.json();
+        updateTeacherCounters();
+        renderTeacherConversationsList(true);
+        if (activeTeacherChatConvoKey) {
+            renderActiveTeacherChatMessages(activeTeacherChatConvoKey, true);
+        }
+    } catch (e) {
+        // silencieux
+    }
 }
 
 async function loadTeacherMessages() {
-    const container = document.getElementById('teacherMessagesList');
+    const container = document.getElementById('teacherConversationsList');
     if (container) {
         container.innerHTML = `
             <div style="text-align:center; padding:30px; color:#64748B;">
                 <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:10px;"></i>
-                <p>Chargement des messages des parents...</p>
+                <p style="font-size:0.85rem;">Chargement des messages...</p>
             </div>
         `;
     }
@@ -7543,33 +7581,21 @@ async function loadTeacherMessages() {
         if (!res.ok) throw new Error(`Erreur ${res.status}`);
         currentTeacherMessages = await res.json();
 
-        // Calcul des compteurs
-        const total = currentTeacherMessages.length;
-        const unread = currentTeacherMessages.filter(m => (!m.replies || m.replies.length === 0) && m.status !== 'replied').length;
-        const replied = total - unread;
+        updateTeacherCounters();
+        renderTeacherConversationsList(false);
 
-        const countAllEl = document.getElementById('countMsgAll');
-        const countUnreadEl = document.getElementById('countMsgUnread');
-        const countRepliedEl = document.getElementById('countMsgReplied');
-        const badgeModalEl = document.getElementById('teacherModalMsgCount');
-        const navBadgeEl = document.getElementById('teacher-unread-badge');
-
-        if (countAllEl) countAllEl.textContent = total;
-        if (countUnreadEl) countUnreadEl.textContent = unread;
-        if (countRepliedEl) countRepliedEl.textContent = replied;
-        if (badgeModalEl) badgeModalEl.textContent = total;
-
-        if (navBadgeEl) {
-            navBadgeEl.textContent = unread;
-            navBadgeEl.style.display = unread > 0 ? 'inline-block' : 'none';
+        // Sélectionner la première conversation par défaut si aucune sélectionnée
+        const convos = groupTeacherMessagesIntoConversations();
+        if (activeTeacherChatConvoKey) {
+            selectTeacherConversation(activeTeacherChatConvoKey);
+        } else if (convos.length > 0) {
+            selectTeacherConversation(convos[0].key);
         }
-
-        renderTeacherMessagesList();
     } catch (err) {
         console.error('Erreur chargement messages enseignants:', err);
         if (container) {
             container.innerHTML = `
-                <div style="background:#FEF2F2; color:#991B1B; padding:16px; border-radius:10px; text-align:center;">
+                <div style="background:#FEF2F2; color:#991B1B; padding:16px; border-radius:10px; text-align:center; font-size:0.85rem;">
                     <i class="fas fa-exclamation-triangle" style="margin-right:6px;"></i>
                     Impossible de charger les messages pour le moment.
                 </div>
@@ -7578,111 +7604,176 @@ async function loadTeacherMessages() {
     }
 }
 
+function updateTeacherCounters() {
+    const convos = groupTeacherMessagesIntoConversations();
+    const total = convos.length;
+    const unread = convos.filter(c => c.unread).length;
+    const replied = total - unread;
+
+    const countAllEl = document.getElementById('countMsgAll');
+    const countUnreadEl = document.getElementById('countMsgUnread');
+    const countRepliedEl = document.getElementById('countMsgReplied');
+    const badgeModalEl = document.getElementById('teacherModalMsgCount');
+    const navBadgeEl = document.getElementById('teacher-unread-badge');
+
+    if (countAllEl) countAllEl.textContent = total;
+    if (countUnreadEl) countUnreadEl.textContent = unread;
+    if (countRepliedEl) countRepliedEl.textContent = replied;
+    if (badgeModalEl) badgeModalEl.textContent = total;
+
+    if (navBadgeEl) {
+        navBadgeEl.textContent = unread;
+        navBadgeEl.style.display = unread > 0 ? 'inline-block' : 'none';
+    }
+}
+
+function groupTeacherMessagesIntoConversations() {
+    const convoMap = {};
+
+    (currentTeacherMessages || []).forEach(m => {
+        const cleanPhone = (m.parentPhone || '').trim();
+        const pName = (m.parentName || "Parent d'élève").trim();
+        const sName = (m.studentName || '').trim();
+        const convoKey = cleanPhone ? cleanPhone : `${pName}_${sName}`;
+
+        if (!convoMap[convoKey]) {
+            convoMap[convoKey] = {
+                key: convoKey,
+                parentName: pName,
+                parentPhone: cleanPhone,
+                studentName: sName,
+                studentClass: m.studentClass || '',
+                messages: [],
+                lastTimestamp: new Date(m.createdAt || m.date || 0).getTime(),
+                lastText: m.message || m.content || '',
+                unread: false,
+                unreadCount: 0
+            };
+        }
+
+        convoMap[convoKey].messages.push(m);
+        if (m.studentName && !convoMap[convoKey].studentName) convoMap[convoKey].studentName = m.studentName;
+        if (m.studentClass && !convoMap[convoKey].studentClass) convoMap[convoKey].studentClass = m.studentClass;
+        if (m.parentPhone && !convoMap[convoKey].parentPhone) convoMap[convoKey].parentPhone = m.parentPhone;
+
+        const mTime = new Date(m.createdAt || m.date || 0).getTime();
+        if (mTime >= convoMap[convoKey].lastTimestamp) {
+            convoMap[convoKey].lastTimestamp = mTime;
+            convoMap[convoKey].lastText = m.message || m.content || '';
+        }
+
+        const hasReplies = (m.replies && m.replies.length > 0) || m.status === 'replied';
+        if (!hasReplies || m.read === false) {
+            convoMap[convoKey].unread = true;
+            convoMap[convoKey].unreadCount++;
+        }
+
+        // Vérifier les réponses les plus récentes
+        if (m.replies && Array.isArray(m.replies)) {
+            m.replies.forEach(r => {
+                const rTime = new Date(r.createdAt || 0).getTime();
+                if (rTime >= convoMap[convoKey].lastTimestamp) {
+                    convoMap[convoKey].lastTimestamp = rTime;
+                    convoMap[convoKey].lastText = (r.type === 'parent' ? 'Parent: ' : 'Vous: ') + (r.replyText || r.text || '');
+                }
+            });
+        }
+    });
+
+    return Object.values(convoMap).sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+}
+
 function filterTeacherMessages(filterType) {
     currentTeacherMsgFilter = filterType;
     const btnAll = document.getElementById('btnFilterMsgAll');
     const btnUnread = document.getElementById('btnFilterMsgUnread');
     const btnReplied = document.getElementById('btnFilterMsgReplied');
 
-    const activeStyle = "padding:6px 12px; font-size:0.84rem; background:#2563EB; color:white; border:none; border-radius:6px; font-weight:700;";
-    const inactiveStyle = "padding:6px 12px; font-size:0.84rem; background:white; color:#475569; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;";
+    const activeStyle = "flex:1; padding:5px 4px; font-size:0.78rem; background:#2563EB; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;";
+    const inactiveStyle = "flex:1; padding:5px 4px; font-size:0.78rem; background:white; color:#475569; border:1px solid #CBD5E1; border-radius:6px; font-weight:700; cursor:pointer;";
 
     if (btnAll) btnAll.style.cssText = filterType === 'all' ? activeStyle : inactiveStyle;
     if (btnUnread) btnUnread.style.cssText = filterType === 'unread' ? activeStyle : inactiveStyle;
     if (btnReplied) btnReplied.style.cssText = filterType === 'replied' ? activeStyle : inactiveStyle;
 
-    renderTeacherMessagesList();
+    renderTeacherConversationsList(false);
 }
 
-function renderTeacherMessagesList() {
-    const container = document.getElementById('teacherMessagesList');
+function filterTeacherConversationsByText() {
+    renderTeacherConversationsList(false);
+}
+
+function renderTeacherConversationsList(isSilent = false) {
+    const container = document.getElementById('teacherConversationsList');
     if (!container) return;
 
-    let filtered = currentTeacherMessages || [];
+    let convos = groupTeacherMessagesIntoConversations();
+
+    // Filtre par statut
     if (currentTeacherMsgFilter === 'unread') {
-        filtered = filtered.filter(m => (!m.replies || m.replies.length === 0) && m.status !== 'replied');
+        convos = convos.filter(c => c.unread);
     } else if (currentTeacherMsgFilter === 'replied') {
-        filtered = filtered.filter(m => (m.replies && m.replies.length > 0) || m.status === 'replied');
+        convos = convos.filter(c => !c.unread);
     }
 
-    if (filtered.length === 0) {
-        container.innerHTML = `
-            <div style="text-align:center; padding:45px 20px; color:#94A3B8; background:#F8FAFC; border-radius:12px; border:1px dashed #CBD5E1;">
-                <i class="fas fa-inbox fa-3x" style="color:#CBD5E1; margin-bottom:12px;"></i>
-                <p style="font-size:1.05rem; font-weight:600; margin:0 0 6px 0; color:#64748B;">Aucun message trouvé</p>
-                <span style="font-size:0.85rem;">${currentTeacherMsgFilter === 'unread' ? 'Tous les messages reçus ont été traités.' : 'Vous n\'avez reçu aucun message pour l\'instant.'}</span>
-            </div>
-        `;
+    // Filtre par recherche textuelle
+    const searchVal = (document.getElementById('teacherConvoSearchInput')?.value || '').trim().toLowerCase();
+    if (searchVal) {
+        convos = convos.filter(c => 
+            c.parentName.toLowerCase().includes(searchVal) ||
+            c.studentName.toLowerCase().includes(searchVal) ||
+            c.studentClass.toLowerCase().includes(searchVal) ||
+            c.parentPhone.includes(searchVal)
+        );
+    }
+
+    if (convos.length === 0) {
+        if (!isSilent) {
+            container.innerHTML = `
+                <div style="text-align:center; padding:35px 15px; color:#94A3B8; background:#F8FAFC; border-radius:12px; border:1px dashed #CBD5E1; margin:6px;">
+                    <i class="fas fa-inbox fa-2x" style="color:#CBD5E1; margin-bottom:10px;"></i>
+                    <p style="font-size:0.92rem; font-weight:700; margin:0 0 4px 0; color:#64748B;">Aucune discussion</p>
+                    <span style="font-size:0.78rem;">${currentTeacherMsgFilter === 'unread' ? 'Tous les messages reçus ont été traités !' : 'Aucun message de parent trouvé.'}</span>
+                </div>
+            `;
+        }
         return;
     }
 
     let html = '';
-    filtered.forEach(m => {
-        const hasReplies = (m.replies && m.replies.length > 0) || m.status === 'replied';
-        const pName = escapeHtml(m.parentName || 'Parent d\'élève');
-        const pPhone = escapeHtml(m.parentPhone || '');
-        const sName = escapeHtml(m.studentName || '');
-        const sClass = escapeHtml(m.studentClass || '');
-        const dateStr = m.createdAt ? new Date(m.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'Récemment';
+    convos.forEach(c => {
+        const isActive = (activeTeacherChatConvoKey === c.key);
+        const pInitial = c.parentName ? c.parentName.charAt(0).toUpperCase() : 'P';
+        let snippet = c.lastText || 'Pas de message';
+        if (snippet.length > 40) snippet = snippet.substring(0, 40) + '...';
+        const dateStr = c.lastTimestamp ? new Date(c.lastTimestamp).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
 
         html += `
-            <div class="teacher-msg-card" id="teacherMsgCard_${m.id}">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
-                    <div>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span style="font-weight:700; font-size:1rem; color:#1E293B;">
-                                <i class="fas fa-user-circle" style="color:#2563EB;"></i> ${pName}
-                            </span>
-                            ${sName ? `<span style="background:#EFF6FF; color:#1D4ED8; font-size:0.78rem; font-weight:700; padding:2px 8px; border-radius:10px;">Élève : ${sName} ${sClass ? `(${sClass})` : ''}</span>` : ''}
-                        </div>
-                        <div style="font-size:0.8rem; color:#64748B; margin-top:3px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-                            <span><i class="far fa-clock"></i> ${dateStr}</span>
-                            ${pPhone ? `
-                                <span><i class="fas fa-phone-alt"></i> <a href="tel:${pPhone}" style="color:#0284C7; text-decoration:none; font-weight:600;">${pPhone}</a></span>
-                                <a href="https://wa.me/${pPhone.replace(/[^0-9]/g, '')}" target="_blank" rel="noopener noreferrer" style="color:#16A34A; text-decoration:none; font-weight:700; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">
-                                    <i class="fab fa-whatsapp"></i> WhatsApp
-                                </a>
-                            ` : ''}
-                        </div>
+            <div onclick="selectTeacherConversation('${escapeHtml(c.key)}')" style="cursor:pointer; padding:10px 12px; border-radius:10px; display:flex; gap:10px; align-items:center; transition:all 0.15s ease; ${isActive ? 'background:#EFF6FF; border:1.5px solid #3B82F6;' : 'background:white; border:1px solid #E2E8F0;'}">
+                <div style="width:40px; height:40px; border-radius:50%; background:${isActive ? '#2563EB' : '#F1F5F9'}; color:${isActive ? 'white' : '#1E40AF'}; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1rem; flex-shrink:0;">
+                    ${escapeHtml(pInitial)}
+                </div>
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                        <span style="font-weight:700; font-size:0.88rem; color:#1E293B; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            ${escapeHtml(c.parentName)}
+                        </span>
+                        <span style="font-size:0.72rem; color:#94A3B8; flex-shrink:0; margin-left:4px;">${dateStr}</span>
                     </div>
-                    <div>
-                        ${hasReplies ? `
-                            <span style="background:#ECFDF5; color:#059669; border:1px solid #A7F3D0; font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
-                                <i class="fas fa-check-circle"></i> Répondu
-                            </span>
-                        ` : `
-                            <span style="background:#FEF3C7; color:#D97706; border:1px solid #FDE68A; font-size:0.78rem; font-weight:700; padding:3px 10px; border-radius:12px; display:inline-flex; align-items:center; gap:4px;">
-                                <i class="fas fa-clock"></i> En attente de réponse
-                            </span>
-                        `}
-                    </div>
-                </div>
-
-                <!-- Contenu de la question du parent -->
-                <div class="teacher-msg-quote">
-                    ${escapeHtml(m.message || m.content || '')}
-                </div>
-
-                <!-- Réponses de l'enseignant déjà envoyées -->
-                <div id="teacherRepliesList_${m.id}">
-                    ${(m.replies || []).map(r => `
-                        <div class="teacher-reply-bubble">
-                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; margin-bottom:4px; font-weight:700;">
-                                <span><i class="fas fa-chalkboard-teacher"></i> ${escapeHtml(r.teacherName || loggedInUser || 'Enseignant')} :</span>
-                                <span style="opacity:0.8;">${r.createdAt ? new Date(r.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : ''}</span>
-                            </div>
-                            <div style="line-height:1.45; font-size:0.92rem; color:#14532D; white-space:pre-wrap;">${escapeHtml(r.replyText || '')}</div>
+                    ${c.studentName ? `
+                        <div style="font-size:0.74rem; color:#2563EB; font-weight:600; margin-bottom:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            Élève : ${escapeHtml(c.studentName)} ${c.studentClass ? `(${escapeHtml(c.studentClass)})` : ''}
                         </div>
-                    `).join('')}
-                </div>
-
-                <!-- Formulaire de réponse directe -->
-                <div class="teacher-msg-reply-box">
-                    <div style="display:flex; gap:10px; align-items:flex-start;">
-                        <textarea id="teacherReplyText_${m.id}" rows="2" placeholder="Écrire une réponse directe à ${pName}..." style="flex:1; padding:8px 12px; border:1.5px solid #CBD5E1; border-radius:8px; font-size:0.88rem; resize:vertical; font-family:inherit;"></textarea>
-                        <button type="button" onclick="sendTeacherReply('${m.id}')" id="btnSendReply_${m.id}" class="pro-button primary-button" style="padding:8px 16px; font-weight:700; font-size:0.85rem; height:42px; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; border-radius:8px;">
-                            <i class="fas fa-paper-plane"></i> Répondre
-                        </button>
+                    ` : ''}
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:0.78rem; color:${c.unread ? '#1E293B' : '#64748B'}; font-weight:${c.unread ? '700' : '400'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">
+                            ${escapeHtml(snippet)}
+                        </span>
+                        ${c.unread ? `
+                            <span style="background:#EF4444; color:white; border-radius:10px; font-size:0.7rem; font-weight:800; padding:1px 6px; margin-left:6px; flex-shrink:0;">
+                                ${c.unreadCount || 1}
+                            </span>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -7692,15 +7783,363 @@ function renderTeacherMessagesList() {
     container.innerHTML = html;
 }
 
-async function sendTeacherReply(messageId) {
-    const textEl = document.getElementById(`teacherReplyText_${messageId}`);
-    const btn = document.getElementById(`btnSendReply_${messageId}`);
-    if (!textEl) return;
+async function selectTeacherConversation(convoKey) {
+    activeTeacherChatConvoKey = convoKey;
 
-    const replyText = textEl.value.trim();
-    if (!replyText) {
-        alert("Veuillez saisir votre réponse avant d'envoyer.");
-        textEl.focus();
+    const convos = groupTeacherMessagesIntoConversations();
+    const convo = convos.find(c => c.key === convoKey);
+    if (!convo) return;
+
+    // Mise à jour de l'en-tête du volet droit
+    const parentNameEl = document.getElementById('teacherActiveParentName');
+    const studentSubEl = document.getElementById('teacherActiveStudentSub');
+    const contactActionsEl = document.getElementById('teacherActiveContactActions');
+    const quickBar = document.getElementById('teacherQuickRepliesBar');
+    const inputBar = document.getElementById('teacherChatInputBar');
+
+    if (parentNameEl) parentNameEl.textContent = convo.parentName || "Parent d'élève";
+    if (studentSubEl) {
+        let subText = '';
+        if (convo.studentName) subText += `Élève : ${convo.studentName} `;
+        if (convo.studentClass) subText += `• Classe : ${convo.studentClass} `;
+        if (convo.parentPhone) subText += `• Tél : ${convo.parentPhone}`;
+        studentSubEl.textContent = subText || "Parent d'élève";
+    }
+
+    if (contactActionsEl) {
+        contactActionsEl.style.display = 'flex';
+        let actionsHtml = '';
+        if (convo.parentPhone) {
+            const cleanDigits = convo.parentPhone.replace(/[^0-9]/g, '');
+            actionsHtml += `
+                <a href="https://wa.me/${cleanDigits}" target="_blank" rel="noopener noreferrer" class="pro-button" style="padding:6px 12px; font-size:0.8rem; background:#22C55E; color:white; border-radius:8px; text-decoration:none; font-weight:700; display:inline-flex; align-items:center; gap:5px;" title="Discuter sur WhatsApp">
+                    <i class="fab fa-whatsapp"></i> WhatsApp
+                </a>
+                <a href="tel:${convo.parentPhone}" class="pro-button" style="padding:6px 10px; font-size:0.8rem; background:white; color:#0284C7; border:1px solid #BAE6FD; border-radius:8px; text-decoration:none; font-weight:700; display:inline-flex; align-items:center; gap:5px;" title="Appeler">
+                    <i class="fas fa-phone-alt"></i>
+                </a>
+            `;
+        }
+        contactActionsEl.innerHTML = actionsHtml;
+    }
+
+    if (quickBar) quickBar.style.display = 'flex';
+    if (inputBar) inputBar.style.display = 'flex';
+
+    renderActiveTeacherChatMessages(convoKey, false);
+    renderTeacherConversationsList(true);
+
+    const input = document.getElementById('teacherChatInputText');
+    if (input) input.focus();
+
+    // Marquer les messages de cette conversation comme lus côté serveur
+    try {
+        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? loggedInUser : 'all';
+        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        convo.messages.forEach(m => {
+            if (m.read === false) {
+                fetch('/api/mark-messages-read', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messageId: m.id || m._id, teacherName, section })
+                }).catch(() => {});
+                m.read = true;
+            }
+        });
+        updateTeacherCounters();
+    } catch (e) {}
+}
+
+function renderActiveTeacherChatMessages(convoKey, isSilent = false) {
+    const chatContainer = document.getElementById('teacherActiveChatMessages');
+    if (!chatContainer) return;
+
+    const convos = groupTeacherMessagesIntoConversations();
+    const convo = convos.find(c => c.key === convoKey);
+    if (!convo) return;
+
+    // Agréger tous les événements de messages et réponses dans un ordre chronologique
+    const chatEvents = [];
+    convo.messages.forEach(m => {
+        chatEvents.push({
+            id: m.id || m._id,
+            from: 'parent',
+            text: m.message || m.content || '',
+            date: m.createdAt || m.date,
+            parentName: m.parentName,
+            studentName: m.studentName,
+            studentClass: m.studentClass
+        });
+
+        if (m.replies && Array.isArray(m.replies)) {
+            m.replies.forEach(r => {
+                chatEvents.push({
+                    id: r.id || r._id,
+                    from: r.type || (r.from === 'parent' ? 'parent' : 'teacher'),
+                    teacherName: r.teacherName || loggedInUser || 'Enseignant',
+                    parentName: r.parentName || convo.parentName,
+                    text: r.replyText || r.text || '',
+                    date: r.createdAt
+                });
+            });
+        }
+    });
+
+    chatEvents.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+
+    if (chatEvents.length === 0) {
+        if (!isSilent) {
+            chatContainer.innerHTML = `
+                <div style="text-align:center; padding:40px 20px; color:#94A3B8; margin:auto;">
+                    <i class="fas fa-comments fa-3x" style="color:#CBD5E1; margin-bottom:12px;"></i>
+                    <p style="font-weight:700; color:#64748B;">Début de la discussion avec ${escapeHtml(convo.parentName)}</p>
+                    <span style="font-size:0.85rem;">Tapez votre réponse ou message ci-dessous.</span>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    let html = '';
+    let lastDateHeader = '';
+
+    chatEvents.forEach(ev => {
+        const evDate = ev.date ? new Date(ev.date) : new Date();
+        const dateDay = evDate.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+        const timeStr = evDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+        if (dateDay !== lastDateHeader) {
+            lastDateHeader = dateDay;
+            html += `
+                <div style="text-align:center; margin:12px 0 8px 0;">
+                    <span style="background:#E2E8F0; color:#475569; font-size:0.72rem; font-weight:700; padding:2px 10px; border-radius:10px;">
+                        ${dateDay}
+                    </span>
+                </div>
+            `;
+        }
+
+        if (ev.from === 'teacher') {
+            // Bulle Enseignant (droite, bleu moderne)
+            html += `
+                <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+                    <div style="max-width:75%; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; padding:10px 14px; border-radius:16px 16px 4px 16px; box-shadow:0 2px 8px rgba(37,99,235,0.25);">
+                        <div style="font-size:0.72rem; opacity:0.85; margin-bottom:3px; font-weight:600; display:flex; align-items:center; gap:4px;">
+                            <i class="fas fa-chalkboard-teacher"></i> <span>Vous (${escapeHtml(ev.teacherName || 'Enseignant')})</span>
+                        </div>
+                        <div style="white-space:pre-wrap; line-height:1.45; font-size:0.92rem;">${escapeHtml(ev.text)}</div>
+                        <div style="color:rgba(255,255,255,0.8); font-size:0.68rem; text-align:right; margin-top:4px;">${timeStr} <i class="fas fa-check" style="font-size:0.65rem; margin-left:2px;"></i></div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Bulle Parent (gauche, blanc/bleuté)
+            html += `
+                <div style="display:flex; justify-content:flex-start; margin-bottom:8px;">
+                    <div style="max-width:75%; background:#FFFFFF; border:1.5px solid #E2E8F0; color:#1E293B; padding:10px 14px; border-radius:16px 16px 16px 4px; box-shadow:0 2px 6px rgba(0,0,0,0.04);">
+                        <div style="font-size:0.74rem; color:#2563EB; font-weight:700; margin-bottom:3px; display:flex; align-items:center; gap:5px;">
+                            <i class="fas fa-user-circle"></i> <span>${escapeHtml(ev.parentName || convo.parentName || "Parent d'élève")}</span>
+                            ${(ev.studentName || convo.studentName) ? `<span style="background:#EFF6FF; color:#1D4ED8; font-size:0.7rem; padding:1px 6px; border-radius:8px; margin-left:4px;">Élève : ${escapeHtml(ev.studentName || convo.studentName)}</span>` : ''}
+                        </div>
+                        <div style="white-space:pre-wrap; line-height:1.45; font-size:0.92rem;">${escapeHtml(ev.text)}</div>
+                        <div style="color:#94A3B8; font-size:0.68rem; margin-top:4px;">${timeStr}</div>
+                    </div>
+                </div>
+            `;
+        }
+    });
+
+    chatContainer.innerHTML = html;
+    if (!isSilent) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+}
+
+function insertTeacherQuickReply(text) {
+    const input = document.getElementById('teacherChatInputText');
+    if (input) {
+        input.value = text;
+        input.focus();
+    }
+}
+
+function handleTeacherChatKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendTeacherActiveChatMessage();
+    }
+}
+
+async function sendTeacherActiveChatMessage() {
+    const input = document.getElementById('teacherChatInputText');
+    const btn = document.getElementById('btnSendTeacherChat');
+    if (!input || !activeTeacherChatConvoKey) return;
+
+    const text = input.value.trim();
+    if (!text) return;
+
+    const convos = groupTeacherMessagesIntoConversations();
+    const convo = convos.find(c => c.key === activeTeacherChatConvoKey);
+    if (!convo || convo.messages.length === 0) return;
+
+    const latestMsg = convo.messages[convo.messages.length - 1];
+    const messageId = String(latestMsg.id || latestMsg._id);
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+
+    try {
+        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser) ? loggedInUser : 'Enseignant';
+        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+
+        const res = await fetch('/api/send-reply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messageId: messageId,
+                replyText: text,
+                teacherName: teacherName,
+                parentPhone: convo.parentPhone,
+                section: section
+            })
+        });
+
+        if (res.ok) {
+            input.value = '';
+            // Ajouter localement
+            if (!latestMsg.replies) latestMsg.replies = [];
+            latestMsg.replies.push({
+                replyText: text,
+                teacherName: teacherName,
+                type: 'teacher',
+                createdAt: new Date().toISOString()
+            });
+            latestMsg.status = 'replied';
+
+            renderActiveTeacherChatMessages(activeTeacherChatConvoKey, false);
+            updateTeacherCounters();
+            renderTeacherConversationsList(true);
+        } else {
+            const err = await res.json();
+            alert(`Erreur d'envoi : ${err.message || 'Impossible d\'enregistrer la réponse'}`);
+        }
+    } catch (e) {
+        console.error('Erreur sendTeacherActiveChatMessage:', e);
+        alert('Erreur réseau lors de l\'envoi.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// MODAL NOUVEAU MESSAGE D'UN ENSEIGNANT À UN PARENT
+// --------------------------------------------------------------------------
+
+function openTeacherNewMessageModal(prefillData = null) {
+    const modal = document.getElementById('teacherNewMessageModal');
+    if (!modal) return;
+
+    // Remplir les classes
+    const classSelect = document.getElementById('teacherNewMsgClassSelect');
+    if (classSelect) {
+        let classes = [];
+        if (typeof availableClasses !== 'undefined' && Array.isArray(availableClasses)) {
+            classes = [...availableClasses];
+        } else {
+            classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5'];
+        }
+        classSelect.innerHTML = '<option value="">-- Choisir une classe --</option>' +
+            classes.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    }
+
+    // Réinitialiser les champs
+    document.getElementById('teacherNewMsgStudentSelect').innerHTML = '<option value="">-- Sélectionnez d\'abord une classe --</option>';
+    document.getElementById('teacherNewMsgParentName').value = '';
+    document.getElementById('teacherNewMsgParentPhone').value = '';
+    document.getElementById('teacherNewMsgText').value = '';
+
+    if (prefillData) {
+        if (prefillData.studentClass && classSelect) {
+            classSelect.value = prefillData.studentClass;
+            onTeacherNewMsgClassChanged(prefillData.studentName);
+        }
+        if (prefillData.parentName) {
+            document.getElementById('teacherNewMsgParentName').value = prefillData.parentName;
+        }
+        if (prefillData.parentPhone) {
+            document.getElementById('teacherNewMsgParentPhone').value = prefillData.parentPhone;
+        }
+        if (prefillData.message) {
+            document.getElementById('teacherNewMsgText').value = prefillData.message;
+        }
+    }
+
+    modal.style.display = 'block';
+}
+
+function closeTeacherNewMessageModal() {
+    const modal = document.getElementById('teacherNewMessageModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function onTeacherNewMsgClassChanged(autoSelectStudent = null) {
+    const classVal = document.getElementById('teacherNewMsgClassSelect')?.value;
+    const studentSelect = document.getElementById('teacherNewMsgStudentSelect');
+    if (!studentSelect) return;
+
+    if (!classVal) {
+        studentSelect.innerHTML = '<option value="">-- Sélectionnez d\'abord une classe --</option>';
+        return;
+    }
+
+    studentSelect.innerHTML = '<option value="">Chargement des élèves...</option>';
+
+    try {
+        const res = await fetch(`/api/students?classe=${encodeURIComponent(classVal)}`);
+        if (!res.ok) throw new Error('Erreur API élèves');
+        const students = await res.json();
+
+        window.currentTeacherNewMsgStudents = students;
+
+        studentSelect.innerHTML = '<option value="">-- Choisir un élève --</option>' +
+            students.map(s => `<option value="${escapeHtml(s.name)}" data-parent-name="${escapeHtml(s.parentName || '')}" data-parent-phone="${escapeHtml(s.parentPhone || '')}">${escapeHtml(s.name)}</option>`).join('');
+
+        if (autoSelectStudent) {
+            studentSelect.value = autoSelectStudent;
+            onTeacherNewMsgStudentChanged();
+        }
+    } catch (e) {
+        studentSelect.innerHTML = '<option value="">Erreur chargement élèves</option>';
+    }
+}
+
+function onTeacherNewMsgStudentChanged() {
+    const select = document.getElementById('teacherNewMsgStudentSelect');
+    if (!select) return;
+    const selectedOption = select.options[select.selectedIndex];
+    if (selectedOption) {
+        const pName = selectedOption.getAttribute('data-parent-name') || '';
+        const pPhone = selectedOption.getAttribute('data-parent-phone') || '';
+        if (pName) document.getElementById('teacherNewMsgParentName').value = pName;
+        if (pPhone) document.getElementById('teacherNewMsgParentPhone').value = pPhone;
+    }
+}
+
+async function submitTeacherNewMessage() {
+    const classVal = document.getElementById('teacherNewMsgClassSelect')?.value;
+    const studentVal = document.getElementById('teacherNewMsgStudentSelect')?.value;
+    const parentName = document.getElementById('teacherNewMsgParentName')?.value;
+    const parentPhone = document.getElementById('teacherNewMsgParentPhone')?.value;
+    const text = document.getElementById('teacherNewMsgText')?.value;
+    const btn = document.getElementById('btnSubmitTeacherNewMsg');
+
+    if (!text || !text.trim()) {
+        alert("Veuillez rédiger votre message.");
         return;
     }
 
@@ -7710,71 +8149,60 @@ async function sendTeacherReply(messageId) {
     }
 
     try {
-        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser) ? loggedInUser : 'Enseignant';
+        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? loggedInUser : 'Enseignant';
         const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
-        const targetMsg = (currentTeacherMessages || []).find(m => String(m.id || m._id) === String(messageId));
-        const pPhone = targetMsg ? (targetMsg.parentPhone || '') : '';
 
-        const res = await fetch('/api/send-reply', {
+        const res = await fetch('/api/teacher-send-message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                messageId: messageId,
-                replyText: replyText,
                 teacherName: teacherName,
-                parentPhone: pPhone,
+                parentName: parentName || (studentVal ? `Parent de ${studentVal}` : "Parent d'élève"),
+                parentPhone: parentPhone || '',
+                studentName: studentVal || '',
+                studentClass: classVal || '',
+                message: text.trim(),
                 section: section
             })
         });
 
         if (res.ok) {
             const data = await res.json();
-            // Ajouter la réponse localement
-            if (targetMsg) {
-                if (!targetMsg.replies) targetMsg.replies = [];
-                targetMsg.replies.push(data.reply || {
-                    replyText: replyText,
-                    teacherName: teacherName,
-                    createdAt: new Date().toISOString()
-                });
-                targetMsg.status = 'replied';
-            }
-
-            textEl.value = '';
-            renderTeacherMessagesList();
+            closeTeacherNewMessageModal();
+            displayAlert('✅ Message envoyé au parent avec succès.', false, 3000);
             
-            // Recalculer les compteurs
-            const total = currentTeacherMessages.length;
-            const unread = currentTeacherMessages.filter(m => (!m.replies || m.replies.length === 0) && m.status !== 'replied').length;
-            const replied = total - unread;
-            const countUnreadEl = document.getElementById('countMsgUnread');
-            const countRepliedEl = document.getElementById('countMsgReplied');
-            const navBadgeEl = document.getElementById('teacher-unread-badge');
-            if (countUnreadEl) countUnreadEl.textContent = unread;
-            if (countRepliedEl) countRepliedEl.textContent = replied;
-            if (navBadgeEl) {
-                navBadgeEl.textContent = unread;
-                navBadgeEl.style.display = unread > 0 ? 'inline-block' : 'none';
-            }
-
-            if (typeof checkTeacherUnreadMessagesNotification === 'function') {
-                checkTeacherUnreadMessagesNotification();
-            }
-
-            displayAlert('✅ Votre réponse a été envoyée avec succès au parent.', false, 3000);
+            // Ouvrir ou rafraîchir la boîte de messages
+            await loadTeacherMessages();
+            const cleanPhone = (parentPhone || '').trim();
+            const convoKey = cleanPhone ? cleanPhone : `${(parentName || '').trim()}_${(studentVal || '').trim()}`;
+            selectTeacherConversation(convoKey);
         } else {
             const err = await res.json();
-            alert(`Erreur lors de l'envoi : ${err.message || 'Impossible d\'enregistrer la réponse.'}`);
+            alert(`Erreur : ${err.error || 'Impossible d\'envoyer le message'}`);
         }
     } catch (e) {
-        console.error('Erreur sendTeacherReply:', e);
-        alert('Erreur réseau lors de l\'envoi de la réponse.');
+        console.error('Erreur submitTeacherNewMessage:', e);
+        alert("Erreur de connexion lors de l'envoi du message.");
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Répondre';
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Envoyer au parent';
         }
     }
+}
+
+// --------------------------------------------------------------------------
+// LIEN DIRECT : DEPUIS L'ÉVALUATION DES DEVOIRS VERS LE CONTACT DU PARENT
+// --------------------------------------------------------------------------
+function contactParentFromEval(studentName, parentPhone, studentClass, subject, homeworkDate) {
+    const prefilledText = `Bonjour, je vous informe que votre enfant ${studentName} n'a pas fait son devoir de ${subject || 'cours'} prévu pour le ${homeworkDate || 'ce jour'}. Merci de bien vouloir vérifier avec lui.`;
+    openTeacherNewMessageModal({
+        studentName: studentName,
+        studentClass: studentClass,
+        parentPhone: parentPhone,
+        parentName: `Parent de ${studentName}`,
+        message: prefilledText
+    });
 }
 
 // ============================================================================
@@ -7879,16 +8307,23 @@ setInterval(checkParentUnreadMessagesNotification, 20000);
 
 let parentMessengerData = [];
 let activeParentChatTeacher = null;
+let parentMessengerPollTimer = null;
 
 async function openParentMessengerModal(preselectedTeacher = null) {
     const modal = document.getElementById('parentMessengerModal');
     if (!modal) return;
     modal.style.display = 'flex';
 
+    if (parentMessengerPollTimer) {
+        clearInterval(parentMessengerPollTimer);
+    }
+    // Polling doux toutes les 4 secondes tant que le modal est ouvert
+    parentMessengerPollTimer = setInterval(refreshParentMessengerSilently, 4000);
+
     const currentPhone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
     const phoneLabel = document.getElementById('parentCurrentPhoneLabel');
     if (phoneLabel) {
-        phoneLabel.textContent = currentPhone ? `📱 ${currentPhone}` : 'Non configuré';
+        phoneLabel.textContent = currentPhone ? `📱 ${currentPhone}` : 'Non défini';
     }
 
     if (preselectedTeacher) {
@@ -7904,11 +8339,20 @@ async function openParentMessengerModal(preselectedTeacher = null) {
     populateNewChatTeacherSelect();
     await loadParentConversations();
     checkParentUnreadMessagesNotification();
+
+    // Si un enseignant spécifique a été cliqué, s'assurer qu'il est sélectionné
+    if (preselectedTeacher) {
+        selectParentConversation(preselectedTeacher);
+    }
 }
 
 function closeParentMessengerModal() {
     const modal = document.getElementById('parentMessengerModal');
     if (modal) modal.style.display = 'none';
+    if (parentMessengerPollTimer) {
+        clearInterval(parentMessengerPollTimer);
+        parentMessengerPollTimer = null;
+    }
 }
 
 function populateNewChatTeacherSelect() {
@@ -7916,23 +8360,43 @@ function populateNewChatTeacherSelect() {
     if (!select) return;
 
     let teachers = [];
-    if (typeof currentSection !== 'undefined' && currentSection && typeof teachersBySection !== 'undefined' && teachersBySection[currentSection]) {
+    if (typeof teachersSectionMap !== 'undefined' && teachersSectionMap && teachersSectionMap[currentSection]) {
+        teachers = [...teachersSectionMap[currentSection]];
+    } else if (typeof currentSection !== 'undefined' && currentSection && typeof teachersBySection !== 'undefined' && teachersBySection[currentSection]) {
         teachers = [...teachersBySection[currentSection]];
+    } else if (typeof femaleTeachersList !== 'undefined' && typeof maleTeachersList !== 'undefined') {
+        teachers = [...maleTeachersList, ...femaleTeachersList];
     } else if (typeof allTeachers !== 'undefined' && Array.isArray(allTeachers)) {
         teachers = [...allTeachers];
     } else {
         teachers = ['Bensaad', 'Salim', 'Rida', 'Houcine', 'Amine', 'Kamel', 'Yassine', 'Adel'];
     }
 
-    const uniqueTeachers = Array.from(new Set(teachers)).sort();
+    const uniqueTeachers = Array.from(new Set(teachers.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
     select.innerHTML = '<option value="">-- Choisir un enseignant --</option>' + 
         uniqueTeachers.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
 }
 
+function showNewChatPicker() {
+    const box = document.getElementById('newChatPickerBox') || document.getElementById('newChatPicker');
+    if (box) {
+        box.style.display = 'block';
+        populateNewChatTeacherSelect();
+    }
+}
+
+function hideNewChatPicker() {
+    const box = document.getElementById('newChatPickerBox') || document.getElementById('newChatPicker');
+    if (box) box.style.display = 'none';
+}
+
 function toggleNewChatPicker() {
-    const picker = document.getElementById('newChatPicker');
-    if (!picker) return;
-    picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+    const box = document.getElementById('newChatPickerBox') || document.getElementById('newChatPicker');
+    if (!box) return;
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    if (box.style.display === 'block') {
+        populateNewChatTeacherSelect();
+    }
 }
 
 function startNewChatWithSelectedTeacher() {
@@ -7942,13 +8406,13 @@ function startNewChatWithSelectedTeacher() {
         return;
     }
     const chosenTeacher = select.value;
-    toggleNewChatPicker();
+    hideNewChatPicker();
     selectParentConversation(chosenTeacher);
 }
 
 function promptChangeParentPhone() {
     const current = localStorage.getItem('parentSenderPhone') || '';
-    const newPhone = prompt("Entrez votre numéro de téléphone (utilisé pour retrouver vos messages et réponses) :", current);
+    const newPhone = prompt("Entrez votre numéro de téléphone (utilisé pour retrouver vos messages et réponses de l'école) :", current);
     if (newPhone !== null && newPhone.trim() !== '') {
         const cleaned = newPhone.trim();
         localStorage.setItem('parentSenderPhone', cleaned);
@@ -7973,40 +8437,14 @@ function saveParentMessengerPhoneManual() {
     checkParentUnreadMessagesNotification();
 }
 
-async function loadParentConversations() {
-    const listEl = document.getElementById('messengerConversationsList');
+function refreshCurrentConversation() {
+    loadParentConversations();
+}
+
+async function refreshParentMessengerSilently() {
     const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
     const parentName = localStorage.getItem('parentSenderName') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : '');
-
-    if (!listEl) return;
-
-    if (!phone && !parentName) {
-        listEl.innerHTML = `
-            <div style="padding:22px 16px; text-align:center;">
-                <div style="width:46px; height:46px; border-radius:50%; background:#EFF6FF; color:#2563EB; display:inline-flex; align-items:center; justify-content:center; font-size:1.3rem; margin-bottom:12px;">
-                    <i class="fas fa-phone-alt"></i>
-                </div>
-                <h5 style="margin:0 0 6px 0; font-size:0.95rem; color:#1E293B; font-weight:700;">Numéro de téléphone requis</h5>
-                <p style="font-size:0.8rem; color:#64748B; margin:0 0 14px 0; line-height:1.4;">
-                    Veuillez renseigner votre numéro de téléphone pour afficher vos échanges avec les enseignants :
-                </p>
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                    <input type="tel" id="manualParentPhoneInput" placeholder="Ex: 0550123456" style="padding:9px 12px; border:1.5px solid #CBD5E1; border-radius:8px; font-size:0.88rem; width:100%; box-sizing:border-box; text-align:center; font-weight:600;" />
-                    <button type="button" class="pro-button primary-button" onclick="saveParentMessengerPhoneManual()" style="padding:9px 14px; font-size:0.85rem; font-weight:700; border-radius:8px;">
-                        <i class="fas fa-check"></i> Enregistrer & Voir mes messages
-                    </button>
-                </div>
-            </div>
-        `;
-        return;
-    }
-
-    listEl.innerHTML = `
-        <div style="text-align:center; padding:30px; color:#64748B;">
-            <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:8px;"></i>
-            <p style="font-size:0.85rem;">Chargement des discussions...</p>
-        </div>
-    `;
+    if (!phone && !parentName) return;
 
     try {
         const queryParams = new URLSearchParams();
@@ -8014,8 +8452,12 @@ async function loadParentConversations() {
         if (parentName) queryParams.append('name', parentName);
 
         const res = await fetch(`/api/parent-messages?${queryParams.toString()}`);
-        if (!res.ok) throw new Error(`Erreur ${res.status}`);
-        const messages = await res.json();
+        if (!res.ok) return;
+        const raw = await res.json();
+        const messages = Array.isArray(raw) ? raw : (Array.isArray(raw.messages) ? raw.messages : (Array.isArray(raw.data) ? raw.data : []));
+
+        // Vérifier s'il y a de nouveaux messages ou réponses
+        const prevCount = parentMessengerData.length;
         parentMessengerData = messages;
 
         // Regrouper par enseignant
@@ -8038,7 +8480,94 @@ async function loadParentConversations() {
                     if (rTime > convoMap[tName].lastTimestamp) {
                         convoMap[tName].lastTimestamp = rTime;
                     }
-                    if (r.readByParent !== true) {
+                    if (r.readByParent !== true && r.type !== 'parent') {
+                        convoMap[tName].unreadRepliesCount++;
+                    }
+                });
+            }
+        });
+
+        const convos = Object.values(convoMap).sort((a, b) => b.lastTimestamp - a.lastTimestamp);
+        
+        // Mettre à jour la liste sans perte de sélection
+        renderParentConversationsList(convos, true);
+
+        // Si une conversation est active, rafraîchir son contenu si nouveau message
+        if (activeParentChatTeacher) {
+            renderChatMessagesForTeacher(activeParentChatTeacher, true);
+        }
+    } catch (e) {
+        // En mode silencieux, ignorer les erreurs réseau temporaires
+    }
+}
+
+async function loadParentConversations() {
+    const listEl = document.getElementById('messengerConversationsList');
+    const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
+    const parentName = localStorage.getItem('parentSenderName') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : '');
+
+    if (!listEl) return;
+
+    if (!phone && !parentName) {
+        listEl.innerHTML = `
+            <div style="padding:22px 16px; text-align:center;">
+                <div style="width:46px; height:46px; border-radius:50%; background:#EFF6FF; color:#2563EB; display:inline-flex; align-items:center; justify-content:center; font-size:1.3rem; margin-bottom:12px;">
+                    <i class="fas fa-phone-alt"></i>
+                </div>
+                <h5 style="margin:0 0 6px 0; font-size:0.95rem; color:#1E293B; font-weight:700;">Numéro de téléphone requis</h5>
+                <p style="font-size:0.8rem; color:#64748B; margin:0 0 14px 0; line-height:1.4;">
+                    Veuillez renseigner votre numéro de téléphone pour afficher vos échanges avec les enseignants :
+                </p>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <input type="tel" id="manualParentPhoneInput" placeholder="Ex: 0550123456" style="padding:9px 12px; border:1.5px solid #CBD5E1; border-radius:8px; font-size:0.88rem; width:100%; box-sizing:border-box; text-align:center; font-weight:600;" />
+                    <button type="button" class="pro-button primary-button" onclick="saveParentMessengerPhoneManual()" style="padding:9px 14px; font-size:0.85rem; font-weight:700; border-radius:8px;">
+                        <i class="fas fa-check"></i> Enregistrer &amp; Voir mes messages
+                    </button>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    listEl.innerHTML = `
+        <div style="text-align:center; padding:30px; color:#64748B;">
+            <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:8px;"></i>
+            <p style="font-size:0.85rem;">Chargement des discussions...</p>
+        </div>
+    `;
+
+    try {
+        const queryParams = new URLSearchParams();
+        if (phone) queryParams.append('phone', phone);
+        if (parentName) queryParams.append('name', parentName);
+
+        const res = await fetch(`/api/parent-messages?${queryParams.toString()}`);
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+        const raw = await res.json();
+        const messages = Array.isArray(raw) ? raw : (Array.isArray(raw.messages) ? raw.messages : (Array.isArray(raw.data) ? raw.data : []));
+        parentMessengerData = messages;
+
+        // Regrouper par enseignant
+        const convoMap = {};
+        messages.forEach(m => {
+            const tName = m.teacherName || 'Enseignant';
+            if (!convoMap[tName]) {
+                convoMap[tName] = {
+                    teacherName: tName,
+                    messages: [],
+                    unreadRepliesCount: 0,
+                    lastTimestamp: new Date(m.createdAt || 0).getTime()
+                };
+            }
+            convoMap[tName].messages.push(m);
+
+            if (m.replies && Array.isArray(m.replies)) {
+                m.replies.forEach(r => {
+                    const rTime = new Date(r.createdAt || 0).getTime();
+                    if (rTime > convoMap[tName].lastTimestamp) {
+                        convoMap[tName].lastTimestamp = rTime;
+                    }
+                    if (r.readByParent !== true && r.type !== 'parent') {
                         convoMap[tName].unreadRepliesCount++;
                     }
                 });
@@ -8059,26 +8588,31 @@ async function loadParentConversations() {
             <div style="padding:20px; text-align:center; color:#DC2626; font-size:0.85rem;">
                 <i class="fas fa-exclamation-circle fa-2x" style="margin-bottom:8px;"></i>
                 <p>Impossible de charger vos discussions.</p>
+                <button type="button" class="pro-button secondary-button" onclick="loadParentConversations()" style="font-size:0.8rem; padding:6px 12px; margin-top:8px;">
+                    <i class="fas fa-redo"></i> Réessayer
+                </button>
             </div>
         `;
     }
 }
 
-function renderParentConversationsList(convos) {
+function renderParentConversationsList(convos, isSilentUpdate = false) {
     const listEl = document.getElementById('messengerConversationsList');
     if (!listEl) return;
 
     if (!convos || convos.length === 0) {
-        listEl.innerHTML = `
-            <div style="text-align:center; padding:35px 15px; color:#94A3B8;">
-                <i class="fas fa-comments fa-2x" style="color:#CBD5E1; margin-bottom:10px;"></i>
-                <p style="font-weight:700; color:#64748B; font-size:0.9rem; margin:0 0 6px 0;">Aucune discussion active</p>
-                <p style="font-size:0.78rem; margin:0 0 14px 0;">Cliquez sur <b>+ Nouveau message</b> ci-dessus pour écrire directement à un enseignant.</p>
-                <button type="button" class="pro-button primary-button" onclick="toggleNewChatPicker()" style="font-size:0.82rem; padding:8px 14px; border-radius:8px;">
-                    <i class="fas fa-plus"></i> Nouveau message
-                </button>
-            </div>
-        `;
+        if (!isSilentUpdate) {
+            listEl.innerHTML = `
+                <div style="text-align:center; padding:35px 15px; color:#94A3B8;">
+                    <i class="fas fa-comments fa-2x" style="color:#CBD5E1; margin-bottom:10px;"></i>
+                    <p style="font-weight:700; color:#64748B; font-size:0.9rem; margin:0 0 6px 0;">Aucune discussion active</p>
+                    <p style="font-size:0.78rem; margin:0 0 14px 0;">Cliquez sur <b>+ Nouveau message</b> ci-dessus pour écrire directement à un enseignant.</p>
+                    <button type="button" class="pro-button primary-button" onclick="showNewChatPicker()" style="font-size:0.82rem; padding:8px 14px; border-radius:8px;">
+                        <i class="fas fa-plus"></i> Nouveau message
+                    </button>
+                </div>
+            `;
+        }
         return;
     }
 
@@ -8093,7 +8627,7 @@ function renderParentConversationsList(convos) {
             allEvents.push({ text: m.message || m.content || '', date: m.createdAt, from: 'parent' });
             if (m.replies && Array.isArray(m.replies)) {
                 m.replies.forEach(r => {
-                    allEvents.push({ text: r.replyText || r.text || '', date: r.createdAt, from: 'teacher' });
+                    allEvents.push({ text: r.replyText || r.text || '', date: r.createdAt, from: r.type || 'teacher' });
                 });
             }
         });
@@ -8108,7 +8642,7 @@ function renderParentConversationsList(convos) {
         }
 
         html += `
-            <div class="messenger-convo-item ${isActive ? 'active' : ''}" onclick="selectParentConversation('${escapeHtml(c.teacherName)}')" id="convoItem_${escapeHtml(c.teacherName)}">
+            <div class="messenger-convo-item ${isActive ? 'active' : ''}" onclick="selectParentConversation('${escapeHtml(c.teacherName)}')" id="convoItem_${escapeHtml(c.teacherName)}" style="cursor:pointer;">
                 <div style="position:relative; width:46px; height:46px; border-radius:50%; flex-shrink:0; background:#EEF2FF; border:1.5px solid #CBD5E1;">
                     ${(() => {
                         const photoUrl = getTeacherDirectPhotoUrl(c.teacherName);
@@ -8141,32 +8675,11 @@ function renderParentConversationsList(convos) {
     listEl.innerHTML = html;
 }
 
-async function selectParentConversation(teacherName) {
-    activeParentChatTeacher = teacherName;
+function renderChatMessagesForTeacher(teacherName, isSilent = false) {
+    const chatContainer = document.getElementById('messengerChatMessages');
+    if (!chatContainer) return;
 
-    document.querySelectorAll('.messenger-convo-item').forEach(el => el.classList.remove('active'));
-    const targetItem = document.getElementById(`convoItem_${teacherName}`);
-    if (targetItem) targetItem.classList.add('active');
-
-    const headerTitle = document.getElementById('chatTeacherName');
-    const headerSub = document.getElementById('chatTeacherStatus');
-    const headerAvatar = document.getElementById('chatTeacherAvatar');
-    const inputBar = document.getElementById('messengerInputBar');
-
-    if (headerTitle) headerTitle.textContent = teacherName;
-    if (headerSub) headerSub.textContent = "Enseignant • En ligne";
-    if (headerAvatar) {
-        const headerPhoto = getTeacherDirectPhotoUrl(teacherName);
-        const headerInit = teacherName ? teacherName.charAt(0).toUpperCase() : '?';
-        if (headerPhoto) {
-            headerAvatar.innerHTML = `<img src="${headerPhoto}" alt="${escapeHtml(teacherName)}" style="width:100%; height:100%; border-radius:50%; object-fit:cover; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight:800; font-size:1.1rem;\\'>${escapeHtml(headerInit)}</span>';">`;
-        } else {
-            headerAvatar.innerHTML = `<span style="font-weight:800; font-size:1.1rem;">${escapeHtml(headerInit)}</span>`;
-        }
-    }
-    if (inputBar) inputBar.style.display = 'block';
-
-    const relevantMsgs = (parentMessengerData || []).filter(m => (m.teacherName || '') === teacherName);
+    const relevantMsgs = (parentMessengerData || []).filter(m => (m.teacherName || '').toLowerCase() === teacherName.toLowerCase());
 
     const chatEvents = [];
     relevantMsgs.forEach(m => {
@@ -8174,9 +8687,10 @@ async function selectParentConversation(teacherName) {
             id: m.id || m._id,
             from: 'parent',
             text: m.message || m.content || '',
-            date: m.createdAt,
+            date: m.createdAt || m.date,
             parentName: m.parentName,
             studentName: m.studentName,
+            studentClass: m.studentClass,
             isInitial: true
         });
 
@@ -8185,7 +8699,7 @@ async function selectParentConversation(teacherName) {
                 chatEvents.push({
                     id: r.id || r._id,
                     messageId: m.id || m._id,
-                    from: r.from || 'teacher',
+                    from: r.type || r.from || 'teacher',
                     teacherName: r.teacherName || teacherName,
                     text: r.replyText || r.text || '',
                     date: r.createdAt,
@@ -8197,19 +8711,23 @@ async function selectParentConversation(teacherName) {
 
     chatEvents.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
 
-    const chatContainer = document.getElementById('messengerChatMessages');
-    if (!chatContainer) return;
-
     if (chatEvents.length === 0) {
-        chatContainer.innerHTML = `
-            <div style="text-align:center; padding:40px 20px; color:#94A3B8;">
-                <div style="width:54px; height:54px; border-radius:50%; background:#EFF6FF; color:#2563EB; display:inline-flex; align-items:center; justify-content:center; font-size:1.6rem; margin-bottom:12px;">
-                    <i class="fab fa-facebook-messenger"></i>
+        if (!isSilent) {
+            chatContainer.innerHTML = `
+                <div style="text-align:center; padding:40px 20px; color:#94A3B8; margin:auto;">
+                    <div style="width:60px; height:60px; border-radius:50%; background:#EFF6FF; color:#2563EB; display:inline-flex; align-items:center; justify-content:center; font-size:1.8rem; margin-bottom:14px; box-shadow:0 4px 12px rgba(37,99,235,0.15);">
+                        <i class="fab fa-facebook-messenger"></i>
+                    </div>
+                    <h4 style="margin:0 0 6px 0; color:#1E293B; font-weight:800; font-size:1.05rem;">Discussion directe avec ${escapeHtml(teacherName)}</h4>
+                    <p style="font-size:0.86rem; color:#64748B; margin:0 0 16px 0; max-width:380px; line-height:1.45;">
+                        Posez votre question à l'enseignant concernant les devoirs, les leçons ou le suivi de votre enfant.
+                    </p>
+                    <div style="background:#FEF3C7; border:1px solid #FDE68A; color:#92400E; border-radius:10px; padding:8px 14px; font-size:0.8rem; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fas fa-info-circle"></i> Tapez votre message ci-dessous et appuyez sur Entrée pour envoyer.
+                    </div>
                 </div>
-                <h4 style="margin:0 0 6px 0; color:#1E293B; font-weight:700;">Nouvelle discussion avec ${escapeHtml(teacherName)}</h4>
-                <p style="font-size:0.85rem; color:#64748B; margin:0 0 16px 0;">Écrivez votre premier message ci-dessous. L'enseignant recevra immédiatement une notification.</p>
-            </div>
-        `;
+            `;
+        }
     } else {
         let html = '';
         let lastDateHeader = '';
@@ -8232,11 +8750,11 @@ async function selectParentConversation(teacherName) {
 
             if (ev.from === 'parent') {
                 html += `
-                    <div class="messenger-row right">
-                        <div class="messenger-bubble parent">
-                            ${ev.studentName ? `<div style="font-size:0.72rem; opacity:0.85; margin-bottom:2px; font-weight:600;"><i class="fas fa-child"></i> Élève : ${escapeHtml(ev.studentName)}</div>` : ''}
-                            <div style="white-space:pre-wrap; line-height:1.45;">${escapeHtml(ev.text)}</div>
-                            <div class="messenger-time" style="color:rgba(255,255,255,0.85);">${timeStr} <i class="fas fa-check" style="font-size:0.65rem; margin-left:2px;"></i></div>
+                    <div class="messenger-row right" style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+                        <div class="messenger-bubble parent" style="max-width:75%; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; padding:10px 14px; border-radius:18px 18px 4px 18px; box-shadow:0 2px 8px rgba(37,99,235,0.2);">
+                            ${(ev.studentName || ev.studentClass) ? `<div style="font-size:0.72rem; opacity:0.88; margin-bottom:3px; font-weight:600;"><i class="fas fa-child"></i> Concernant : ${escapeHtml(ev.studentName || '')} ${ev.studentClass ? `(${escapeHtml(ev.studentClass)})` : ''}</div>` : ''}
+                            <div style="white-space:pre-wrap; line-height:1.45; font-size:0.92rem;">${escapeHtml(ev.text)}</div>
+                            <div class="messenger-time" style="color:rgba(255,255,255,0.85); font-size:0.7rem; text-align:right; margin-top:4px;">${timeStr} <i class="fas fa-check" style="font-size:0.65rem; margin-left:2px;"></i></div>
                         </div>
                     </div>
                 `;
@@ -8246,7 +8764,7 @@ async function selectParentConversation(teacherName) {
                 const bubbleTeacherInit = replyingTeacher ? replyingTeacher.charAt(0).toUpperCase() : '?';
 
                 html += `
-                    <div class="messenger-row left">
+                    <div class="messenger-row left" style="display:flex; justify-content:flex-start; margin-bottom:8px; align-items:flex-end;">
                         <div style="width:34px; height:34px; border-radius:50%; margin-right:8px; align-self:flex-end; flex-shrink:0; overflow:hidden; border:1.5px solid #2563EB; background:#E2E8F0;">
                             ${bubbleTeacherPhoto ? `
                                 <img src="${bubbleTeacherPhoto}" alt="${escapeHtml(replyingTeacher)}" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'width:100%; height:100%; background:#2563EB; color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.85rem;\\'>${escapeHtml(bubbleTeacherInit)}</div>';">
@@ -8256,12 +8774,12 @@ async function selectParentConversation(teacherName) {
                                 </div>
                             `}
                         </div>
-                        <div class="messenger-bubble teacher">
+                        <div class="messenger-bubble teacher" style="max-width:75%; background:#FFFFFF; border:1.5px solid #E2E8F0; color:#1E293B; padding:10px 14px; border-radius:18px 18px 18px 4px; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
                             <div style="font-size:0.75rem; color:#2563EB; font-weight:700; margin-bottom:3px; display:flex; align-items:center; gap:5px;">
                                 <i class="fas fa-chalkboard-teacher"></i> <span>${escapeHtml(replyingTeacher)}</span>
                             </div>
-                            <div style="white-space:pre-wrap; line-height:1.45;">${escapeHtml(ev.text)}</div>
-                            <div class="messenger-time" style="color:#64748B;">${timeStr}</div>
+                            <div style="white-space:pre-wrap; line-height:1.45; font-size:0.92rem;">${escapeHtml(ev.text)}</div>
+                            <div class="messenger-time" style="color:#64748B; font-size:0.7rem; margin-top:4px;">${timeStr}</div>
                         </div>
                     </div>
                 `;
@@ -8269,11 +8787,38 @@ async function selectParentConversation(teacherName) {
         });
 
         chatContainer.innerHTML = html;
+        if (!isSilent) {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
     }
+}
 
-    setTimeout(() => {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-    }, 50);
+async function selectParentConversation(teacherName) {
+    activeParentChatTeacher = teacherName;
+
+    document.querySelectorAll('.messenger-convo-item').forEach(el => el.classList.remove('active'));
+    const targetItem = document.getElementById(`convoItem_${teacherName}`);
+    if (targetItem) targetItem.classList.add('active');
+
+    const headerTitle = document.getElementById('chatTeacherName');
+    const headerSub = document.getElementById('chatTeacherSub');
+    const headerAvatar = document.getElementById('chatTeacherAvatar');
+    const inputBar = document.getElementById('messengerInputBar');
+
+    if (headerTitle) headerTitle.textContent = teacherName;
+    if (headerSub) headerSub.textContent = "Enseignant • Messagerie directe";
+    if (headerAvatar) {
+        const headerPhoto = getTeacherDirectPhotoUrl(teacherName);
+        const headerInit = teacherName ? teacherName.charAt(0).toUpperCase() : '?';
+        if (headerPhoto) {
+            headerAvatar.innerHTML = `<img src="${headerPhoto}" alt="${escapeHtml(teacherName)}" style="width:100%; height:100%; border-radius:50%; object-fit:cover; display:block;" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'font-weight:800; font-size:1.1rem;\\'>${escapeHtml(headerInit)}</span>';">`;
+        } else {
+            headerAvatar.innerHTML = `<span style="font-weight:800; font-size:1.1rem;">${escapeHtml(headerInit)}</span>`;
+        }
+    }
+    if (inputBar) inputBar.style.display = 'flex';
+
+    renderChatMessagesForTeacher(teacherName, false);
 
     const input = document.getElementById('parentChatInputText');
     if (input) input.focus();
@@ -8313,8 +8858,29 @@ async function sendParentChatMessage() {
         return;
     }
 
-    const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
-    const parentName = localStorage.getItem('parentSenderName') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : "Parent d'élève");
+    let phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
+    let parentName = localStorage.getItem('parentSenderName') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : '');
+
+    if (!phone || !phone.trim()) {
+        const entered = prompt("Pour envoyer votre message et recevoir la réponse de l'enseignant, veuillez renseigner votre numéro de téléphone :", "");
+        if (!entered || !entered.trim()) {
+            return;
+        }
+        phone = entered.trim();
+        localStorage.setItem('parentSenderPhone', phone);
+        const phoneLabel = document.getElementById('parentCurrentPhoneLabel');
+        if (phoneLabel) phoneLabel.textContent = `📱 ${phone}`;
+    }
+
+    if (!parentName || !parentName.trim()) {
+        parentName = currentUserLanguage === 'ar' ? 'ولي أمر' : "Parent d'élève";
+    }
+
+    // Récupérer classe et élève si sélectionnés dans le tableau de bord
+    const classSelector = document.getElementById('parentClassSelector');
+    const studentClass = classSelector ? classSelector.value : '';
+    const studentSelect = document.getElementById('parentStudentSelect');
+    const studentName = studentSelect ? studentSelect.value : '';
 
     if (btn) {
         btn.disabled = true;
@@ -8322,7 +8888,7 @@ async function sendParentChatMessage() {
     }
 
     try {
-        const relevantMsgs = (parentMessengerData || []).filter(m => (m.teacherName || '') === activeParentChatTeacher);
+        const relevantMsgs = (parentMessengerData || []).filter(m => (m.teacherName || '').toLowerCase() === activeParentChatTeacher.toLowerCase());
         
         if (relevantMsgs.length > 0) {
             const latestMsg = relevantMsgs[relevantMsgs.length - 1];
@@ -8345,17 +8911,17 @@ async function sendParentChatMessage() {
                 if (chatContainer) {
                     const timeStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
                     const newBubbleHtml = `
-                        <div class="messenger-row right">
-                            <div class="messenger-bubble parent">
-                                <div style="white-space:pre-wrap; line-height:1.45;">${escapeHtml(text)}</div>
-                                <div class="messenger-time" style="color:rgba(255,255,255,0.85);">${timeStr} <i class="fas fa-check" style="font-size:0.65rem; margin-left:2px;"></i></div>
+                        <div class="messenger-row right" style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+                            <div class="messenger-bubble parent" style="max-width:75%; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; padding:10px 14px; border-radius:18px 18px 4px 18px; box-shadow:0 2px 8px rgba(37,99,235,0.2);">
+                                <div style="white-space:pre-wrap; line-height:1.45; font-size:0.92rem;">${escapeHtml(text)}</div>
+                                <div class="messenger-time" style="color:rgba(255,255,255,0.85); font-size:0.7rem; text-align:right; margin-top:4px;">${timeStr} <i class="fas fa-check" style="font-size:0.65rem; margin-left:2px;"></i></div>
                             </div>
                         </div>
                     `;
                     chatContainer.insertAdjacentHTML('beforeend', newBubbleHtml);
                     chatContainer.scrollTop = chatContainer.scrollHeight;
                 }
-                setTimeout(loadParentConversations, 500);
+                setTimeout(() => refreshParentMessengerSilently(), 600);
             } else {
                 alert("Erreur lors de l'envoi du message.");
             }
@@ -8367,6 +8933,8 @@ async function sendParentChatMessage() {
                     teacherName: activeParentChatTeacher,
                     parentName: parentName,
                     parentPhone: phone,
+                    studentName: studentName,
+                    studentClass: studentClass,
                     message: text,
                     section: typeof currentSection !== 'undefined' ? currentSection : 'garcons'
                 })
@@ -8393,8 +8961,76 @@ async function sendParentChatMessage() {
 }
 
 let allTeacherHomeworks = [];
+let allSectionTeachersList = [];
 let activeEvalHomework = null;
 let activeEvalStudents = [];
+
+let activeTeacherHwFilters = {
+    teacher: '',
+    classe: 'all',
+    matiere: 'all',
+    jour: 'all',
+    week: 'all',
+    status: 'all',
+    search: ''
+};
+
+// Helper visuel : Icône et couleur pour chaque matière
+function getSubjectIconAndColor(matiere) {
+    const m = String(matiere || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (m.includes('math') || m.includes('algebre') || m.includes('geometrie') || m.includes('رياضيات')) {
+        return { icon: 'fas fa-calculator', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' };
+    }
+    if (m.includes('francais') || m.includes('grammaire') || m.includes('lecture') || m.includes('orthographe') || m.includes('conjugaison') || m.includes('فرنسية')) {
+        return { icon: 'fas fa-book-open', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' };
+    }
+    if (m.includes('arabe') || m.includes('عربي') || m.includes('لغة عربية') || m.includes('اسلامية') || m.includes('quran') || m.includes('coran') || m.includes('تربية')) {
+        return { icon: 'fas fa-quran', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' };
+    }
+    if (m.includes('anglais') || m.includes('english') || m.includes('انجليزي') || m.includes('انكليزي')) {
+        return { icon: 'fas fa-globe-americas', color: '#0284C7', bg: '#F0F9FF', border: '#BAE6FD' };
+    }
+    if (m.includes('science') || m.includes('physique') || m.includes('svt') || m.includes('chimie') || m.includes('علوم') || m.includes('فيزياء')) {
+        return { icon: 'fas fa-flask', color: '#0D9488', bg: '#F0FDFA', border: '#99F6E4' };
+    }
+    if (m.includes('histoire') || m.includes('geo') || m.includes('sociale') || m.includes('تاريخ') || m.includes('جغرافيا') || m.includes('اجتماعيات')) {
+        return { icon: 'fas fa-landmark', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
+    }
+    if (m.includes('art') || m.includes('dessin') || m.includes('plastique') || m.includes('رسم') || m.includes('فنون')) {
+        return { icon: 'fas fa-palette', color: '#EA580C', bg: '#FFF7ED', border: '#FFEDD5' };
+    }
+    if (m.includes('musique') || m.includes('farah') || m.includes('موسيقى')) {
+        return { icon: 'fas fa-music', color: '#DB2777', bg: '#FDF2F8', border: '#FBCFE8' };
+    }
+    if (m.includes('sport') || m.includes('eps') || m.includes('بدنية') || m.includes('رياضة')) {
+        return { icon: 'fas fa-running', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' };
+    }
+    if (m.includes('info') || m.includes('tech') || m.includes('informatique') || m.includes('حاسوب') || m.includes('تكنولوجيا')) {
+        return { icon: 'fas fa-laptop-code', color: '#4F46E5', bg: '#EEF2FF', border: '#C7D2FE' };
+    }
+    return { icon: 'fas fa-pencil-alt', color: '#475569', bg: '#F8FAFC', border: '#E2E8F0' };
+}
+
+// Helper visuel : Icône et libellé pour chaque jour de la semaine
+function getDayIconAndDetails(dayNameOrStr) {
+    const raw = String(dayNameOrStr || '').trim().toLowerCase();
+    if (raw.includes('dim') || raw.includes('sun') || raw.includes('احد') || raw.includes('أحد')) {
+        return { key: 'Dimanche', label: 'Dimanche', ar: 'الأحد', icon: 'fas fa-sun', color: '#F59E0B' };
+    }
+    if (raw.includes('lun') || raw.includes('mon') || raw.includes('اثنين') || raw.includes('إثنين')) {
+        return { key: 'Lundi', label: 'Lundi', ar: 'الإثنين', icon: 'fas fa-seedling', color: '#10B981' };
+    }
+    if (raw.includes('mar') || raw.includes('tue') || raw.includes('ثلاثاء') || raw.includes('الثلاثاء')) {
+        return { key: 'Mardi', label: 'Mardi', ar: 'الثلاثاء', icon: 'fas fa-bolt', color: '#6366F1' };
+    }
+    if (raw.includes('mer') || raw.includes('wed') || raw.includes('اربعاء') || raw.includes('الأربعاء')) {
+        return { key: 'Mercredi', label: 'Mercredi', ar: 'الأربعاء', icon: 'fas fa-leaf', color: '#06B6D4' };
+    }
+    if (raw.includes('jeu') || raw.includes('thu') || raw.includes('خميس') || raw.includes('الخميس')) {
+        return { key: 'Jeudi', label: 'Jeudi', ar: 'الخميس', icon: 'fas fa-star', color: '#EC4899' };
+    }
+    return { key: dayNameOrStr, label: dayNameOrStr, ar: '', icon: 'far fa-calendar', color: '#64748B' };
+}
 
 async function loadTeacherHomeworksDashboard() {
     const container = document.getElementById('teacher-homeworks-tree-container');
@@ -8403,32 +9039,76 @@ async function loadTeacherHomeworksDashboard() {
     container.innerHTML = `
         <div style="text-align:center; padding:40px; color:#475569;">
             <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB; margin-bottom:12px;"></i>
-            <p style="font-weight:600; font-size:1.05rem;">Chargement des devoirs donnés...</p>
+            <p style="font-weight:600; font-size:1.05rem;">Chargement des devoirs...</p>
         </div>
     `;
 
     try {
-        const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? loggedInUser : 'all';
-        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        const isAdminOrSupervisor = (typeof isUserAdminOrSupervisor === 'function') 
+            ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) 
+            : false;
 
+        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        const teacherParamFromLogin = loggedInTeacherTable || (typeof loggedInUser !== 'undefined' ? loggedInUser : '');
+
+        // Pour un enseignant régulier : STRICTEMENT VÉROUILLÉ SUR SON NOM
+        if (!isAdminOrSupervisor) {
+            activeTeacherHwFilters.teacher = teacherParamFromLogin;
+            const adminSwitcher = document.getElementById('teacherAdminSwitcherRow');
+            if (adminSwitcher) adminSwitcher.style.display = 'none';
+        } else {
+            // Pour un admin ou superviseur : sélecteur d'enseignant disponible
+            const adminSwitcher = document.getElementById('teacherAdminSwitcherRow');
+            if (adminSwitcher) adminSwitcher.style.display = 'block';
+            if (!activeTeacherHwFilters.teacher) {
+                activeTeacherHwFilters.teacher = teacherParamFromLogin;
+            }
+        }
+
+        const tableTeacherParam = loggedInTeacherTable || '';
+        const url = `/api/teacher-homeworks?teacher=${encodeURIComponent(activeTeacherHwFilters.teacher)}&tableTeacher=${encodeURIComponent(tableTeacherParam)}&section=${encodeURIComponent(section)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+
+        const data = await res.json();
+        allTeacherHomeworks = data.homeworks || [];
+        allSectionTeachersList = data.sectionTeachers || [];
+
+        // Si administrateur et aucun devoir trouvé pour son nom personnel, basculer sur le premier enseignant ayant des devoirs
+        if (isAdminOrSupervisor && allTeacherHomeworks.length === 0 && allSectionTeachersList.length > 0 && activeTeacherHwFilters.teacher === loggedInUser) {
+            activeTeacherHwFilters.teacher = allSectionTeachersList[0].name;
+            const retryRes = await fetch(`/api/teacher-homeworks?teacher=${encodeURIComponent(activeTeacherHwFilters.teacher)}&section=${encodeURIComponent(section)}`);
+            if (retryRes.ok) {
+                const retryData = await retryRes.json();
+                allTeacherHomeworks = retryData.homeworks || [];
+            }
+        }
+
+        // Mettre à jour l'en-tête de l'espace enseignant
         const nameEl = document.getElementById('teacherEvalActiveName');
-        if (nameEl) nameEl.textContent = (typeof loggedInUser !== 'undefined' && loggedInUser) ? loggedInUser : 'Enseignant';
+        if (nameEl) {
+            if (isAdminOrSupervisor) {
+                nameEl.textContent = `${activeTeacherHwFilters.teacher || 'Sélectionner un enseignant'} (Mode Superviseur)`;
+            } else {
+                nameEl.textContent = activeTeacherHwFilters.teacher || loggedInUser || 'Enseignant';
+            }
+        }
 
         const secEl = document.getElementById('teacherEvalActiveSection');
         if (secEl) {
             secEl.textContent = section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'primaire' ? 'Section Primaire & Maternelle (ابتدائي وروضة)' : 'Section Filles (بنات)');
         }
 
-        const res = await fetch(`/api/teacher-homeworks?teacher=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
-        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+        // Rendu des barres d'icônes dynamiques
+        if (isAdminOrSupervisor) {
+            renderTeacherAdminSwitcher(allSectionTeachersList);
+        }
+        renderTeacherClassesIcons();
+        renderTeacherSubjectsIcons();
+        renderTeacherDaysIcons();
+        renderTeacherWeeksIcons();
 
-        const data = await res.json();
-        allTeacherHomeworks = data.homeworks || [];
-
-        // Remplir les sélecteurs de filtre
-        populateTeacherDashboardFilterOptions();
-
-        // Rendre les devoirs groupés par semaine puis classe
+        // Rendu du tableau de bord avec les filtres actifs
         renderTeacherHomeworksDashboard();
     } catch (e) {
         console.error('Erreur loadTeacherHomeworksDashboard:', e);
@@ -8444,82 +9124,369 @@ async function loadTeacherHomeworksDashboard() {
     }
 }
 
-function populateTeacherDashboardFilterOptions() {
-    const weekSel = document.getElementById('teacherFilterWeek');
-    const classSel = document.getElementById('teacherFilterClass');
+// 1. Barre d'icônes : ENSEIGNANTS (Admin / Superviseur uniquement)
+function renderTeacherAdminSwitcher(teachersList) {
+    const container = document.getElementById('teacherAdminIconsContainer');
+    if (!container) return;
 
-    if (weekSel) {
-        const curWeek = weekSel.value;
-        const weeks = [...new Set(allTeacherHomeworks.map(h => h.week))].filter(Boolean).sort((a, b) => {
-            return (parseInt(a) || 0) - (parseInt(b) || 0);
-        });
-
-        let opts = `<option value="all">Toutes les semaines (${weeks.length})</option>`;
-        weeks.forEach(w => {
-            const hwSample = allTeacherHomeworks.find(h => String(h.week) === String(w));
-            const rangeText = hwSample?.weekRangeText ? ` (${hwSample.weekRangeText})` : '';
-            opts += `<option value="${w}">Semaine ${w}${rangeText}</option>`;
-        });
-        weekSel.innerHTML = opts;
-        if (weeks.map(String).includes(curWeek)) {
-            weekSel.value = curWeek;
-        }
+    if (!teachersList || teachersList.length === 0) {
+        container.innerHTML = `<span style="color:#64748B; font-size:0.85rem;">Aucun enseignant trouvé avec des devoirs dans cette section.</span>`;
+        return;
     }
 
-    if (classSel) {
-        const curCls = classSel.value;
-        const classes = [...new Set(allTeacherHomeworks.map(h => h.classe))].filter(Boolean).sort(compareClasses);
+    let html = '';
+    teachersList.forEach(t => {
+        const isActive = (activeTeacherHwFilters.teacher && activeTeacherHwFilters.teacher.toLowerCase() === t.name.toLowerCase());
+        const photoSrc = t.photoUrl || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%236366F1"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>';
+        
+        html += `
+            <button type="button" class="teacher-card-pill ${isActive ? 'active' : ''}" onclick="switchActiveTeacherForHomework('${escapeHtml(t.name)}')">
+                <img src="${escapeHtml(photoSrc)}" alt="${escapeHtml(t.name)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' viewBox=\\'0 0 24 24\\' fill=\\'%236366F1\\'><path d=\\'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z\\'/></svg>'">
+                <span>${escapeHtml(t.name)}</span>
+                <span class="hw-badge" style="${isActive ? 'background:rgba(255,255,255,0.3); color:white;' : 'background:#EEF2FF; color:#4F46E5;'}">${t.count || 0}</span>
+            </button>
+        `;
+    });
 
-        let opts = `<option value="all">Toutes les classes (${classes.length})</option>`;
-        classes.forEach(c => {
-            const ar = classTranslations[c];
-            const label = ar ? `${ar} (${c})` : c;
-            opts += `<option value="${c}">${label}</option>`;
-        });
-        classSel.innerHTML = opts;
-        if (classes.includes(curCls)) {
-            classSel.value = curCls;
-        }
-    }
+    container.innerHTML = html;
 }
 
+function switchActiveTeacherForHomework(teacherName) {
+    activeTeacherHwFilters.teacher = teacherName;
+    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.matiere = 'all';
+    activeTeacherHwFilters.jour = 'all';
+    activeTeacherHwFilters.week = 'all';
+    activeTeacherHwFilters.status = 'all';
+    activeTeacherHwFilters.search = '';
+    const searchInput = document.getElementById('teacherHwSearchInput');
+    if (searchInput) searchInput.value = '';
+    loadTeacherHomeworksDashboard();
+}
+
+// 2. Barre d'icônes : CLASSES
+function renderTeacherClassesIcons() {
+    const container = document.getElementById('teacherClassesIconsContainer');
+    const countLabel = document.getElementById('teacherClassesCountLabel');
+    if (!container) return;
+
+    const classCounts = {};
+    allTeacherHomeworks.forEach(h => {
+        const c = h.classe || 'Autre';
+        classCounts[c] = (classCounts[c] || 0) + 1;
+    });
+
+    const classes = Object.keys(classCounts).sort(compareClasses);
+    if (countLabel) countLabel.textContent = `(${classes.length} classe${classes.length > 1 ? 's' : ''})`;
+
+    let html = `
+        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.classe === 'all' ? 'active' : ''}" onclick="setTeacherHwClassFilter('all')">
+            <i class="fas fa-layer-group" style="color:#2563EB;"></i>
+            <span>Toutes les Classes</span>
+            <span class="hw-badge">${allTeacherHomeworks.length}</span>
+        </button>
+    `;
+
+    classes.forEach(c => {
+        const isActive = (activeTeacherHwFilters.classe === c);
+        const ar = (typeof classTranslations !== 'undefined' && classTranslations[c]) ? classTranslations[c] : '';
+        const displayLabel = ar ? `${c} (${ar})` : c;
+        const count = classCounts[c] || 0;
+
+        html += `
+            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwClassFilter('${escapeHtml(c)}')">
+                <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i>
+                <span>${escapeHtml(displayLabel)}</span>
+                <span class="hw-badge">${count}</span>
+            </button>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function setTeacherHwClassFilter(classe) {
+    activeTeacherHwFilters.classe = classe;
+    renderTeacherClassesIcons();
+    renderTeacherHomeworksDashboard();
+}
+
+// 3. Barre d'icônes : MATIÈRES
+function renderTeacherSubjectsIcons() {
+    const container = document.getElementById('teacherSubjectsIconsContainer');
+    const countLabel = document.getElementById('teacherSubjectsCountLabel');
+    if (!container) return;
+
+    const subjectCounts = {};
+    allTeacherHomeworks.forEach(h => {
+        const m = h.matiere || 'Matière Générale';
+        subjectCounts[m] = (subjectCounts[m] || 0) + 1;
+    });
+
+    const subjects = Object.keys(subjectCounts).sort();
+    if (countLabel) countLabel.textContent = `(${subjects.length} matière${subjects.length > 1 ? 's' : ''})`;
+
+    let html = `
+        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.matiere === 'all' ? 'active' : ''}" onclick="setTeacherHwSubjectFilter('all')">
+            <i class="fas fa-book" style="color:#8B5CF6;"></i>
+            <span>Toutes les Matières</span>
+            <span class="hw-badge">${allTeacherHomeworks.length}</span>
+        </button>
+    `;
+
+    subjects.forEach(m => {
+        const isActive = (activeTeacherHwFilters.matiere === m);
+        const iconInfo = getSubjectIconAndColor(m);
+        const count = subjectCounts[m] || 0;
+
+        html += `
+            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwSubjectFilter('${escapeHtml(m)}')">
+                <i class="${iconInfo.icon}" style="color:${isActive ? '#FFFFFF' : iconInfo.color};"></i>
+                <span>${escapeHtml(m)}</span>
+                <span class="hw-badge">${count}</span>
+            </button>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function setTeacherHwSubjectFilter(matiere) {
+    activeTeacherHwFilters.matiere = matiere;
+    renderTeacherSubjectsIcons();
+    renderTeacherHomeworksDashboard();
+}
+
+// 4. Barre d'icônes : JOURS DE LA SEMAINE
+function renderTeacherDaysIcons() {
+    const container = document.getElementById('teacherDaysIconsContainer');
+    if (!container) return;
+
+    const dayCounts = {
+        'Dimanche': 0,
+        'Lundi': 0,
+        'Mardi': 0,
+        'Mercredi': 0,
+        'Jeudi': 0
+    };
+
+    allTeacherHomeworks.forEach(h => {
+        const dayInfo = getDayIconAndDetails(h.jour);
+        if (dayCounts[dayInfo.key] !== undefined) {
+            dayCounts[dayInfo.key] += 1;
+        }
+    });
+
+    let html = `
+        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.jour === 'all' ? 'active' : ''}" onclick="setTeacherHwDayFilter('all')">
+            <i class="fas fa-calendar-alt" style="color:#10B981;"></i>
+            <span>Tous les Jours</span>
+            <span class="hw-badge">${allTeacherHomeworks.length}</span>
+        </button>
+    `;
+
+    const standardDays = [
+        { key: 'Dimanche', label: 'Dimanche', ar: 'الأحد', icon: 'fas fa-sun', color: '#F59E0B' },
+        { key: 'Lundi', label: 'Lundi', ar: 'الإثنين', icon: 'fas fa-seedling', color: '#10B981' },
+        { key: 'Mardi', label: 'Mardi', ar: 'الثلاثاء', icon: 'fas fa-bolt', color: '#6366F1' },
+        { key: 'Mercredi', label: 'Mercredi', ar: 'الأربعاء', icon: 'fas fa-leaf', color: '#06B6D4' },
+        { key: 'Jeudi', label: 'Jeudi', ar: 'الخميس', icon: 'fas fa-star', color: '#EC4899' }
+    ];
+
+    standardDays.forEach(d => {
+        const isActive = (activeTeacherHwFilters.jour === d.key);
+        const count = dayCounts[d.key] || 0;
+
+        html += `
+            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwDayFilter('${d.key}')">
+                <i class="${d.icon}" style="color:${isActive ? '#FFFFFF' : d.color};"></i>
+                <span>${d.label} <small style="opacity:0.85;">(${d.ar})</small></span>
+                <span class="hw-badge">${count}</span>
+            </button>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function setTeacherHwDayFilter(jour) {
+    activeTeacherHwFilters.jour = jour;
+    renderTeacherDaysIcons();
+    renderTeacherHomeworksDashboard();
+}
+
+// 5. Barre d'icônes : SEMAINES
+function renderTeacherWeeksIcons() {
+    const container = document.getElementById('teacherWeeksIconsContainer');
+    const countLabel = document.getElementById('teacherWeeksCountLabel');
+    if (!container) return;
+
+    const weekCounts = {};
+    allTeacherHomeworks.forEach(h => {
+        const w = String(h.week || '1');
+        weekCounts[w] = (weekCounts[w] || 0) + 1;
+    });
+
+    const weeks = Object.keys(weekCounts).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+    if (countLabel) countLabel.textContent = `(${weeks.length} semaine${weeks.length > 1 ? 's' : ''})`;
+
+    let html = `
+        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.week === 'all' ? 'active' : ''}" onclick="setTeacherHwWeekFilter('all')">
+            <i class="fas fa-calendar-week" style="color:#0284C7;"></i>
+            <span>Toutes les Semaines</span>
+            <span class="hw-badge">${allTeacherHomeworks.length}</span>
+        </button>
+    `;
+
+    weeks.forEach(w => {
+        const isActive = (String(activeTeacherHwFilters.week) === String(w));
+        const count = weekCounts[w] || 0;
+
+        html += `
+            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwWeekFilter('${w}')">
+                <i class="fas fa-calendar-day" style="color:#0284C7;"></i>
+                <span>Semaine ${w}</span>
+                <span class="hw-badge">${count}</span>
+            </button>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function setTeacherHwWeekFilter(week) {
+    activeTeacherHwFilters.week = week;
+    renderTeacherWeeksIcons();
+    renderTeacherHomeworksDashboard();
+}
+
+// 6. Statut d'évaluation
+function setTeacherHwStatusFilter(status) {
+    activeTeacherHwFilters.status = status;
+    const btns = document.querySelectorAll('#teacherStatusIconsContainer .teacher-icon-btn');
+    btns.forEach(b => {
+        const bStatus = b.getAttribute('data-status');
+        if (bStatus === status) {
+            b.classList.add('active');
+        } else {
+            b.classList.remove('active');
+        }
+    });
+    renderTeacherHomeworksDashboard();
+}
+
+// Réinitialiser tous les filtres
+function resetAllTeacherHwFilters() {
+    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.matiere = 'all';
+    activeTeacherHwFilters.jour = 'all';
+    activeTeacherHwFilters.week = 'all';
+    activeTeacherHwFilters.status = 'all';
+    activeTeacherHwFilters.search = '';
+
+    const searchInput = document.getElementById('teacherHwSearchInput');
+    if (searchInput) searchInput.value = '';
+
+    renderTeacherClassesIcons();
+    renderTeacherSubjectsIcons();
+    renderTeacherDaysIcons();
+    renderTeacherWeeksIcons();
+    setTeacherHwStatusFilter('all');
+}
+
+// Rendu principal des devoirs
 function renderTeacherHomeworksDashboard() {
     const container = document.getElementById('teacher-homeworks-tree-container');
     if (!container) return;
 
-    const filterWeek = document.getElementById('teacherFilterWeek')?.value || 'all';
-    const filterClass = document.getElementById('teacherFilterClass')?.value || 'all';
-    const filterStatus = document.getElementById('teacherFilterStatus')?.value || 'all';
+    const searchInput = document.getElementById('teacherHwSearchInput');
+    activeTeacherHwFilters.search = (searchInput ? searchInput.value : '').trim().toLowerCase();
 
-    // Filtrer la liste des devoirs
-    const filtered = allTeacherHomeworks.filter(hw => {
-        if (filterWeek !== 'all' && String(hw.week) !== String(filterWeek)) return false;
-        if (filterClass !== 'all' && hw.classe !== filterClass) return false;
-        if (filterStatus === 'evaluated' && !hw.isEvaluated) return false;
-        if (filterStatus === 'pending' && hw.isEvaluated) return false;
-        return true;
-    });
-
-    // Mettre à jour les statistiques
+    // Mettre à jour les compteurs de statut
     const totalCount = allTeacherHomeworks.length;
     const evaluatedCount = allTeacherHomeworks.filter(h => h.isEvaluated).length;
     const pendingCount = totalCount - evaluatedCount;
 
     const statTotal = document.getElementById('statTotalHw');
     if (statTotal) statTotal.textContent = totalCount;
-
     const statEval = document.getElementById('statEvaluatedHw');
     if (statEval) statEval.textContent = evaluatedCount;
-
     const statPending = document.getElementById('statPendingHw');
     if (statPending) statPending.textContent = pendingCount;
 
+    const bAll = document.getElementById('badgeStatusAll');
+    if (bAll) bAll.textContent = totalCount;
+    const bPending = document.getElementById('badgeStatusPending');
+    if (bPending) bPending.textContent = pendingCount;
+    const bEval = document.getElementById('badgeStatusEvaluated');
+    if (bEval) bEval.textContent = evaluatedCount;
+
+    // Badges des filtres actifs
+    const tagsContainer = document.getElementById('teacherActiveFiltersTags');
+    if (tagsContainer) {
+        let tagsHtml = '';
+        if (activeTeacherHwFilters.classe !== 'all') {
+            tagsHtml += `<span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Classe: ${escapeHtml(activeTeacherHwFilters.classe)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwClassFilter('all')"></i></span>`;
+        }
+        if (activeTeacherHwFilters.matiere !== 'all') {
+            tagsHtml += `<span style="background:#F5F3FF; color:#7C3AED; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Matière: ${escapeHtml(activeTeacherHwFilters.matiere)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwSubjectFilter('all')"></i></span>`;
+        }
+        if (activeTeacherHwFilters.jour !== 'all') {
+            tagsHtml += `<span style="background:#ECFDF5; color:#059669; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Jour: ${escapeHtml(activeTeacherHwFilters.jour)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwDayFilter('all')"></i></span>`;
+        }
+        if (activeTeacherHwFilters.week !== 'all') {
+            tagsHtml += `<span style="background:#F0F9FF; color:#0284C7; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Semaine ${escapeHtml(activeTeacherHwFilters.week)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwWeekFilter('all')"></i></span>`;
+        }
+        if (activeTeacherHwFilters.status !== 'all') {
+            const stLabel = activeTeacherHwFilters.status === 'evaluated' ? 'Évalués (Vert)' : 'À Évaluer';
+            tagsHtml += `<span style="background:#FEF3C7; color:#B45309; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Statut: ${stLabel} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwStatusFilter('all')"></i></span>`;
+        }
+        if (activeTeacherHwFilters.search) {
+            tagsHtml += `<span style="background:#F1F5F9; color:#334155; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Recherche: "${escapeHtml(activeTeacherHwFilters.search)}" <i class="fas fa-times" style="cursor:pointer;" onclick="document.getElementById('teacherHwSearchInput').value=''; renderTeacherHomeworksDashboard();"></i></span>`;
+        }
+        tagsContainer.innerHTML = tagsHtml;
+    }
+
+    // Filtrer la liste des devoirs
+    const filtered = allTeacherHomeworks.filter(hw => {
+        if (activeTeacherHwFilters.classe !== 'all' && hw.classe !== activeTeacherHwFilters.classe) return false;
+        if (activeTeacherHwFilters.matiere !== 'all' && hw.matiere !== activeTeacherHwFilters.matiere) return false;
+        
+        if (activeTeacherHwFilters.jour !== 'all') {
+            const dInfo = getDayIconAndDetails(hw.jour);
+            if (dInfo.key !== activeTeacherHwFilters.jour) return false;
+        }
+
+        if (activeTeacherHwFilters.week !== 'all' && String(hw.week) !== String(activeTeacherHwFilters.week)) return false;
+        if (activeTeacherHwFilters.status === 'evaluated' && !hw.isEvaluated) return false;
+        if (activeTeacherHwFilters.status === 'pending' && hw.isEvaluated) return false;
+
+        if (activeTeacherHwFilters.search) {
+            const q = activeTeacherHwFilters.search;
+            const textMatch = (
+                String(hw.devoir || '').toLowerCase().includes(q) ||
+                String(hw.lecon || '').toLowerCase().includes(q) ||
+                String(hw.matiere || '').toLowerCase().includes(q) ||
+                String(hw.classe || '').toLowerCase().includes(q) ||
+                String(hw.jour || '').toLowerCase().includes(q)
+            );
+            if (!textMatch) return false;
+        }
+
+        return true;
+    });
+
     if (filtered.length === 0) {
         container.innerHTML = `
-            <div style="background:white; border-radius:14px; padding:40px 20px; text-align:center; border:1px dashed #CBD5E1; color:#64748B;">
-                <i class="fas fa-clipboard-check fa-3x" style="color:#94A3B8; margin-bottom:12px;"></i>
-                <h4 style="font-size:1.15rem; color:#334155; margin:0 0 6px 0;">Aucun devoir trouvé avec ces filtres</h4>
-                <p style="font-size:0.9rem; margin:0;">Veuillez ajuster les filtres ou enregistrer de nouveaux devoirs dans le plan hebdomadaire.</p>
+            <div style="background:white; border-radius:16px; padding:45px 20px; text-align:center; border:1px dashed #CBD5E1; color:#64748B;">
+                <div style="width:60px; height:60px; background:#F1F5F9; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-bottom:14px;">
+                    <i class="fas fa-clipboard-check fa-2x" style="color:#94A3B8;"></i>
+                </div>
+                <h4 style="font-size:1.15rem; color:#1E293B; margin:0 0 6px 0; font-weight:700;">Aucun devoir ne correspond à ces critères d'icônes</h4>
+                <p style="font-size:0.92rem; margin:0 0 16px 0; color:#64748B;">Cliquez sur "Toutes les Classes", "Toutes les Matières" ou réinitialisez les filtres.</p>
+                <button type="button" class="pro-button primary-button" onclick="resetAllTeacherHwFilters()">
+                    <i class="fas fa-undo"></i> Réinitialiser tous les filtres
+                </button>
             </div>
         `;
         return;
@@ -8592,7 +9559,7 @@ function renderTeacherHomeworksDashboard() {
         const sortedClasses = Array.from(wData.classesMap.entries()).sort((a, b) => compareClasses(a[0], b[0]));
 
         sortedClasses.forEach(([cKey, homeworksList]) => {
-            const arCls = classTranslations[cKey];
+            const arCls = (typeof classTranslations !== 'undefined' && classTranslations[cKey]) ? classTranslations[cKey] : '';
             const classTitle = arCls ? `${arCls} (${cKey})` : cKey;
 
             html += `
@@ -8615,10 +9582,12 @@ function renderTeacherHomeworksDashboard() {
                 const globalIndex = allTeacherHomeworks.indexOf(hw);
                 const isEvaluated = !!hw.isEvaluated;
 
-                // DESIGN CONDITIONNEL : VERT SI ÉVALUÉ, BLANC/GRIS SI EN ATTENTE
                 const cardBg = isEvaluated ? '#F0FDF4' : '#FFFFFF';
                 const cardBorder = isEvaluated ? '2px solid #10B981' : '1px solid #CBD5E1';
                 const shadow = isEvaluated ? '0 4px 15px rgba(16, 185, 129, 0.12)' : '0 3px 10px rgba(0,0,0,0.04)';
+
+                const subjInfo = getSubjectIconAndColor(hw.matiere);
+                const dayInfo = getDayIconAndDetails(hw.jour);
 
                 html += `
                     <div style="background:${cardBg}; border:${cardBorder}; border-radius:14px; padding:18px; box-shadow:${shadow}; display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s, box-shadow 0.2s; position:relative;">
@@ -8626,10 +9595,10 @@ function renderTeacherHomeworksDashboard() {
                         <!-- Ruban / Badge d'état -->
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; gap:8px;">
                             <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-                                <span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.78rem;">
-                                    <i class="fas fa-book"></i> ${escapeHtml(hw.matiere || 'Matière')}
+                                <span style="background:${subjInfo.bg}; color:${subjInfo.color}; border:1px solid ${subjInfo.border}; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px;">
+                                    <i class="${subjInfo.icon}"></i> ${escapeHtml(hw.matiere || 'Matière')}
                                 </span>
-                                ${hw.jour ? `<span style="background:#F1F5F9; color:#334155; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem;"><i class="far fa-calendar"></i> ${escapeHtml(hw.jour)}</span>` : ''}
+                                ${hw.jour ? `<span style="background:#F8FAFC; color:#334155; border:1px solid #E2E8F0; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem; display:inline-flex; align-items:center; gap:4px;"><i class="${dayInfo.icon}" style="color:${dayInfo.color};"></i> ${escapeHtml(hw.jour)}</span>` : ''}
                                 ${hw.periode ? `<span style="background:#FEF3C7; color:#92400E; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem;">Période ${escapeHtml(hw.periode)}</span>` : ''}
                             </div>
 
@@ -8772,9 +9741,10 @@ async function openTeacherEvalModal(hwIndex) {
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">#</th>
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">Nom de l'Élève</th>
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; min-width:140px;">Statut du Devoir</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:110px;">Participation (/10)</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:110px;">Comportement (/10)</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:100px;">Participation (/10)</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:100px;">Comportement (/10)</th>
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">Remarque</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:90px;">Parent</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -8802,13 +9772,18 @@ async function openTeacherEvalModal(hwIndex) {
                         </select>
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
-                        <input type="number" min="0" max="10" value="${curPart}" class="modal-eval-part" data-student="${escapeHtml(st.name)}" style="width:80px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                        <input type="number" min="0" max="10" value="${curPart}" class="modal-eval-part" data-student="${escapeHtml(st.name)}" style="width:75px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
-                        <input type="number" min="0" max="10" value="${curBeh}" class="modal-eval-beh" data-student="${escapeHtml(st.name)}" style="width:80px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                        <input type="number" min="0" max="10" value="${curBeh}" class="modal-eval-beh" data-student="${escapeHtml(st.name)}" style="width:75px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0;">
                         <input type="text" value="${escapeHtml(curComm)}" class="modal-eval-comm" data-student="${escapeHtml(st.name)}" placeholder="Observation / Remarque" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1;">
+                    </td>
+                    <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
+                        <button type="button" onclick="contactParentFromEval('${escapeHtml(st.name).replace(/'/g, "\\'")}', '${escapeHtml(st.parentPhone || '').replace(/'/g, "\\'")}', '${escapeHtml(classDisplay).replace(/'/g, "\\'")}', '${escapeHtml(hw.matiere || '').replace(/'/g, "\\'")}', '${escapeHtml(hw.formattedDateFr || hw.date || '').replace(/'/g, "\\'")}')" class="pro-button" style="padding:5px 8px; font-size:0.75rem; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; border-radius:6px; font-weight:700; white-space:nowrap; cursor:pointer;" title="Envoyer un message au parent">
+                            <i class="fas fa-comment-dots"></i> Message
+                        </button>
                     </td>
                 </tr>
             `;

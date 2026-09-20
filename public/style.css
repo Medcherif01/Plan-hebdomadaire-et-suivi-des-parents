@@ -3110,4 +3110,175 @@ tr.row-plan-error {
     backdrop-filter: blur(8px);
 }
 
+/* ============================================================================
+   STYLES POUR LE SUIVI DES DEVOIRS PAR L'ENSEIGNANT (NAVIGATION PAR ICÔNES)
+   ============================================================================ */
+.teacher-filter-hub {
+    background: #FFFFFF;
+    border-radius: 18px;
+    padding: 20px 24px;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    margin-bottom: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.teacher-filter-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.teacher-filter-row-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.teacher-filter-row-header i {
+    margin-right: 6px;
+}
+
+.teacher-icon-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.teacher-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    min-height: 42px;
+    border-radius: 12px;
+    border: 1.5px solid #E2E8F0;
+    background: #F8FAFC;
+    color: #334155;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.teacher-icon-btn:hover {
+    background: #FFFFFF;
+    border-color: #93C5FD;
+    color: #1E40AF;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.12);
+}
+
+.teacher-icon-btn:active {
+    transform: translateY(0);
+}
+
+.teacher-icon-btn.active {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+    color: #FFFFFF !important;
+    border-color: #1D4ED8;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+}
+
+.teacher-icon-btn.active i {
+    color: #FFFFFF !important;
+}
+
+.teacher-icon-btn .hw-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    background: #E2E8F0;
+    color: #475569;
+    transition: all 0.2s;
+}
+
+.teacher-icon-btn.active .hw-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: #FFFFFF;
+}
+
+/* Statut boutons */
+.teacher-icon-btn.status-pending:hover {
+    border-color: #FBBF24;
+    color: #B45309;
+}
+.teacher-icon-btn.status-pending.active {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    border-color: #D97706;
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+}
+
+.teacher-icon-btn.status-evaluated:hover {
+    border-color: #34D399;
+    color: #065F46;
+}
+.teacher-icon-btn.status-evaluated.active {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    border-color: #059669;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+}
+
+/* Cartes enseignant pour switcher admin */
+.teacher-card-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    border: 1.5px solid #E2E8F0;
+    background: #FFFFFF;
+    color: #334155;
+    font-weight: 600;
+    font-size: 0.86rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.teacher-card-pill:hover {
+    border-color: #6366F1;
+    background: #F5F3FF;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+.teacher-card-pill.active {
+    background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%);
+    color: #FFFFFF;
+    border-color: #4338CA;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
+}
+.teacher-card-pill img {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1.5px solid rgba(255, 255, 255, 0.6);
+}
+
+/* Barre de recherche et actions */
+.teacher-filter-tools {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-top: 14px;
+    border-top: 1px dashed #E2E8F0;
+}
+
 
