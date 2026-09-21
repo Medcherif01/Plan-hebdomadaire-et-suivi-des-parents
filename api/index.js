@@ -2027,6 +2027,160 @@ function normalizeStudentClass(cls) {
   return str.replace(/\s*(garçons|garcons|filles|primaire)\s*/gi, '').trim();
 }
 
+function normalizeStudentName(str) {
+  if (!str) return '';
+  let s = String(str).trim();
+  // Suppression des voyelles arabes (Harakat) et Tatweel
+  s = s.replace(/[\u064B-\u0652\u0640]/g, '');
+  // Normalisation des variantes d'Alif et lettres arabes courantes
+  s = s.replace(/[أإآٱ]/g, 'ا');
+  s = s.replace(/ى/g, 'ي');
+  s = s.replace(/ة/g, 'ه');
+  s = s.replace(/ؤ/g, 'و');
+  s = s.replace(/ئ/g, 'ي');
+  // Normalisation latine (suppression des accents, cédilles, trémas)
+  s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // Minuscule et espaces compressés
+  return s.toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Récupère la liste officielle des élèves enregistrés par l'administrateur pour une section
+async function getAuthoritativeStudents(db, section = 'garcons') {
+  try {
+    const deletedDocs = await db.collection('deleted_students').find({ section }).toArray();
+    const deletedSet = new Set(deletedDocs.map(d => normalizeStudentName(d.name)));
+
+    const rawStudents = await db.collection('students').find({ section }).toArray();
+    const studentMap = new Map();
+
+    for (const st of rawStudents) {
+      const cleanName = (st.name || '').trim();
+      if (!cleanName) continue;
+      const norm = normalizeStudentName(cleanName);
+      if (deletedSet.has(norm)) continue;
+
+      const key = `${st.section || section}_${norm}`;
+      const existing = studentMap.get(key);
+      const isNewer = !existing || (st.updatedAt && (!existing.updatedAt || new Date(st.updatedAt) >= new Date(existing.updatedAt)));
+      if (isNewer) {
+        studentMap.set(key, {
+          _id: st._id,
+          name: cleanName,
+          class: normalizeStudentClass(st.class) || (st.class || '').trim(),
+          section: st.section || section,
+          photo: st.photo || '',
+          birthday: st.birthday || '',
+          updatedAt: st.updatedAt || st.createdAt
+        });
+      }
+    }
+
+    const list = Array.from(studentMap.values());
+    list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base', numeric: true }));
+    return list;
+  } catch (err) {
+    console.warn('Note getAuthoritativeStudents:', err.message);
+    return [];
+  }
+}
+
+// Fait correspondre un nom brut (d'une évaluation) à l'élève officiel enregistré par l'admin
+function matchAdminStudent(rawName, rawClass, authoritativeList) {
+  if (!rawName || !authoritativeList || authoritativeList.length === 0) return null;
+  const targetNorm = normalizeStudentName(rawName);
+  const targetClassNorm = (normalizeStudentClass(rawClass) || (rawClass || '').trim()).toUpperCase();
+
+  // 1. Correspondance exacte sur nom + classe
+  let found = authoritativeList.find(s => s.name.trim() === String(rawName).trim() && String(s.class).toUpperCase() === targetClassNorm);
+  if (found) return found;
+
+  // 2. Correspondance nom normalisé dans la même classe
+  found = authoritativeList.find(s => normalizeStudentName(s.name) === targetNorm && String(s.class).toUpperCase() === targetClassNorm);
+  if (found) return found;
+
+  // 3. Correspondance nom normalisé dans toute la section (élève ayant changé de classe)
+  found = authoritativeList.find(s => normalizeStudentName(s.name) === targetNorm);
+  if (found) return found;
+
+  // 4. Sous-chaîne / inclusion dans la même classe (si longueur >= 3)
+  if (targetNorm.length >= 3) {
+    found = authoritativeList.find(s => {
+      const sNorm = normalizeStudentName(s.name);
+      return String(s.class).toUpperCase() === targetClassNorm && (sNorm.includes(targetNorm) || targetNorm.includes(sNorm));
+    });
+    if (found) return found;
+
+    // 5. Sous-chaîne dans toute la section
+    found = authoritativeList.find(s => {
+      const sNorm = normalizeStudentName(s.name);
+      return sNorm.includes(targetNorm) || targetNorm.includes(sNorm);
+    });
+    if (found) return found;
+  }
+
+  return null;
+}
+
+// Harmonisation automatique des évaluations et étoiles existantes vers les noms officiels admin
+async function harmonizeEvaluationsForSection(db, section = 'garcons') {
+  try {
+    const authoritativeList = await getAuthoritativeStudents(db, section);
+    if (!authoritativeList || authoritativeList.length === 0) return;
+
+    // 1. Harmoniser la collection evaluations
+    const evalQuery = section ? { $or: [{ section }, { section: { $exists: false } }] } : {};
+    const evaluations = await db.collection('evaluations').find(evalQuery).toArray();
+
+    for (const ev of evaluations) {
+      const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
+      if (matched) {
+        const needsNameFix = (ev.studentName !== matched.name);
+        const needsClassFix = (ev.class !== matched.class);
+        if (needsNameFix || needsClassFix) {
+          await db.collection('evaluations').updateOne(
+            { _id: ev._id },
+            { $set: { studentName: matched.name, class: matched.class, section: matched.section } }
+          );
+        }
+      }
+    }
+
+    // 2. Harmoniser la collection daily_stars
+    const starsQuery = section ? { $or: [{ section }, { section: { $exists: false } }] } : {};
+    const stars = await db.collection('daily_stars').find(starsQuery).toArray();
+
+    for (const st of stars) {
+      const matched = matchAdminStudent(st.studentName, st.className || st.class, authoritativeList);
+      if (matched) {
+        const needsNameFix = (st.studentName !== matched.name);
+        const needsClassFix = ((st.className || st.class) !== matched.class);
+        if (needsNameFix || needsClassFix) {
+          await db.collection('daily_stars').updateOne(
+            { _id: st._id },
+            { $set: { studentName: matched.name, className: matched.class, class: matched.class, section: matched.section } }
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Note harmonizeEvaluationsForSection:', err.message);
+  }
+}
+
+// Harmonisation initiale au démarrage du serveur
+setTimeout(async () => {
+  try {
+    const db = await connectToDatabase();
+    await Promise.all([
+      harmonizeEvaluationsForSection(db, 'garcons'),
+      harmonizeEvaluationsForSection(db, 'filles'),
+      harmonizeEvaluationsForSection(db, 'primaire')
+    ]);
+  } catch (e) {
+    console.warn('Note harmonisation initiale:', e.message);
+  }
+}, 2000);
+
 app.get('/api/admin/students', async (req, res) => {
   try {
     let section = req.query.section || 'garcons';
@@ -2164,6 +2318,16 @@ app.post('/api/admin/students', async (req, res) => {
     const studentId = id || `${section}_${cleanClass}_${cleanName}`;
     const formattedPhoto = convertGoogleDriveUrl(photo || '');
 
+    // Identifier l'ancien nom de l'élève avant modification éventuelle
+    let prevStudent = null;
+    if (id) {
+      prevStudent = await db.collection('students').findOne({ _id: id });
+    }
+    if (!prevStudent && studentId) {
+      prevStudent = await db.collection('students').findOne({ _id: studentId });
+    }
+    const prevName = prevStudent ? (prevStudent.name || '').trim() : '';
+
     // 1. Retirer immédiatement des élèves supprimés si présent
     await db.collection('deleted_students').deleteMany({
       name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
@@ -2192,6 +2356,30 @@ app.post('/api/admin/students', async (req, res) => {
       { $set: studentData },
       { upsert: true }
     );
+
+    // 3. Si le nom a été modifié/corrigé par l'admin, propager vers toutes les évaluations et étoiles passées
+    if (prevName && prevName.toLowerCase() !== cleanName.toLowerCase()) {
+      try {
+        const nameRegex = { $regex: new RegExp(`^${prevName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+        await db.collection('evaluations').updateMany(
+          { studentName: nameRegex, section: section },
+          { $set: { studentName: cleanName } }
+        );
+        await db.collection('daily_stars').updateMany(
+          { studentName: nameRegex, section: section },
+          { $set: { studentName: cleanName } }
+        );
+        await db.collection('students_of_the_week').updateMany(
+          { studentName: nameRegex, section: section },
+          { $set: { studentName: cleanName } }
+        );
+      } catch (propErr) {
+        console.warn('Note propagation renommage élève:', propErr.message);
+      }
+    }
+
+    // Harmonisation automatique en arrière-plan
+    harmonizeEvaluationsForSection(db, section).catch(e => console.warn(e.message));
 
     invalidateStudentsCache();
 
@@ -2358,8 +2546,9 @@ app.post('/api/admin/students/move', async (req, res) => {
 
     // 5. Mettre à jour les évaluations associées à l'élève vers la nouvelle classe
     try {
+      const nameRegex = { $regex: new RegExp(`^${finalStudentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
       await db.collection('evaluations').updateMany(
-        { studentName: finalStudentName, section: currentSection },
+        { studentName: nameRegex, section: currentSection },
         { $set: { class: cleanNewClass } }
       );
     } catch (evalErr) {
@@ -2368,13 +2557,17 @@ app.post('/api/admin/students/move', async (req, res) => {
 
     // 6. Mettre à jour les étoiles journalières si présentes
     try {
+      const nameRegex = { $regex: new RegExp(`^${finalStudentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
       await db.collection('daily_stars').updateMany(
-        { studentName: finalStudentName, section: currentSection },
-        { $set: { class: cleanNewClass } }
+        { studentName: nameRegex, section: currentSection },
+        { $set: { class: cleanNewClass, className: cleanNewClass } }
       );
     } catch (starErr) {
       console.warn('Note mise à jour daily_stars:', starErr.message);
     }
+
+    // Harmonisation automatique en arrière-plan
+    harmonizeEvaluationsForSection(db, currentSection).catch(e => console.warn(e.message));
 
     // 7. INVALIDER TOUS LES CACHES (Essentiel pour que l'ancienne classe n'affiche plus l'élève)
     invalidateStudentsCache();
@@ -2612,7 +2805,8 @@ app.get('/api/teacher-homeworks', async (req, res) => {
 
 app.get('/api/evaluations', async (req, res) => {
   try {
-    const { class: className, student: studentName, date: dateQuery, week, section = 'garcons' } = req.query;
+    const { class: className, student: studentQueryParam, studentName: studentNameQueryParam, date: dateQuery, week, section = 'garcons' } = req.query;
+    const studentName = studentQueryParam || studentNameQueryParam;
     if (!className || !dateQuery) {
       return res.status(400).json({ error: 'Classe et date sont requises.' });
     }
@@ -2824,9 +3018,17 @@ app.get('/api/evaluations', async (req, res) => {
     if (isWeekendRedirect && effectiveDateQuery && effectiveDateQuery !== dateQuery) {
       evalDates.push(effectiveDateQuery);
     }
-    let query = { class: className, date: { $in: evalDates }, section: section };
+    const authoritativeList = await getAuthoritativeStudents(db, section);
+    const canonicalClassName = normalizeStudentClass(className);
+    const classFilter = (canonicalClassName && canonicalClassName !== className) 
+      ? { $in: [className, canonicalClassName] } 
+      : className;
+
+    let query = { class: classFilter, date: { $in: evalDates }, section: section };
     if (studentName) {
-      query.studentName = studentName;
+      const matched = matchAdminStudent(studentName, className, authoritativeList);
+      const targetName = matched ? matched.name : studentName.trim();
+      query.studentName = { $regex: new RegExp(`^${targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
     }
 
     let evaluations = await db.collection('evaluations').find(query).toArray();
@@ -2834,6 +3036,15 @@ app.get('/api/evaluations', async (req, res) => {
       delete query.section;
       evaluations = await db.collection('evaluations').find(query).toArray();
     }
+
+    // Harmonisation stricte des évaluations retournées avec les noms officiels enregistrés par l'admin
+    evaluations = (evaluations || []).map(ev => {
+      const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
+      if (matched) {
+        return { ...ev, studentName: matched.name, class: matched.class };
+      }
+      return ev;
+    });
 
     let responseData = { 
       homeworks, 
@@ -2856,11 +3067,19 @@ app.get('/api/evaluations', async (req, res) => {
       const firstDayStr = firstDayOfWeek.format('YYYY-MM-DD');
       const lastDayStr = lastDayOfWeek.format('YYYY-MM-DD');
 
-      responseData.weeklyEvaluations = await db.collection('evaluations').find({
-        studentName: studentName,
-        class: className,
+      const matchedWeekly = matchAdminStudent(studentName, className, authoritativeList);
+      const weeklyStudentName = matchedWeekly ? matchedWeekly.name : studentName.trim();
+
+      const rawWeeklyEvals = await db.collection('evaluations').find({
+        studentName: { $regex: new RegExp(`^${weeklyStudentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        class: classFilter,
         date: { $gte: firstDayStr, $lte: lastDayStr }
       }).toArray();
+
+      responseData.weeklyEvaluations = (rawWeeklyEvals || []).map(ev => {
+        const m = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
+        return m ? { ...ev, studentName: m.name, class: m.class } : ev;
+      });
     }
 
     res.status(200).json(responseData);
@@ -2877,13 +3096,29 @@ app.post('/api/evaluations', async (req, res) => {
       return res.status(200).json({ message: 'Aucune évaluation à enregistrer.' });
     }
     const db = await connectToDatabase();
-    const operations = evaluations.map(ev => ({
-      updateOne: {
-        filter: { date: ev.date, studentName: ev.studentName, class: ev.class, subject: ev.subject },
-        update: { $set: { ...ev, section: section, updatedAt: new Date() } },
-        upsert: true
-      }
-    }));
+    const authoritativeList = await getAuthoritativeStudents(db, section);
+
+    const operations = evaluations.map(ev => {
+      const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
+      const finalStudentName = matched ? matched.name : (ev.studentName || '').trim();
+      const finalClass = matched ? matched.class : (normalizeStudentClass(ev.class) || ev.class);
+
+      return {
+        updateOne: {
+          filter: { date: ev.date, studentName: finalStudentName, class: finalClass, subject: ev.subject },
+          update: { 
+            $set: { 
+              ...ev, 
+              studentName: finalStudentName, 
+              class: finalClass, 
+              section: section, 
+              updatedAt: new Date() 
+            } 
+          },
+          upsert: true
+        }
+      };
+    });
     await db.collection('evaluations').bulkWrite(operations);
     res.status(200).json({ message: 'Évaluations enregistrées avec succès.' });
   } catch (error) {
@@ -2994,9 +3229,17 @@ app.get('/api/daily-stars', async (req, res) => {
   try {
     const { studentName, className, date, week, section = 'garcons' } = req.query;
     const db = await connectToDatabase();
+    const authoritativeList = await getAuthoritativeStudents(db, section);
     let query = { section: section };
-    if (studentName) query.studentName = studentName;
-    if (className) query.className = className;
+    if (studentName) {
+      const matched = matchAdminStudent(studentName, className, authoritativeList);
+      const targetName = matched ? matched.name : studentName.trim();
+      query.studentName = { $regex: new RegExp(`^${targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
+    }
+    if (className) {
+      const canonical = normalizeStudentClass(className);
+      query.className = (canonical && canonical !== className) ? { $in: [className, canonical] } : className;
+    }
     if (date) query.date = date;
 
     if (week) {
@@ -3007,7 +3250,12 @@ app.get('/api/daily-stars', async (req, res) => {
       };
     }
 
-    const stars = await db.collection('daily_stars').find(query).toArray();
+    let stars = await db.collection('daily_stars').find(query).toArray();
+    stars = (stars || []).map(st => {
+      const matched = matchAdminStudent(st.studentName, st.className || st.class, authoritativeList);
+      return matched ? { ...st, studentName: matched.name, className: matched.class, class: matched.class } : st;
+    });
+
     res.status(200).json({ stars });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -3019,6 +3267,7 @@ app.post('/api/daily-stars', async (req, res) => {
     const { date, section = 'garcons' } = req.body;
     const targetDate = date || moment().format('YYYY-MM-DD');
     const db = await connectToDatabase();
+    const authoritativeList = await getAuthoritativeStudents(db, section);
 
     const evaluations = await db.collection('evaluations').find({ date: targetDate, section }).toArray();
     if (evaluations.length === 0) {
@@ -3027,9 +3276,12 @@ app.post('/api/daily-stars', async (req, res) => {
 
     const evalsByStudent = {};
     evaluations.forEach(ev => {
-      const key = `${ev.studentName}_${ev.class}`;
+      const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
+      const sName = matched ? matched.name : (ev.studentName || '').trim();
+      const cName = matched ? matched.class : (normalizeStudentClass(ev.class) || ev.class);
+      const key = `${sName}_${cName}`;
       if (!evalsByStudent[key]) {
-        evalsByStudent[key] = { studentName: ev.studentName, className: ev.class, evaluations: [] };
+        evalsByStudent[key] = { studentName: sName, className: cName, evaluations: [] };
       }
       evalsByStudent[key].evaluations.push(ev);
     });
@@ -3042,6 +3294,7 @@ app.post('/api/daily-stars', async (req, res) => {
         date: targetDate,
         studentName: sData.studentName,
         className: sData.className,
+        class: sData.className,
         earnedStar: earnedStarValue,
         section: section,
         createdAt: new Date()
@@ -3697,17 +3950,34 @@ app.get('/api/general-evaluations', async (req, res) => {
   try {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
+    const authoritativeList = await getAuthoritativeStudents(db, section);
+
     const eightWeeksAgo = moment().subtract(8, 'weeks').startOf('day');
     const evaluations = await db.collection('evaluations').find({
-      section: section,
+      $or: [{ section: section }, { section: { $exists: false } }],
       date: { $gte: eightWeeksAgo.format('YYYY-MM-DD') }
     }).toArray();
 
+    // 1. Initialiser les fiches de suivi pour TOUS les élèves enregistrés par l'admin dans la section
     const studentEvaluations = {};
+    for (const st of authoritativeList) {
+      const key = `${st.class}|||${st.name}`;
+      studentEvaluations[key] = {
+        classe: st.class,
+        student: st.name,
+        photo: st.photo || '',
+        behaviors: [], participations: [], statuses: [],
+        bySubject: {}
+      };
+    }
+
+    // 2. Associer chaque évaluation à son élève officiel admin
     evaluations.forEach(ev => {
-      const sName = (ev.studentName || '').trim();
-      const cName = (ev.class || '').trim();
+      const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
+      const sName = matched ? matched.name : (ev.studentName || '').trim();
+      const cName = matched ? matched.class : (normalizeStudentClass(ev.class) || ev.class);
       if (!sName || !cName) return;
+
       const key = `${cName}|||${sName}`;
       if (!studentEvaluations[key]) {
         studentEvaluations[key] = {
@@ -3805,6 +4075,13 @@ app.get('/api/general-evaluations', async (req, res) => {
         nonFaitCount: global.nonFaitCount,
         subjectScores
       };
+    });
+
+    // Tri stable par classe puis par nom d'élève dans le même ordre alphabétique officiel
+    results.sort((a, b) => {
+      const clsComp = (a.classe || '').localeCompare(b.classe || '', 'fr', { numeric: true });
+      if (clsComp !== 0) return clsComp;
+      return (a.student || '').localeCompare(b.student || '', 'fr', { sensitivity: 'base', numeric: true });
     });
 
     res.status(200).json(results);

@@ -912,6 +912,36 @@
             return false;
         }
 
+        function getCanonicalClassCode(str) {
+            if (!str) return '';
+            const s = String(str).trim();
+            const match = s.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/i);
+            if (match) return match[1].toUpperCase();
+            const norm = normalizeClassString(s);
+            for (const group of canonicalClassEquivalents) {
+                if (norm === group.code || group.names.some(n => {
+                    const nNorm = normalizeClassString(n);
+                    return norm === nNorm || (nNorm.length > 1 && (norm.includes(nNorm) || nNorm.includes(norm)));
+                })) {
+                    return group.code.toUpperCase();
+                }
+            }
+            return s.replace(/\s*(garçons|garcons|filles|primaire)\s*/gi, '').trim();
+        }
+
+        function normalizeClientName(str) {
+            if (!str) return '';
+            let s = String(str).trim();
+            s = s.replace(/[\u064B-\u0652\u0640]/g, '');
+            s = s.replace(/[أإآٱ]/g, 'ا');
+            s = s.replace(/ى/g, 'ي');
+            s = s.replace(/ة/g, 'ه');
+            s = s.replace(/ؤ/g, 'و');
+            s = s.replace(/ئ/g, 'ي');
+            s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return s.toLowerCase().replace(/\s+/g, ' ');
+        }
+
         function renderParentClassButtons() {
             const container = document.getElementById('parent-class-buttons');
             if (!container) return;
@@ -9986,14 +10016,17 @@ async function openTeacherEvalModal(hwIndex) {
 
     try {
         const section = currentSection || 'garcons';
+        const canonicalClass = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(hw.classe) : (hw.classe || '').trim();
         const [stRes, evRes] = await Promise.all([
-            fetch(`/api/admin/students?class=${encodeURIComponent(hw.classe)}&section=${encodeURIComponent(section)}`),
-            fetch(`/api/evaluations?class=${encodeURIComponent(hw.classe)}&date=${encodeURIComponent(hw.date)}&section=${encodeURIComponent(section)}`)
+            fetch(`/api/admin/students?class=${encodeURIComponent(canonicalClass || hw.classe)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`, { cache: 'no-store' }),
+            fetch(`/api/evaluations?class=${encodeURIComponent(canonicalClass || hw.classe)}&date=${encodeURIComponent(hw.date)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`, { cache: 'no-store' })
         ]);
 
         if (!stRes.ok) throw new Error("Erreur chargement élèves");
         const students = await stRes.json();
-        activeEvalStudents = students || [];
+        activeEvalStudents = (students || []).filter(s => s && s.name);
+        // Trier les élèves strictement dans le même ordre alphabétique que l'espace parent et admin
+        activeEvalStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base', numeric: true }));
 
         let existingEvaluations = [];
         if (evRes.ok) {
@@ -10029,7 +10062,13 @@ async function openTeacherEvalModal(hwIndex) {
         `;
 
         activeEvalStudents.forEach((st, idx) => {
-            const ev = existingEvaluations.find(e => e.studentName === st.name && (e.subject === hw.matiere || !e.subject)) || {};
+            const stNorm = typeof normalizeClientName === 'function' ? normalizeClientName(st.name) : st.name.toLowerCase();
+            const ev = existingEvaluations.find(e => {
+                const eNorm = typeof normalizeClientName === 'function' ? normalizeClientName(e.studentName) : (e.studentName || '').toLowerCase();
+                const isNameMatch = (e.studentName === st.name) || (eNorm === stNorm) || (stNorm.length >= 3 && (eNorm.includes(stNorm) || stNorm.includes(eNorm)));
+                const isSubjMatch = (e.subject === hw.matiere || !e.subject || !hw.matiere);
+                return isNameMatch && isSubjMatch;
+            }) || {};
             const curStatus = ev.status || 'Fait';
             const curPart = (ev.participation !== undefined && ev.participation !== null) ? ev.participation : 10;
             const curBeh = (ev.behavior !== undefined && ev.behavior !== null) ? ev.behavior : 10;
@@ -10114,6 +10153,7 @@ async function submitCurrentHomeworkEvaluation() {
     try {
         const hw = activeEvalHomework;
         const section = currentSection || 'garcons';
+        const canonicalClass = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(hw.classe) : (hw.classe || '').trim();
         const statusEls = document.querySelectorAll('.modal-eval-status');
         const evaluations = [];
 
@@ -10126,7 +10166,8 @@ async function submitCurrentHomeworkEvaluation() {
 
             evaluations.push({
                 studentName,
-                class: hw.classe,
+                class: canonicalClass || hw.classe,
+                rawClass: hw.classe,
                 date: hw.date,
                 subject: hw.matiere,
                 status,
