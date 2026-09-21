@@ -9049,11 +9049,11 @@ async function loadTeacherHomeworksDashboard() {
             ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) 
             : false;
 
-        const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        const section = activeTeacherHwFilters.section || (typeof currentSection !== 'undefined' && currentSection) || 'all';
         activeTeacherHwFilters.section = section;
         const teacherParamFromLogin = loggedInTeacherTable || (typeof loggedInUser !== 'undefined' ? loggedInUser : '');
 
-        // Pour un enseignant régulier : STRICTEMENT VÉROUILLÉ SUR SON NOM ET SA SECTION CONNECTÉE
+        // Pour un enseignant régulier : STRICTEMENT VÉROUILLÉ SUR SON NOM
         if (!isAdminOrSupervisor) {
             activeTeacherHwFilters.teacher = teacherParamFromLogin;
             const adminSwitcher = document.getElementById('teacherAdminSwitcherRow');
@@ -9098,12 +9098,13 @@ async function loadTeacherHomeworksDashboard() {
 
         const secEl = document.getElementById('teacherEvalActiveSection');
         if (secEl) {
-            secEl.textContent = section === 'garcons' 
-                ? 'Section Garçons (بنين)' 
-                : (section === 'primaire' ? 'Section Primaire & Maternelle (ابتدائي وروضة)' : 'Section Filles (بنات)');
+            secEl.textContent = section === 'all'
+                ? 'Toutes les Écoles / Sections'
+                : (section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'primaire' ? 'Section Primaire & Maternelle (ابتدائي وروضة)' : 'Section Filles (بنات)'));
         }
 
-        // Rendu des filtres hiérarchiques : Semaines -> Classes -> Jours -> Matières
+        // Rendu des filtres hiérarchiques : Écoles -> Semaines -> Classes -> Jours -> Matières
+        renderTeacherSchoolIcons();
         if (isAdminOrSupervisor) {
             renderTeacherAdminSwitcher(allSectionTeachersList);
         }
@@ -9128,20 +9129,60 @@ async function loadTeacherHomeworksDashboard() {
     }
 }
 
-// Barre d'icônes : ÉCOLES / SECTIONS (automatiquement gérée par la section connectée)
+// 0. Barre d'icônes : ÉCOLES / SECTIONS
 function renderTeacherSchoolIcons() {
-    // La section est désormais automatiquement fixée à la section connectée de l'enseignant
+    const container = document.getElementById('teacherSchoolIconsContainer');
+    if (!container) return;
+
+    const counts = { all: allTeacherHomeworks.length, garcons: 0, filles: 0, primaire: 0 };
+    allTeacherHomeworks.forEach(h => {
+        const sec = (h.section || '').toLowerCase();
+        if (sec.includes('garcon') || sec === 'garcons') counts.garcons += 1;
+        else if (sec.includes('fille') || sec === 'filles') counts.filles += 1;
+        else if (sec.includes('prim') || sec === 'primaire') counts.primaire += 1;
+    });
+
+    const bAll = document.getElementById('badgeSchoolAll');
+    if (bAll) bAll.textContent = counts.all;
+    const bGarcons = document.getElementById('badgeSchoolGarcons');
+    if (bGarcons) bGarcons.textContent = counts.garcons;
+    const bFilles = document.getElementById('badgeSchoolFilles');
+    if (bFilles) bFilles.textContent = counts.filles;
+    const bPrimaire = document.getElementById('badgeSchoolPrimaire');
+    if (bPrimaire) bPrimaire.textContent = counts.primaire;
+
+    const activeSec = activeTeacherHwFilters.section || 'all';
+    const btns = container.querySelectorAll('.teacher-icon-btn');
+    btns.forEach(b => {
+        const bSchool = b.getAttribute('data-school');
+        if (bSchool === activeSec) {
+            b.classList.add('active');
+        } else {
+            b.classList.remove('active');
+        }
+    });
+
+    const countLabel = document.getElementById('teacherSchoolCountLabel');
+    if (countLabel) {
+        if (activeSec === 'all') {
+            countLabel.textContent = `Toutes les écoles (${allTeacherHomeworks.length} devoirs au total)`;
+        } else {
+            const secName = activeSec === 'garcons' ? 'Section Garçons (بنين)' : (activeSec === 'filles' ? 'Section Filles (بنات)' : 'Section Primaire');
+            countLabel.textContent = `${secName} (${counts[activeSec] || 0} devoirs)`;
+        }
+    }
 }
 
 function setTeacherHwSchoolFilter(school) {
-    if (school && school !== 'all') {
-        currentSection = school;
-    }
-    activeTeacherHwFilters.section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+    activeTeacherHwFilters.section = school;
+    // Drill down: réinitialiser semaine, classe, jour et matière pour un affichage net
     activeTeacherHwFilters.week = 'all';
     activeTeacherHwFilters.classe = 'all';
     activeTeacherHwFilters.jour = 'all';
     activeTeacherHwFilters.matiere = 'all';
+    if (school !== 'all') {
+        currentSection = school;
+    }
     loadTeacherHomeworksDashboard();
 }
 
@@ -9503,7 +9544,7 @@ function setTeacherHwStatusFilter(status) {
 
 // Réinitialiser tous les filtres
 function resetAllTeacherHwFilters() {
-    activeTeacherHwFilters.section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+    activeTeacherHwFilters.section = 'all';
     activeTeacherHwFilters.week = 'all';
     activeTeacherHwFilters.classe = 'all';
     activeTeacherHwFilters.jour = 'all';
@@ -9514,6 +9555,7 @@ function resetAllTeacherHwFilters() {
     const searchInput = document.getElementById('teacherHwSearchInput');
     if (searchInput) searchInput.value = '';
 
+    renderTeacherSchoolIcons();
     renderTeacherWeeksIcons();
     renderTeacherClassesIcons();
     renderTeacherDaysIcons();
@@ -9552,9 +9594,10 @@ function renderTeacherHomeworksDashboard() {
     const tagsContainer = document.getElementById('teacherActiveFiltersTags');
     if (tagsContainer) {
         let tagsHtml = '';
-        const secName = activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : 'Primaire');
-        tagsHtml += `<span style="background:#EFF6FF; color:#1D4ED8; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-school"></i> Section: ${secName}</span>`;
-
+        if (activeTeacherHwFilters.section !== 'all') {
+            const secName = activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : 'Primaire');
+            tagsHtml += `<span style="background:#EFF6FF; color:#1D4ED8; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-school"></i> École: ${secName} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwSchoolFilter('all')"></i></span>`;
+        }
         if (activeTeacherHwFilters.week !== 'all') {
             tagsHtml += `<span style="background:#F0F9FF; color:#0284C7; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Semaine ${escapeHtml(activeTeacherHwFilters.week)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwWeekFilter('all')"></i></span>`;
         }
@@ -9636,9 +9679,9 @@ function renderTeacherHomeworksDashboard() {
                     <i class="fas fa-sitemap" style="color:#2563EB;"></i> Parcours :
                 </span>
 
-                <span style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-school"></i> ${activeTeacherHwFilters.section === 'garcons' ? 'Section Garçons (بنين)' : (activeTeacherHwFilters.section === 'filles' ? 'Section Filles (بنات)' : 'Section Primaire')}
-                </span>
+                <button type="button" onclick="setTeacherHwSchoolFilter('all')" title="Filtrer ou afficher toutes les écoles" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-school"></i> ${activeTeacherHwFilters.section === 'all' ? 'Toutes Écoles' : (activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : 'Primaire'))}
+                </button>
 
                 <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
 
@@ -9895,7 +9938,7 @@ async function openTeacherEvalModal(hwIndex) {
     }
 
     try {
-        const section = hw.section || currentSection || 'garcons';
+        const section = currentSection || 'garcons';
         const [stRes, evRes] = await Promise.all([
             fetch(`/api/admin/students?class=${encodeURIComponent(hw.classe)}&section=${encodeURIComponent(section)}`),
             fetch(`/api/evaluations?class=${encodeURIComponent(hw.classe)}&date=${encodeURIComponent(hw.date)}&section=${encodeURIComponent(section)}`)
