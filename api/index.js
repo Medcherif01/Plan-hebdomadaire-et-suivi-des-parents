@@ -2043,9 +2043,14 @@ app.get('/api/admin/students', async (req, res) => {
       }
     }
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const bypassCache = !!req.query._t || req.headers['cache-control'] === 'no-cache';
     const cacheKey = `${section}_${canonicalClass || targetClass || 'all'}`;
 
-    if (studentsMemoryCache.has(cacheKey)) {
+    if (!bypassCache && studentsMemoryCache.has(cacheKey)) {
       const cached = studentsMemoryCache.get(cacheKey);
       if (Array.isArray(cached)) {
         return res.status(200).json(cached);
@@ -2092,27 +2097,22 @@ app.get('/api/admin/students', async (req, res) => {
       );
     }
 
-    let query = { section: section };
-    if (targetClass && targetClass !== 'all') {
-      const classFilters = [targetClass];
-      if (canonicalClass && canonicalClass !== targetClass) {
-        classFilters.push(canonicalClass);
-      }
-      query.class = { $in: classFilters };
-    }
+    // Récupérer TOUS les élèves de la section pour une déduplication globale fiable
+    // (empêche qu'un élève déplacé continue d'apparaître dans son ancienne classe)
+    let rawStudents = await db.collection('students').find({ section: section }).toArray();
 
-    let rawStudents = await db.collection('students').find(query).toArray();
-
-    // Filtrer les élèves supprimés et dédupliquer par nom propre
+    // Filtrer les élèves supprimés et dédupliquer par nom propre à l'échelle de la section
     const studentMap = new Map();
     for (const st of rawStudents) {
       const normName = (st.name || '').trim();
       if (!normName) continue;
       if (deletedNamesSet.has(normName.toLowerCase())) continue;
 
-      // Si déjà rencontré pour cette section, privilégier le document le plus récent
       const key = `${st.section || section}_${normName.toLowerCase()}`;
-      if (!studentMap.has(key) || (st.updatedAt && (!studentMap.get(key).updatedAt || new Date(st.updatedAt) > new Date(studentMap.get(key).updatedAt)))) {
+      const existing = studentMap.get(key);
+      const isNewer = !existing || (st.updatedAt && (!existing.updatedAt || new Date(st.updatedAt) >= new Date(existing.updatedAt)));
+
+      if (isNewer) {
         studentMap.set(key, {
           _id: st._id,
           name: normName,
@@ -2128,18 +2128,22 @@ app.get('/api/admin/students', async (req, res) => {
 
     let finalStudents = Array.from(studentMap.values());
 
-    // Si on cherche une classe spécifique et qu'on a dédupliqué, ne garder que ceux dont la classe correspond
+    // Si on cherche une classe spécifique, filtrer la liste dédupliquée
     if (targetClass && targetClass !== 'all') {
-      const allowed = [targetClass, canonicalClass].filter(Boolean);
-      finalStudents = finalStudents.filter(s => allowed.includes(s.class));
+      finalStudents = finalStudents.filter(s => {
+        const stCanonical = normalizeStudentClass(s.class);
+        return stCanonical === canonicalClass || s.class === targetClass;
+      });
     }
 
     // Tri alphabétique parfait et stable par nom de l'élève (insensible à la casse et accents)
-    finalStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
+    finalStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base', numeric: true }));
 
-    // Mise en cache
-    studentsMemoryCache.set(cacheKey, finalStudents);
-    setTimeout(() => studentsMemoryCache.delete(cacheKey), 5 * 60 * 1000);
+    // Mise en cache courte si pas de bypass
+    if (!bypassCache) {
+      studentsMemoryCache.set(cacheKey, finalStudents);
+      setTimeout(() => studentsMemoryCache.delete(cacheKey), 15 * 1000);
+    }
 
     res.status(200).json(finalStudents);
   } catch (error) {

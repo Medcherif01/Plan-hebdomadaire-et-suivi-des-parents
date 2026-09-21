@@ -4644,9 +4644,12 @@ function showHomeworkView(viewName) {
     } else if (viewName === 'homework-teacher') {
         loadTeacherHomeworksDashboard();
     } else if (viewName === 'parent-selection') {
+        if (typeof renderParentClassButtons === 'function') {
+            renderParentClassButtons();
+        }
         const activeClassBtn = document.querySelector('#parent-class-buttons button.active');
-        const defaultClass = activeClassBtn ? (activeClassBtn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'PEI1') : 'PEI1';
-        loadClassStudents(defaultClass || 'PEI1');
+        const defaultClass = activeClassBtn ? (activeClassBtn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1] || 'PEI1') : (typeof getSectionClasses === 'function' ? (getSectionClasses(currentSection)[0] || 'PEI1') : 'PEI1');
+        loadClassStudents(defaultClass || 'PEI1', true);
     }
 }
 
@@ -6068,22 +6071,35 @@ function renderStudentsGrid(students, className, section) {
         return;
     }
 
+    // Tri alphabétique strict et infaillible par nom (arabe et français)
+    const sortedStudents = [...students].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base', numeric: true }));
+
+    // Garder en mémoire les élèves de la classe pour un accès instantané dans openStudentDashboard
+    window.currentLoadedStudentsMap = new Map();
+    sortedStudents.forEach(s => {
+        if (s && s.name) {
+            window.currentLoadedStudentsMap.set(s.name.trim().toLowerCase(), s);
+        }
+    });
+
     const fallbackAvatar = getStudentFallbackAvatar(section);
-    grid.innerHTML = students.map(s => {
+    grid.innerHTML = sortedStudents.map(s => {
+        const safeName = (s.name || '').trim();
         const photoSrc = (s.photo && s.photo.trim() !== '') ? s.photo : fallbackAvatar;
+        const escapedName = escapeHtml(safeName).replace(/'/g, "\\'");
         return `
-            <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapeHtml(s.name).replace(/'/g, "\\'")}', '${className}')" style="background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.25s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
+            <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapedName}', '${className}')" style="background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.25s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
                 <div style="position:relative; width:96px; height:96px; margin:0 auto 12px auto; overflow:hidden; border-radius:50%;">
-                    <img src="${photoSrc}" loading="lazy" decoding="async" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(s.name)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${borderColor}; background:#F8FAFC; display:block; margin:0 auto;">
+                    <img src="${photoSrc}" loading="lazy" decoding="async" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(safeName)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${borderColor}; background:#F8FAFC; display:block; margin:0 auto;">
                 </div>
-                <h4 style="margin:6px 0 4px 0; color:#1E1B4B; font-size:1.05rem; font-weight:700; line-height:1.3; text-align:center;">${escapeHtml(s.name)}</h4>
+                <h4 style="margin:6px 0 4px 0; color:#1E1B4B; font-size:1.05rem; font-weight:700; line-height:1.3; text-align:center;">${escapeHtml(safeName)}</h4>
                 <span style="font-size:0.85rem; font-weight:600; color:#6B7280; background:#F1F5F9; padding:3px 10px; border-radius:12px; margin-top:4px;">${s.birthday ? '🎂 ' + s.birthday : className}</span>
             </div>
         `;
     }).join('');
 }
 
-async function loadClassStudents(className) {
+async function loadClassStudents(className, forceRefresh = false) {
     try {
         const section = currentSection || 'garcons';
         currentActiveClassName = className;
@@ -6102,18 +6118,24 @@ async function loadClassStudents(className) {
 
         const cacheKey = `${section}_${className}`;
         
-        // Si les données sont déjà en mémoire, les afficher instantanément (0ms de latence)
-        if (studentsClientCache.has(cacheKey)) {
+        // Si les données sont déjà en mémoire et qu'on ne force pas, les afficher instantanément (0ms de latence),
+        // tout en effectuant un appel réseau frais en arrière-plan pour refléter les dernières modifications
+        let hasRenderedCache = false;
+        if (!forceRefresh && studentsClientCache.has(cacheKey)) {
             renderStudentsGrid(studentsClientCache.get(cacheKey), className, section);
-            return;
+            hasRenderedCache = true;
         }
 
         const grid = document.getElementById('students-grid');
-        if (grid) {
-            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:40px; color:#64748B; font-size:1rem;"><i class="fas fa-circle-notch fa-spin fa-2x" style="color:#3B82F6; margin-bottom:10px; display:block;"></i> Chargement...</div>';
+        if (grid && !hasRenderedCache) {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:40px; color:#64748B; font-size:1rem;"><i class="fas fa-circle-notch fa-spin fa-2x" style="color:#3B82F6; margin-bottom:10px; display:block;"></i> Chargement des élèves...</div>';
         }
 
-        const res = await fetch(`/api/admin/students?class=${className}&section=${section}`);
+        const res = await fetch(`/api/admin/students?class=${encodeURIComponent(className)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+
         if (res.ok) {
             const students = await res.json();
             // Ignorer si une autre classe a été sélectionnée entre temps
@@ -6183,7 +6205,8 @@ async function loadHomeworkShowcase() {
 
 async function openStudentDashboard(studentName, className) {
     try {
-        selectedStudentObj = { name: studentName, class: className };
+        const cleanName = (typeof studentName === 'string' && studentName.includes('%')) ? decodeURIComponent(studentName).trim() : (studentName || '').trim();
+        selectedStudentObj = { name: cleanName, class: className };
         showHomeworkView('student-dashboard');
 
         const section = currentSection || 'garcons';
@@ -6192,25 +6215,42 @@ async function openStudentDashboard(studentName, className) {
         const detailsEl = document.getElementById('student-profile-details');
         const photoEl = document.getElementById('student-profile-photo');
 
-        if (nameEl) nameEl.innerText = studentName;
+        if (nameEl) nameEl.innerText = cleanName;
         if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : (section === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧')}`;
-        if (photoEl) {
-            photoEl.src = fallbackAvatar;
-            photoEl.onerror = function() { this.src = fallbackAvatar; };
-        }
-
-        // Récupérer photo réelle si disponible
-        const stRes = await fetch(`/api/admin/students?class=${className}&section=${section}`);
-        if (stRes.ok) {
-            const stList = await stRes.json();
-            const matched = stList.find(s => s.name === studentName);
-            if (matched && matched.photo && matched.photo.trim() !== '') {
-                if (photoEl) photoEl.src = matched.photo;
+        
+        // Initialisation de la photo : utiliser en priorité l'objet préchargé en mémoire
+        const normKey = cleanName.toLowerCase();
+        let preloadedStudent = window.currentLoadedStudentsMap?.get(normKey);
+        if (!preloadedStudent && window.currentLoadedStudentsMap) {
+            for (const [k, v] of window.currentLoadedStudentsMap.entries()) {
+                if (k === normKey || k.includes(normKey) || normKey.includes(k)) {
+                    preloadedStudent = v;
+                    break;
+                }
             }
         }
 
+        const initialPhoto = (preloadedStudent && preloadedStudent.photo && preloadedStudent.photo.trim() !== '') ? preloadedStudent.photo : fallbackAvatar;
+        if (photoEl) {
+            photoEl.src = initialPhoto;
+            photoEl.onerror = function() { this.src = fallbackAvatar; };
+        }
+
+        // Si pas de photo préchargée valide, tenter la récupération réseau fraîche
+        if (!preloadedStudent || !preloadedStudent.photo) {
+            fetch(`/api/admin/students?class=${encodeURIComponent(className)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`, { cache: 'no-store' })
+                .then(r => r.ok ? r.json() : [])
+                .then(stList => {
+                    const matched = stList.find(s => (s.name || '').trim().toLowerCase() === normKey);
+                    if (matched && matched.photo && matched.photo.trim() !== '' && photoEl) {
+                        photoEl.src = matched.photo;
+                    }
+                })
+                .catch(() => {});
+        }
+
         // Récupérer étoiles
-        const starRes = await fetch(`/api/daily-stars?studentName=${encodeURIComponent(studentName)}&className=${className}&section=${section}&week=true`);
+        const starRes = await fetch(`/api/daily-stars?studentName=${encodeURIComponent(cleanName)}&className=${encodeURIComponent(className)}&section=${encodeURIComponent(section)}&week=true&_t=${Date.now()}`);
         let starCount = 0;
         if (starRes.ok) {
             const sData = await starRes.json();
@@ -6218,14 +6258,15 @@ async function openStudentDashboard(studentName, className) {
                 starCount = sData.stars.reduce((acc, curr) => acc + (curr.earnedStar || 0), 0);
             }
         }
-        document.getElementById('student-stars-count').innerHTML = `<i class="fas fa-star"></i> ${starCount} Étoile(s)`;
+        const starsCountEl = document.getElementById('student-stars-count');
+        if (starsCountEl) starsCountEl.innerHTML = `<i class="fas fa-star"></i> ${starCount} Étoile(s)`;
 
         // Évaluations 8 semaines
-        loadGeneralEvaluations(studentName, className);
+        loadGeneralEvaluations(cleanName, className);
 
         // Devoirs du jour (Date du jour par défaut, ou Jeudi si vendredi/samedi)
         currentHomeworkDate = (typeof getInitialHomeworkDate === 'function') ? getInitialHomeworkDate() : new Date().toISOString().split('T')[0];
-        loadStudentHomeworksForDate(studentName, className, currentHomeworkDate);
+        loadStudentHomeworksForDate(cleanName, className, currentHomeworkDate);
     } catch (e) {
         console.error('Erreur openStudentDashboard:', e);
     }
@@ -6908,6 +6949,7 @@ async function adminMoveStudent(studentId, studentName, oldClass, selectElementI
 
         const result = await res.json().catch(() => ({}));
         if (res.ok && (result.success || result.student || !result.error)) {
+            if (typeof studentsClientCache !== 'undefined') studentsClientCache.clear();
             const successMsg = result.message || `Élève '${studentName}' déplacé avec succès de ${oldClass} vers ${newClass} !`;
             if (statusEl) statusEl.innerHTML = `<span style="color:#16A34A; font-weight:700;"><i class="fas fa-check-circle"></i> ${successMsg}</span>`;
             displayAlert(successMsg, false);
@@ -6972,6 +7014,7 @@ async function adminQuickMoveStudent() {
 
         const result = await res.json().catch(() => ({}));
         if (res.ok && (result.success || result.student || !result.error)) {
+            if (typeof studentsClientCache !== 'undefined') studentsClientCache.clear();
             const successMsg = result.message || `Élève '${studentName}' déplacé avec succès vers ${newClass} !`;
             if (statusEl) statusEl.innerHTML = `<span style="color:#16A34A; font-weight:700;"><i class="fas fa-check-circle"></i> ${successMsg}</span>`;
             displayAlert(successMsg, false);
@@ -7008,6 +7051,7 @@ async function adminAddOrUpdateStudent() {
         });
 
         if (res.ok) {
+            if (typeof studentsClientCache !== 'undefined') studentsClientCache.clear();
             if (statusEl) statusEl.innerHTML = '<span style="color:green;">Élève enregistré avec succès.</span>';
             document.getElementById('adminStudentName').value = '';
             document.getElementById('adminStudentPhoto').value = '';
@@ -7031,6 +7075,7 @@ async function adminDeleteStudent(id, name, className) {
             body: JSON.stringify({ id, name, class: className, section })
         });
         if (res.ok) {
+            if (typeof studentsClientCache !== 'undefined') studentsClientCache.clear();
             displayAlert(`Élève ${name} supprimé.`, false);
             loadAdminStudentsList();
         }
