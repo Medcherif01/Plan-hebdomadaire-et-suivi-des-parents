@@ -18,6 +18,7 @@ const { MongoClient } = require('mongodb');
 const archiver = require('archiver');
 const webpush = require('web-push');
 const path = require('path');
+const fs = require('fs');
 const moment = require('moment');
 const crypto = require('crypto');
 let GoogleGenAI;
@@ -462,9 +463,16 @@ const validUsers = {
 let cachedDb = null;
 
 class InMemoryCollection {
-  constructor(name) {
+  constructor(name, db = null) {
     this.name = name;
+    this.db = db;
     this.items = [];
+  }
+
+  _notifyChange() {
+    if (this.db && typeof this.db.saveToDisk === 'function') {
+      this.db.saveToDisk();
+    }
   }
 
   async findOne(query) {
@@ -522,6 +530,7 @@ class InMemoryCollection {
   async insertOne(doc) {
     const newItem = { _id: doc._id || String(Date.now()) + Math.random().toString(36).substr(2, 5), ...doc };
     this.items.push(newItem);
+    this._notifyChange();
     return { acknowledged: true, insertedId: newItem._id };
   }
 
@@ -532,6 +541,7 @@ class InMemoryCollection {
       this.items.push(newItem);
       insertedIds[idx] = newItem._id;
     });
+    this._notifyChange();
     return { acknowledged: true, insertedIds };
   }
 
@@ -566,6 +576,7 @@ class InMemoryCollection {
           this._setDeep(this.items[index], k, curr + v);
         }
       }
+      this._notifyChange();
       return { modifiedCount: 1, matchedCount: 1 };
     } else if (options.upsert) {
       const newItem = { _id: filter._id || filter.endpoint || filter.week || String(Date.now()) };
@@ -580,6 +591,7 @@ class InMemoryCollection {
         }
       }
       this.items.push(newItem);
+      this._notifyChange();
       return { modifiedCount: 0, matchedCount: 0, upsertedCount: 1 };
     }
     return { modifiedCount: 0, matchedCount: 0 };
@@ -603,6 +615,7 @@ class InMemoryCollection {
         count++;
       }
     });
+    if (count > 0) this._notifyChange();
     return { modifiedCount: count, matchedCount: count };
   }
 
@@ -610,6 +623,7 @@ class InMemoryCollection {
     const index = this.items.findIndex(item => this._matches(item, filter));
     if (index >= 0) {
       this.items.splice(index, 1);
+      this._notifyChange();
       return { deletedCount: 1 };
     }
     return { deletedCount: 0 };
@@ -618,7 +632,9 @@ class InMemoryCollection {
   async deleteMany(filter) {
     const initialLen = this.items.length;
     this.items = this.items.filter(item => !this._matches(item, filter));
-    return { deletedCount: initialLen - this.items.length };
+    const deletedCount = initialLen - this.items.length;
+    if (deletedCount > 0) this._notifyChange();
+    return { deletedCount };
   }
 
   async bulkWrite(operations) {
@@ -632,6 +648,7 @@ class InMemoryCollection {
         await this.deleteOne(op.deleteOne.filter);
       }
     }
+    this._notifyChange();
     return { ok: 1 };
   }
 
@@ -756,14 +773,53 @@ class InMemoryCollection {
   }
 }
 
+const DB_LOCAL_FILE = path.join(__dirname, '../data/local_db.json');
+
 class InMemoryDb {
   constructor() {
     this.collections = new Map();
+    this._saveTimer = null;
+    this.loadFromDisk();
+  }
+
+  loadFromDisk() {
+    try {
+      if (fs.existsSync(DB_LOCAL_FILE)) {
+        const raw = fs.readFileSync(DB_LOCAL_FILE, 'utf8');
+        const data = JSON.parse(raw);
+        for (const [colName, items] of Object.entries(data)) {
+          if (Array.isArray(items)) {
+            const col = new InMemoryCollection(colName, this);
+            col.items = items;
+            this.collections.set(colName, col);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Note: loadFromDisk local_db.json:', e.message);
+    }
+  }
+
+  saveToDisk() {
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => {
+      try {
+        const dir = path.dirname(DB_LOCAL_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const obj = {};
+        for (const [colName, col] of this.collections.entries()) {
+          obj[colName] = col.items || [];
+        }
+        fs.writeFileSync(DB_LOCAL_FILE, JSON.stringify(obj, null, 2), 'utf8');
+      } catch (e) {
+        console.warn('Note: saveToDisk local_db.json:', e.message);
+      }
+    }, 200);
   }
 
   collection(name) {
     if (!this.collections.has(name)) {
-      this.collections.set(name, new InMemoryCollection(name));
+      this.collections.set(name, new InMemoryCollection(name, this));
     }
     return this.collections.get(name);
   }
@@ -1709,13 +1765,28 @@ app.post(['/api/admin/weeks-config', '/api/weeks-config'], async (req, res) => {
 // ============================================================================
 
 function convertGoogleDriveUrl(url) {
-  if (!url) return url;
-  const drivePattern = /https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/;
-  const match = String(url).match(drivePattern);
-  if (match && match[1]) {
-    return `https://lh3.googleusercontent.com/d/${match[1]}`;
+  if (!url || typeof url !== 'string') return '';
+  const str = url.trim();
+  if (!str) return '';
+
+  if (str.includes('lh3.googleusercontent.com/d/')) return str;
+
+  const matchFile = str.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (matchFile && matchFile[1]) {
+    return `https://lh3.googleusercontent.com/d/${matchFile[1]}`;
   }
-  return url;
+
+  const matchId = str.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (matchId && matchId[1]) {
+    return `https://lh3.googleusercontent.com/d/${matchId[1]}`;
+  }
+
+  const matchD = str.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
+  if (matchD && matchD[1]) {
+    return `https://lh3.googleusercontent.com/d/${matchD[1]}`;
+  }
+
+  return str;
 }
 
 async function deleteOldPhotos(collection) {
@@ -1808,113 +1879,113 @@ const defaultBoysStudents = {
     { name: "Youssef", photo: "https://lh3.googleusercontent.com/d/1Bygg5-PYrjjMOZdI5hAe16eZ8ltn772e", birthday: "11/2011" }
   ],
   PEI5: [
-    { name: "Rayane", photo: "https://lh3.googleusercontent.com/d/1zU-jBuAbYjHanzank9C1BAd00skS1Y5J", birthday: "3/2010" },
-    { name: "Anis", photo: "https://lh3.googleusercontent.com/d/1MH6M05mQamOHevmDffVFNpSFNnxqbxs3", birthday: "5/2010" },
-    { name: "Taha", photo: "https://lh3.googleusercontent.com/d/1lB8ObGOvQDVT6FITL2y7C5TYmAGyggFn", birthday: "8/2010" },
-    { name: "Hamza", photo: "https://lh3.googleusercontent.com/d/1tWdPSbtCAsTMB86WzDgqh3Xw01ahm9s6", birthday: "11/2010" }
+    { name: "Rayane", photo: "", birthday: "3/2010" },
+    { name: "Anis", photo: "", birthday: "5/2010" },
+    { name: "Taha", photo: "", birthday: "8/2010" },
+    { name: "Hamza", photo: "", birthday: "11/2010" }
   ],
   DP1: [
-    { name: "Ilyas", photo: "https://lh3.googleusercontent.com/d/15I9p6VSnn1yVmPxRRbGsUkM-fsBKYOWF", birthday: "2/2009" },
-    { name: "Kareem", photo: "https://lh3.googleusercontent.com/d/1UrBw6guz0oBTUy8COGeewIs3XAK773bR", birthday: "6/2009" },
-    { name: "Mehdi", photo: "https://lh3.googleusercontent.com/d/1NdaCH8CU0DJFHXw4D0lItP-QnCswl23b", birthday: "9/2009" }
+    { name: "Ilyas", photo: "", birthday: "2/2009" },
+    { name: "Kareem", photo: "", birthday: "6/2009" },
+    { name: "Mehdi", photo: "", birthday: "9/2009" }
   ],
   DP2: [
-    { name: "Bilal", photo: "https://lh3.googleusercontent.com/d/1yCTO5StU2tnPY0BEynnWzUveljMIUcLE", birthday: "1/2008" },
-    { name: "Zaid", photo: "https://lh3.googleusercontent.com/d/1Bygg5-PYrjjMOZdI5hAe16eZ8ltn772e", birthday: "4/2008" },
-    { name: "Walid", photo: "https://lh3.googleusercontent.com/d/1ok8M9EOY71ScKuaW0mHfKUErjKZ4wbe1", birthday: "8/2008" }
+    { name: "Bilal S.", photo: "", birthday: "1/2008" },
+    { name: "Zaid", photo: "", birthday: "4/2008" },
+    { name: "Walid", photo: "", birthday: "8/2008" }
   ]
 };
 
 const defaultGirlsStudents = {
   PEI1: [
-    { name: "Fatima", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "3/2014" },
-    { name: "Mariam", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "5/2014" },
-    { name: "Sarah", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "8/2014" },
-    { name: "Salma", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "10/2014" }
+    { name: "Fatima", photo: "", birthday: "3/2014" },
+    { name: "Mariam", photo: "", birthday: "5/2014" },
+    { name: "Sarah", photo: "", birthday: "8/2014" },
+    { name: "Salma", photo: "", birthday: "10/2014" }
   ],
   PEI2: [
-    { name: "Khadija", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "4/2013" },
-    { name: "Zainab", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "7/2013" },
-    { name: "Nour", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", birthday: "9/2013" },
-    { name: "Amina", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "11/2013" }
+    { name: "Khadija", photo: "", birthday: "4/2013" },
+    { name: "Zainab", photo: "", birthday: "7/2013" },
+    { name: "Nour", photo: "", birthday: "9/2013" },
+    { name: "Amina", photo: "", birthday: "11/2013" }
   ],
   PEI3: [
-    { name: "Houda", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "2/2012" },
-    { name: "Leila", photo: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80", birthday: "5/2012" },
-    { name: "Zohra", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "8/2012" },
-    { name: "Aya", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "11/2012" }
+    { name: "Houda", photo: "", birthday: "2/2012" },
+    { name: "Leila", photo: "", birthday: "5/2012" },
+    { name: "Zohra", photo: "", birthday: "8/2012" },
+    { name: "Aya", photo: "", birthday: "11/2012" }
   ],
   PEI4: [
-    { name: "Yasmine", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "1/2011" },
-    { name: "Hiba", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "6/2011" },
-    { name: "Rania", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "9/2011" },
-    { name: "Ines", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "12/2011" }
+    { name: "Yasmine", photo: "", birthday: "1/2011" },
+    { name: "Hiba", photo: "", birthday: "6/2011" },
+    { name: "Rania", photo: "", birthday: "9/2011" },
+    { name: "Ines", photo: "", birthday: "12/2011" }
   ],
   PEI5: [
-    { name: "Rana", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "2/2010" },
-    { name: "Malak", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "4/2010" },
-    { name: "Dina", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "7/2010" }
+    { name: "Rana", photo: "", birthday: "2/2010" },
+    { name: "Malak", photo: "", birthday: "4/2010" },
+    { name: "Dina", photo: "", birthday: "7/2010" }
   ],
   DP1: [
-    { name: "Lina", photo: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80", birthday: "1/2009" },
-    { name: "Kenza", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "5/2009" },
-    { name: "Nouran", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "8/2009" }
+    { name: "Lina", photo: "", birthday: "1/2009" },
+    { name: "Kenza", photo: "", birthday: "5/2009" },
+    { name: "Nouran", photo: "", birthday: "8/2009" }
   ],
   DP2: [
-    { name: "Chaimae", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", birthday: "3/2008" },
-    { name: "Rim", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "7/2008" },
-    { name: "Asma", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "10/2008" }
+    { name: "Chaimae", photo: "", birthday: "3/2008" },
+    { name: "Rim", photo: "", birthday: "7/2008" },
+    { name: "Asma", photo: "", birthday: "10/2008" }
   ]
 };
 
 const defaultPrimaireStudents = {
   PS: [
-    { name: "Adam K.", photo: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80", birthday: "5/2023" },
-    { name: "Lina M.", photo: "https://images.unsplash.com/photo-1519456264917-42d0aa2e0625?w=150&auto=format&fit=crop&q=80", birthday: "8/2023" },
-    { name: "Zaid B.", photo: "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=150&auto=format&fit=crop&q=80", birthday: "2/2023" },
-    { name: "Maya S.", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "11/2023" }
+    { name: "Adam K.", photo: "", birthday: "5/2023" },
+    { name: "Lina M.", photo: "", birthday: "8/2023" },
+    { name: "Zaid B.", photo: "", birthday: "2/2023" },
+    { name: "Maya S.", photo: "", birthday: "11/2023" }
   ],
   MS: [
-    { name: "Youssef T.", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "3/2022" },
-    { name: "Nour H.", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "7/2022" },
-    { name: "Kareem A.", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "10/2022" },
-    { name: "Sarah B.", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "1/2022" }
+    { name: "Youssef T.", photo: "", birthday: "3/2022" },
+    { name: "Nour H.", photo: "", birthday: "7/2022" },
+    { name: "Kareem A.", photo: "", birthday: "10/2022" },
+    { name: "Sarah B.", photo: "", birthday: "1/2022" }
   ],
   GS: [
-    { name: "Ilyas R.", photo: "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=150&auto=format&fit=crop&q=80", birthday: "4/2021" },
-    { name: "Khadija F.", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "6/2021" },
-    { name: "Sami D.", photo: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80", birthday: "9/2021" },
-    { name: "Rania N.", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", birthday: "12/2021" }
+    { name: "Ilyas R.", photo: "", birthday: "4/2021" },
+    { name: "Khadija F.", photo: "", birthday: "6/2021" },
+    { name: "Sami D.", photo: "", birthday: "9/2021" },
+    { name: "Rania N.", photo: "", birthday: "12/2021" }
   ],
   PP1: [
-    { name: "Anas C.", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "2/2020" },
-    { name: "Salma K.", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "5/2020" },
-    { name: "Bilal E.", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "8/2020" },
-    { name: "Aya M.", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "11/2020" }
+    { name: "Anas C.", photo: "", birthday: "2/2020" },
+    { name: "Salma K.", photo: "", birthday: "5/2020" },
+    { name: "Bilal E.", photo: "", birthday: "8/2020" },
+    { name: "Aya M.", photo: "", birthday: "11/2020" }
   ],
   PP2: [
-    { name: "Hamza L.", photo: "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=150&auto=format&fit=crop&q=80", birthday: "3/2019" },
-    { name: "Mariam Z.", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "7/2019" },
-    { name: "Rayane V.", photo: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80", birthday: "9/2019" },
-    { name: "Ines G.", photo: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", birthday: "12/2019" }
+    { name: "Hamza L.", photo: "", birthday: "3/2019" },
+    { name: "Mariam Z.", photo: "", birthday: "7/2019" },
+    { name: "Rayane V.", photo: "", birthday: "9/2019" },
+    { name: "Ines G.", photo: "", birthday: "12/2019" }
   ],
   PP3: [
-    { name: "Yassine S.", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "1/2018" },
-    { name: "Fatima E.", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "4/2018" },
-    { name: "Tariq B.", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "8/2018" },
-    { name: "Hajar D.", photo: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=150&auto=format&fit=crop&q=80", birthday: "10/2018" }
+    { name: "Yassine S.", photo: "", birthday: "1/2018" },
+    { name: "Fatima E.", photo: "", birthday: "4/2018" },
+    { name: "Tariq B.", photo: "", birthday: "8/2018" },
+    { name: "Hajar D.", photo: "", birthday: "10/2018" }
   ],
   PP4: [
-    { name: "Omar N.", photo: "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=150&auto=format&fit=crop&q=80", birthday: "2/2017" },
-    { name: "Zineb B.", photo: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80", birthday: "6/2017" },
-    { name: "Mehdi T.", photo: "https://images.unsplash.com/photo-1543332164-6e82f355badc?w=150&auto=format&fit=crop&q=80", birthday: "9/2017" },
-    { name: "Imane L.", photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80", birthday: "11/2017" }
+    { name: "Omar N.", photo: "", birthday: "2/2017" },
+    { name: "Zineb B.", photo: "", birthday: "6/2017" },
+    { name: "Mehdi T.", photo: "", birthday: "9/2017" },
+    { name: "Imane L.", photo: "", birthday: "11/2017" }
   ],
   PP5: [
-    { name: "Walid K.", photo: "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=150&auto=format&fit=crop&q=80", birthday: "3/2016" },
-    { name: "Manal R.", photo: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80", birthday: "5/2016" },
-    { name: "Driss H.", photo: "https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80", birthday: "8/2016" },
-    { name: "Soukaina A.", photo: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80", birthday: "12/2016" }
+    { name: "Walid K.", photo: "", birthday: "3/2016" },
+    { name: "Manal R.", photo: "", birthday: "5/2016" },
+    { name: "Ilyas H.", photo: "", birthday: "8/2016" },
+    { name: "Soukaina A.", photo: "", birthday: "12/2016" }
   ]
 };
 
@@ -1922,7 +1993,7 @@ const defaultPrimaireStudents = {
 // API GESTION DES ÉLÈVES (ADMIN)
 // ============================================================================
 
-// Cache mémoire pour optimiser la réactivité et supprimer tout lag
+// Cache mémoire pour optimiser la réactivité
 const studentsMemoryCache = new Map();
 
 function invalidateStudentsCache(section) {
@@ -1961,8 +2032,8 @@ app.get('/api/admin/students', async (req, res) => {
     let section = req.query.section || 'garcons';
     const targetClass = req.query.class;
     const canonicalClass = normalizeStudentClass(targetClass);
-    
-    // Auto-détection de la section si contenue dans le nom de la classe
+
+    // Auto-détection de la section si spécifiée dans la classe
     if (targetClass && typeof targetClass === 'string') {
       const lower = targetClass.toLowerCase();
       if (lower.includes('garçon') || lower.includes('garcon')) section = 'garcons';
@@ -1976,27 +2047,36 @@ app.get('/api/admin/students', async (req, res) => {
 
     if (studentsMemoryCache.has(cacheKey)) {
       const cached = studentsMemoryCache.get(cacheKey);
-      if (cached && cached.length > 0) {
+      if (Array.isArray(cached)) {
         return res.status(200).json(cached);
       }
     }
 
     const db = await connectToDatabase();
 
-    // Auto-seeding si la section n'a encore aucun élève enregistré
-    const totalInSection = await db.collection('students').countDocuments({ section: section });
-    if (totalInSection === 0) {
-      const seedList = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
-      for (const [cls, list] of Object.entries(seedList)) {
+    // Récupérer la liste des élèves explicitement supprimés (tombstones) pour éviter toute réapparition
+    const deletedDocs = await db.collection('deleted_students').find({ section: section }).toArray();
+    const deletedNamesSet = new Set(deletedDocs.map(d => (d.name || '').trim().toLowerCase()));
+
+    // Auto-seeding initial UNIQUEMENT si la section n'a jamais été initialisée
+    const initCheck = await db.collection('settings').findOne({ _id: `students_init_${section}` });
+    const totalExisting = await db.collection('students').countDocuments({ section: section });
+
+    if (!initCheck && totalExisting === 0) {
+      const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
+      for (const [cls, list] of Object.entries(seedDict)) {
         for (const s of list) {
+          const cleanSName = (s.name || '').trim();
+          if (deletedNamesSet.has(cleanSName.toLowerCase())) continue;
           const studentObj = {
-            _id: `${section}_${cls}_${s.name}`,
-            name: s.name,
-            photo: s.photo,
-            birthday: s.birthday,
+            _id: `${section}_${cls}_${cleanSName}`,
+            name: cleanSName,
+            photo: s.photo || '',
+            birthday: s.birthday || '',
             class: cls,
             section: section,
-            createdAt: new Date()
+            createdAt: new Date(),
+            updatedAt: new Date()
           };
           await db.collection('students').updateOne(
             { _id: studentObj._id },
@@ -2005,87 +2085,63 @@ app.get('/api/admin/students', async (req, res) => {
           );
         }
       }
+      await db.collection('settings').updateOne(
+        { _id: `students_init_${section}` },
+        { $set: { _id: `students_init_${section}`, initializedAt: new Date() } },
+        { upsert: true }
+      );
     }
 
-    let query = {};
-    if (section && section !== 'all') {
-      query.section = section;
-    }
-
+    let query = { section: section };
     if (targetClass && targetClass !== 'all') {
-      const escapedTarget = targetClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const escapedCanonical = canonicalClass ? canonicalClass.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
-      
-      const classOrConditions = [
-        { class: targetClass }
-      ];
-      if (canonicalClass) {
-        classOrConditions.push({ class: canonicalClass });
-        classOrConditions.push({ class: { $regex: new RegExp(`^${escapedCanonical}$`, 'i') } });
-        classOrConditions.push({ class: { $regex: new RegExp(escapedCanonical, 'i') } });
+      const classFilters = [targetClass];
+      if (canonicalClass && canonicalClass !== targetClass) {
+        classFilters.push(canonicalClass);
       }
-      classOrConditions.push({ class: { $regex: new RegExp(`^${escapedTarget}$`, 'i') } });
-      
-      query.$or = classOrConditions;
+      query.class = { $in: classFilters };
     }
 
-    let students = await db.collection('students').find(query).sort({ name: 1 }).toArray();
+    let rawStudents = await db.collection('students').find(query).toArray();
 
-    // Si aucun élève trouvé avec la section spécifique, chercher toutes sections pour cette classe
-    if (students.length === 0 && targetClass && targetClass !== 'all') {
-      const fallbackQuery = {
-        $or: [
-          { class: targetClass },
-          { class: canonicalClass },
-          { class: { $regex: new RegExp(canonicalClass || targetClass, 'i') } }
-        ]
-      };
-      students = await db.collection('students').find(fallbackQuery).sort({ name: 1 }).toArray();
-    }
+    // Filtrer les élèves supprimés et dédupliquer par nom propre
+    const studentMap = new Map();
+    for (const st of rawStudents) {
+      const normName = (st.name || '').trim();
+      if (!normName) continue;
+      if (deletedNamesSet.has(normName.toLowerCase())) continue;
 
-    // Si toujours 0 élèves trouvés pour cette classe, auto-seeder des élèves pour cette classe !
-    if (students.length === 0 && targetClass && targetClass !== 'all') {
-      const clsKey = canonicalClass || targetClass;
-      const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
-      let listToSeed = seedDict[clsKey];
-      if (!listToSeed || listToSeed.length === 0) {
-        // Liste par défaut générée
-        const defaultNames = section === 'filles' 
-          ? ["Sarah A.", "Mariam B.", "Khadija C.", "Fatima D.", "Nour E.", "Salma F."]
-          : ["Mohamed A.", "Ahmed B.", "Youssef C.", "Omar D.", "Ali E.", "Hamza F."];
-        listToSeed = defaultNames.map((nm, idx) => ({
-          name: nm,
-          photo: "",
-          birthday: `0${(idx % 9) + 1}/201${idx % 5}`
-        }));
+      // Si déjà rencontré pour cette section, privilégier le document le plus récent
+      const key = `${st.section || section}_${normName.toLowerCase()}`;
+      if (!studentMap.has(key) || (st.updatedAt && (!studentMap.get(key).updatedAt || new Date(st.updatedAt) > new Date(studentMap.get(key).updatedAt)))) {
+        studentMap.set(key, {
+          _id: st._id,
+          name: normName,
+          photo: st.photo || '',
+          birthday: st.birthday || '',
+          class: st.class || '',
+          section: st.section || section,
+          createdAt: st.createdAt || new Date(),
+          updatedAt: st.updatedAt || new Date()
+        });
       }
-
-      for (const s of listToSeed) {
-        const studentObj = {
-          _id: `${section}_${clsKey}_${s.name.replace(/\s+/g, '_')}`,
-          name: s.name,
-          photo: s.photo || "",
-          birthday: s.birthday || "01/2014",
-          class: clsKey,
-          section: section,
-          createdAt: new Date()
-        };
-        await db.collection('students').updateOne(
-          { _id: studentObj._id },
-          { $set: studentObj },
-          { upsert: true }
-        );
-      }
-      students = await db.collection('students').find({ section: section, class: clsKey }).sort({ name: 1 }).toArray();
     }
 
-    // Mise en cache (5 minutes) si résultats non vides
-    if (students && students.length > 0) {
-      studentsMemoryCache.set(cacheKey, students);
-      setTimeout(() => studentsMemoryCache.delete(cacheKey), 5 * 60 * 1000);
+    let finalStudents = Array.from(studentMap.values());
+
+    // Si on cherche une classe spécifique et qu'on a dédupliqué, ne garder que ceux dont la classe correspond
+    if (targetClass && targetClass !== 'all') {
+      const allowed = [targetClass, canonicalClass].filter(Boolean);
+      finalStudents = finalStudents.filter(s => allowed.includes(s.class));
     }
 
-    res.status(200).json(students);
+    // Tri alphabétique parfait et stable par nom de l'élève (insensible à la casse et accents)
+    finalStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
+
+    // Mise en cache
+    studentsMemoryCache.set(cacheKey, finalStudents);
+    setTimeout(() => studentsMemoryCache.delete(cacheKey), 5 * 60 * 1000);
+
+    res.status(200).json(finalStudents);
   } catch (error) {
     console.error('Erreur GET /api/admin/students:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -2094,21 +2150,35 @@ app.get('/api/admin/students', async (req, res) => {
 
 app.post('/api/admin/students', async (req, res) => {
   try {
-    const { name, photo, birthday, class: className, section = 'garcons' } = req.body;
-    if (!name || !className) {
-      return res.status(400).json({ message: 'Nom et classe requis.' });
+    const { id, name, photo, birthday, class: className, section = 'garcons' } = req.body;
+    if (!name || !className || className === 'all') {
+      return res.status(400).json({ success: false, message: 'Le nom et une classe valide sont requis.' });
     }
     const db = await connectToDatabase();
     const cleanName = name.trim();
-    const studentId = `${section}_${className}_${cleanName}`;
+    const cleanClass = normalizeStudentClass(className) || className.trim();
+    const studentId = id || `${section}_${cleanClass}_${cleanName}`;
     const formattedPhoto = convertGoogleDriveUrl(photo || '');
+
+    // 1. Retirer immédiatement des élèves supprimés si présent
+    await db.collection('deleted_students').deleteMany({
+      name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      section: section
+    });
+
+    // 2. Nettoyer les doublons potentiels de cet élève dans cette section
+    await db.collection('students').deleteMany({
+      _id: { $ne: studentId },
+      name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      section: section
+    });
 
     const studentData = {
       _id: studentId,
       name: cleanName,
       photo: formattedPhoto,
-      birthday: birthday || '',
-      class: className,
+      birthday: (birthday || '').trim(),
+      class: cleanClass,
       section: section,
       updatedAt: new Date()
     };
@@ -2119,12 +2189,12 @@ app.post('/api/admin/students', async (req, res) => {
       { upsert: true }
     );
 
-    invalidateStudentsCache(section);
+    invalidateStudentsCache();
 
     res.status(200).json({ success: true, message: `Élève '${cleanName}' enregistré avec succès.`, student: studentData });
   } catch (error) {
     console.error('Erreur POST /api/admin/students:', error);
-    res.status(500).json({ message: 'Erreur serveur.' });
+    res.status(500).json({ success: false, message: 'Erreur serveur lors de l\'enregistrement de l\'élève.' });
   }
 });
 
@@ -2132,17 +2202,43 @@ app.delete('/api/admin/students', async (req, res) => {
   try {
     const { id, name, class: className, section = 'garcons' } = req.body;
     const db = await connectToDatabase();
-    const studentId = id || `${section}_${className}_${name}`;
+    const cleanName = (name || '').trim();
 
-    await db.collection('students').deleteOne({ _id: studentId });
-    if (name) {
-      await db.collection('students').deleteMany({ name: name.trim(), section: section });
+    // 1. Enregistrer dans la table des suppressions (tombstone) pour empêcher toute réapparition
+    if (cleanName) {
+      const tombstoneId = `${section}_${cleanName.toLowerCase()}`;
+      await db.collection('deleted_students').updateOne(
+        { _id: tombstoneId },
+        { $set: { _id: tombstoneId, name: cleanName, section: section, deletedAt: new Date() } },
+        { upsert: true }
+      );
     }
-    invalidateStudentsCache(section);
-    res.status(200).json({ success: true, message: 'Élève supprimé avec succès.' });
+
+    // 2. Supprimer de la collection students par ID exact
+    if (id) {
+      await db.collection('students').deleteOne({ _id: id });
+      try {
+        const { ObjectId } = require('mongodb');
+        if (ObjectId.isValid(id)) {
+          await db.collection('students').deleteOne({ _id: new ObjectId(id) });
+        }
+      } catch (e) {}
+    }
+
+    // 3. Supprimer tout enregistrement portant ce nom dans cette section
+    if (cleanName) {
+      await db.collection('students').deleteMany({
+        name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        section: section
+      });
+    }
+
+    invalidateStudentsCache();
+
+    res.status(200).json({ success: true, message: `Élève '${cleanName || id}' supprimé avec succès et retiré définitivement.` });
   } catch (error) {
     console.error('Erreur DELETE /api/admin/students:', error);
-    res.status(500).json({ message: 'Erreur serveur.' });
+    res.status(500).json({ success: false, message: 'Erreur serveur lors de la suppression.' });
   }
 });
 
@@ -2154,8 +2250,11 @@ app.post('/api/admin/students/move', async (req, res) => {
     }
     const db = await connectToDatabase();
     const targetName = (name || studentName || '').trim();
+    const cleanNewClass = normalizeStudentClass(newClass) || newClass.trim();
 
     let student = null;
+
+    // 1. Chercher par ID direct
     if (studentId) {
       student = await db.collection('students').findOne({ _id: studentId });
       if (!student) {
@@ -2167,6 +2266,8 @@ app.post('/api/admin/students/move', async (req, res) => {
         } catch (e) {}
       }
     }
+
+    // 2. Chercher par nom et ancienne classe
     if (!student && targetName && oldClass) {
       student = await db.collection('students').findOne({
         name: { $regex: new RegExp(`^${targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
@@ -2174,6 +2275,8 @@ app.post('/api/admin/students/move', async (req, res) => {
         section: section
       });
     }
+
+    // 3. Chercher par nom et section
     if (!student && targetName) {
       student = await db.collection('students').findOne({
         name: { $regex: new RegExp(`^${targetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
@@ -2181,22 +2284,26 @@ app.post('/api/admin/students/move', async (req, res) => {
       });
     }
 
-    // Si l'élève n'était pas encore persisté dans la BD mais fait partie des données initiales
+    // 4. Si l'élève n'était pas encore en base mais dans les dictionnaires par défaut
     if (!student && targetName) {
-      for (const [cls, list] of Object.entries(defaultStudents)) {
-        const match = list.find(s => s.name.trim().toLowerCase() === targetName.toLowerCase());
-        if (match) {
-          student = {
-            _id: `${section}_${cls}_${match.name}`,
-            name: match.name,
-            photo: match.photo,
-            birthday: match.birthday,
-            class: cls,
-            section: section,
-            createdAt: new Date()
-          };
-          break;
+      const allDicts = [defaultBoysStudents, defaultGirlsStudents, defaultPrimaireStudents];
+      for (const dict of allDicts) {
+        for (const [cls, list] of Object.entries(dict)) {
+          const match = list.find(s => s.name.trim().toLowerCase() === targetName.toLowerCase());
+          if (match) {
+            student = {
+              _id: `${section}_${cls}_${match.name}`,
+              name: match.name,
+              photo: match.photo || '',
+              birthday: match.birthday || '',
+              class: cls,
+              section: section,
+              createdAt: new Date()
+            };
+            break;
+          }
         }
+        if (student) break;
       }
     }
 
@@ -2208,30 +2315,34 @@ app.post('/api/admin/students/move', async (req, res) => {
     const finalStudentName = (student.name || targetName).trim();
     const currentSection = student.section || section;
     const oldId = student._id;
-    const newId = `${currentSection}_${newClass}_${finalStudentName}`;
+    const newId = `${currentSection}_${cleanNewClass}_${finalStudentName}`;
 
-    // Supprimer l'ancien document si l'ID a changé
-    if (oldId && String(oldId) !== String(newId)) {
+    // 1. Supprimer complètement l'ancien document par son ID
+    if (oldId) {
       await db.collection('students').deleteOne({ _id: oldId });
     }
 
-    // Supprimer tout éventuel doublon avec l'ancien nom et classe
-    if (currentOldClass && currentOldClass !== newClass) {
-      await db.collection('students').deleteMany({
-        _id: { $ne: newId },
-        name: { $regex: new RegExp(`^${finalStudentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-        section: currentSection,
-        class: currentOldClass
-      });
-    }
+    // 2. Supprimer TOUS les documents de cet élève dans cette section (pour éliminer tout doublon d'ancienne classe)
+    await db.collection('students').deleteMany({
+      name: { $regex: new RegExp(`^${finalStudentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      section: currentSection
+    });
 
-    // Créer / mettre à jour avec la nouvelle classe
+    // 3. Retirer également de la table des supprimés s'il y figurait
+    await db.collection('deleted_students').deleteMany({
+      name: { $regex: new RegExp(`^${finalStudentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      section: currentSection
+    });
+
+    // 4. Créer le document avec la NOUVELLE classe
     const updatedStudent = {
-      ...student,
       _id: newId,
       name: finalStudentName,
-      class: newClass,
+      photo: student.photo || '',
+      birthday: student.birthday || '',
+      class: cleanNewClass,
       section: currentSection,
+      createdAt: student.createdAt || new Date(),
       updatedAt: new Date()
     };
 
@@ -2241,29 +2352,32 @@ app.post('/api/admin/students/move', async (req, res) => {
       { upsert: true }
     );
 
-    // Mettre à jour les évaluations associées à l'élève
+    // 5. Mettre à jour les évaluations associées à l'élève vers la nouvelle classe
     try {
       await db.collection('evaluations').updateMany(
         { studentName: finalStudentName, section: currentSection },
-        { $set: { class: newClass } }
+        { $set: { class: cleanNewClass } }
       );
     } catch (evalErr) {
       console.warn('Note mise à jour evaluations:', evalErr.message);
     }
 
-    // Mettre à jour les étoiles journalières si présentes
+    // 6. Mettre à jour les étoiles journalières si présentes
     try {
       await db.collection('daily_stars').updateMany(
         { studentName: finalStudentName, section: currentSection },
-        { $set: { class: newClass } }
+        { $set: { class: cleanNewClass } }
       );
     } catch (starErr) {
       console.warn('Note mise à jour daily_stars:', starErr.message);
     }
 
+    // 7. INVALIDER TOUS LES CACHES (Essentiel pour que l'ancienne classe n'affiche plus l'élève)
+    invalidateStudentsCache();
+
     res.status(200).json({
       success: true,
-      message: `L'élève '${finalStudentName}' a été déplacé avec succès de ${currentOldClass} vers ${newClass}.`,
+      message: `L'élève '${finalStudentName}' a été déplacé avec succès de ${currentOldClass} vers ${cleanNewClass}.`,
       student: updatedStudent
     });
   } catch (error) {

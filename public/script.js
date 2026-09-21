@@ -6809,6 +6809,7 @@ async function loadAdminStudentsList() {
             }
         }
 
+        const fallbackAvatar = getStudentFallbackAvatar(section);
         container.innerHTML = `
             <div style="margin-bottom:8px; font-size:0.85rem; color:#475569;">
                 Total affiché : <strong>${studentsToDisplay.length}</strong> élève(s)
@@ -6828,12 +6829,13 @@ async function loadAdminStudentsList() {
                     ${studentsToDisplay.map((s, idx) => {
                         const safeId = `row_${idx}_` + (s._id || s.name).replace(/[^a-zA-Z0-9_-]/g, '_');
                         const escapedName = (s.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        const photoSrc = s.photo && s.photo.trim() ? s.photo : fallbackAvatar;
                         return `
                         <tr>
                             <td>
-                                <img src="${s.photo || 'https://via.placeholder.com/40'}" 
-                                     style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:1px solid #CBD5E1;" 
-                                     onerror="this.src='https://via.placeholder.com/40'">
+                                <img src="${photoSrc}" 
+                                     style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:1px solid #CBD5E1; background:#F1F5F9;" 
+                                     onerror="this.onerror=null; this.src='${fallbackAvatar}';">
                             </td>
                             <td><strong>${s.name}</strong></td>
                             <td>
