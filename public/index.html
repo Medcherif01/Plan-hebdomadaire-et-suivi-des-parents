@@ -1708,11 +1708,6 @@
                         <div id="sotw-showcase" class="student-of-the-week-showcase">
                             <div id="sotw-content" style="margin-top:10px;"><p style="text-align:center; color:#64748B;">Chargement de l'élève de la semaine...</p></div>
                         </div>
-                        <div id="sotwAdminBar" style="display:none; text-align:center; margin-top:14px;">
-                            <button type="button" class="pro-button" onclick="openStudentOfWeekAdminModal()" style="background:#FFFBEB; color:#92400E; border:1.5px solid #F59E0B; padding:8px 18px; border-radius:10px; font-weight:700; cursor:pointer; box-shadow:0 3px 10px rgba(245,158,11,0.2); display:inline-flex; align-items:center; gap:8px;">
-                                <i class="fas fa-crown" style="color:#D97706;"></i> <span>⭐ Modifier l'Élève de la Semaine (Photo &amp; Félicitations)</span>
-                            </button>
-                        </div>
                     </div>
 
                     <div style="margin-top:30px;">
@@ -2260,19 +2255,14 @@
                                 </select>
                             </div>
 
-                            <!-- Bouton Afficher & Imprimer le Plan Hebdomadaire pour les Parents -->
+                            <!-- Bouton Imprimer le Plan Hebdomadaire pour les Parents -->
                             <div>
                                 <label id="lblFilterPrintAction" style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
-                                    <i class="fas fa-file-pdf" style="color:#10B981;"></i> <span id="lblFilterPrintTitle">Plan Hebdomadaire (Impression &amp; PDF) :</span>
+                                    <i class="fas fa-file-pdf" style="color:#10B981;"></i> <span id="lblFilterPrintTitle">Plan Hebdomadaire :</span>
                                 </label>
-                                <div style="display:flex; gap:8px;">
-                                    <button type="button" id="btnParentPrintPlanAction" onclick="printParentWeeklyPlan()" class="pro-button" style="flex:1; padding:10px 14px; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; font-weight:700; font-size:0.92rem; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 3px 10px rgba(16,185,129,0.25);">
-                                        <i class="fas fa-print"></i> <span class="parentPrintBtnText">Afficher &amp; Imprimer</span>
-                                    </button>
-                                    <button type="button" id="btnParentDownloadPlanAction" onclick="downloadParentWeeklyPlan()" class="pro-button" style="padding:10px 14px; background:#F0FDF4; color:#065F46; border:1.5px solid #86EFAC; border-radius:10px; font-weight:700; font-size:0.92rem; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;" title="Télécharger le fichier">
-                                        <i class="fas fa-download"></i>
-                                    </button>
-                                </div>
+                                <button type="button" id="btnParentPrintPlanAction" onclick="printParentWeeklyPlan()" class="pro-button" style="width:100%; padding:10px 16px; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; font-weight:700; font-size:0.95rem; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 3px 10px rgba(16,185,129,0.25);">
+                                    <i class="fas fa-print"></i> <span class="parentPrintBtnText">Imprimer le Plan</span>
+                                </button>
                             </div>
 
                         </div>

@@ -3281,11 +3281,27 @@ app.get('/api/student-of-the-week', async (req, res) => {
     if (!doc) {
       return res.status(200).json({ name: '', class: '', stars: 5, photoUrl: '', congratulations: '', congratulationsAr: '' });
     }
+
+    const studentName = (doc.name || doc.studentName || '').trim();
+    const studentClass = (doc.class || doc.className || '').trim();
+
+    // Récupérer la photo de profil EXACTE de l'élève depuis son profil devoirs (collection students)
+    let profilePhoto = '';
+    if (studentName) {
+      const authList = await getAuthoritativeStudents(db, section);
+      const matched = matchAdminStudent(studentName, studentClass, authList);
+      if (matched && (matched.photo || matched.photoUrl)) {
+        profilePhoto = convertGoogleDriveUrl(matched.photo || matched.photoUrl);
+      }
+    }
+
+    const finalPhoto = profilePhoto || convertGoogleDriveUrl(doc.photoUrl || doc.photo || '');
+
     res.status(200).json({
-      name: doc.name || doc.studentName || '',
-      class: doc.class || doc.className || '',
+      name: studentName,
+      class: studentClass,
       stars: doc.stars || 5,
-      photoUrl: doc.photoUrl || doc.photo || '',
+      photoUrl: finalPhoto,
       congratulations: doc.congratsMessageFr || doc.congratulations || '',
       congratulationsAr: doc.congratsMessageAr || doc.congratulationsAr || '',
       updatedAt: doc.updatedAt
@@ -3316,13 +3332,15 @@ app.post('/api/student-of-the-week', async (req, res) => {
     const today = moment().startOf('day');
     const weekIdentifier = today.format('YYYY-[W]WW');
 
-    let finalPhoto = convertGoogleDriveUrl(photoUrl || '');
-    if (!finalPhoto) {
-      const authList = await getAuthoritativeStudents(db, section);
-      const matched = matchAdminStudent(name, targetClass, authList);
-      if (matched && (matched.photo || matched.photoUrl)) {
-        finalPhoto = convertGoogleDriveUrl(matched.photo || matched.photoUrl);
-      }
+    // Priorité à la photo du profil de l'élève tel qu'il s'affiche dans l'interface devoirs
+    const authList = await getAuthoritativeStudents(db, section);
+    const matched = matchAdminStudent(name, targetClass, authList);
+    let finalPhoto = '';
+    if (matched && (matched.photo || matched.photoUrl)) {
+      finalPhoto = convertGoogleDriveUrl(matched.photo || matched.photoUrl);
+    }
+    if (!finalPhoto && photoUrl) {
+      finalPhoto = convertGoogleDriveUrl(photoUrl);
     }
 
     const frText = (congratulations || congratsMessageFr || '').trim() ||
@@ -3350,7 +3368,7 @@ app.post('/api/student-of-the-week', async (req, res) => {
     await db.collection('students_of_the_week').deleteMany({ section: section });
     await db.collection('students_of_the_week').insertOne(doc);
 
-    // Mettre à jour la photo dans la liste des élèves si fournie
+    // Si une photo personnalisée est spécifiée et que l'élève existe, synchroniser son profil
     if (finalPhoto && targetClass) {
       await db.collection('students').updateOne(
         { name: { $regex: new RegExp(`^${name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }, section: section },
@@ -5524,7 +5542,7 @@ app.post('/api/generate-word', async (req, res) => {
 
 	app.post('/api/generate-design-plan', async (req, res) => {
 	  try {
-	    const { week, classe, data, notes, section: rawSection = 'garcons', theme = 'indigo', showPhotos = true, download = false } = req.body;
+	    const { week, classe, data, notes, section: rawSection = 'garcons', theme = 'indigo', showPhotos = true, download = false, isParent = false } = req.body;
 	    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
 	    const weekNumber = Number(week);
 	    if (!Number.isInteger(weekNumber) || !classe) {
@@ -5714,7 +5732,8 @@ app.post('/api/generate-word', async (req, res) => {
 	      weekStartDate: weekStartDateNode,
 	      weekDateRange: plageSemaineText,
 	      semester: 1,
-	      specialDays: specialDays || []
+	      specialDays: specialDays || [],
+	      isParent: isParent === true || String(req.body.isParent) === 'true'
 	    });
 
 	    if (download) {

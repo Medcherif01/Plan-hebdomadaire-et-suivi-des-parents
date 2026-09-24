@@ -185,7 +185,8 @@ function generateDesignPlanHtml(options = {}) {
     weekStartDate = null,
     weekDateRange = '',
     semester = 1,
-    specialDays = []
+    specialDays = [],
+    isParent = false
   } = options;
 
   let resolvedNotes = '';
@@ -1237,6 +1238,7 @@ function generateDesignPlanHtml(options = {}) {
       <span>Plan Hebdomadaire • Semaine ${week} • Classe : ${escapeHtml(classe)}</span>
     </div>
     <div class="toolbar-controls">
+      ${!isParent ? `
       <!-- Sélecteur de Thème Visuel -->
       <div class="theme-selector">
         <button type="button" class="theme-opt-btn ${theme === 'indigo' ? 'active' : ''}" onclick="setTheme('indigo')">Indigo</button>
@@ -1249,10 +1251,11 @@ function generateDesignPlanHtml(options = {}) {
       <button type="button" class="btn-action btn-download-html" onclick="downloadSelfHtml()">
         <i class="fas fa-download"></i> <span>Enregistrer HTML</span>
       </button>
+      ` : ''}
 
       <!-- Bouton d'impression / Enregistrer en PDF -->
       <button type="button" class="btn-action btn-print" onclick="window.print()">
-        <i class="fas fa-print"></i> <span>Imprimer / Sauvegarder en PDF</span>
+        <i class="fas fa-print"></i> <span>${isParent ? 'Imprimer le Plan' : 'Imprimer / Sauvegarder en PDF'}</span>
       </button>
     </div>
   </div>

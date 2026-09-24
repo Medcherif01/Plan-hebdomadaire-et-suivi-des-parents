@@ -6334,7 +6334,15 @@ async function loadHomeworkShowcase() {
                     for (let i = 0; i < starsCount; i++) {
                         starsHtml += '<i class="fas fa-star"></i> ';
                     }
-                    const rawPhoto = st.photoUrl || '';
+                    // Récupérer la photo de l'élève : exactement la même que dans son profil devoirs
+                    let rawPhoto = st.photoUrl || '';
+                    if (!rawPhoto && window.currentLoadedStudentsMap) {
+                        const norm = (st.name || '').trim().toLowerCase();
+                        const stObj = window.currentLoadedStudentsMap.get(norm);
+                        if (stObj && stObj.photo) {
+                            rawPhoto = stObj.photo;
+                        }
+                    }
                     const photoSrc = rawPhoto ? (typeof formatDriveImageUrl === 'function' ? formatDriveImageUrl(rawPhoto) : rawPhoto) : getStudentFallbackAvatar(section);
                     const congratsFr = st.congratulations || "Toutes nos chaleureuses félicitations pour son excellence académique, sa régularité et son attitude exemplaire !";
                     const congratsAr = st.congratulationsAr || "ألف مبروك للطالب المتميز على تفوقه واجتهاده المستمر وأخلاقه العالية !";
@@ -6370,19 +6378,17 @@ async function loadHomeworkShowcase() {
                         </div>
                     `;
 
-                    // Pré-remplir les champs admin modal et admin tab 4
+                    // Synchroniser les champs d'administration dans l'onglet Admin (Tab 4)
                     const syncInputs = [
-                        ['modalSotwName', 'adminSotwName', st.name || ''],
-                        ['modalSotwClass', 'adminSotwClass', st.class || ''],
-                        ['modalSotwStars', 'adminSotwStars', String(starsCount)],
-                        ['modalSotwPhotoUrl', 'adminSotwPhotoUrl', st.photoUrl || ''],
-                        ['modalSotwCongratsFr', 'adminSotwCongratsFr', st.congratulations || ''],
-                        ['modalSotwCongratsAr', 'adminSotwCongratsAr', st.congratulationsAr || '']
+                        ['adminSotwName', st.name || ''],
+                        ['adminSotwClass', st.class || ''],
+                        ['adminSotwStars', String(starsCount)],
+                        ['adminSotwPhotoUrl', rawPhoto || ''],
+                        ['adminSotwCongratsFr', st.congratulations || ''],
+                        ['adminSotwCongratsAr', st.congratulationsAr || '']
                     ];
-                    syncInputs.forEach(([mId, aId, val]) => {
-                        const mEl = document.getElementById(mId);
+                    syncInputs.forEach(([aId, val]) => {
                         const aEl = document.getElementById(aId);
-                        if (mEl && !mEl.value) mEl.value = val;
                         if (aEl && !aEl.value) aEl.value = val;
                     });
                 } else {
@@ -6393,15 +6399,6 @@ async function loadHomeworkShowcase() {
                             <p style="margin:0; font-size:0.92rem;">Aucun élève de la semaine sélectionné pour le moment.</p>
                         </div>
                     `;
-                }
-
-                // Afficher le bouton admin si l'utilisateur a les droits
-                const sotwAdminBar = document.getElementById('sotwAdminBar');
-                if (sotwAdminBar) {
-                    const isAdm = (typeof isUserAdminOrSupervisor === 'function' && isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ||
-                                  currentUserRole === 'admin' || currentUserRole === 'supervisor' ||
-                                  loggedInUser === 'Med01' || loggedInUser === 'Racha' || loggedInUser === 'Mohamed' || loggedInUser === 'Zohra' || loggedInUser === 'Imad';
-                    sotwAdminBar.style.display = isAdm ? 'block' : 'none';
                 }
             }
 
@@ -6562,6 +6559,50 @@ async function adminSaveStudentOfTheWeek() {
 }
 window.adminSaveStudentOfTheWeek = adminSaveStudentOfTheWeek;
 
+/**
+ * Auto-complétion de la classe et de la photo de profil de l'élève choisi (Admin Tab 4)
+ * Utilise la même photo que celle affichée dans son profil devoirs
+ */
+async function onAdminSotwNameChange() {
+    const nameInput = document.getElementById('adminSotwName');
+    const classInput = document.getElementById('adminSotwClass');
+    const photoInput = document.getElementById('adminSotwPhotoUrl');
+    if (!nameInput || !nameInput.value.trim()) return;
+
+    const targetName = nameInput.value.trim().toLowerCase();
+    const section = currentSection || 'garcons';
+
+    // 1. Chercher d'abord dans les élèves déjà chargés en mémoire
+    if (window.currentLoadedStudentsMap) {
+        for (const [k, v] of window.currentLoadedStudentsMap.entries()) {
+            if (k === targetName || k.includes(targetName) || targetName.includes(k)) {
+                if (classInput && !classInput.value && v.class) classInput.value = v.class;
+                if (photoInput && v.photo) photoInput.value = v.photo;
+                return;
+            }
+        }
+    }
+
+    // 2. Sinon, interroger l'API pour récupérer sa classe et sa photo de profil devoirs
+    try {
+        const res = await fetch(`/api/admin/students?section=${encodeURIComponent(section)}&_t=${Date.now()}`);
+        if (res.ok) {
+            const list = await res.json();
+            const matched = list.find(s => {
+                const sName = (s.name || '').trim().toLowerCase();
+                return sName === targetName || sName.includes(targetName) || targetName.includes(sName);
+            });
+            if (matched) {
+                if (classInput && !classInput.value && matched.class) classInput.value = matched.class;
+                if (photoInput && matched.photo) photoInput.value = matched.photo;
+            }
+        }
+    } catch (e) {
+        console.warn('Erreur onAdminSotwNameChange:', e);
+    }
+}
+window.onAdminSotwNameChange = onAdminSotwNameChange;
+
 // ---------------- AFFICHAGE & IMPRESSION DU PLAN HEBDOMADAIRE POUR LES PARENTS ----------------
 async function printParentWeeklyPlan() {
     const weekSel = document.getElementById('parentWeekSelector');
@@ -6573,7 +6614,8 @@ async function printParentWeeklyPlan() {
         return;
     }
     const section = currentSection || 'garcons';
-    await downloadFullClassDesign(weekNum, className, 'indigo', true, true, 'print');
+    // isParent = true pour n'afficher que le bouton d'impression sans sélecteur de couleurs ni bouton Enregistrer HTML
+    await downloadFullClassDesign(weekNum, className, 'indigo', true, true, 'print', true);
 }
 window.printParentWeeklyPlan = printParentWeeklyPlan;
 
@@ -11604,7 +11646,7 @@ async function downloadSelectedClassFullDesign() {
 /**
  * Moteur d'appel et de génération du Plan Hebdomadaire (Design & PDF)
  */
-async function downloadFullClassDesign(weekNum, className, theme, showPhotos, highlightHomework, action) {
+async function downloadFullClassDesign(weekNum, className, theme, showPhotos, highlightHomework, action, isParent = false) {
     if (!className) {
         openDesignPlanModal();
         return;
@@ -11647,7 +11689,8 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             showPhotos: showPhotos !== false,
             highlightHomework: highlightHomework !== false,
             notes: activeNoteForClass || weeklyClassNotes,
-            notesPhoto: activePhotoForClass
+            notesPhoto: activePhotoForClass,
+            isParent: isParent === true
         };
 
         const response = await fetch('/api/generate-design-plan', {
