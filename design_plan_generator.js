@@ -235,7 +235,21 @@ function generateDesignPlanHtml(options = {}) {
     daysToRender.push("Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi");
   }
 
-  const totalPages = daysToRender.length + 1; // +1 pour la page de récapitulatif des devoirs/cartable
+  // Déterminer avec précision si une page de couverture / directives dédiée est nécessaire
+  const hasNotesText = Boolean(resolvedNotes && resolvedNotes.trim() !== '');
+  const hasNotesPhoto = Boolean(resolvedNotesPhoto && resolvedNotesPhoto.trim() !== '');
+  const firstDayRowsCount = (daysToRender.length > 0 && groupedByDay[daysToRender[0]]) ? groupedByDay[daysToRender[0]].length : 0;
+
+  // Une page de couverture officielle dédiée est créée si :
+  // 1. Une photo ou affiche de la semaine est attachée (ne peut pas tenir sur la même page qu'un emploi du temps de cours), OU
+  // 2. Les remarques textuelles comportent plus de 120 caractères ou plusieurs lignes, OU
+  // 3. Le premier jour comporte déjà 6 cours ou plus (garantissant que le tableau du premier jour ne soit JAMAIS coupé)
+  const hasWeeklyNotesCover = hasNotesPhoto || (hasNotesText && (resolvedNotes.trim().length > 120 || resolvedNotes.trim().split('\n').length > 2 || firstDayRowsCount >= 6));
+
+  let totalPages = daysToRender.length + 1; // +1 pour la page de récapitulatif du cartable
+  if (hasWeeklyNotesCover) {
+    totalPages += 1; // +1 pour la page de garde des directives & affiche
+  }
 
   let weekStartObj = null;
   if (weekStartDate) {
@@ -250,6 +264,51 @@ function generateDesignPlanHtml(options = {}) {
   } else if (!plageSemaineDisplay) {
     plageSemaineDisplay = `Semaine ${week}`;
   }
+
+  // Helpers pour générer des en-têtes et pieds de page strictement uniformes et sécurisés
+  const renderOfficialHeader = (docTypeTitle = 'PLAN HEBDOMADAIRE') => `
+    <header class="word-header-container">
+      <div class="header-main-row">
+        <!-- GAUCHE : LOGO OFFICIEL DE L'ÉCOLE -->
+        <div class="header-logo-col">
+          <img src="${logoAlKawtharUri}" alt="Logo Les Écoles Internationales Al Kawthar" class="header-school-logo" />
+        </div>
+
+        <!-- CENTRE : TITRES OFFICIELS & DATE -->
+        <div class="header-titles-col">
+          <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
+          <div class="word-sub-title-ar">مدارس الكوثر العالمية • AL KAWTHAR INTERNATIONAL SCHOOLS</div>
+          <div class="header-week-range-badge">
+            <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
+          </div>
+        </div>
+
+        <!-- DROITE : MÉTADONNÉES CLASSE / SEMAINE -->
+        <div class="header-meta-col">
+          <div class="meta-tag-row">
+            <span class="meta-tag-label">CLASSE :</span>
+            <span class="meta-tag-val meta-class-highlight">${escapeHtml(classe)}</span>
+          </div>
+          <div class="meta-tag-row">
+            <span class="meta-tag-label">SEMAINE :</span>
+            <span class="meta-tag-val">${week}</span>
+            <span class="meta-tag-sep">|</span>
+            <span class="meta-tag-label">SEMESTRE :</span>
+            <span class="meta-tag-val">${escapeHtml(String(semester || 1))}</span>
+          </div>
+          <div class="meta-doc-type">${escapeHtml(docTypeTitle)}</div>
+        </div>
+      </div>
+    </header>
+  `;
+
+  const renderOfficialFooter = (currentPageNum, totalPagesCount) => `
+    <footer class="a4-page-footer">
+      <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
+      <div class="footer-stamp-box">Visa de la Direction</div>
+      <div class="page-number-box">Page <strong>${currentPageNum}</strong> / ${totalPagesCount}</div>
+    </footer>
+  `;
 
   return `<!DOCTYPE html>
 <html lang="fr" data-theme="${escapeHtml(theme)}">
@@ -414,29 +473,27 @@ function generateDesignPlanHtml(options = {}) {
 
     /* CONTENEUR GLOBAL DES FEUILLES A4 */
     .all-pages-wrapper {
-      padding: 24px 0;
+      padding: 20px 0;
     }
 
     /* ========================================================================
-       FEUILLE A4 STRICTE (210mm x 297mm) AVEC MARGE 1.0 CM PARTOUT (STYLE WORD)
+       FEUILLE A4 STRICTE (210mm x 297mm) AVEC MARGE 1.0 CM (STYLE OFFICIEL)
        ======================================================================== */
     .a4-page {
       width: 210mm;
       min-height: 297mm;
-      margin: 0 auto 30px auto;
-      padding: 10mm; /* Marge exacte de 1.0 cm sur les 4 côtés */
+      margin: 0 auto 25px auto;
+      padding: 8mm 10mm; /* Marge optimisée pour ne jamais créer de rupture */
       background: #FFFFFF;
       box-shadow: 0 4px 20px rgba(0,0,0,0.14);
       box-sizing: border-box;
       position: relative;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: flex-start;
       overflow: visible;
       page-break-after: always;
       break-after: page;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
     }
 
     .a4-page:last-child {
@@ -447,10 +504,14 @@ function generateDesignPlanHtml(options = {}) {
        1. EN-TÊTE OFFICIEL WORD AL KAWTHAR (LOGO + TITRE BILINGUE + MÉTADONNÉES)
        ------------------------------------------------------------------------ */
     .word-header-container {
-      margin-bottom: 5px;
+      margin-bottom: 6px;
       border-bottom: 2px solid var(--primary-color);
       padding-bottom: 5px;
       flex-shrink: 0;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      page-break-after: avoid !important;
+      break-after: avoid !important;
     }
 
     .header-main-row {
@@ -571,87 +632,131 @@ function generateDesignPlanHtml(options = {}) {
     }
 
     /* ------------------------------------------------------------------------
-       2. TABLEAU DES NOTES (COMPACTÉ POUR TENIR SUR LA PAGE 1 SANS DÉBORDER)
+       2. BLOCS DE REMARQUES (PAGE DE GARDE OU BANDEAU COMPACT)
        ------------------------------------------------------------------------ */
-    .word-notes-block {
-      margin-bottom: 5px;
-      flex-shrink: 0;
+    .weekly-cover-page {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+    }
+
+    .weekly-notes-main-block {
+      border: 1.5px solid #F59E0B;
+      background: #FFFDF5;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 4px;
+      margin-bottom: 8px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
-    .notes-styled-container {
-      border: 1.5px solid #F59E0B;
-      background: #FFFDF5;
-      border-radius: 5px;
-      overflow: hidden;
-    }
-
-    .notes-header-bar {
+    .weekly-notes-main-block .notes-header-bar {
       background: linear-gradient(135deg, #D97706 0%, #B45309 100%);
       color: #FFFFFF;
-      padding: 2.5px 8px;
-      font-size: 0.76rem;
+      padding: 4px 10px;
+      font-size: 0.82rem;
       font-weight: 800;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-shrink: 0;
     }
 
-    .notes-header-fr {
+    .weekly-notes-main-block .notes-header-fr {
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
     }
 
-    .notes-header-ar {
+    .weekly-notes-main-block .notes-header-ar {
       font-family: 'Cairo', sans-serif;
       direction: rtl;
     }
 
-    .notes-body-content {
-      padding: 6px 10px;
-      font-size: 0.78rem;
+    .weekly-notes-main-block .notes-body-content {
+      padding: 8px 12px;
+      font-size: 0.82rem;
       font-weight: 600;
       color: #1E293B;
-      line-height: 1.35;
-      overflow: visible;
+      line-height: 1.4;
       white-space: pre-wrap;
       word-break: break-word;
+      background: #FFFFFF;
+      border-bottom: 1px solid #FDE68A;
+      flex-shrink: 0;
     }
 
     .teacher-notes-text {
       white-space: pre-wrap;
       word-break: break-word;
-      line-height: 1.35;
+      line-height: 1.4;
     }
 
     .empty-notes-text {
       color: #64748B;
       font-style: italic;
-      font-size: 0.74rem;
+      font-size: 0.78rem;
     }
 
-    .notes-attached-photo-container {
-      margin-top: 8px;
+    .weekly-cover-photo-wrapper {
+      padding: 8px;
       text-align: center;
-      width: 100%;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #FFFDF5;
       overflow: visible;
+    }
+
+    .weekly-cover-photo-img {
+      max-width: 100%;
+      max-height: 155mm;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border-radius: 6px;
+      box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+      border: 1px solid #CBD5E1;
+      display: block;
+      margin: 0 auto;
+    }
+
+    /* Bandeau compact de remarques pour la page du premier jour si note très courte */
+    .compact-day-notes-banner {
+      background: #FFFBEB;
+      border: 1px solid #FCD34D;
+      border-left: 4px solid #F59E0B;
+      border-radius: 4px;
+      padding: 3px 8px;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.74rem;
+      color: #78350F;
+      flex-shrink: 0;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
-    .notes-attached-photo-img {
-      width: 100%;
-      max-width: 100%;
-      height: auto;
-      object-fit: contain;
-      border-radius: 6px;
-      border: 1px solid #FCD34D;
-      background: #FFFFFF;
-      padding: 0;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      display: block;
+    .compact-notes-tag {
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: #B45309;
+      white-space: nowrap;
+    }
+
+    .compact-notes-text {
+      font-weight: 600;
+      color: #1E293B;
+      word-break: break-word;
     }
 
     /* ------------------------------------------------------------------------
@@ -667,6 +772,10 @@ function generateDesignPlanHtml(options = {}) {
       border-radius: 4px;
       margin-bottom: 5px;
       flex-shrink: 0;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      page-break-after: avoid !important;
+      break-after: avoid !important;
     }
 
     .day-title-french {
@@ -1134,12 +1243,12 @@ function generateDesignPlanHtml(options = {}) {
 
     /* ========================================================================
        RÈGLES D'IMPRESSION STRICTES (@media print) - FORMAT WORD A4 NORMAL
-       Marge physique 10mm (1.0 cm) partout, pied de page toujours en bas
+       Marge physique 8mm haut/bas, 10mm gauche/droite, pied de page toujours en bas
        ======================================================================== */
     @media print {
       @page {
         size: A4 portrait;
-        margin: 10mm 10mm 10mm 10mm; /* Marge exacte de 1.0 cm partout */
+        margin: 8mm 10mm 8mm 10mm; /* Marge optimisée pour ne jamais créer de coupure */
       }
 
       html, body {
@@ -1160,16 +1269,17 @@ function generateDesignPlanHtml(options = {}) {
       .all-pages-wrapper {
         padding: 0 !important;
         margin: 0 !important;
+        width: 100% !important;
       }
 
-      /* Chaque section .a4-page fait exactement la hauteur utile d'une page A4 (277mm) */
+      /* Chaque section .a4-page s'ajuste à la page physique sans dépassement parasite */
       .a4-page {
         width: 100% !important;
-        min-height: 277mm !important;
+        min-height: 0 !important;
         height: auto !important;
         max-height: none !important;
         margin: 0 !important;
-        padding: 0 !important; /* Le 10mm est déjà appliqué par @page { margin: 10mm } */
+        padding: 0 !important; /* Le 8mm/10mm est déjà appliqué par @page { margin: 8mm 10mm } */
         box-shadow: none !important;
         border: none !important;
         page-break-after: always !important;
@@ -1178,7 +1288,7 @@ function generateDesignPlanHtml(options = {}) {
         break-inside: avoid !important;
         display: flex !important;
         flex-direction: column !important;
-        justify-content: space-between !important;
+        justify-content: flex-start !important;
         overflow: visible !important;
         box-sizing: border-box !important;
       }
@@ -1188,17 +1298,26 @@ function generateDesignPlanHtml(options = {}) {
         break-after: auto !important;
       }
 
+      /* Gestion infaillible des tableaux : pas de coupure sauvage dans les lignes */
       .lessons-table-a4,
       .backpack-recap-table {
         width: 100% !important;
         table-layout: fixed !important;
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+        border-collapse: collapse !important;
       }
 
       .lessons-table-a4 thead,
       .backpack-recap-table thead {
         display: table-header-group !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+
+      .lessons-table-a4 tbody,
+      .backpack-recap-table tbody {
+        display: table-row-group !important;
       }
 
       .lessons-table-a4 tr,
@@ -1208,23 +1327,57 @@ function generateDesignPlanHtml(options = {}) {
       }
 
       .word-header-container,
-      .day-banner-strip,
-      .word-notes-block,
-      .backpack-tip-box,
-      .a4-page-footer {
+      .day-banner-strip {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        flex-shrink: 0 !important;
       }
 
       .a4-page-footer {
         margin-top: auto !important;
         padding-top: 4px !important;
         border-top: 1.5px solid #94A3B8 !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        flex-shrink: 0 !important;
+      }
+
+      .weekly-cover-page {
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+
+      .weekly-notes-main-block {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+
+      .weekly-cover-photo-wrapper {
+        width: 100% !important;
+        text-align: center !important;
+        margin-top: 6px !important;
+        overflow: visible !important;
+      }
+
+      .weekly-cover-photo-img {
+        max-height: 145mm !important;
+        max-width: 100% !important;
+        width: auto !important;
+        height: auto !important;
+        object-fit: contain !important;
+        display: block !important;
+        margin: 0 auto !important;
+        border-radius: 6px !important;
       }
 
       .merged-photos-gallery {
         width: 100% !important;
       }
+
       .merged-photo-card {
         width: 100% !important;
         max-width: 100% !important;
@@ -1234,28 +1387,21 @@ function generateDesignPlanHtml(options = {}) {
         padding: 0 !important;
         overflow: visible !important;
       }
+
       .merged-photo-img {
-        width: 100% !important;
+        width: auto !important;
         max-width: 100% !important;
         height: auto !important;
-        max-height: none !important;
+        max-height: 140mm !important;
         object-fit: contain !important;
         display: block !important;
+        margin: 0 auto !important;
         border-radius: 6px !important;
       }
-      .notes-attached-photo-container {
-        width: 100% !important;
-        max-height: none !important;
-        overflow: visible !important;
-      }
-      .notes-attached-photo-img {
-        width: 100% !important;
-        max-width: 100% !important;
-        height: auto !important;
-        max-height: none !important;
-        object-fit: contain !important;
-        display: block !important;
-        border-radius: 6px !important;
+
+      .compact-day-notes-banner {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
 
       * {
@@ -1297,429 +1443,377 @@ function generateDesignPlanHtml(options = {}) {
   </div>
 
   <div class="all-pages-wrapper">
-    ${daysToRender.map((dayName, index) => {
-      const rows = groupedByDay[dayName] || [];
-      const pageNum = index + 1;
-      const isFirstPage = (index === 0);
+    ${(() => {
+      let pageTracker = 1;
+      let htmlParts = [];
 
-      // Calculer la date complète du jour (ex: Lundi 21 Septembre 2026)
-      let formattedDayDate = dayName;
-      if (weekStartObj) {
-        const dayDateObj = getDateForDayName(weekStartObj, dayName);
-        if (dayDateObj) {
-          formattedDayDate = formatDateFrench(dayDateObj);
-        }
+      // 1. PAGE DE COUVERTURE DES DIRECTIVES & AFFICHE SI NÉCESSAIRE
+      if (hasWeeklyNotesCover) {
+        htmlParts.push(`
+        <section class="a4-page weekly-cover-page" id="page_weekly_notes">
+          ${renderOfficialHeader('DIRECTIVES & ANNONCES')}
+
+          <div class="weekly-notes-main-block">
+            <div class="notes-header-bar">
+              <div class="notes-header-fr"><i class="fas fa-clipboard-list"></i> Remarques &amp; Notes de la semaine (saisi par les enseignants)</div>
+              <div class="notes-header-ar">ملاحظات وتوجيهات الأسبوع (مسجلة من قبل المعلمين)</div>
+            </div>
+            <div class="notes-body-content">
+              ${hasNotesText
+                ? `<div class="teacher-notes-text">${escapeHtml(resolvedNotes)}</div>`
+                : `<div class="empty-notes-text"><i class="fas fa-info-circle"></i> Directives et consignes de travail pour cette semaine.</div>`
+              }
+            </div>
+            ${hasNotesPhoto ? `
+              <div class="weekly-cover-photo-wrapper">
+                <img src="${formatDriveImageUrl(resolvedNotesPhoto)}" alt="Affiche officielle de la semaine" class="weekly-cover-photo-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.retry){this.dataset.retry=1;const id=this.src.match(/\\/d\\/([a-zA-Z0-9_-]+)/)?.[1]||this.src.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1];if(id){this.src='https://drive.google.com/thumbnail?id='+id+'&sz=w1200';}}" />
+              </div>
+            ` : ''}
+          </div>
+
+          ${renderOfficialFooter(pageTracker++, totalPages)}
+        </section>
+        `);
       }
 
-      // Vérifier si cette journée fait l'objet d'une fusion (Pas de cours, Vacances, Sortie, Événement)
-      const normDay = dayName.trim().toLowerCase();
-      const normClass = String(classe || '').trim().toLowerCase();
-      const matchedSpecialDay = (Array.isArray(specialDays) ? specialDays : []).find(sd => {
-        if (!sd) return false;
-        const sdDay = String(sd.day || '').trim().toLowerCase();
-        const sdClass = String(sd.classe || 'all').trim().toLowerCase();
-        const matchesDay = sdDay.includes(normDay) || normDay.includes(sdDay);
-        const matchesClass = sdClass === 'all' || sdClass === 'toutes' || sdClass.includes('toutes') || sdClass === normClass || normClass.includes(sdClass) || sdClass.includes(normClass);
-        return matchesDay && matchesClass;
-      });
+      // 2. LES PAGES QUOTIDIENNES D'EMPLOI DU TEMPS
+      daysToRender.forEach((dayName, index) => {
+        const rows = groupedByDay[dayName] || [];
+        const thisPageNum = pageTracker++;
 
-      let specialPhotos = [];
-      if (matchedSpecialDay) {
-        if (Array.isArray(matchedSpecialDay.photos) && matchedSpecialDay.photos.length > 0) {
-          specialPhotos = matchedSpecialDay.photos.filter(p => p && (typeof p === 'string' ? p.trim() : (p.url || p.src || p.data)));
+        // Calculer la date complète du jour (ex: Lundi 21 Septembre 2026)
+        let formattedDayDate = dayName;
+        if (weekStartObj) {
+          const dayDateObj = getDateForDayName(weekStartObj, dayName);
+          if (dayDateObj) {
+            formattedDayDate = formatDateFrench(dayDateObj);
+          }
         }
-        if (matchedSpecialDay.photoUrl) specialPhotos.push({ url: matchedSpecialDay.photoUrl });
-        if (matchedSpecialDay.photo) specialPhotos.push({ url: matchedSpecialDay.photo });
-        if (matchedSpecialDay.imageUrl) specialPhotos.push({ url: matchedSpecialDay.imageUrl });
-        if (matchedSpecialDay.image) specialPhotos.push({ url: matchedSpecialDay.image });
 
-        // Si aucune photo n'a été rattachée à la Fête Nationale, injecter l'affiche officielle
-        if (specialPhotos.length === 0 && /f[eê]te\s*nationale/i.test(matchedSpecialDay.title || '')) {
-          specialPhotos.push({
-            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
-            caption: 'Célébration Fête Nationale'
-          });
+        // Vérifier si cette journée fait l'objet d'une fusion (Pas de cours, Vacances, Sortie, Événement)
+        const normDay = dayName.trim().toLowerCase();
+        const normClass = String(classe || '').trim().toLowerCase();
+        const matchedSpecialDay = (Array.isArray(specialDays) ? specialDays : []).find(sd => {
+          if (!sd) return false;
+          const sdDay = String(sd.day || '').trim().toLowerCase();
+          const sdClass = String(sd.classe || 'all').trim().toLowerCase();
+          const matchesDay = sdDay.includes(normDay) || normDay.includes(sdDay);
+          const matchesClass = sdClass === 'all' || sdClass === 'toutes' || sdClass.includes('toutes') || sdClass === normClass || normClass.includes(sdClass) || sdClass.includes(normClass);
+          return matchesDay && matchesClass;
+        });
+
+        let specialPhotos = [];
+        if (matchedSpecialDay) {
+          if (Array.isArray(matchedSpecialDay.photos) && matchedSpecialDay.photos.length > 0) {
+            specialPhotos = matchedSpecialDay.photos.filter(p => p && (typeof p === 'string' ? p.trim() : (p.url || p.src || p.data)));
+          }
+          if (matchedSpecialDay.photoUrl) specialPhotos.push({ url: matchedSpecialDay.photoUrl });
+          if (matchedSpecialDay.photo) specialPhotos.push({ url: matchedSpecialDay.photo });
+          if (matchedSpecialDay.imageUrl) specialPhotos.push({ url: matchedSpecialDay.imageUrl });
+          if (matchedSpecialDay.image) specialPhotos.push({ url: matchedSpecialDay.image });
+
+          // Si aucune photo n'a été rattachée à la Fête Nationale, injecter l'affiche officielle
+          if (specialPhotos.length === 0 && /f[eê]te\\s*nationale/i.test(matchedSpecialDay.title || '')) {
+            specialPhotos.push({
+              url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+              caption: 'Célébration Fête Nationale'
+            });
+          }
         }
-      }
 
-      return `
-      <section class="a4-page" id="page_day_${dayName.toLowerCase()}">
-        
-        <!-- EN-TÊTE OFFICIEL WORD AL KAWTHAR AVEC LOGO OFFICIEL SUR CHAQUE PAGE -->
-        <header class="word-header-container">
-          <div class="header-main-row">
-            <!-- GAUCHE : LOGO OFFICIEL DE L'ÉCOLE -->
-            <div class="header-logo-col">
-              <img src="${logoAlKawtharUri}" alt="Logo Les Écoles Internationales Al Kawthar" class="header-school-logo" />
+        htmlParts.push(`
+        <section class="a4-page" id="page_day_${dayName.toLowerCase()}">
+          ${renderOfficialHeader('PLAN HEBDOMADAIRE')}
+
+          ${(!hasWeeklyNotesCover && hasNotesText && index === 0) ? `
+            <div class="compact-day-notes-banner">
+              <div class="compact-notes-tag"><i class="fas fa-info-circle"></i> Remarque :</div>
+              <div class="compact-notes-text">${escapeHtml(resolvedNotes)}</div>
             </div>
+          ` : ''}
 
-            <!-- CENTRE : TITRES OFFICIELS & DATE -->
-            <div class="header-titles-col">
-              <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
-              <div class="word-sub-title-ar">مدارس الكوثر العالمية • AL KAWTHAR INTERNATIONAL SCHOOLS</div>
-              <div class="header-week-range-badge">
-                <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
-              </div>
+          <!-- BANDEAU DU JOUR EN COURS (EX: Dimanche 27 Septembre 2026) -->
+          <div class="day-banner-strip">
+            <div class="day-title-french">
+              <i class="fas fa-calendar-day"></i>
+              <span>${escapeHtml(formattedDayDate)}</span>
             </div>
-
-            <!-- DROITE : MÉTADONNÉES CLASSE / SEMAINE -->
-            <div class="header-meta-col">
-              <div class="meta-tag-row">
-                <span class="meta-tag-label">CLASSE :</span>
-                <span class="meta-tag-val meta-class-highlight">${escapeHtml(classe)}</span>
-              </div>
-              <div class="meta-tag-row">
-                <span class="meta-tag-label">SEMAINE :</span>
-                <span class="meta-tag-val">${week}</span>
-                <span class="meta-tag-sep">|</span>
-                <span class="meta-tag-label">SEMESTRE :</span>
-                <span class="meta-tag-val">${escapeHtml(String(semester || 1))}</span>
-              </div>
-              <div class="meta-doc-type">PLAN HEBDOMADAIRE</div>
+            <div class="day-title-arabic">
+              <span>${arabicDays[dayName] || dayName}</span>
             </div>
           </div>
-        </header>
 
-        <!-- TABLEAU DES NOTES (SUR LA PREMIÈRE PAGE, COMPACTÉ POUR TENIR DANS LES 277MM) -->
-        ${isFirstPage ? `
-          <div class="word-notes-block">
-            <div class="notes-styled-container">
-              <div class="notes-header-bar">
-                <div class="notes-header-fr"><i class="fas fa-clipboard-list"></i> Remarques &amp; Notes de la semaine (saisi par les enseignants)</div>
-                <div class="notes-header-ar">ملاحظات الأسبوع (مسجلة من قبل المعلمين)</div>
-              </div>
-              <div class="notes-body-content">
-                ${(resolvedNotes && resolvedNotes.trim() !== '') 
-                  ? `<div class="teacher-notes-text">${escapeHtml(resolvedNotes)}</div>`
-                  : `<div class="empty-notes-text"><i class="fas fa-info-circle"></i> Aucune consigne particulière pour cette semaine.</div>`}
-                ${resolvedNotesPhoto ? `
-                  <div class="notes-attached-photo-container">
-                    <img src="${formatDriveImageUrl(resolvedNotesPhoto)}" alt="Photo Remarques" class="notes-attached-photo-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.retry){this.dataset.retry=1;const id=this.src.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1]||this.src.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1];if(id){this.src='https://drive.google.com/thumbnail?id='+id+'&sz=w800';}}" />
-                  </div>
-                ` : ''}
-              </div>
-            </div>
-          </div>
-        ` : ''}
-
-        <!-- BANDEAU DU JOUR EN COURS (EX: Dimanche 20 Septembre 2026) -->
-        <div class="day-banner-strip">
-          <div class="day-title-french">
-            <i class="fas fa-calendar-day"></i>
-            <span>${escapeHtml(formattedDayDate)}</span>
-          </div>
-          <div class="day-title-arabic">
-            <span>${arabicDays[dayName] || dayName}</span>
-          </div>
-        </div>
-
-        <!-- TABLEAU DU JOUR À 3 COLONNES : MATIÈRES | TRAVAIL DE CLASSE | DEVOIRS -->
-        <div class="main-table-wrapper">
-          <table class="lessons-table-a4">
-            <thead>
-              <tr>
-                <th class="th-matieres">MATIÈRES</th>
-                <th class="th-classwork">TRAVAIL DE CLASSE</th>
-                <th class="th-homework">DEVOIRS</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${matchedSpecialDay ? `
+          <!-- TABLEAU DU JOUR À 3 COLONNES : MATIÈRES | TRAVAIL DE CLASSE | DEVOIRS -->
+          <div class="main-table-wrapper">
+            <table class="lessons-table-a4">
+              <thead>
                 <tr>
-                  <td colspan="3" class="merged-day-special-cell">
-                    <div class="merged-special-container">
-                      <div class="merged-badge-header">
-                        <span class="merged-type-pill">
-                          <i class="fas fa-info-circle"></i> <span>${escapeHtml(matchedSpecialDay.type === 'holiday' ? 'Vacances / Jour Férié' : (matchedSpecialDay.type === 'activity' ? 'Activité / Sortie' : (matchedSpecialDay.type === 'event' ? 'Célébration' : 'Journée Sans Cours')))}</span>
-                        </span>
-                        <div class="merged-day-title">${escapeHtml(matchedSpecialDay.title || 'Journée Spéciale')}</div>
-                      </div>
-                      ${(matchedSpecialDay.description || matchedSpecialDay.message) ? `
-                        <div class="merged-day-desc">${escapeHtml(matchedSpecialDay.description || matchedSpecialDay.message)}</div>
-                      ` : ''}
-                      ${specialPhotos.length > 0 ? `
-                        <div class="merged-photos-gallery">
-                          ${specialPhotos.map(p => {
-                            const rawUrl = typeof p === 'string' ? p : (p.url || p.src || p.data || '');
-                            const pUrl = formatDriveImageUrl(rawUrl);
-                            const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
-                            const pCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
-                            return `
-                              <div class="merged-photo-card">
-                                <img src="${pUrl}" alt="Affiche" class="merged-photo-img" referrerpolicy="no-referrer"
-                                  data-file-id="${driveId || ''}"
-                                  onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w2560';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
-                              </div>
-                            `;
-                          }).join('')}
-                        </div>
-                      ` : ''}
-                    </div>
-                  </td>
+                  <th class="th-matieres">MATIÈRES</th>
+                  <th class="th-classwork">TRAVAIL DE CLASSE</th>
+                  <th class="th-homework">DEVOIRS</th>
                 </tr>
-              ` : (rows.length === 0 ? `
-                <tr>
-                  <td colspan="3" style="text-align:center; padding: 25px; color:#64748B; font-style:italic;">
-                    <i class="fas fa-calendar-times" style="font-size:1.3rem; margin-bottom:6px; display:block; color:#94A3B8;"></i>
-                    Aucun cours programmé pour ce jour.
-                  </td>
-                </tr>
-              ` : rows.map(row => {
-                const rowPhotos = Array.isArray(row.photos) ? row.photos : (Array.isArray(row.images) ? row.images : []);
-                if ((row.isMerged || row.merged) && rowPhotos.length > 0) {
-                  return `
+              </thead>
+              <tbody>
+                ${matchedSpecialDay ? `
                   <tr>
                     <td colspan="3" class="merged-day-special-cell">
                       <div class="merged-special-container">
-                        <div class="merged-day-title">${escapeHtml(row['Leçon'] || row.lecon || row['Matière'] || 'Séance Spéciale')}</div>
-                        ${(row['Travaux de classe'] || row.travaux) ? `<div class="merged-day-desc">${escapeHtml(row['Travaux de classe'] || row.travaux)}</div>` : ''}
-                        <div class="merged-photos-gallery">
-                          ${rowPhotos.map(p => {
-                            const rawUrl = typeof p === 'string' ? p : (p.url || p.src || '');
-                            const pUrl = formatDriveImageUrl(rawUrl);
-                            const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
-                            return `
-                              <div class="merged-photo-card">
-                                <img src="${pUrl}" alt="Affiche" class="merged-photo-img" referrerpolicy="no-referrer"
-                                  data-file-id="${driveId || ''}"
-                                  onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w2560';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
-                              </div>
-                            `;
-                          }).join('')}
+                        <div class="merged-badge-header">
+                          <span class="merged-type-pill">
+                            <i class="fas fa-info-circle"></i> <span>${escapeHtml(matchedSpecialDay.type === 'holiday' ? 'Vacances / Jour Férié' : (matchedSpecialDay.type === 'activity' ? 'Activité / Sortie' : (matchedSpecialDay.type === 'event' ? 'Célébration' : 'Journée Sans Cours')))}</span>
+                          </span>
+                          <div class="merged-day-title">${escapeHtml(matchedSpecialDay.title || 'Journée Spéciale')}</div>
                         </div>
+                        ${(matchedSpecialDay.description || matchedSpecialDay.message) ? `
+                          <div class="merged-day-desc">${escapeHtml(matchedSpecialDay.description || matchedSpecialDay.message)}</div>
+                        ` : ''}
+                        ${specialPhotos.length > 0 ? `
+                          <div class="merged-photos-gallery">
+                            ${specialPhotos.map(p => {
+                              const rawUrl = typeof p === 'string' ? p : (p.url || p.src || p.data || '');
+                              const pUrl = formatDriveImageUrl(rawUrl);
+                              const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
+                              return `
+                                <div class="merged-photo-card">
+                                  <img src="${pUrl}" alt="Affiche" class="merged-photo-img" referrerpolicy="no-referrer"
+                                    data-file-id="${driveId || ''}"
+                                    onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w2560';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
+                                </div>
+                              `;
+                            }).join('')}
+                          </div>
+                        ` : ''}
                       </div>
                     </td>
                   </tr>
+                ` : (rows.length === 0 ? `
+                  <tr>
+                    <td colspan="3" style="text-align:center; padding: 25px; color:#64748B; font-style:italic;">
+                      <i class="fas fa-calendar-times" style="font-size:1.3rem; margin-bottom:6px; display:block; color:#94A3B8;"></i>
+                      Aucun cours programmé pour ce jour.
+                    </td>
+                  </tr>
+                ` : rows.map(row => {
+                  const rowPhotos = Array.isArray(row.photos) ? row.photos : (Array.isArray(row.images) ? row.images : []);
+                  if ((row.isMerged || row.merged) && rowPhotos.length > 0) {
+                    return `
+                    <tr>
+                      <td colspan="3" class="merged-day-special-cell">
+                        <div class="merged-special-container">
+                          <div class="merged-day-title">${escapeHtml(row['Leçon'] || row.lecon || row['Matière'] || 'Séance Spéciale')}</div>
+                          ${(row['Travaux de classe'] || row.travaux) ? `<div class="merged-day-desc">${escapeHtml(row['Travaux de classe'] || row.travaux)}</div>` : ''}
+                          <div class="merged-photos-gallery">
+                            ${rowPhotos.map(p => {
+                              const rawUrl = typeof p === 'string' ? p : (p.url || p.src || '');
+                              const pUrl = formatDriveImageUrl(rawUrl);
+                              const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
+                              return `
+                                <div class="merged-photo-card">
+                                  <img src="${pUrl}" alt="Affiche" class="merged-photo-img" referrerpolicy="no-referrer"
+                                    data-file-id="${driveId || ''}"
+                                    onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w2560';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
+                                </div>
+                              `;
+                            }).join('')}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                    `;
+                  }
+
+                  const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
+                  const matiere = row['Matière'] || row['matiere'] || 'Cours';
+                  const styleMat = getSubjectStyle(matiere);
+                  const enseignant = row['Enseignant'] || row['enseignant'] || '';
+
+                  // Résolution robuste de la photo Google Drive de l'enseignant
+                  const photoUrl = findTeacherPhotoUrl(enseignant, teachersPhotos);
+                  const teacherInitial = enseignant ? enseignant.charAt(0).toUpperCase() : '?';
+
+                  const lecon = row['Leçon'] || row['lecon'] || '';
+                  const travaux = row['Travaux de classe'] || row['travaux'] || '';
+                  const support = row['Support'] || row['support'] || '';
+                  const devoirs = row['Devoirs'] || row['devoirs'] || '';
+                  const hasHw = devoirs && devoirs.trim() !== '' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
+
+                  return `
+                  <tr>
+                    <!-- 1. MATIÈRES -->
+                    <td class="col-matieres-td">
+                      <div class="subject-header-row">
+                        <span class="subject-name-tag" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
+                          <i class="fas ${styleMat.icon}"></i>
+                          <span>${escapeHtml(matiere)}</span>
+                        </span>
+                        <span class="period-badge-pill">P${escapeHtml(periodeVal)}</span>
+                      </div>
+
+                      <div class="teacher-item-box">
+                        ${(showPhotos && photoUrl) 
+                          ? `<img src="${photoUrl}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">
+                             <span class="teacher-fallback-thumb" style="display:none;">${teacherInitial}</span>`
+                          : `<span class="teacher-fallback-thumb">${teacherInitial}</span>`
+                        }
+                        <div class="teacher-name-print">${escapeHtml(enseignant)}</div>
+                      </div>
+                    </td>
+
+                    <!-- 2. TRAVAIL DE CLASSE (AVEC SUPPORT DÉPLACÉ DEDANS) -->
+                    <td class="col-classwork-td">
+                      ${lecon ? `<strong class="lesson-title-strong"><i class="fas fa-book-reader" style="font-size:0.70rem;"></i> ${escapeHtml(lecon)}</strong>` : ''}
+                      <div class="classwork-detail-txt">${escapeHtml(travaux || '—')}</div>
+                      ${(support && support.trim() !== '' && support.trim() !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد')) ? `
+                        <div class="classwork-support-chip">
+                          <i class="fas fa-paperclip"></i>
+                          <span class="support-chip-label">Support :</span>
+                          <span class="support-chip-val">${escapeHtml(support)}</span>
+                        </div>
+                      ` : ''}
+                    </td>
+
+                    <!-- 3. DEVOIRS -->
+                    <td class="col-homework-td">
+                      ${hasHw ? `
+                        <div class="homework-item-card">
+                          <span class="homework-tag-label"><i class="fas fa-pencil-alt"></i> À faire :</span>
+                          <div>${escapeHtml(devoirs)}</div>
+                        </div>
+                      ` : `
+                        <span class="no-homework-txt">Aucun</span>
+                      `}
+                    </td>
+                  </tr>
                   `;
-                }
-
-                const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
-                const matiere = row['Matière'] || row['matiere'] || 'Cours';
-                const styleMat = getSubjectStyle(matiere);
-                const enseignant = row['Enseignant'] || row['enseignant'] || '';
-
-                // Résolution robuste de la photo Google Drive de l'enseignant
-                const photoUrl = findTeacherPhotoUrl(enseignant, teachersPhotos);
-                const teacherInitial = enseignant ? enseignant.charAt(0).toUpperCase() : '?';
-
-                const lecon = row['Leçon'] || row['lecon'] || '';
-                const travaux = row['Travaux de classe'] || row['travaux'] || '';
-                const support = row['Support'] || row['support'] || '';
-                const devoirs = row['Devoirs'] || row['devoirs'] || '';
-                const hasHw = devoirs && devoirs.trim() !== '' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
-
-                return `
-                <tr>
-                  <!-- 1. MATIÈRES -->
-                  <td class="col-matieres-td">
-                    <div class="subject-header-row">
-                      <span class="subject-name-tag" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
-                        <i class="fas ${styleMat.icon}"></i>
-                        <span>${escapeHtml(matiere)}</span>
-                      </span>
-                      <span class="period-badge-pill">P${escapeHtml(periodeVal)}</span>
-                    </div>
-
-                    <div class="teacher-item-box">
-                      ${(showPhotos && photoUrl) 
-                        ? `<img src="${photoUrl}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">
-                           <span class="teacher-fallback-thumb" style="display:none;">${teacherInitial}</span>`
-                        : `<span class="teacher-fallback-thumb">${teacherInitial}</span>`
-                      }
-                      <div class="teacher-name-print">${escapeHtml(enseignant)}</div>
-                    </div>
-                  </td>
-
-                  <!-- 2. TRAVAIL DE CLASSE (AVEC SUPPORT DÉPLACÉ DEDANS) -->
-                  <td class="col-classwork-td">
-                    ${lecon ? `<strong class="lesson-title-strong"><i class="fas fa-book-reader" style="font-size:0.70rem;"></i> ${escapeHtml(lecon)}</strong>` : ''}
-                    <div class="classwork-detail-txt">${escapeHtml(travaux || '—')}</div>
-                    ${(support && support.trim() !== '' && support.trim() !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد')) ? `
-                      <div class="classwork-support-chip">
-                        <i class="fas fa-paperclip"></i>
-                        <span class="support-chip-label">Support :</span>
-                        <span class="support-chip-val">${escapeHtml(support)}</span>
-                      </div>
-                    ` : ''}
-                  </td>
-
-                  <!-- 3. DEVOIRS -->
-                  <td class="col-homework-td">
-                    ${hasHw ? `
-                      <div class="homework-item-card">
-                        <span class="homework-tag-label"><i class="fas fa-pencil-alt"></i> À faire :</span>
-                        <div>${escapeHtml(devoirs)}</div>
-                      </div>
-                    ` : `
-                      <span class="no-homework-txt">Aucun</span>
-                    `}
-                  </td>
-                </tr>
-                `;
-              }).join(''))}
-            </tbody>
-          </table>
-        </div>
-
-        <!-- PIED DE PAGE SCELLÉ EN BAS DE LA PAGE A4 AVEC NUMÉRO DE PAGE -->
-        <footer class="a4-page-footer">
-          <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
-          <div class="footer-stamp-box">Visa de la Direction</div>
-          <div class="page-number-box">Page <strong>${pageNum}</strong> / ${totalPages}</div>
-        </footer>
-
-      </section>
-      `;
-    }).join('')}
-
-    <!-- ====================================================================
-         PAGE FINALE : RÉCAPITULATIF CARTABLE & LIVRES À RAPPORTER POUR LES DEVOIRS
-         ==================================================================== -->
-    <section class="a4-page backpack-summary-page" id="page_backpack_recap">
-      <!-- EN-TÊTE OFFICIEL WORD AL KAWTHAR -->
-      <header class="word-header-container">
-        <div class="header-main-row">
-          <div class="header-logo-col">
-            <img src="${logoAlKawtharUri}" alt="Logo Les Écoles Internationales Al Kawthar" class="header-school-logo" />
+                }).join(''))}
+              </tbody>
+            </table>
           </div>
-          <div class="header-titles-col">
-            <div class="word-main-title">LES ÉCOLES INTERNATIONALES AL KAWTHAR</div>
-            <div class="word-sub-title-ar">مدارس الكوثر العالمية • AL KAWTHAR INTERNATIONAL SCHOOLS</div>
-            <div class="header-week-range-badge">
-              <i class="fas fa-calendar-alt"></i> <span>${escapeHtml(plageSemaineDisplay)}</span>
+
+          ${renderOfficialFooter(thisPageNum, totalPages)}
+        </section>
+        `);
+      });
+
+      // 3. PAGE FINALE : RÉCAPITULATIF CARTABLE & LIVRES
+      const finalPageNum = pageTracker++;
+      htmlParts.push(`
+      <section class="a4-page backpack-summary-page" id="page_backpack_recap">
+        ${renderOfficialHeader('RÉCAPITULATIF CARTABLE')}
+
+        <!-- BANDEAU CONSEIL & RAPPEL POUR LES PARENTS ET ÉLÈVES -->
+        <div class="backpack-tip-box">
+          <div class="backpack-tip-icon">
+            <i class="fas fa-backpack"></i>
+          </div>
+          <div class="backpack-tip-content">
+            <div class="backpack-tip-title">
+              <span>ORGANISATION DU CARTABLE : LIVRES &amp; CAHIERS À RAPPORTER À LA MAISON</span>
+              <span class="ar-tip-title">جدول تنظيم الحقيبة المدرسية والكتب للواجبات المنزلية</span>
             </div>
-          </div>
-          <div class="header-meta-col">
-            <div class="meta-tag-row">
-              <span class="meta-tag-label">CLASSE :</span>
-              <span class="meta-tag-val meta-class-highlight">${escapeHtml(classe)}</span>
-            </div>
-            <div class="meta-tag-row">
-              <span class="meta-tag-label">SEMAINE :</span>
-              <span class="meta-tag-val">${week}</span>
-              <span class="meta-tag-sep">|</span>
-              <span class="meta-tag-label">SEMESTRE :</span>
-              <span class="meta-tag-val">${escapeHtml(String(semester || 1))}</span>
-            </div>
-            <div class="meta-doc-type">RÉCAPITULATIF CARTABLE</div>
+            <p class="backpack-tip-desc">
+              Pour éviter d'oublier vos livres à l'école, vérifiez chaque jour votre cartable grâce à ce tableau récapitulatif des devoirs de la semaine.
+              <br><span style="font-family:'Cairo', sans-serif; direction:rtl; display:inline-block;">لتفادي نسيان الكتب والكراسات بالمدرسة، يرجى مراجعة وتجهيز الحقيبة يومياً وفق هذا الجدول.</span>
+            </p>
           </div>
         </div>
-      </header>
 
-      <!-- BANDEAU CONSEIL & RAPPEL POUR LES PARENTS ET ÉLÈVES -->
-      <div class="backpack-tip-box">
-        <div class="backpack-tip-icon">
-          <i class="fas fa-backpack"></i>
-        </div>
-        <div class="backpack-tip-content">
-          <div class="backpack-tip-title">
-            <span>ORGANISATION DU CARTABLE : LIVRES &amp; CAHIERS À RAPPORTER À LA MAISON</span>
-            <span class="ar-tip-title">جدول تنظيم الحقيبة المدرسية والكتب للواجبات المنزلية</span>
-          </div>
-          <p class="backpack-tip-desc">
-            Pour éviter d'oublier vos livres à l'école, vérifiez chaque jour votre cartable grâce à ce tableau récapitulatif des devoirs de la semaine.
-            <br><span style="font-family:'Cairo', sans-serif; direction:rtl; display:inline-block;">لتفادي نسيan الكتب والكراسات بالمدرسة، يرجى مراجعة وتجهيز الحقيبة يومياً وفق هذا الجدول.</span>
-          </p>
-        </div>
-      </div>
+        <!-- TABLEAU RÉCAPITULATIF -->
+        <div class="main-table-wrapper">
+          <table class="backpack-recap-table">
+            <thead>
+              <tr>
+                <th style="width: 17%;">JOUR / اليوم</th>
+                <th style="width: 22%;">MATIÈRE / المادة</th>
+                <th style="width: 29%;">DEVOIR PRÉVU / الواجب المطلوب</th>
+                <th style="width: 24%;">LIVRE / CAHIER À PRENDRE / الكتاب أو الكراس</th>
+                <th style="width: 8%; text-align:center;">VÉRIFIÉ</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${daysToRender.map(dayName => {
+                const dayRows = groupedByDay[dayName] || [];
+                const hwRows = dayRows.filter(r => {
+                  const devoirs = String(r['Devoirs'] || r['devoirs'] || '').trim();
+                  return devoirs !== '' && devoirs !== '-' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
+                });
 
-      <!-- TABLEAU RÉCAPITULATIF -->
-      <div class="main-table-wrapper">
-        <table class="backpack-recap-table">
-          <thead>
-            <tr>
-              <th style="width: 17%;">JOUR / اليوم</th>
-              <th style="width: 22%;">MATIÈRE / المادة</th>
-              <th style="width: 29%;">DEVOIR PRÉVU / الواجب المطلوب</th>
-              <th style="width: 24%;">LIVRE / CAHIER À PRENDRE / الكتاب أو الكراس</th>
-              <th style="width: 8%; text-align:center;">VÉRIFIÉ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${daysToRender.map(dayName => {
-              const dayRows = groupedByDay[dayName] || [];
-              const hwRows = dayRows.filter(r => {
-                const devoirs = String(r['Devoirs'] || r['devoirs'] || '').trim();
-                return devoirs !== '' && devoirs !== '-' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
-              });
-
-              if (hwRows.length === 0) {
-                return `
-                <tr class="backpack-empty-day-row">
-                  <td class="backpack-day-cell">
-                    <div class="day-cell-badge">
-                      <span>${escapeHtml(dayName)}</span>
-                      <span class="day-cell-ar">${arabicDays[dayName] || ''}</span>
-                    </div>
-                  </td>
-                  <td colspan="3" style="color:#64748B; font-style:italic; padding:6px 10px;">
-                    <i class="fas fa-check-circle" style="color:#10B981; margin-right:5px;"></i>
-                    Aucun devoir nécessitant de livre à rapporter à la maison pour ce jour. / لا توجد واجبات تتطلب إحضار كتب
-                  </td>
-                  <td style="text-align:center;">
-                    <i class="fas fa-check" style="color:#10B981; font-size:1rem;"></i>
-                  </td>
-                </tr>
-                `;
-              }
-
-              return hwRows.map((r, idx) => {
-                const matiere = r['Matière'] || r['matiere'] || 'Cours';
-                const styleMat = getSubjectStyle(matiere);
-                const devoirs = r['Devoirs'] || r['devoirs'] || '';
-                const support = String(r['Support'] || r['support'] || '').trim();
-                const hasSupport = support && support !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد');
-                
-                let bookText = '';
-                if (hasSupport) {
-                  bookText = support;
-                } else {
-                  bookText = `Manuel & Cahier de ${matiere}`;
-                }
-
-                return `
-                <tr>
-                  ${idx === 0 ? `
-                    <td rowspan="${hwRows.length}" class="backpack-day-cell" style="vertical-align:middle;">
+                if (hwRows.length === 0) {
+                  return `
+                  <tr class="backpack-empty-day-row">
+                    <td class="backpack-day-cell">
                       <div class="day-cell-badge">
                         <span>${escapeHtml(dayName)}</span>
                         <span class="day-cell-ar">${arabicDays[dayName] || ''}</span>
                       </div>
                     </td>
-                  ` : ''}
-                  <td>
-                    <span class="subject-name-tag" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
-                      <i class="fas ${styleMat.icon}"></i>
-                      <span>${escapeHtml(matiere)}</span>
-                    </span>
-                  </td>
-                  <td>
-                    <div class="backpack-homework-desc">${escapeHtml(devoirs)}</div>
-                  </td>
-                  <td>
-                    <div class="backpack-book-card">
-                      <i class="fas fa-book-bookmark" style="color:#2563EB;"></i>
-                      <span>${escapeHtml(bookText)}</span>
-                    </div>
-                  </td>
-                  <td style="text-align:center;">
-                    <div class="check-box-square"></div>
-                  </td>
-                </tr>
-                `;
-              }).join('');
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
+                    <td colspan="3" style="color:#64748B; font-style:italic; padding:6px 10px;">
+                      <i class="fas fa-check-circle" style="color:#10B981; margin-right:5px;"></i>
+                      Aucun devoir nécessitant de livre à rapporter à la maison pour ce jour. / لا توجد واجبات تتطلب إحضار كتب
+                    </td>
+                    <td style="text-align:center;">
+                      <i class="fas fa-check" style="color:#10B981; font-size:1rem;"></i>
+                    </td>
+                  </tr>
+                  `;
+                }
 
-      <!-- PIED DE PAGE SCELLÉ EN BAS -->
-      <footer class="a4-page-footer">
-        <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
-        <div class="footer-stamp-box">Visa de la Direction</div>
-        <div class="page-number-box">Page <strong>${totalPages}</strong> / ${totalPages}</div>
-      </footer>
-    </section>
+                return hwRows.map((r, idx) => {
+                  const matiere = r['Matière'] || r['matiere'] || 'Cours';
+                  const styleMat = getSubjectStyle(matiere);
+                  const devoirs = r['Devoirs'] || r['devoirs'] || '';
+                  const support = String(r['Support'] || r['support'] || '').trim();
+                  const hasSupport = support && support !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد');
+                  
+                  let bookText = '';
+                  if (hasSupport) {
+                    bookText = support;
+                  } else {
+                    bookText = `Manuel & Cahier de ${matiere}`;
+                  }
+
+                  return `
+                  <tr>
+                    ${idx === 0 ? `
+                      <td rowspan="${hwRows.length}" class="backpack-day-cell" style="vertical-align:middle;">
+                        <div class="day-cell-badge">
+                          <span>${escapeHtml(dayName)}</span>
+                          <span class="day-cell-ar">${arabicDays[dayName] || ''}</span>
+                        </div>
+                      </td>
+                    ` : ''}
+                    <td>
+                      <span class="subject-name-tag" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
+                        <i class="fas ${styleMat.icon}"></i>
+                        <span>${escapeHtml(matiere)}</span>
+                      </span>
+                    </td>
+                    <td>
+                      <div class="backpack-homework-desc">${escapeHtml(devoirs)}</div>
+                    </td>
+                    <td>
+                      <div class="backpack-book-card">
+                        <i class="fas fa-book-bookmark" style="color:#2563EB;"></i>
+                        <span>${escapeHtml(bookText)}</span>
+                      </div>
+                    </td>
+                    <td style="text-align:center;">
+                      <div class="check-box-square"></div>
+                    </td>
+                  </tr>
+                  `;
+                }).join('');
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        ${renderOfficialFooter(finalPageNum, totalPages)}
+      </section>
+      `);
+
+      return htmlParts.join('\n');
+    })()}
   </div>
 
   <script>
