@@ -246,7 +246,23 @@ function generateDesignPlanHtml(options = {}) {
   // 3. Le premier jour comporte déjà 6 cours ou plus (garantissant que le tableau du premier jour ne soit JAMAIS coupé)
   const hasWeeklyNotesCover = hasNotesPhoto || (hasNotesText && (resolvedNotes.trim().length > 120 || resolvedNotes.trim().split('\n').length > 2 || firstDayRowsCount >= 6));
 
-  let totalPages = daysToRender.length + 1; // +1 pour la page de récapitulatif du cartable
+  // Préparation et dimensionnement du récapitulatif cartable
+  const backpackDaysData = [];
+  let totalBackpackRows = 0;
+  daysToRender.forEach(dayName => {
+    const dayRows = groupedByDay[dayName] || [];
+    const hwRows = dayRows.filter(r => {
+      const devoirs = String(r['Devoirs'] || r['devoirs'] || '').trim();
+      return devoirs !== '' && devoirs !== '-' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
+    });
+    backpackDaysData.push({ dayName, hwRows });
+    totalBackpackRows += (hwRows.length > 0 ? hwRows.length : 1);
+  });
+
+  // Si le nombre cumulé de devoirs dépasse 18, on scinde en 2 pages pour éviter toute coupure de tableau
+  const backpackPagesCount = totalBackpackRows > 18 ? 2 : 1;
+
+  let totalPages = daysToRender.length + backpackPagesCount;
   if (hasWeeklyNotesCover) {
     totalPages += 1; // +1 pour la page de garde des directives & affiche
   }
@@ -304,9 +320,24 @@ function generateDesignPlanHtml(options = {}) {
 
   const renderOfficialFooter = (currentPageNum, totalPagesCount) => `
     <footer class="a4-page-footer">
-      <div>Plan de travail hebdomadaire • Classe : <strong>${escapeHtml(classe)}</strong></div>
-      <div class="footer-stamp-box">Visa de la Direction</div>
-      <div class="page-number-box">Page <strong>${currentPageNum}</strong> / ${totalPagesCount}</div>
+      <div class="footer-left-info">
+        <span class="footer-doc-title">Plan de travail hebdomadaire</span>
+        <span class="footer-sep">•</span>
+        <span class="footer-meta-item">Classe : <strong class="footer-class-name">${escapeHtml(classe)}</strong></span>
+        <span class="footer-sep">•</span>
+        <span class="footer-meta-item">Semaine <strong>${week}</strong></span>
+      </div>
+      <div class="footer-center-stamp">
+        <div class="footer-stamp-frame">
+          <i class="fas fa-stamp footer-stamp-icon"></i>
+          <span class="footer-stamp-text">Visa de la Direction</span>
+        </div>
+      </div>
+      <div class="footer-right-page">
+        <span class="footer-page-pill">
+          Page <strong>${currentPageNum}</strong> / <strong>${totalPagesCount}</strong>
+        </span>
+      </div>
     </footer>
   `;
 
@@ -482,6 +513,7 @@ function generateDesignPlanHtml(options = {}) {
     .a4-page {
       width: 210mm;
       min-height: 297mm;
+      height: 297mm;
       margin: 0 auto 25px auto;
       padding: 8mm 10mm; /* Marge optimisée pour ne jamais créer de rupture */
       background: #FFFFFF;
@@ -490,8 +522,8 @@ function generateDesignPlanHtml(options = {}) {
       position: relative;
       display: flex;
       flex-direction: column;
-      justify-content: flex-start;
-      overflow: visible;
+      justify-content: space-between;
+      overflow: hidden;
       page-break-after: always;
       break-after: page;
     }
@@ -1021,31 +1053,96 @@ function generateDesignPlanHtml(options = {}) {
        ------------------------------------------------------------------------ */
     .a4-page-footer {
       margin-top: auto;
-      padding-top: 4px;
-      border-top: 1.5px solid #CBD5E1;
+      padding-top: 5px;
+      padding-bottom: 2px;
+      border-top: 1.5px solid var(--primary-color, #0F2E5C);
       display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: 0.72rem;
-      color: #64748B;
+      color: #475569;
       flex-shrink: 0;
+      width: 100%;
+      box-sizing: border-box;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
-    .footer-stamp-box {
-      font-weight: 700;
+    .footer-left-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
       color: #334155;
+      font-weight: 500;
     }
 
-    .page-number-box {
-      font-weight: 800;
-      color: var(--primary-color);
-      background: var(--accent-light);
-      border: 1px solid var(--border-light);
-      padding: 1px 8px;
+    .footer-doc-title {
+      font-weight: 700;
+      color: var(--primary-color, #0F2E5C);
+    }
+
+    .footer-sep {
+      color: #94A3B8;
+      font-weight: 300;
+    }
+
+    .footer-meta-item {
+      color: #475569;
+    }
+
+    .footer-class-name {
+      color: var(--primary-color, #0F2E5C);
+    }
+
+    .footer-center-stamp {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .footer-stamp-frame {
+      border: 1px dashed #64748B;
+      background: #F8FAFC;
+      padding: 2.5px 14px;
       border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.69rem;
+      font-weight: 700;
+      color: #1E293B;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .footer-stamp-icon {
+      font-size: 0.75rem;
+      color: var(--primary-color, #0F2E5C);
+      opacity: 0.85;
+    }
+
+    .footer-right-page {
+      display: flex;
+      align-items: center;
+    }
+
+    .footer-page-pill {
+      background: var(--primary-color, #0F2E5C);
+      color: #FFFFFF !important;
+      font-weight: 700;
+      padding: 2.5px 10px;
+      border-radius: 12px;
       font-size: 0.72rem;
+      letter-spacing: 0.03em;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+
+    .footer-page-pill strong {
+      color: #FFFFFF !important;
     }
 
     /* ------------------------------------------------------------------------
@@ -1053,70 +1150,85 @@ function generateDesignPlanHtml(options = {}) {
        ------------------------------------------------------------------------ */
     .backpack-tip-box {
       background: #EFF6FF;
-      border: 1.5px solid #93C5FD;
-      border-left: 5px solid #2563EB;
-      border-radius: 6px;
-      padding: 6px 10px;
-      margin-bottom: 8px;
+      border: 1px solid #93C5FD;
+      border-left: 4px solid #2563EB;
+      border-radius: 4px;
+      padding: 3px 8px;
+      margin-bottom: 5px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-shrink: 0;
     }
 
     .backpack-tip-icon {
-      font-size: 1.4rem;
+      font-size: 1.1rem;
       color: #2563EB;
       flex-shrink: 0;
     }
 
+    .backpack-tip-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      flex: 1;
+    }
+
     .backpack-tip-title {
       font-family: 'Outfit', sans-serif;
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       font-weight: 800;
       color: #1E3A8A;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap;
       gap: 6px;
-      margin-bottom: 2px;
     }
 
     .ar-tip-title {
       font-family: 'Cairo', sans-serif;
       direction: rtl;
-      font-size: 0.86rem;
+      font-size: 0.80rem;
     }
 
-    .backpack-tip-desc {
-      font-size: 0.74rem;
+    .backpack-tip-sub {
+      font-size: 0.67rem;
       color: #334155;
-      line-height: 1.3;
+      line-height: 1.2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .ar-sub {
+      font-family: 'Cairo', sans-serif;
+      direction: rtl;
     }
 
     .backpack-recap-table {
       width: 100%;
       border-collapse: collapse;
       border: 1.5px solid #1E293B;
-      font-size: 0.76rem;
+      font-size: 0.70rem;
       table-layout: fixed;
     }
 
     .backpack-recap-table th {
       background: #1E3A8A;
       color: #FFFFFF;
-      padding: 4px 6px;
+      padding: 3px 5px;
       font-weight: 800;
-      font-size: 0.74rem;
+      font-size: 0.70rem;
       border: 1px solid #1E293B;
       text-align: left;
     }
 
     .backpack-recap-table td {
       border: 1px solid #CBD5E1;
-      padding: 4px 6px;
+      padding: 2.5px 5px;
       vertical-align: middle;
+      font-size: 0.69rem;
+      line-height: 1.2;
     }
 
     .backpack-day-cell {
@@ -1124,40 +1236,45 @@ function generateDesignPlanHtml(options = {}) {
       font-weight: 800;
       color: #0F172A;
       text-align: center;
+      padding: 2.5px 4px !important;
     }
 
     .day-cell-badge {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 2px;
+      gap: 1px;
+      font-size: 0.72rem;
     }
 
     .day-cell-ar {
       font-family: 'Cairo', sans-serif;
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       color: #2563EB;
     }
 
     .backpack-homework-desc {
       font-weight: 600;
       color: #991B1B;
-      line-height: 1.25;
+      line-height: 1.15;
+      font-size: 0.69rem;
     }
 
     .backpack-book-card {
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
       font-weight: 700;
       color: #1E293B;
+      font-size: 0.69rem;
+      line-height: 1.15;
     }
 
     .check-box-square {
-      width: 16px;
-      height: 16px;
+      width: 13px;
+      height: 13px;
       border: 1.5px solid #0284C7;
-      border-radius: 3px;
+      border-radius: 2px;
       margin: 0 auto;
       background: #FFFFFF;
     }
@@ -1272,14 +1389,14 @@ function generateDesignPlanHtml(options = {}) {
         width: 100% !important;
       }
 
-      /* Chaque section .a4-page s'ajuste à la page physique sans dépassement parasite */
+      /* Chaque section .a4-page s'ajuste rigoureusement à la page physique A4 */
       .a4-page {
         width: 100% !important;
-        min-height: 0 !important;
-        height: auto !important;
-        max-height: none !important;
+        height: 280mm !important;
+        min-height: 280mm !important;
+        max-height: 280mm !important;
         margin: 0 !important;
-        padding: 0 !important; /* Le 8mm/10mm est déjà appliqué par @page { margin: 8mm 10mm } */
+        padding: 0 !important; /* Marge assurée par @page { margin: 8mm 10mm } */
         box-shadow: none !important;
         border: none !important;
         page-break-after: always !important;
@@ -1288,9 +1405,10 @@ function generateDesignPlanHtml(options = {}) {
         break-inside: avoid !important;
         display: flex !important;
         flex-direction: column !important;
-        justify-content: flex-start !important;
-        overflow: visible !important;
+        justify-content: space-between !important;
+        overflow: hidden !important;
         box-sizing: border-box !important;
+        position: relative !important;
       }
 
       .a4-page:last-child {
@@ -1303,8 +1421,8 @@ function generateDesignPlanHtml(options = {}) {
       .backpack-recap-table {
         width: 100% !important;
         table-layout: fixed !important;
-        page-break-inside: auto !important;
-        break-inside: auto !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
         border-collapse: collapse !important;
       }
 
@@ -1337,11 +1455,34 @@ function generateDesignPlanHtml(options = {}) {
 
       .a4-page-footer {
         margin-top: auto !important;
-        padding-top: 4px !important;
-        border-top: 1.5px solid #94A3B8 !important;
+        padding-top: 5px !important;
+        padding-bottom: 1px !important;
+        border-top: 1.5px solid #0F2E5C !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        width: 100% !important;
         page-break-inside: avoid !important;
         break-inside: avoid !important;
         flex-shrink: 0 !important;
+      }
+
+      .footer-stamp-frame {
+        border: 1px dashed #475569 !important;
+        background: #F8FAFC !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .footer-page-pill {
+        background: #0F2E5C !important;
+        color: #FFFFFF !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .footer-page-pill strong {
+        color: #FFFFFF !important;
       }
 
       .weekly-cover-page {
@@ -1695,12 +1836,12 @@ function generateDesignPlanHtml(options = {}) {
         `);
       });
 
-      // 3. PAGE FINALE : RÉCAPITULATIF CARTABLE & LIVRES
-      const finalPageNum = pageTracker++;
-      htmlParts.push(`
-      <section class="a4-page backpack-summary-page" id="page_backpack_recap">
-        ${renderOfficialHeader('RÉCAPITULATIF CARTABLE')}
+      // 3. PAGE(S) FINALE(S) : RÉCAPITULATIF CARTABLE & LIVRES
+      const renderBackpackTablePage = (title, pageNum, daysList, showTipBox = false) => `
+      <section class="a4-page backpack-summary-page" id="page_backpack_${pageNum}">
+        ${renderOfficialHeader(title)}
 
+        ${showTipBox ? `
         <!-- BANDEAU CONSEIL & RAPPEL POUR LES PARENTS ET ÉLÈVES -->
         <div class="backpack-tip-box">
           <div class="backpack-tip-icon">
@@ -1708,15 +1849,16 @@ function generateDesignPlanHtml(options = {}) {
           </div>
           <div class="backpack-tip-content">
             <div class="backpack-tip-title">
-              <span>ORGANISATION DU CARTABLE : LIVRES &amp; CAHIERS À RAPPORTER À LA MAISON</span>
-              <span class="ar-tip-title">جدول تنظيم الحقيبة المدرسية والكتب للواجبات المنزلية</span>
+              <span>ORGANISATION DU CARTABLE : LIVRES &amp; CAHIERS À RAPPORTER</span>
+              <span class="ar-tip-title">تنظيم الحقيبة المدرسية والكتب للواجبات</span>
             </div>
-            <p class="backpack-tip-desc">
-              Pour éviter d'oublier vos livres à l'école, vérifiez chaque jour votre cartable grâce à ce tableau récapitulatif des devoirs de la semaine.
-              <br><span style="font-family:'Cairo', sans-serif; direction:rtl; display:inline-block;">لتفادي نسيان الكتب والكراسات بالمدرسة، يرجى مراجعة وتجهيز الحقيبة يومياً وفق هذا الجدول.</span>
-            </p>
+            <div class="backpack-tip-sub">
+              <span>Vérifiez chaque jour les manuels et cahiers à emporter à la maison.</span>
+              <span class="ar-sub">تحقق يومياً من إحضار الكتب والكراسات المطلوبة للواجبات.</span>
+            </div>
           </div>
         </div>
+        ` : ''}
 
         <!-- TABLEAU RÉCAPITULATIF -->
         <div class="main-table-wrapper">
@@ -1726,19 +1868,14 @@ function generateDesignPlanHtml(options = {}) {
                 <th style="width: 17%;">JOUR / اليوم</th>
                 <th style="width: 22%;">MATIÈRE / المادة</th>
                 <th style="width: 29%;">DEVOIR PRÉVU / الواجب المطلوب</th>
-                <th style="width: 24%;">LIVRE / CAHIER À PRENDRE / الكتاب أو الكراس</th>
+                <th style="width: 24%;">LIVRE / CAHIER À PRENDRE</th>
                 <th style="width: 8%; text-align:center;">VÉRIFIÉ</th>
               </tr>
             </thead>
             <tbody>
-              ${daysToRender.map(dayName => {
-                const dayRows = groupedByDay[dayName] || [];
-                const hwRows = dayRows.filter(r => {
-                  const devoirs = String(r['Devoirs'] || r['devoirs'] || '').trim();
-                  return devoirs !== '' && devoirs !== '-' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
-                });
-
-                if (hwRows.length === 0) {
+              ${daysList.map(item => {
+                const { dayName, hwRows } = item;
+                if (!hwRows || hwRows.length === 0) {
                   return `
                   <tr class="backpack-empty-day-row">
                     <td class="backpack-day-cell">
@@ -1747,12 +1884,12 @@ function generateDesignPlanHtml(options = {}) {
                         <span class="day-cell-ar">${arabicDays[dayName] || ''}</span>
                       </div>
                     </td>
-                    <td colspan="3" style="color:#64748B; font-style:italic; padding:6px 10px;">
-                      <i class="fas fa-check-circle" style="color:#10B981; margin-right:5px;"></i>
-                      Aucun devoir nécessitant de livre à rapporter à la maison pour ce jour. / لا توجد واجبات تتطلب إحضار كتب
+                    <td colspan="3" style="color:#64748B; font-style:italic; padding:4px 8px;">
+                      <i class="fas fa-check-circle" style="color:#10B981; margin-right:4px;"></i>
+                      Aucun devoir nécessitant de livre à rapporter pour ce jour. / لا توجد واجبات تتطلب إحضار كتب
                     </td>
                     <td style="text-align:center;">
-                      <i class="fas fa-check" style="color:#10B981; font-size:1rem;"></i>
+                      <i class="fas fa-check" style="color:#10B981; font-size:0.9rem;"></i>
                     </td>
                   </tr>
                   `;
@@ -1772,6 +1909,10 @@ function generateDesignPlanHtml(options = {}) {
                     bookText = `Manuel & Cahier de ${matiere}`;
                   }
 
+                  let cleanDevoirsHtml = escapeHtml(devoirs)
+                    .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
+                    .replace(/\n/g, '<br>');
+
                   return `
                   <tr>
                     ${idx === 0 ? `
@@ -1789,7 +1930,7 @@ function generateDesignPlanHtml(options = {}) {
                       </span>
                     </td>
                     <td>
-                      <div class="backpack-homework-desc">${escapeHtml(devoirs)}</div>
+                      <div class="backpack-homework-desc">${cleanDevoirsHtml}</div>
                     </td>
                     <td>
                       <div class="backpack-book-card">
@@ -1808,9 +1949,31 @@ function generateDesignPlanHtml(options = {}) {
           </table>
         </div>
 
-        ${renderOfficialFooter(finalPageNum, totalPages)}
+        ${renderOfficialFooter(pageNum, totalPages)}
       </section>
-      `);
+      `;
+
+      if (backpackPagesCount === 1) {
+        htmlParts.push(renderBackpackTablePage('RÉCAPITULATIF CARTABLE', pageTracker++, backpackDaysData, true));
+      } else {
+        // Scission équilibrée en 2 pages pour éviter toute coupure ou débordement
+        let splitIndex = 1;
+        let countAccum = 0;
+        for (let i = 0; i < backpackDaysData.length; i++) {
+          const rows = (backpackDaysData[i].hwRows && backpackDaysData[i].hwRows.length) ? backpackDaysData[i].hwRows.length : 1;
+          if (countAccum + rows > 14 && i > 0) {
+            splitIndex = i;
+            break;
+          }
+          countAccum += rows;
+          splitIndex = i + 1;
+        }
+        const part1Days = backpackDaysData.slice(0, splitIndex);
+        const part2Days = backpackDaysData.slice(splitIndex);
+
+        htmlParts.push(renderBackpackTablePage('RÉCAPITULATIF CARTABLE (1/2)', pageTracker++, part1Days, true));
+        htmlParts.push(renderBackpackTablePage('RÉCAPITULATIF CARTABLE (2/2)', pageTracker++, part2Days, false));
+      }
 
       return htmlParts.join('\n');
     })()}
