@@ -3132,17 +3132,37 @@ app.get('/api/weekly-summary', async (req, res) => {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
     const today = moment().startOf('day');
-    const dayOfWeek = today.day();
+    const weekIdentifier = today.format('YYYY-[W]WW');
+    const authList = await getAuthoritativeStudents(db, section);
 
-    let targetWeekStart = today.clone().subtract(7, 'days').day(0);
-    let targetWeekEnd = today.clone().subtract(7, 'days').day(4);
-
-    const weekIdentifier = targetWeekStart.format('YYYY-[W]WW');
-    const existing = await db.collection('students_of_the_week').find({ weekIdentifier, section }).toArray();
+    // 1. Chercher si un élève de la semaine a été configuré spécifiquement
+    let existing = await db.collection('students_of_the_week').find({ section }).sort({ updatedAt: -1, createdAt: -1 }).limit(1).toArray();
     if (existing && existing.length > 0) {
-      return res.status(200).json({ studentsOfWeek: existing, showDisplay: true, isLastWeek: true });
+      const enriched = existing.map(st => {
+        let photo = st.photo || st.photoUrl || '';
+        if (!photo) {
+          const matched = matchAdminStudent(st.name || st.studentName, st.class || st.className, authList);
+          if (matched && (matched.photo || matched.photoUrl)) {
+            photo = matched.photo || matched.photoUrl;
+          }
+        }
+        return {
+          ...st,
+          name: st.name || st.studentName || 'Élève d\'Excellence',
+          class: st.class || st.className || 'Classe d\'Honneur',
+          stars: st.stars || 5,
+          photo: convertGoogleDriveUrl(photo),
+          photoUrl: convertGoogleDriveUrl(photo),
+          congratsMessageFr: st.congratsMessageFr || `Toutes nos chaleureuses félicitations à ${st.name || 'notre élève'} pour son assiduité exemplaire, son engagement remarquable et son comportement d'excellence cette semaine ! Continue ainsi vers les sommets du succès !`,
+          congratsMessageAr: st.congratsMessageAr || "ألف مبروك للطالب المتميز على تفوقه الدراسي وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع! متمنين له دوام التألق والنجاح المستمر."
+        };
+      });
+      return res.status(200).json({ studentsOfWeek: enriched, showDisplay: true, isLastWeek: false });
     }
 
+    // 2. Calcul automatique basé sur les étoiles et évaluations
+    let targetWeekStart = today.clone().subtract(7, 'days').day(0);
+    let targetWeekEnd = today.clone().subtract(7, 'days').day(4);
     const dateQuery = {
       $gte: targetWeekStart.format('YYYY-MM-DD'),
       $lte: targetWeekEnd.format('YYYY-MM-DD')
@@ -3198,11 +3218,17 @@ app.get('/api/weekly-summary', async (req, res) => {
         if (stars >= 3 && progress > 79) {
           if (stars > topStarsOverall) {
             topStarsOverall = stars;
+            const matched = matchAdminStudent(studentName, classKey, authList);
+            const photo = matched ? (matched.photo || matched.photoUrl || '') : '';
             topStudentOverall = {
               name: studentName,
               class: classKey,
               stars: stars,
               progressPercentage: progress,
+              photo: convertGoogleDriveUrl(photo),
+              photoUrl: convertGoogleDriveUrl(photo),
+              congratsMessageFr: `Toutes nos félicitations à ${studentName} pour ses excellents résultats et sa persévérance remarquable cette semaine !`,
+              congratsMessageAr: "ألف مبروك للطالب المتميز على تفوقه الدراسي وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع!",
               progressComment: { fr: 'Excellent', ar: 'ممتاز' },
               weekIdentifier: weekIdentifier,
               section: section,
@@ -3213,15 +3239,129 @@ app.get('/api/weekly-summary', async (req, res) => {
       }
     }
 
-    const studentsOfWeek = topStudentOverall ? [topStudentOverall] : [];
-    if (studentsOfWeek.length > 0) {
-      await db.collection('students_of_the_week').insertMany(studentsOfWeek);
+    if (topStudentOverall) {
+      await db.collection('students_of_the_week').insertOne(topStudentOverall);
+      return res.status(200).json({ studentsOfWeek: [topStudentOverall], showDisplay: true, isLastWeek: true });
     }
 
-    res.status(200).json({ studentsOfWeek, showDisplay: true, isLastWeek: true });
+    // 3. Fallback élégant : sélectionner le premier élève actif du tableau avec photo
+    if (authList && authList.length > 0) {
+      const withPhoto = authList.find(s => s.photo && s.photo.trim() !== '');
+      const chosen = withPhoto || authList[0];
+      const fallbackDoc = {
+        name: chosen.name,
+        class: chosen.class,
+        stars: 5,
+        photo: convertGoogleDriveUrl(chosen.photo || ''),
+        photoUrl: convertGoogleDriveUrl(chosen.photo || ''),
+        congratsMessageFr: `Toutes nos félicitations à ${chosen.name} pour son assiduité exemplaire, son engagement remarquable et sa motivation continue !`,
+        congratsMessageAr: "ألف مبروك للطالب المتميز على تفوقه الدراسي وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع! متمنين له دوام التألق والنجاح.",
+        weekIdentifier: weekIdentifier,
+        section: section,
+        createdAt: new Date()
+      };
+      return res.status(200).json({ studentsOfWeek: [fallbackDoc], showDisplay: true, isLastWeek: false });
+    }
+
+    res.status(200).json({ studentsOfWeek: [], showDisplay: false });
   } catch (error) {
     console.error('Erreur GET /api/weekly-summary:', error);
     res.status(500).json({ studentsOfWeek: [], showDisplay: false });
+  }
+});
+
+app.get('/api/student-of-the-week', async (req, res) => {
+  try {
+    const { section = 'garcons' } = req.query;
+    const db = await connectToDatabase();
+    const doc = await db.collection('students_of_the_week').findOne(
+      { section: section },
+      { sort: { updatedAt: -1 } }
+    );
+    if (!doc) {
+      return res.status(200).json({ name: '', class: '', stars: 5, photoUrl: '', congratulations: '', congratulationsAr: '' });
+    }
+    res.status(200).json({
+      name: doc.name || doc.studentName || '',
+      class: doc.class || doc.className || '',
+      stars: doc.stars || 5,
+      photoUrl: doc.photoUrl || doc.photo || '',
+      congratulations: doc.congratsMessageFr || doc.congratulations || '',
+      congratulationsAr: doc.congratsMessageAr || doc.congratulationsAr || '',
+      updatedAt: doc.updatedAt
+    });
+  } catch (err) {
+    console.error('Erreur GET /api/student-of-the-week:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/student-of-the-week', async (req, res) => {
+  try {
+    const {
+      name,
+      className,
+      class: clsParam,
+      section = 'garcons',
+      stars = 5,
+      photoUrl = '',
+      congratulations = '',
+      congratulationsAr = '',
+      congratsMessageFr = '',
+      congratsMessageAr = ''
+    } = req.body;
+    if (!name) return res.status(400).json({ message: 'Nom d\'élève requis.' });
+    const targetClass = className || clsParam || '';
+    const db = await connectToDatabase();
+    const today = moment().startOf('day');
+    const weekIdentifier = today.format('YYYY-[W]WW');
+
+    let finalPhoto = convertGoogleDriveUrl(photoUrl || '');
+    if (!finalPhoto) {
+      const authList = await getAuthoritativeStudents(db, section);
+      const matched = matchAdminStudent(name, targetClass, authList);
+      if (matched && (matched.photo || matched.photoUrl)) {
+        finalPhoto = convertGoogleDriveUrl(matched.photo || matched.photoUrl);
+      }
+    }
+
+    const frText = (congratulations || congratsMessageFr || '').trim() ||
+      `Toutes nos chaleureuses félicitations à ${name.trim()} pour son assiduité exemplaire, son engagement remarquable et son comportement d'excellence cette semaine ! Continue ainsi vers les sommets du succès !`;
+    const arText = (congratulationsAr || congratsMessageAr || '').trim() ||
+      "ألف مبروك للطالب المتميز على تفوقه وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع! متمنين له دوام التألق والنجاح المستمر.";
+
+    const doc = {
+      name: name.trim(),
+      studentName: name.trim(),
+      class: targetClass,
+      className: targetClass,
+      stars: Number(stars) || 5,
+      photo: finalPhoto,
+      photoUrl: finalPhoto,
+      congratulations: frText,
+      congratsMessageFr: frText,
+      congratulationsAr: arText,
+      congratsMessageAr: arText,
+      weekIdentifier: weekIdentifier,
+      section: section,
+      updatedAt: new Date()
+    };
+
+    await db.collection('students_of_the_week').deleteMany({ section: section });
+    await db.collection('students_of_the_week').insertOne(doc);
+
+    // Mettre à jour la photo dans la liste des élèves si fournie
+    if (finalPhoto && targetClass) {
+      await db.collection('students').updateOne(
+        { name: { $regex: new RegExp(`^${name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }, section: section },
+        { $set: { photo: finalPhoto, updatedAt: new Date() } }
+      );
+    }
+
+    res.status(200).json({ success: true, message: 'Élève de la semaine enregistré avec succès !', student: doc });
+  } catch (err) {
+    console.error('Erreur POST /api/student-of-the-week:', err);
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -4189,6 +4329,7 @@ app.get('/api/plans/:week', async (req, res) => {
       res.status(200).json({ 
           planData: enrichedData, 
           classNotes: planDocument.classNotes || {},
+          classNotesPhotos: planDocument.classNotesPhotos || {},
           availableWeeklyPlans: availableWeeklyPlans,
           isPublishedToParents: isPublishedToParents,
           specialDays: specialDays || []
@@ -4209,7 +4350,7 @@ app.get('/api/plans/:week', async (req, res) => {
         section: section, 
         week: weekNumber 
       }).toArray();
-      res.status(200).json({ planData: [], classNotes: {}, availableWeeklyPlans: [], isPublishedToParents, specialDays: specialDays || [] });
+      res.status(200).json({ planData: [], classNotes: {}, classNotesPhotos: {}, availableWeeklyPlans: [], isPublishedToParents, specialDays: specialDays || [] });
     }
   } catch (error) {
     console.error('Erreur MongoDB /plans/:week:', error);
@@ -4353,23 +4494,33 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
 
 app.post('/api/save-notes', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
-  const { classe, notes, section = 'garcons' } = req.body;
+  const { classe, notes, photoUrl = '', notesPhoto = '', section = 'garcons' } = req.body;
   if (isNaN(weekNumber) || !classe) return res.status(400).json({ message: 'Données invalides.' });
   try {
     const db = await connectToDatabase();
     const docId = `${section}_${weekNumber}`;
     const existingDoc = await db.collection('plans').findOne({ _id: docId });
     const existingNote = (existingDoc && existingDoc.classNotes && existingDoc.classNotes[classe]) ? existingDoc.classNotes[classe] : '';
+    const existingPhoto = (existingDoc && existingDoc.classNotesPhotos && existingDoc.classNotesPhotos[classe]) ? existingDoc.classNotesPhotos[classe] : '';
     
     // Si la nouvelle note est nulle/indéfinie, préserver l'existante
     let finalNote = notes !== undefined && notes !== null ? String(notes) : existingNote;
+    let finalPhoto = (photoUrl || notesPhoto) !== undefined ? String(photoUrl || notesPhoto).trim() : existingPhoto;
+
+    const updateFields = {
+      week: weekNumber,
+      section: section,
+      [`classNotes.${classe}`]: finalNote,
+      [`classNotesPhotos.${classe}`]: finalPhoto,
+      updatedAt: new Date()
+    };
 
     await db.collection('plans').updateOne(
       { _id: docId },
-      { $set: { week: weekNumber, section: section, [`classNotes.${classe}`]: finalNote, updatedAt: new Date() } },
+      { $set: updateFields },
       { upsert: true }
     );
-    res.status(200).json({ message: 'Notes enregistrées.', notes: finalNote });
+    res.status(200).json({ message: 'Notes et photo enregistrées.', notes: finalNote, photoUrl: finalPhoto });
   } catch (error) {
     console.error('Erreur MongoDB /save-notes:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -5377,7 +5528,7 @@ app.post('/api/generate-word', async (req, res) => {
 	    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
 	    const weekNumber = Number(week);
 	    if (!Number.isInteger(weekNumber) || !classe) {
-	      return res.status(400).json({ message: 'Numéro de semaine et classe obligatoires pour la génération du plan stylisé.' });
+	      return res.status(400).json({ message: 'Numéro de semaine et classe obligatoires pour la génération du plan hebdomadaire.' });
 	    }
 
 	    const db = await connectToDatabase();
@@ -5475,6 +5626,45 @@ app.post('/api/generate-word', async (req, res) => {
 	      }
 	    }
 
+	    // Récupérer la photo de la semaine associée aux remarques
+	    let classNotesPhoto = req.body.notesPhoto || req.body.photoUrl || '';
+	    if (!classNotesPhoto) {
+	      try {
+	        const planDocs = await db.collection('plans').find({
+	          $or: [
+	            { _id: `${section}_${weekNumber}` },
+	            { _id: `${section}_${String(weekNumber)}` },
+	            { week: weekNumber, section: section },
+	            { week: String(weekNumber), section: section },
+	            { week: weekNumber }
+	          ]
+	        }).toArray();
+
+	        for (const pDoc of planDocs) {
+	          const cPhotos = pDoc.classNotesPhotos || pDoc.notesPhotos;
+	          if (cPhotos && typeof cPhotos === 'object') {
+	            if (cPhotos[classe] && typeof cPhotos[classe] === 'string' && cPhotos[classe].trim() !== '') {
+	              classNotesPhoto = cPhotos[classe].trim();
+	              break;
+	            }
+	            const normTarget = String(classe).toLowerCase().replace(/[\s\-_]+/g, '');
+	            for (const [k, v] of Object.entries(cPhotos)) {
+	              if (typeof v === 'string' && v.trim() !== '') {
+	                const normK = String(k).toLowerCase().replace(/[\s\-_]+/g, '');
+	                if (normK === normTarget || normK.includes(normTarget) || normTarget.includes(normK)) {
+	                  classNotesPhoto = v.trim();
+	                  break;
+	                }
+	              }
+	            }
+	            if (classNotesPhoto) break;
+	          }
+	        }
+	      } catch (pe) {
+	        console.warn('Erreur lecture classNotesPhotos depuis plans:', pe.message);
+	      }
+	    }
+
 	    // Récupérer les journées spéciales / fusionnées
 	    let specialDays = [];
 	    try {
@@ -5516,6 +5706,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      classe,
 	      data: planData,
 	      notes: classNotes,
+	      notesPhoto: classNotesPhoto,
 	      section,
 	      theme,
 	      showPhotos,
@@ -5527,7 +5718,7 @@ app.post('/api/generate-word', async (req, res) => {
 	    });
 
 	    if (download) {
-	      const filename = `Plan_Hebdomadaire_Design_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.html`;
+	      const filename = `Plan_Hebdomadaire_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.html`;
 	      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 	      res.setHeader('Content-Type', 'text/html; charset=utf-8');
 	      return res.send(html);
@@ -5537,7 +5728,7 @@ app.post('/api/generate-word', async (req, res) => {
 	    return res.send(html);
 	  } catch (error) {
 	    console.error('❌ Erreur /api/generate-design-plan:', error);
-	    res.status(500).json({ message: 'Erreur lors de la génération du plan stylisé: ' + error.message });
+	    res.status(500).json({ message: 'Erreur lors de la génération du plan hebdomadaire: ' + error.message });
 	  }
 	});
 
@@ -5889,11 +6080,10 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
 
       // Essayer les modèles standard les plus fiables sur Generative Language API
       const geminiConfigs = [
+        { model: 'gemini-2.5-flash', apiVersion: 'v1beta' },
         { model: 'gemini-2.0-flash', apiVersion: 'v1beta' },
         { model: 'gemini-1.5-flash', apiVersion: 'v1beta' },
-        { model: 'gemini-1.5-flash', apiVersion: 'v1' },
-        { model: 'gemini-1.5-pro', apiVersion: 'v1beta' },
-        { model: 'gemini-2.5-flash', apiVersion: 'v1beta' }
+        { model: 'gemini-1.5-pro', apiVersion: 'v1beta' }
       ];
 
       let keyHasQuotaError = false;
@@ -7715,7 +7905,7 @@ app.use((err, req, res, next) => {
 });
 
 // Configuration Port et Host
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 
 // Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel

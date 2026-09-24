@@ -177,6 +177,7 @@ function generateDesignPlanHtml(options = {}) {
     classe = 'PEI1',
     data = [],
     notes = '',
+    notesPhoto = '',
     section = 'garcons',
     theme = 'indigo',
     showPhotos = true,
@@ -192,6 +193,13 @@ function generateDesignPlanHtml(options = {}) {
     resolvedNotes = notes;
   } else if (notes && typeof notes === 'object') {
     resolvedNotes = notes[classe] || notes[classe.toUpperCase()] || notes[classe.toLowerCase()] || notes.general || '';
+  }
+
+  let resolvedNotesPhoto = '';
+  if (typeof notesPhoto === 'string') {
+    resolvedNotesPhoto = notesPhoto.trim();
+  } else if (notesPhoto && typeof notesPhoto === 'object') {
+    resolvedNotesPhoto = notesPhoto[classe] || notesPhoto[classe.toUpperCase()] || notesPhoto[classe.toLowerCase()] || '';
   }
 
   const dayOrder = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
@@ -247,7 +255,7 @@ function generateDesignPlanHtml(options = {}) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Plan Hebdomadaire S${week} - ${escapeHtml(classe)} (A4 Stylisé)</title>
+  <title>Plan Hebdomadaire S${week} - ${escapeHtml(classe)}</title>
   
   <!-- Polices Google Fonts Professionnelles -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -621,6 +629,29 @@ function generateDesignPlanHtml(options = {}) {
       color: #64748B;
       font-style: italic;
       font-size: 0.74rem;
+    }
+
+    .notes-attached-photo-container {
+      margin-top: 6px;
+      text-align: center;
+      max-height: 85px;
+      overflow: hidden;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    .notes-attached-photo-img {
+      max-height: 80px;
+      max-width: 96%;
+      width: auto;
+      object-fit: contain;
+      border-radius: 4px;
+      border: 1px solid #FCD34D;
+      background: #FFFFFF;
+      padding: 2px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      display: inline-block;
+      vertical-align: middle;
     }
 
     /* ------------------------------------------------------------------------
@@ -1203,7 +1234,7 @@ function generateDesignPlanHtml(options = {}) {
   <div class="screen-toolbar no-print">
     <div class="toolbar-info">
       <i class="fas fa-file-pdf" style="color:#38BDF8; font-size:1.15rem;"></i>
-      <span>Plan Hebdomadaire Stylisé • Semaine ${week} • Classe : ${escapeHtml(classe)}</span>
+      <span>Plan Hebdomadaire • Semaine ${week} • Classe : ${escapeHtml(classe)}</span>
     </div>
     <div class="toolbar-controls">
       <!-- Sélecteur de Thème Visuel -->
@@ -1307,6 +1338,11 @@ function generateDesignPlanHtml(options = {}) {
                 ${(resolvedNotes && resolvedNotes.trim() !== '') 
                   ? `<div class="teacher-notes-text">${escapeHtml(resolvedNotes)}</div>`
                   : `<div class="empty-notes-text"><i class="fas fa-info-circle"></i> Aucune consigne particulière pour cette semaine.</div>`}
+                ${resolvedNotesPhoto ? `
+                  <div class="notes-attached-photo-container">
+                    <img src="${formatDriveImageUrl(resolvedNotesPhoto)}" alt="Photo Remarques" class="notes-attached-photo-img" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="if(!this.dataset.retry){this.dataset.retry=1;const id=this.src.match(/\\/d\\/([a-zA-Z0-9_-]+)/)?.[1];if(id){this.src='https://drive.google.com/thumbnail?id='+id+'&sz=w800';}else{this.parentElement.style.display='none';}}else{this.parentElement.style.display='none';}" />
+                  </div>
+                ` : ''}
               </div>
             </div>
           </div>

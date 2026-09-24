@@ -13,11 +13,26 @@
         let currentWeek = null;
         let weekStartDate = null;
         let weeklyClassNotes = {};
+        let weeklyClassNotesPhotos = {};
         let alertTimeoutId = null;
         let incompleteTeachersInfo = {};
         let currentSortColumn = null;
         let currentSortOrder = 'asc';
         let showCrossSectionView = false;
+
+        // Formateur d'URL Google Drive universel
+        function formatDriveImageUrl(url) {
+            if (!url || typeof url !== 'string') return '';
+            const trimmed = url.trim();
+            const idMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/) ||
+                            trimmed.match(/id=([a-zA-Z0-9_-]+)/) ||
+                            trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+            if (idMatch && idMatch[1]) {
+                return `https://drive.google.com/thumbnail?id=${idMatch[1]}&sz=w1000`;
+            }
+            return trimmed;
+        }
+        window.formatDriveImageUrl = formatDriveImageUrl;
 
         // Cache global des photos des enseignants pour l'ensemble de l'application (Discussion Parents, Fiches, etc.)
         window.globalTeachersPhotosMap = {};
@@ -1706,8 +1721,107 @@
             if (txt) { txt.value = ''; txt.disabled = true; txt.placeholder = t('select_class_placeholder'); }
             if (btn) btn.disabled = true;
         }
-        function displayClassNotes() { const sel=document.getElementById('notesClassSelector'); const txt=document.getElementById('notesInput'); const btn=document.getElementById('saveNotesBtn'); const selCls=sel.value; if(selCls && weeklyClassNotes) { const note=weeklyClassNotes[selCls]; txt.value=note||''; txt.disabled=false; btn.disabled=false; applyRTLToElement(txt, note||""); const selText = sel.options[sel.selectedIndex].text; txt.placeholder = t('notes_placeholder', { classText: selText }); } else { txt.value=''; txt.disabled=true; btn.disabled=true; txt.placeholder=selCls ? t('no_data') : t('select_class_placeholder'); } document.getElementById('notes-save-status').textContent=''; }
-        async function saveNotes() { const statusEl=document.getElementById('notes-save-status'); const classSel=document.getElementById('notesClassSelector'); const selCls=classSel.value; if(!selCls){displayAlert("select_class",true); return;} if(!currentWeek){displayAlert("please_select_week",true); return;} statusEl.textContent = t('saving'); displayAlert(''); setButtonLoading('saveNotesBtn',true,'fas fa-save'); const notesVal=document.getElementById('notesInput').value; console.log(t('saving_notes_for', { class: selCls, week: currentWeek })); try{ const response=await fetch('/api/save-notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({week:currentWeek,classe:selCls,notes:notesVal,section:currentSection})}); const result=await response.json(); if(!response.ok){throw new Error(result.message||`Erreur ${response.status}`);} weeklyClassNotes[selCls]=notesVal; displayAlert('notes_saved_success', false, { class: selCls, week: currentWeek }); statusEl.textContent = t('saved'); setTimeout(()=>{statusEl.textContent='';},3000); } catch(error){ console.error('Err saveNotes:',error); displayAlert('error_saving_notes', true, { error: error.message }); statusEl.textContent=`${t('error_saving_notes',{error:''}).replace(': {error}','')}: ${error.message}`; } finally{setButtonLoading('saveNotesBtn',false,'fas fa-save');} }
+        function displayClassNotes() {
+            const sel = document.getElementById('notesClassSelector');
+            const txt = document.getElementById('notesInput');
+            const btn = document.getElementById('saveNotesBtn');
+            const photoInput = document.getElementById('notesPhotoUrlInput');
+            const selCls = sel.value;
+            if (selCls && weeklyClassNotes) {
+                const note = weeklyClassNotes[selCls];
+                txt.value = note || '';
+                txt.disabled = false;
+                btn.disabled = false;
+                applyRTLToElement(txt, note || "");
+                const selText = sel.options[sel.selectedIndex].text;
+                txt.placeholder = t('notes_placeholder', { classText: selText });
+                if (photoInput) {
+                    const currentPhoto = (typeof weeklyClassNotesPhotos !== 'undefined' && weeklyClassNotesPhotos[selCls]) || '';
+                    photoInput.value = currentPhoto;
+                    photoInput.disabled = false;
+                    previewNotesPhoto();
+                }
+            } else {
+                txt.value = '';
+                txt.disabled = true;
+                btn.disabled = true;
+                txt.placeholder = selCls ? t('no_data') : t('select_class_placeholder');
+                if (photoInput) {
+                    photoInput.value = '';
+                    photoInput.disabled = true;
+                    previewNotesPhoto();
+                }
+            }
+            document.getElementById('notes-save-status').textContent = '';
+        }
+
+        function previewNotesPhoto() {
+            const input = document.getElementById('notesPhotoUrlInput');
+            const preview = document.getElementById('notesPhotoPreview');
+            const img = document.getElementById('notesPhotoPreviewImg');
+            if (!input || !preview || !img) return;
+            const val = input.value.trim();
+            if (val) {
+                const formatted = (typeof formatDriveImageUrl === 'function') ? formatDriveImageUrl(val) : val;
+                img.src = formatted;
+                preview.style.display = 'flex';
+            } else {
+                preview.style.display = 'none';
+                img.src = '';
+            }
+        }
+        window.previewNotesPhoto = previewNotesPhoto;
+
+        function clearNotesPhoto() {
+            const input = document.getElementById('notesPhotoUrlInput');
+            if (input) {
+                input.value = '';
+                previewNotesPhoto();
+            }
+        }
+        window.clearNotesPhoto = clearNotesPhoto;
+
+        async function saveNotes() {
+            const statusEl = document.getElementById('notes-save-status');
+            const classSel = document.getElementById('notesClassSelector');
+            const selCls = classSel.value;
+            if (!selCls) { displayAlert("select_class", true); return; }
+            if (!currentWeek) { displayAlert("please_select_week", true); return; }
+            statusEl.textContent = t('saving');
+            displayAlert('');
+            setButtonLoading('saveNotesBtn', true, 'fas fa-save');
+            const notesVal = document.getElementById('notesInput').value;
+            const photoVal = document.getElementById('notesPhotoUrlInput')?.value?.trim() || '';
+            console.log(t('saving_notes_for', { class: selCls, week: currentWeek }));
+            try {
+                const response = await fetch('/api/save-notes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        week: currentWeek,
+                        classe: selCls,
+                        notes: notesVal,
+                        photoUrl: photoVal,
+                        section: currentSection
+                    })
+                });
+                const result = await response.json();
+                if (!response.ok) { throw new Error(result.message || `Erreur ${response.status}`); }
+                weeklyClassNotes[selCls] = notesVal;
+                if (typeof weeklyClassNotesPhotos !== 'undefined') {
+                    weeklyClassNotesPhotos[selCls] = photoVal;
+                }
+                displayAlert('notes_saved_success', false, { class: selCls, week: currentWeek });
+                statusEl.textContent = t('saved');
+                setTimeout(() => { statusEl.textContent = ''; }, 3000);
+            } catch (error) {
+                console.error('Err saveNotes:', error);
+                displayAlert('error_saving_notes', true, { error: error.message });
+                statusEl.textContent = `${t('error_saving_notes', { error: '' }).replace(': {error}', '')}: ${error.message}`;
+            } finally {
+                setButtonLoading('saveNotesBtn', false, 'fas fa-save');
+            }
+        }
         function getCurrentWeekNumber(refDate = new Date()) {
             const date = new Date(refDate);
             // Si c'est Jeudi après 15h00, Vendredi ou Samedi : la semaine d'affichage courante bascule sur la semaine scolaire suivante (du Dimanche au Jeudi prochain)
@@ -1950,6 +2064,7 @@
                 if (fetched && typeof fetched === 'object') {
                     primaryRows = fetched.planData || []; 
                     weeklyClassNotes = fetched.classNotes || {}; 
+                    weeklyClassNotesPhotos = fetched.classNotesPhotos || {};
                     window.availableWeeklyPlans = fetched.availableWeeklyPlans || [];
                 } 
 
@@ -5050,17 +5165,28 @@ async function loadParentWeeklyPlan() {
             }
         }
         
-        // Remarques Générales de la Classe
+        // Remarques Générales de la Classe & Photo de la Semaine
         if (notesBox) {
             const classNote = parentRawClassNotes[selectedClass];
-            if (classNote && classNote.trim() !== '') {
+            const classPhoto = (data && data.classNotesPhotos && data.classNotesPhotos[selectedClass]) || '';
+            if ((classNote && classNote.trim() !== '') || classPhoto) {
                 notesBox.style.display = 'block';
+                let photoHtml = '';
+                if (classPhoto) {
+                    const formattedImgUrl = (typeof formatDriveImageUrl === 'function') ? formatDriveImageUrl(classPhoto) : classPhoto;
+                    photoHtml = `
+                        <div style="margin-top:14px; text-align:center;">
+                            <img src="${escapeHtml(formattedImgUrl)}" alt="Photo de la semaine" style="max-height:260px; max-width:100%; object-fit:contain; border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,0.12); border:2px solid #FCD34D; background:white; padding:4px;" />
+                        </div>
+                    `;
+                }
                 notesBox.innerHTML = `
                     <div style="background:#FEF3C7; border-left:6px solid #D97706; padding:16px 20px; border-radius:12px; color:#78350F; font-weight:600; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
-                        <div style="font-size:1.05rem; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+                        <div style="font-size:1.05rem; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
                             <i class="fas fa-sticky-note" style="color:#D97706;"></i> ${currentUserLanguage === 'ar' ? 'ملاحظات عامة للصف' : 'Remarques Générales de la Classe'} (${selectedClass}) :
                         </div>
-                        <p style="margin:0; font-weight:400; font-size:0.95rem; white-space:pre-wrap;">${escapeHtml(classNote)}</p>
+                        ${classNote ? `<p style="margin:0; font-weight:400; font-size:0.95rem; white-space:pre-wrap;">${escapeHtml(classNote)}</p>` : ''}
+                        ${photoHtml}
                     </div>
                 `;
             } else {
@@ -6186,52 +6312,284 @@ async function loadHomeworkShowcase() {
 
         // Lancement en parallèle non bloquant avec Promise.allSettled
         Promise.allSettled([
+            fetch(`/api/student-of-the-week?section=${section}`).then(r => r.ok ? r.json() : null),
             fetch(`/api/weekly-summary?section=${section}`).then(r => r.ok ? r.json() : null),
             fetch(`/api/photo-of-the-day?section=${section}`).then(r => r.ok ? r.json() : null),
             fetch(`/api/photo-2?section=${section}`).then(r => r.ok ? r.json() : null),
             fetch(`/api/photo-3?section=${section}`).then(r => r.ok ? r.json() : null)
-        ]).then(([sotwRes, p1Res, p2Res, p3Res]) => {
-            // Élève de la semaine
+        ]).then(([sotwDirectRes, summaryRes, p1Res, p2Res, p3Res]) => {
+            // Élève de la semaine avec photo, étoiles, mots de félicitations et animation festive
             const sotwEl = document.getElementById('sotw-content');
-            if (sotwEl && sotwRes.status === 'fulfilled' && sotwRes.value) {
-                const data = sotwRes.value;
-                if (data.studentsOfWeek && data.studentsOfWeek.length > 0) {
-                    const st = data.studentsOfWeek[0];
+            if (sotwEl) {
+                let st = null;
+                if (sotwDirectRes.status === 'fulfilled' && sotwDirectRes.value && sotwDirectRes.value.name) {
+                    st = sotwDirectRes.value;
+                } else if (summaryRes.status === 'fulfilled' && summaryRes.value && summaryRes.value.studentsOfWeek && summaryRes.value.studentsOfWeek.length > 0) {
+                    st = summaryRes.value.studentsOfWeek[0];
+                }
+
+                if (st && st.name) {
+                    const starsCount = Math.max(1, Math.min(5, Number(st.stars) || 5));
+                    let starsHtml = '';
+                    for (let i = 0; i < starsCount; i++) {
+                        starsHtml += '<i class="fas fa-star"></i> ';
+                    }
+                    const rawPhoto = st.photoUrl || '';
+                    const photoSrc = rawPhoto ? (typeof formatDriveImageUrl === 'function' ? formatDriveImageUrl(rawPhoto) : rawPhoto) : getStudentFallbackAvatar(section);
+                    const congratsFr = st.congratulations || "Toutes nos chaleureuses félicitations pour son excellence académique, sa régularité et son attitude exemplaire !";
+                    const congratsAr = st.congratulationsAr || "ألف مبروك للطالب المتميز على تفوقه واجتهاده المستمر وأخلاقه العالية !";
+
                     sotwEl.innerHTML = `
-                        <div style="background:white; padding:15px; border-radius:12px; display:inline-block; box-shadow:0 4px 10px rgba(0,0,0,0.05);">
-                            <h4 style="margin:0; color:#667eea; font-size:1.2rem;">${escapeHtml(st.name)}</h4>
-                            <p style="margin:5px 0; color:#6B7280; font-weight:600;">Classe: ${escapeHtml(st.class)}</p>
-                            <p style="margin:0; color:#F59E0B; font-weight:bold;"><i class="fas fa-star"></i> ${st.stars} Étoiles cette semaine</p>
+                        <div class="sotw-card-wrapper">
+                            <div class="sotw-photo-frame">
+                                <img src="${escapeHtml(photoSrc)}" alt="${escapeHtml(st.name)}" class="sotw-photo-img" onerror="this.src='${getStudentFallbackAvatar(section)}'" />
+                                <div class="sotw-crown-badge" title="Étoile d'Excellence">
+                                    <i class="fas fa-crown"></i>
+                                </div>
+                            </div>
+                            <div class="sotw-details">
+                                <div class="sotw-tag-pill">
+                                    <i class="fas fa-award"></i> <span>Élève de la Semaine • نجم الأسبوع</span>
+                                </div>
+                                <h3 class="sotw-student-name">${escapeHtml(st.name)}</h3>
+                                <div class="sotw-meta-row">
+                                    <span class="sotw-class-badge"><i class="fas fa-graduation-cap"></i> ${escapeHtml(st.class || '')}</span>
+                                    <div class="sotw-stars" title="${starsCount} étoiles d'or">${starsHtml}</div>
+                                </div>
+                                <div class="sotw-congrats-box">
+                                    <p class="sotw-congrats-fr">
+                                        <i class="fas fa-quote-left" style="color:#F59E0B; margin-right:6px; opacity:0.8;"></i>
+                                        ${escapeHtml(congratsFr)}
+                                    </p>
+                                    <p class="sotw-congrats-ar" dir="rtl">
+                                        ${escapeHtml(congratsAr)}
+                                        <i class="fas fa-quote-right" style="color:#F59E0B; margin-right:6px; opacity:0.8;"></i>
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     `;
+
+                    // Pré-remplir les champs admin modal et admin tab 4
+                    const syncInputs = [
+                        ['modalSotwName', 'adminSotwName', st.name || ''],
+                        ['modalSotwClass', 'adminSotwClass', st.class || ''],
+                        ['modalSotwStars', 'adminSotwStars', String(starsCount)],
+                        ['modalSotwPhotoUrl', 'adminSotwPhotoUrl', st.photoUrl || ''],
+                        ['modalSotwCongratsFr', 'adminSotwCongratsFr', st.congratulations || ''],
+                        ['modalSotwCongratsAr', 'adminSotwCongratsAr', st.congratulationsAr || '']
+                    ];
+                    syncInputs.forEach(([mId, aId, val]) => {
+                        const mEl = document.getElementById(mId);
+                        const aEl = document.getElementById(aId);
+                        if (mEl && !mEl.value) mEl.value = val;
+                        if (aEl && !aEl.value) aEl.value = val;
+                    });
                 } else {
-                    sotwEl.innerHTML = '<p style="color:#6B7280;">Aucun élève de la semaine sélectionné pour le moment.</p>';
+                    sotwEl.innerHTML = `
+                        <div style="padding:25px; text-align:center; color:#6B7280;">
+                            <i class="fas fa-crown" style="font-size:2.2rem; color:#FCD34D; margin-bottom:10px; display:block;"></i>
+                            <h4 style="margin:0 0 6px 0; color:#374151; font-size:1.15rem;">Élève de la Semaine</h4>
+                            <p style="margin:0; font-size:0.92rem;">Aucun élève de la semaine sélectionné pour le moment.</p>
+                        </div>
+                    `;
+                }
+
+                // Afficher le bouton admin si l'utilisateur a les droits
+                const sotwAdminBar = document.getElementById('sotwAdminBar');
+                if (sotwAdminBar) {
+                    const isAdm = (typeof isUserAdminOrSupervisor === 'function' && isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ||
+                                  currentUserRole === 'admin' || currentUserRole === 'supervisor' ||
+                                  loggedInUser === 'Med01' || loggedInUser === 'Racha' || loggedInUser === 'Mohamed' || loggedInUser === 'Zohra' || loggedInUser === 'Imad';
+                    sotwAdminBar.style.display = isAdm ? 'block' : 'none';
                 }
             }
 
-            // Photos
+            // Photos d'activités
             const el1 = document.getElementById('potd-content');
             if (el1 && p1Res.status === 'fulfilled' && p1Res.value) {
                 const p1 = p1Res.value;
-                el1.innerHTML = p1.url ? `<img src="${p1.url}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p1.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
+                el1.innerHTML = p1.url ? `<img src="${formatDriveImageUrl(p1.url)}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p1.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
             }
 
             const el2 = document.getElementById('photo2-content');
             if (el2 && p2Res.status === 'fulfilled' && p2Res.value) {
                 const p2 = p2Res.value;
-                el2.innerHTML = p2.url ? `<img src="${p2.url}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p2.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
+                el2.innerHTML = p2.url ? `<img src="${formatDriveImageUrl(p2.url)}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p2.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
             }
 
             const el3 = document.getElementById('photo3-content');
             if (el3 && p3Res.status === 'fulfilled' && p3Res.value) {
                 const p3 = p3Res.value;
-                el3.innerHTML = p3.url ? `<img src="${p3.url}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p3.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
+                el3.innerHTML = p3.url ? `<img src="${formatDriveImageUrl(p3.url)}" loading="lazy" class="potd-image"><p style="font-size:0.9em; font-weight:600; color:#374151;">${escapeHtml(p3.comment || '')}</p>` : '<p style="color:#9CA3AF;">Pas de photo enregistrée.</p>';
             }
         });
     } catch (e) {
         console.error('Erreur loadHomeworkShowcase:', e);
     }
 }
+
+// ---------------- GESTION ÉLÈVE DE LA SEMAINE (ADMIN & MODAL) ----------------
+function openStudentOfWeekAdminModal() {
+    const modal = document.getElementById('studentOfWeekAdminModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        previewModalSotwPhoto();
+    }
+}
+window.openStudentOfWeekAdminModal = openStudentOfWeekAdminModal;
+
+function closeStudentOfWeekAdminModal() {
+    const modal = document.getElementById('studentOfWeekAdminModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeStudentOfWeekAdminModal = closeStudentOfWeekAdminModal;
+
+function previewModalSotwPhoto() {
+    const input = document.getElementById('modalSotwPhotoUrl');
+    const container = document.getElementById('modalSotwPhotoPreviewContainer');
+    const img = document.getElementById('modalSotwPhotoPreviewImg');
+    if (!input || !container || !img) return;
+    const url = input.value.trim();
+    if (url) {
+        const formatted = formatDriveImageUrl(url);
+        img.src = formatted;
+        container.style.display = 'flex';
+    } else {
+        container.style.display = 'none';
+        img.src = '';
+    }
+}
+window.previewModalSotwPhoto = previewModalSotwPhoto;
+
+async function saveStudentOfWeekFromModal() {
+    const name = document.getElementById('modalSotwName')?.value?.trim();
+    const cls = document.getElementById('modalSotwClass')?.value?.trim();
+    const stars = Number(document.getElementById('modalSotwStars')?.value) || 5;
+    const photoUrl = document.getElementById('modalSotwPhotoUrl')?.value?.trim() || '';
+    const congratsFr = document.getElementById('modalSotwCongratsFr')?.value?.trim() || '';
+    const congratsAr = document.getElementById('modalSotwCongratsAr')?.value?.trim() || '';
+    const status = document.getElementById('modalSotwStatus');
+
+    if (!name) {
+        if (status) status.innerHTML = '<span style="color:#DC2626;">Veuillez entrer le nom de l\'élève</span>';
+        return;
+    }
+
+    if (status) status.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement...</span>';
+
+    try {
+        const section = currentSection || 'garcons';
+        const res = await fetch('/api/student-of-the-week', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                class: cls,
+                stars,
+                photoUrl,
+                congratulations: congratsFr,
+                congratulationsAr: congratsAr,
+                section
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || `Erreur ${res.status}`);
+        }
+
+        if (status) status.innerHTML = '<span style="color:#059669;">✅ Enregistré avec succès !</span>';
+        setTimeout(() => {
+            closeStudentOfWeekAdminModal();
+            if (status) status.innerHTML = '';
+        }, 1000);
+
+        loadHomeworkShowcase();
+        displayAlert('Élève de la semaine mis à jour avec succès !', false);
+    } catch (e) {
+        console.error('Erreur saveStudentOfWeekFromModal:', e);
+        if (status) status.innerHTML = `<span style="color:#DC2626;">Erreur: ${e.message}</span>`;
+    }
+}
+window.saveStudentOfWeekFromModal = saveStudentOfWeekFromModal;
+
+async function adminSaveStudentOfTheWeek() {
+    const name = document.getElementById('adminSotwName')?.value?.trim();
+    const cls = document.getElementById('adminSotwClass')?.value?.trim();
+    const stars = Number(document.getElementById('adminSotwStars')?.value) || 5;
+    const photoUrl = document.getElementById('adminSotwPhotoUrl')?.value?.trim() || '';
+    const congratsFr = document.getElementById('adminSotwCongratsFr')?.value?.trim() || '';
+    const congratsAr = document.getElementById('adminSotwCongratsAr')?.value?.trim() || '';
+    const status = document.getElementById('adminSotwStatus');
+
+    if (!name) {
+        displayAlert("Veuillez saisir le nom de l'élève.", true);
+        return;
+    }
+
+    if (status) status.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement...</span>';
+
+    try {
+        const section = currentSection || 'garcons';
+        const res = await fetch('/api/student-of-the-week', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                class: cls,
+                stars,
+                photoUrl,
+                congratulations: congratsFr,
+                congratulationsAr: congratsAr,
+                section
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || `Erreur ${res.status}`);
+        }
+
+        if (status) status.innerHTML = '<span style="color:#059669;">✅ Élève de la semaine enregistré avec succès !</span>';
+        displayAlert('Élève de la semaine configuré avec succès !', false);
+        loadHomeworkShowcase();
+    } catch (e) {
+        console.error('Erreur adminSaveStudentOfTheWeek:', e);
+        if (status) status.innerHTML = `<span style="color:#DC2626;">Erreur: ${e.message}</span>`;
+        displayAlert('Erreur lors de l\'enregistrement: ' + e.message, true);
+    }
+}
+window.adminSaveStudentOfTheWeek = adminSaveStudentOfTheWeek;
+
+// ---------------- AFFICHAGE & IMPRESSION DU PLAN HEBDOMADAIRE POUR LES PARENTS ----------------
+async function printParentWeeklyPlan() {
+    const weekSel = document.getElementById('parentWeekSelector');
+    const classSel = document.getElementById('parentClassSelector');
+    const weekNum = (weekSel && weekSel.value) ? weekSel.value : currentWeek;
+    const className = (classSel && classSel.value) ? classSel.value : '';
+    if (!className) {
+        displayAlert("Veuillez sélectionner une classe pour afficher et imprimer son plan hebdomadaire.", true);
+        return;
+    }
+    const section = currentSection || 'garcons';
+    await downloadFullClassDesign(weekNum, className, 'indigo', true, true, 'print');
+}
+window.printParentWeeklyPlan = printParentWeeklyPlan;
+
+async function downloadParentWeeklyPlan() {
+    const weekSel = document.getElementById('parentWeekSelector');
+    const classSel = document.getElementById('parentClassSelector');
+    const weekNum = (weekSel && weekSel.value) ? weekSel.value : currentWeek;
+    const className = (classSel && classSel.value) ? classSel.value : '';
+    if (!className) {
+        displayAlert("Veuillez sélectionner une classe pour télécharger son plan hebdomadaire.", true);
+        return;
+    }
+    const section = currentSection || 'garcons';
+    await downloadFullClassDesign(weekNum, className, 'indigo', true, true, 'download');
+}
+window.downloadParentWeeklyPlan = downloadParentWeeklyPlan;
 
 async function openStudentDashboard(studentName, className) {
     try {
@@ -11244,7 +11602,7 @@ async function downloadSelectedClassFullDesign() {
 }
 
 /**
- * Moteur d'appel et de génération du Plan Stylisé & Design
+ * Moteur d'appel et de génération du Plan Hebdomadaire (Design & PDF)
  */
 async function downloadFullClassDesign(weekNum, className, theme, showPhotos, highlightHomework, action) {
     if (!className) {
@@ -11254,7 +11612,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
 
     showProgressBar();
     updateProgressBar(20);
-    displayAlert(`Génération du Plan Stylisé & Design pour la classe ${className} (Semaine ${weekNum})...`, false);
+    displayAlert(`Génération du Plan Hebdomadaire pour la classe ${className} (Semaine ${weekNum})...`, false);
 
     try {
         const section = currentSection || 'garcons';
@@ -11271,6 +11629,16 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             activeNoteForClass = noteInTextarea.trim();
         }
 
+        // Récupérer la photo de la semaine de cette classe
+        let activePhotoForClass = '';
+        if (typeof weeklyClassNotesPhotos !== 'undefined' && weeklyClassNotesPhotos && weeklyClassNotesPhotos[className]) {
+            activePhotoForClass = weeklyClassNotesPhotos[className];
+        }
+        const photoInInput = document.getElementById('notesPhotoUrlInput')?.value;
+        if (!activePhotoForClass && selClassInBox === className && photoInInput && photoInInput.trim() !== '') {
+            activePhotoForClass = photoInInput.trim();
+        }
+
         const payload = {
             week: Number(weekNum),
             section: section,
@@ -11278,7 +11646,8 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             theme: theme || 'indigo',
             showPhotos: showPhotos !== false,
             highlightHomework: highlightHomework !== false,
-            notes: activeNoteForClass || weeklyClassNotes
+            notes: activeNoteForClass || weeklyClassNotes,
+            notesPhoto: activePhotoForClass
         };
 
         const response = await fetch('/api/generate-design-plan', {
@@ -11298,7 +11667,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
         if (action === 'download') {
             // Téléchargement du fichier HTML autonome
             const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-            const filename = `Plan_Stylise_S${weekNum}_${section}_${className.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+            const filename = `Plan_Hebdomadaire_S${weekNum}_${section}_${className.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
             if (typeof saveAs === 'function') {
                 saveAs(blob, filename);
             } else {
@@ -11311,7 +11680,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
                 URL.revokeObjectURL(url);
                 document.body.removeChild(a);
             }
-            displayAlert(`✅ Fichier HTML stylisé téléchargé avec succès !`, false);
+            displayAlert(`✅ Fichier Plan Hebdomadaire téléchargé avec succès !`, false);
         } else {
             // Aperçu interactif et boîte d'impression PDF
             const printWindow = window.open('', '_blank');
@@ -11320,7 +11689,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
                 printWindow.document.write(htmlContent);
                 printWindow.document.close();
                 printWindow.focus();
-                displayAlert(`✅ Plan Stylisé ouvert dans un nouvel onglet avec aperçu d'impression PDF !`, false);
+                displayAlert(`✅ Plan Hebdomadaire ouvert dans un nouvel onglet avec aperçu d'impression PDF !`, false);
             } else {
                 // Si le popup est bloqué par le navigateur, créer une iframe invisible pour imprimer
                 const iframe = document.createElement('iframe');
@@ -11345,7 +11714,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
         updateProgressBar(100);
     } catch (err) {
         console.error("Erreur downloadFullClassDesign:", err);
-        displayAlert("Erreur lors de la génération du plan stylisé: " + err.message, true);
+        displayAlert("Erreur lors de la génération du plan hebdomadaire: " + err.message, true);
     } finally {
         setTimeout(hideProgressBar, 800);
     }

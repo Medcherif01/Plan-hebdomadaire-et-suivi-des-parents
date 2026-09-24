@@ -815,6 +815,53 @@
                          <p>Chargement des élèves...</p>
                      </div>
 
+                     <!-- CONFIGURATION DE L'ÉLÈVE DE LA SEMAINE -->
+                     <div style="background:#FFFDF5; border:1.5px solid #F59E0B; border-radius:12px; padding:18px 20px; margin-top:20px; margin-bottom:20px;">
+                         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                             <h4 style="margin:0; color:#B45309; display:flex; align-items:center; gap:8px;">
+                                 <i class="fas fa-crown" style="color:#F59E0B;"></i> ⭐ Configuration de l'Élève de la Semaine (Célébrations &amp; Photos)
+                             </h4>
+                             <span style="font-size:0.8rem; color:#6B7280;">S'affiche pour les parents dans la section Célébrations</span>
+                         </div>
+                         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+                             <div>
+                                 <label style="font-size:0.85em; font-weight:bold; color:#1E293B;">Nom de l'élève :</label>
+                                 <input type="text" id="adminSotwName" placeholder="Ex: Mohamed Al-Amine" list="adminStudentsDatalist" style="width:100%; padding:8px; border-radius:6px; border:1px solid #CBD5E1; margin-top:4px;" onchange="onAdminSotwNameChange()">
+                                 <datalist id="adminStudentsDatalist"></datalist>
+                             </div>
+                             <div>
+                                 <label style="font-size:0.85em; font-weight:bold; color:#1E293B;">Classe de l'élève :</label>
+                                 <input type="text" id="adminSotwClass" placeholder="Ex: PEI1" style="width:100%; padding:8px; border-radius:6px; border:1px solid #CBD5E1; margin-top:4px;">
+                             </div>
+                             <div>
+                                 <label style="font-size:0.85em; font-weight:bold; color:#1E293B;">Étoiles attribuées :</label>
+                                 <select id="adminSotwStars" style="width:100%; padding:8px; border-radius:6px; border:1px solid #CBD5E1; margin-top:4px;">
+                                     <option value="5">⭐⭐⭐⭐⭐ (5 Étoiles - Grand Mérite)</option>
+                                     <option value="4">⭐⭐⭐⭐ (4 Étoiles)</option>
+                                     <option value="3">⭐⭐⭐ (3 Étoiles)</option>
+                                 </select>
+                             </div>
+                             <div style="grid-column: 1 / -1;">
+                                 <label style="font-size:0.85em; font-weight:bold; color:#1E293B;">Photo de l'élève (Lien Google Drive ou Image) :</label>
+                                 <input type="text" id="adminSotwPhotoUrl" placeholder="https://drive.google.com/file/d/... ou https://..." style="width:100%; padding:8px; border-radius:6px; border:1px solid #CBD5E1; margin-top:4px;">
+                             </div>
+                             <div style="grid-column: 1 / -1;">
+                                 <label style="font-size:0.85em; font-weight:bold; color:#1E293B;">Mots de félicitation (Français) :</label>
+                                 <input type="text" id="adminSotwCongratsFr" placeholder="Toutes nos chaleureuses félicitations pour son excellence..." style="width:100%; padding:8px; border-radius:6px; border:1px solid #CBD5E1; margin-top:4px;">
+                             </div>
+                             <div style="grid-column: 1 / -1;">
+                                 <label style="font-size:0.85em; font-weight:bold; color:#1E293B;">Mots de félicitation (Arabe) :</label>
+                                 <input type="text" id="adminSotwCongratsAr" dir="rtl" placeholder="ألف مبروك للطالب المتميز على تفوقه الدراسي..." style="width:100%; padding:8px; border-radius:6px; border:1px solid #CBD5E1; margin-top:4px;">
+                             </div>
+                         </div>
+                         <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                             <span id="adminSotwStatus" style="font-size:0.88rem; font-weight:700;"></span>
+                             <button type="button" class="pro-button primary-button" onclick="adminSaveStudentOfTheWeek()" style="background:linear-gradient(135deg, #D97706, #B45309); color:white; font-weight:700; border:none; padding:10px 20px; border-radius:8px; cursor:pointer;">
+                                 <i class="fas fa-check-circle"></i> Enregistrer l'Élève de la Semaine
+                             </button>
+                         </div>
+                     </div>
+
                      <hr style="margin:20px 0; border:0; border-top:1px solid #CBD5E1;">
                      <h4><i class="fas fa-camera"></i> Photos Célébration / Félicitations de la Journée</h4>
                      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:15px; margin-top:10px;">
@@ -1288,7 +1335,7 @@
                       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
                           <div>
                               <h4><i class="fab fa-google-drive" style="color:#0EA5E9;"></i> Photos des Enseignants (Liens Google Drive)</h4>
-                              <p class="admin-subtext">Associez une photo de profil à chaque enseignant via son lien Google Drive. Ces photos s'affichent automatiquement dans le tableau, le chat et le plan hebdomadaire stylisé.</p>
+                              <p class="admin-subtext">Associez une photo de profil à chaque enseignant via son lien Google Drive. Ces photos s'affichent automatiquement dans le tableau, le chat et le plan hebdomadaire.</p>
                           </div>
                           <div style="display:flex; gap:10px; align-items:center;">
                               <select id="adminPhotoSectionFilter" onchange="renderAdminTeachersPhotosGallery()" style="padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;">
@@ -1317,15 +1364,15 @@
               </div>
         </div>
         <div class="filter-container main-actions-container">
-            <!-- NOUVEAU BOUTON : MODÈLE STYLISÉ & DESIGN (PDF & COULEURS) -->
+            <!-- BOUTON : MODÈLE DESIGN (PDF & COULEURS) -->
             <button id="btnOpenDesignPlanModal" onclick="openDesignPlanModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #0D9488, #059669); color: white; border: none; font-weight: 800; padding: 10px 18px; border-radius: 10px; box-shadow: 0 4px 14px rgba(13,148,136,0.3); display: inline-flex; align-items: center; gap: 8px;">
-                 <i class="fas fa-palette" style="font-size: 1.2em; color: #A7F3D0;"></i>
-                 <span class="btn-text">🎨 Plan Stylisé (Design & PDF)</span>
+                 <i class="fas fa-file-pdf" style="font-size: 1.2em; color: #A7F3D0;"></i>
+                 <span class="btn-text">📄 Plan Hebdomadaire (Design &amp; PDF)</span>
             </button>
             <!-- BOUTON PRINCIPAL POUR TOUS LES ENSEIGNANTS : TÉLÉCHARGER LE PLAN COMPLET PAR CLASSE (TOUTES MATIÈRES & TOUS ENSEIGNANTS) -->
             <button id="generateFullClassWordBtn" onclick="openFullClassWordModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #1E3A8A, #2563EB); color: white; border: none; font-weight: 800; padding: 10px 18px; border-radius: 10px; box-shadow: 0 4px 14px rgba(37,99,235,0.3); display: inline-flex; align-items: center; gap: 8px;">
                  <i class="fas fa-file-word" style="font-size: 1.2em;"></i>
-                 <span class="btn-text">📄 Télécharger le Plan Hebdo Complet par Classe (Toutes les matières & Tous les enseignants)</span>
+                 <span class="btn-text">📄 Télécharger le Plan Hebdo Complet par Classe (Toutes les matières &amp; Tous les enseignants)</span>
             </button>
             <button id="generateWordBtn" onclick="generateWordByClasse()" class="action-button pro-button" disabled style="display: inline-flex; align-items: center; gap: 6px;">
                  <i class="fas fa-user-edit"></i> <span class="btn-text">Mon Plan Individuel (Mes matières)</span>
@@ -1335,7 +1382,7 @@
             </button>
             <!-- BOUTON POUR L'ADMIN MED01 / DIRECTION : FUSIONNER UNE JOURNÉE SANS COURS & PHOTOS -->
             <button id="btnOpenSpecialDaysQuickModal" onclick="openSpecialDayQuickModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #7C3AED, #6D28D9); color: white; border: none; font-weight: 700; padding: 10px 16px; border-radius: 10px; box-shadow: 0 4px 12px rgba(124,58,237,0.25); display: inline-flex; align-items: center; gap: 6px;">
-                 <i class="fas fa-layer-group"></i> <span>⚡ Fusionner un Jour (Pas de cours & Photos)</span>
+                 <i class="fas fa-layer-group"></i> <span>⚡ Fusionner un Jour (Pas de cours &amp; Photos)</span>
             </button>
             <a id="downloadLink" style="display:none;"></a>
         </div>
@@ -1352,8 +1399,8 @@
                  <button type="button" id="btnQuickClassFullExcel" onclick="downloadSelectedClassFullExcel()" class="pro-button" style="padding: 6px 10px; font-size: 0.82rem; font-weight: 700; background: #ECFDF5; color: #047857; border: 1.5px solid #A7F3D0; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger le fichier Excel complet pour la classe sélectionnée">
                      <i class="fas fa-file-excel" style="color:#10B981;"></i> <span>Excel Classe</span>
                  </button>
-                 <button type="button" id="btnQuickClassFullDesign" onclick="downloadSelectedClassFullDesign()" class="pro-button" style="padding: 6px 10px; font-size: 0.82rem; font-weight: 700; background: #F0FDF4; color: #065F46; border: 1.5px solid #86EFAC; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger et imprimer le Plan Stylisé & Design pour la classe sélectionnée">
-                     <i class="fas fa-palette" style="color:#059669;"></i> <span>Design / PDF</span>
+                 <button type="button" id="btnQuickClassFullDesign" onclick="downloadSelectedClassFullDesign()" class="pro-button" style="padding: 6px 10px; font-size: 0.82rem; font-weight: 700; background: #F0FDF4; color: #065F46; border: 1.5px solid #86EFAC; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger et imprimer le Plan Hebdomadaire pour la classe sélectionnée">
+                     <i class="fas fa-file-pdf" style="color:#059669;"></i> <span>Plan PDF</span>
                  </button>
              </div>
 
@@ -1401,14 +1448,33 @@
                         <i class="fas fa-file-word"></i> Télécharger Plan Complet Word de cette classe
                     </button>
                     <button type="button" id="downloadNotesClassDesignBtn" onclick="downloadSelectedNotesClassFullDesign()" class="action-button pro-button" style="background: linear-gradient(135deg, #0D9488, #059669); color: white; border: none; font-size: 0.85rem; padding: 6px 14px; font-weight: 700; border-radius: 8px; box-shadow: 0 2px 8px rgba(13,148,136,0.25);">
-                        <i class="fas fa-palette"></i> 🎨 Plan Stylisé (PDF) de cette classe
+                        <i class="fas fa-file-pdf"></i> 📄 Plan Hebdomadaire (PDF) de cette classe
                     </button>
                 </div>
             </div>
             <textarea id="notesInput" rows="4" placeholder="Sélectionnez une classe pour voir ou ajouter des notes..." spellcheck="true" disabled dir="auto"></textarea>
+            
+            <!-- OPTION ADMIN : AJOUT D'UNE PHOTO (LIEN GOOGLE DRIVE) SOUS LES REMARQUES & NOTES -->
+            <div id="notesPhotoUrlContainer" style="margin-top: 8px; margin-bottom: 8px; background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 10px; padding: 10px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <label for="notesPhotoUrlInput" style="font-size: 0.85rem; font-weight: 700; color: #1E293B; margin: 0; display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="fab fa-google-drive" style="color: #0F9D58; font-size: 1.05rem;"></i> Photo de la semaine pour cette classe (Lien Google Drive / Image) :
+                    </label>
+                    <span style="font-size: 0.74rem; color: #64748B;">S'insère proprement sous les commentaires enseignants dans le plan</span>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 6px;">
+                    <input type="url" id="notesPhotoUrlInput" placeholder="https://drive.google.com/file/d/... ou https://..." style="flex: 1; padding: 7px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 0.85rem;" oninput="previewNotesPhoto()" disabled />
+                    <button type="button" class="pro-button" onclick="clearNotesPhoto()" style="padding: 7px 12px; background: #E2E8F0; color: #334155; border: none; font-size: 0.8rem; font-weight: 600; border-radius: 8px; cursor: pointer;">Effacer</button>
+                </div>
+                <div id="notesPhotoPreview" style="margin-top: 6px; display: none; align-items: center; gap: 10px;">
+                    <img id="notesPhotoPreviewImg" src="" alt="Aperçu Photo Remarques" style="height: 48px; max-width: 90px; object-fit: contain; border-radius: 5px; border: 1px solid #CBD5E1; background: white; padding: 2px;" />
+                    <span style="font-size: 0.78rem; color: #059669; font-weight: 700;"><i class="fas fa-check-circle"></i> Photo prête à être enregistrée</span>
+                </div>
+            </div>
+
             <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
                 <button id="saveNotesBtn" onclick="saveNotes()" class="action-button pro-button success-button" disabled>
-                    <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Notes</span>
+                    <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Notes &amp; Photo</span>
                 </button>
                 <span id="notes-save-status" style="font-size: 0.9em;"></span>
             </div>
@@ -1640,8 +1706,12 @@
                     <!-- SHOWCASE DE LA SEMAINE ET PHOTOS DE CÉLÉBRATION -->
                     <div class="home-showcase-container">
                         <div id="sotw-showcase" class="student-of-the-week-showcase">
-                            <h3><i class="fas fa-star" style="color:#F59E0B;"></i> Élève de la Semaine</h3>
-                            <div id="sotw-content" style="margin-top:15px;"><p>Chargement...</p></div>
+                            <div id="sotw-content" style="margin-top:10px;"><p style="text-align:center; color:#64748B;">Chargement de l'élève de la semaine...</p></div>
+                        </div>
+                        <div id="sotwAdminBar" style="display:none; text-align:center; margin-top:14px;">
+                            <button type="button" class="pro-button" onclick="openStudentOfWeekAdminModal()" style="background:#FFFBEB; color:#92400E; border:1.5px solid #F59E0B; padding:8px 18px; border-radius:10px; font-weight:700; cursor:pointer; box-shadow:0 3px 10px rgba(245,158,11,0.2); display:inline-flex; align-items:center; gap:8px;">
+                                <i class="fas fa-crown" style="color:#D97706;"></i> <span>⭐ Modifier l'Élève de la Semaine (Photo &amp; Félicitations)</span>
+                            </button>
                         </div>
                     </div>
 
@@ -2122,6 +2192,10 @@
                             </h2>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <!-- Bouton Afficher & Imprimer le Plan pour le Parent -->
+                            <button type="button" class="pro-button print-parent-plan-btn" id="btnParentPrintPlanTop" onclick="printParentWeeklyPlan()" style="padding:8px 16px; font-weight:700; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 3px 10px rgba(16,185,129,0.25);">
+                                <i class="fas fa-print"></i> <span class="parentPrintBtnText">Afficher &amp; Imprimer le Plan</span>
+                            </button>
                             <!-- Bouton Sélecteur de Langue FR / AR -->
                             <button type="button" class="pro-button" onclick="toggleParentLanguage()" id="parentLangToggleBtn" style="padding:8px 16px; font-weight:700; background:#3B82F6; color:white; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(59,130,246,0.25);">
                                 <i class="fas fa-language"></i> <span class="parentLangToggleLabel">العربية 🇸🇦</span>
@@ -2131,7 +2205,7 @@
                                 <i class="fas fa-venus-mars"></i> <span id="parentSectionToggleText">Section Garçons 👦</span>
                             </span>
                             <button type="button" class="pro-button primary-button" onclick="showHomeworkView('parent-selection')" style="padding:8px 16px;">
-                                <i class="fas fa-user-graduate"></i> <span id="btnHeaderStudentFollow">Suivi Élèves & Devoirs</span>
+                                <i class="fas fa-user-graduate"></i> <span id="btnHeaderStudentFollow">Suivi Élèves &amp; Devoirs</span>
                             </button>
                         </div>
                     </div>
@@ -2184,6 +2258,21 @@
                                     <option value="DP1">الثاني ثانوي (DP1)</option>
                                     <option value="DP2">الثالث ثانوي (DP2)</option>
                                 </select>
+                            </div>
+
+                            <!-- Bouton Afficher & Imprimer le Plan Hebdomadaire pour les Parents -->
+                            <div>
+                                <label id="lblFilterPrintAction" style="font-weight:700; color:#374151; font-size:0.9rem; display:block; margin-bottom:8px;">
+                                    <i class="fas fa-file-pdf" style="color:#10B981;"></i> <span id="lblFilterPrintTitle">Plan Hebdomadaire (Impression &amp; PDF) :</span>
+                                </label>
+                                <div style="display:flex; gap:8px;">
+                                    <button type="button" id="btnParentPrintPlanAction" onclick="printParentWeeklyPlan()" class="pro-button" style="flex:1; padding:10px 14px; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; font-weight:700; font-size:0.92rem; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 3px 10px rgba(16,185,129,0.25);">
+                                        <i class="fas fa-print"></i> <span class="parentPrintBtnText">Afficher &amp; Imprimer</span>
+                                    </button>
+                                    <button type="button" id="btnParentDownloadPlanAction" onclick="downloadParentWeeklyPlan()" class="pro-button" style="padding:10px 14px; background:#F0FDF4; color:#065F46; border:1.5px solid #86EFAC; border-radius:10px; font-weight:700; font-size:0.92rem; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;" title="Télécharger le fichier">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
                             </div>
 
                         </div>
@@ -2379,23 +2468,23 @@
                     <i class="fas fa-file-word"></i> <span id="btnExecuteWordText">Télécharger Word (.docx)</span>
                 </button>
                 <button type="button" id="btnExecuteDesignDownload" class="pro-button" onclick="executeFullClassDesignDownload()" style="padding:10px 20px; font-weight:700; background:linear-gradient(135deg, #0D9488, #059669); color:white; border:none; border-radius:10px; box-shadow:0 4px 12px rgba(13,148,136,0.3); display:inline-flex; align-items:center; gap:6px;">
-                    <i class="fas fa-palette"></i> <span id="btnExecuteDesignText">Modèle Stylisé (Design & PDF)</span>
+                    <i class="fas fa-file-pdf"></i> <span id="btnExecuteDesignText">Plan Hebdomadaire (Design &amp; PDF)</span>
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- MODAL NOUVEAU MODÈLE DESIGN HEBDOMADAIRE STYLISÉ -->
+    <!-- MODAL PLAN HEBDOMADAIRE HAUTE DÉFINITION (A4 & PDF) -->
     <div id="designPlanModal" class="hw-modal" style="display:none; z-index:99999;">
         <div class="hw-modal-content" style="max-width:680px; border-radius:22px; padding:28px; background:white; box-shadow:0 24px 48px rgba(0,0,0,0.22);">
             <span class="hw-close-modal" onclick="closeDesignPlanModal()">&times;</span>
             <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px;">
                 <div style="width:48px; height:48px; background:#ECFDF5; color:#059669; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; box-shadow:0 4px 12px rgba(16,185,129,0.2);">
-                    <i class="fas fa-palette"></i>
+                    <i class="fas fa-file-invoice"></i>
                 </div>
                 <div>
                     <h3 style="margin:0; color:#064E3B; font-size:1.3rem; font-weight:800;">
-                        Plan Hebdomadaire Stylisé & Haute Définition
+                        Plan Hebdomadaire Haute Définition (A4 &amp; PDF)
                     </h3>
                     <div style="color:#64748B; font-size:0.88rem; font-weight:600;">
                         Présentation soignée, polices modernes, couleurs par matière, photos des enseignants et format prêt pour impression PDF
@@ -2985,6 +3074,77 @@
 
             </div>
 
+        </div>
+    </div>
+
+    <!-- MODAL ADMINISTRATION DE L'ÉLÈVE DE LA SEMAINE (CÉLÉBRATIONS) -->
+    <div id="studentOfWeekAdminModal" class="hw-modal" style="display:none; z-index:99999;">
+        <div class="hw-modal-content" style="max-width:580px; border-radius:20px; padding:26px; background:white; box-shadow:0 24px 48px rgba(0,0,0,0.22);">
+            <span class="hw-close-modal" onclick="closeStudentOfWeekAdminModal()">&times;</span>
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                <div style="width:46px; height:46px; border-radius:12px; background:#FEF3C7; color:#D97706; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">
+                    <i class="fas fa-crown"></i>
+                </div>
+                <div>
+                    <h3 style="margin:0; font-size:1.25rem; color:#92400E; font-weight:800;">
+                        ⭐ Élève de la Semaine (Célébrations &amp; Photos)
+                    </h3>
+                    <p style="margin:2px 0 0 0; font-size:0.84rem; color:#6B7280;">
+                        Sélectionnez l'élève mis à l'honneur, sa photo et ses félicitations
+                    </p>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:12px;">
+                <div>
+                    <label style="font-weight:700; font-size:0.85rem; color:#374151; display:block; margin-bottom:4px;">Nom de l'élève :</label>
+                    <input type="text" id="modalSotwName" placeholder="Nom de l'élève..." style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:0.9rem;">
+                </div>
+                <div>
+                    <label style="font-weight:700; font-size:0.85rem; color:#374151; display:block; margin-bottom:4px;">Classe :</label>
+                    <input type="text" id="modalSotwClass" placeholder="Ex: PEI1..." style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:0.9rem;">
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:700; font-size:0.85rem; color:#374151; display:block; margin-bottom:4px;">
+                    <i class="fab fa-google-drive" style="color:#0F9D58;"></i> Photo de l'élève (Lien Google Drive ou Image) :
+                </label>
+                <input type="url" id="modalSotwPhotoUrl" placeholder="https://drive.google.com/file/d/... ou https://..." style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:0.9rem;" oninput="previewModalSotwPhoto()">
+                <div id="modalSotwPhotoPreviewContainer" style="display:none; align-items:center; gap:10px; margin-top:6px;">
+                    <img id="modalSotwPhotoPreviewImg" src="" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid #F59E0B;">
+                    <span style="font-size:0.8rem; color:#059669; font-weight:700;">Aperçu photo chargé avec succès</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:700; font-size:0.85rem; color:#374151; display:block; margin-bottom:4px;">Étoiles attribuées :</label>
+                <select id="modalSotwStars" style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:0.9rem;">
+                    <option value="5">⭐⭐⭐⭐⭐ (5 Étoiles - Grand Mérite)</option>
+                    <option value="4">⭐⭐⭐⭐ (4 Étoiles)</option>
+                    <option value="3">⭐⭐⭐ (3 Étoiles)</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="font-weight:700; font-size:0.85rem; color:#374151; display:block; margin-bottom:4px;">Mots de Félicitation (Français) :</label>
+                <textarea id="modalSotwCongratsFr" rows="2" placeholder="Toutes nos chaleureuses félicitations pour son excellence..." style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:0.88rem;"></textarea>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label style="font-weight:700; font-size:0.85rem; color:#374151; display:block; margin-bottom:4px;">Mots de Félicitation (Arabe) :</label>
+                <textarea id="modalSotwCongratsAr" rows="2" dir="rtl" placeholder="ألف مبروك للطالب المتميز على تفوقه الدراسي والتزامه الأخلاقي..." style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:0.88rem;"></textarea>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <span id="modalSotwStatus" style="font-size:0.85rem; font-weight:700;"></span>
+                <div style="display:flex; gap:10px;">
+                    <button type="button" class="pro-button secondary-button" onclick="closeStudentOfWeekAdminModal()" style="padding:9px 16px;">Annuler</button>
+                    <button type="button" class="pro-button primary-button" onclick="saveStudentOfWeekFromModal()" style="padding:9px 20px; font-weight:700; background:linear-gradient(135deg, #D97706, #B45309); color:white; border:none; border-radius:8px; cursor:pointer;">
+                        <i class="fas fa-save"></i> Enregistrer
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 

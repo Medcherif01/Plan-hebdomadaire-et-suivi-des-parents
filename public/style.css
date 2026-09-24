@@ -1350,7 +1350,194 @@ td.editable.arabic-content {
     .photos-row { grid-template-columns: 1fr; }
 }
 
-.student-of-the-week-showcase, .photo-of-the-day-showcase {
+.student-of-the-week-showcase {
+    position: relative;
+    padding: 28px 24px;
+    background: linear-gradient(135deg, #FFFDF5 0%, #FEF9C3 35%, #FEF08A 70%, #FFFBEB 100%);
+    border: 2px solid #F59E0B;
+    border-radius: 24px;
+    text-align: center;
+    box-shadow: 0 12px 35px rgba(245, 158, 11, 0.22), 0 4px 12px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.student-of-the-week-showcase:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 45px rgba(245, 158, 11, 0.28), 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.student-of-the-week-showcase::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent 45%, rgba(255, 255, 255, 0.45) 50%, transparent 55%);
+    transform: rotate(30deg);
+    animation: sotwShimmer 4.5s infinite linear;
+    pointer-events: none;
+}
+
+@keyframes sotwShimmer {
+    0% { transform: translate(-100%, -100%) rotate(30deg); }
+    100% { transform: translate(100%, 100%) rotate(30deg); }
+}
+
+.sotw-card-wrapper {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+    flex-wrap: wrap;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.sotw-photo-frame {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.sotw-photo-img {
+    width: 170px;
+    height: 170px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 5px solid #F59E0B;
+    box-shadow: 0 8px 25px rgba(217, 119, 6, 0.35), 0 0 0 8px rgba(254, 240, 138, 0.6);
+    background: white;
+    transition: transform 0.3s ease;
+    animation: sotwPulseRing 3s infinite ease-in-out;
+}
+
+@keyframes sotwPulseRing {
+    0%, 100% {
+        box-shadow: 0 8px 25px rgba(217, 119, 6, 0.35), 0 0 0 6px rgba(254, 240, 138, 0.6);
+    }
+    50% {
+        box-shadow: 0 12px 30px rgba(217, 119, 6, 0.45), 0 0 0 12px rgba(254, 240, 138, 0.2);
+    }
+}
+
+.sotw-crown-badge {
+    position: absolute;
+    top: -12px;
+    right: 2px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    color: #FFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    box-shadow: 0 4px 12px rgba(217, 119, 6, 0.45);
+    border: 2.5px solid #FFF;
+    animation: sotwBounceCrown 2.5s infinite ease-in-out;
+}
+
+@keyframes sotwBounceCrown {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-6px) rotate(8deg); }
+}
+
+.sotw-details {
+    flex: 1;
+    min-width: 280px;
+    text-align: left;
+}
+
+.sotw-tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 9999px;
+    background: #FEF3C7;
+    border: 1px solid #FCD34D;
+    color: #92400E;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 6px rgba(245, 158, 11, 0.15);
+}
+
+.sotw-student-name {
+    font-size: 1.7rem;
+    font-weight: 900;
+    color: #78350F;
+    margin: 4px 0 6px 0;
+    line-height: 1.2;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.sotw-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.sotw-class-badge {
+    background: #1E40AF;
+    color: white;
+    padding: 3px 12px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    box-shadow: 0 2px 6px rgba(30, 64, 175, 0.25);
+}
+
+.sotw-stars {
+    color: #F59E0B;
+    font-size: 1.15rem;
+    display: inline-flex;
+    gap: 3px;
+    filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.4));
+    animation: sotwStarGlow 2s infinite ease-in-out;
+}
+
+@keyframes sotwStarGlow {
+    0%, 100% { filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.4)); }
+    50% { filter: drop-shadow(0 3px 8px rgba(245, 158, 11, 0.8)); transform: scale(1.03); }
+}
+
+.sotw-congrats-box {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(4px);
+    border-left: 5px solid #F59E0B;
+    padding: 12px 18px;
+    border-radius: 12px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
+}
+
+.sotw-congrats-fr {
+    font-size: 0.95rem;
+    color: #451A03;
+    font-weight: 600;
+    line-height: 1.45;
+    margin: 0;
+}
+
+.sotw-congrats-ar {
+    font-size: 0.98rem;
+    color: #78350F;
+    font-weight: 700;
+    line-height: 1.5;
+    margin: 6px 0 0 0;
+    text-align: right;
+    font-family: inherit;
+}
+
+.photo-of-the-day-showcase {
     padding: 20px;
     background: #f0f7ff;
     border: 1px solid #bde0ff;
