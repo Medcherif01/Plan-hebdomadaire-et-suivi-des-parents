@@ -636,17 +636,16 @@ function generateDesignPlanHtml(options = {}) {
       margin-top: 8px;
       text-align: center;
       width: 100%;
-      overflow: hidden;
+      overflow: visible;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
     .notes-attached-photo-img {
-      max-height: 280px;
       width: 100%;
       max-width: 100%;
       height: auto;
-      object-fit: cover;
+      object-fit: contain;
       border-radius: 6px;
       border: 1px solid #FCD34D;
       background: #FFFFFF;
@@ -1118,15 +1117,14 @@ function generateDesignPlanHtml(options = {}) {
       width: 100%;
       max-width: 100%;
       display: block;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .merged-photo-img {
       width: 100%;
       max-width: 100%;
       height: auto;
-      max-height: 380px;
-      object-fit: cover;
+      object-fit: contain;
       border-radius: 8px;
       display: block;
       margin: 0 auto;
@@ -1234,26 +1232,28 @@ function generateDesignPlanHtml(options = {}) {
         border: none !important;
         box-shadow: none !important;
         padding: 0 !important;
+        overflow: visible !important;
       }
       .merged-photo-img {
         width: 100% !important;
         max-width: 100% !important;
         height: auto !important;
-        max-height: 380px !important;
-        object-fit: cover !important;
+        max-height: none !important;
+        object-fit: contain !important;
         display: block !important;
         border-radius: 6px !important;
       }
       .notes-attached-photo-container {
         width: 100% !important;
         max-height: none !important;
+        overflow: visible !important;
       }
       .notes-attached-photo-img {
         width: 100% !important;
         max-width: 100% !important;
         height: auto !important;
-        max-height: 280px !important;
-        object-fit: cover !important;
+        max-height: none !important;
+        object-fit: contain !important;
         display: block !important;
         border-radius: 6px !important;
       }

@@ -5335,7 +5335,7 @@ function renderParentPlanCards(rows) {
                             return `
                             <div class="special-photo-card" onclick="openSpecialPhotoByIndex(${pIdx})" style="background:white; border-radius:14px; overflow:hidden; border:1px solid #E2E8F0; box-shadow:0 4px 14px rgba(0,0,0,0.06); cursor:pointer; transition:transform 0.2s ease, box-shadow 0.2s ease;">
                                 <div style="height:175px; overflow:hidden; position:relative; background:#F8FAFC;">
-                                    <img src="${photoUrl}" alt="${escapeHtml(photoCaption || 'Photo')}" loading="lazy" style="width:100%; height:100%; object-fit:cover; transition:transform 0.3s ease;">
+                                    <img src="${photoUrl}" alt="${escapeHtml(photoCaption || 'Photo')}" loading="lazy" style="width:100%; height:100%; object-fit:contain; transition:transform 0.3s ease;">
                                     <div style="position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.65); color:white; padding:4px 9px; border-radius:6px; font-size:0.75rem; display:flex; align-items:center; gap:5px;">
                                         <i class="fas fa-search-plus"></i> Agrandir
                                     </div>
