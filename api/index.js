@@ -1772,17 +1772,17 @@ function convertGoogleDriveUrl(url) {
 
   const matchFile = str.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (matchFile && matchFile[1]) {
-    return `https://drive.google.com/thumbnail?id=${matchFile[1]}&sz=w1200`;
+    return `https://drive.google.com/thumbnail?id=${matchFile[1]}&sz=w2560`;
   }
 
   const matchD = str.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
   if (matchD && matchD[1]) {
-    return `https://drive.google.com/thumbnail?id=${matchD[1]}&sz=w1200`;
+    return `https://drive.google.com/thumbnail?id=${matchD[1]}&sz=w2560`;
   }
 
   const matchId = str.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (matchId && matchId[1]) {
-    return `https://drive.google.com/thumbnail?id=${matchId[1]}&sz=w1200`;
+    return `https://drive.google.com/thumbnail?id=${matchId[1]}&sz=w2560`;
   }
 
   return str;
@@ -4345,7 +4345,7 @@ app.get('/api/plans/:week', async (req, res) => {
       (specialDays || []).forEach(d => {
         if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
           d.photos = [{
-            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w2560',
             caption: 'Célébration Fête Nationale'
           }];
         }
@@ -4378,7 +4378,7 @@ app.get('/api/plans/:week', async (req, res) => {
       (specialDays || []).forEach(d => {
         if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
           d.photos = [{
-            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w2560',
             caption: 'Célébration Fête Nationale'
           }];
         }
@@ -4791,7 +4791,7 @@ app.get('/api/special-days', async (req, res) => {
     (days || []).forEach(d => {
       if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
         d.photos = [{
-          url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+          url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w2560',
           caption: 'Célébration Fête Nationale'
         }];
       }
@@ -4852,7 +4852,7 @@ app.post('/api/special-days', async (req, res) => {
     // Auto-inclusion de l'affiche officielle pour la Fête Nationale si la liste est vide
     if (cleanedPhotos.length === 0 && /f[eê]te\s*nationale/i.test(title || '')) {
       cleanedPhotos.push({
-        url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+        url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w2560',
         caption: 'Célébration Fête Nationale'
       });
     }
@@ -5733,7 +5733,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      (specialDays || []).forEach(d => {
 	        if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
 	          d.photos = [{
-	            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+	            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w2560',
 	            caption: 'Célébration Fête Nationale'
 	          }];
 	        }

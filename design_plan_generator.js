@@ -102,8 +102,8 @@ function formatDriveImageUrl(url) {
                      clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (driveMatch && driveMatch[1]) {
     const fileId = driveMatch[1];
-    // Renvoyer le point d'accès direct thumbnail Google Drive avec haute résolution (w1200)
-    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
+    // Renvoyer le point d'accès direct thumbnail Google Drive avec résolution maximale d'origine (w2560)
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w2560`;
   }
   return clean;
 }
@@ -633,26 +633,26 @@ function generateDesignPlanHtml(options = {}) {
     }
 
     .notes-attached-photo-container {
-      margin-top: 6px;
+      margin-top: 8px;
       text-align: center;
-      max-height: 85px;
+      width: 100%;
       overflow: hidden;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
     .notes-attached-photo-img {
-      max-height: 80px;
-      max-width: 96%;
-      width: auto;
-      object-fit: contain;
-      border-radius: 4px;
+      max-height: 280px;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      object-fit: cover;
+      border-radius: 6px;
       border: 1px solid #FCD34D;
       background: #FFFFFF;
-      padding: 2px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-      display: inline-block;
-      vertical-align: middle;
+      padding: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      display: block;
     }
 
     /* ------------------------------------------------------------------------
@@ -1058,15 +1058,16 @@ function generateDesignPlanHtml(options = {}) {
     .merged-day-special-cell {
       background: #FFFBEB;
       border: 2px solid #F59E0B !important;
-      padding: 12px !important;
+      padding: 8px 8px 10px 8px !important;
     }
 
     .merged-special-container {
       text-align: center;
+      width: 100%;
     }
 
     .merged-badge-header {
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
 
     .merged-type-pill {
@@ -1094,49 +1095,43 @@ function generateDesignPlanHtml(options = {}) {
     .merged-day-desc {
       font-size: 0.84rem;
       color: #451A03;
-      margin: 6px auto;
-      max-width: 90%;
+      margin: 4px auto 8px auto;
+      max-width: 95%;
       line-height: 1.35;
     }
 
     .merged-photos-gallery {
       display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
+      flex-direction: column;
       align-items: center;
-      gap: 12px;
-      margin-top: 12px;
-      margin-bottom: 6px;
+      width: 100%;
+      margin-top: 6px;
+      gap: 10px;
     }
 
     .merged-photo-card {
-      background: #FFFFFF;
-      padding: 6px;
-      border-radius: 10px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      border: 1px solid #CBD5E1;
-      max-width: 320px;
-      display: inline-flex;
-      flex-direction: column;
-      align-items: center;
+      background: transparent;
+      padding: 0;
+      border-radius: 8px;
+      border: none;
+      box-shadow: none;
+      width: 100%;
+      max-width: 100%;
+      display: block;
+      overflow: hidden;
     }
 
     .merged-photo-img {
+      width: 100%;
       max-width: 100%;
-      max-height: 185px;
-      width: auto;
       height: auto;
-      object-fit: contain;
-      border-radius: 6px;
+      max-height: 380px;
+      object-fit: cover;
+      border-radius: 8px;
       display: block;
-    }
-
-    .merged-photo-caption {
-      font-size: 0.75rem;
-      font-weight: 700;
-      color: #334155;
-      text-align: center;
-      margin-top: 4px;
+      margin: 0 auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border: 1px solid #FCD34D;
     }
 
     /* ========================================================================
@@ -1227,6 +1222,40 @@ function generateDesignPlanHtml(options = {}) {
         margin-top: auto !important;
         padding-top: 4px !important;
         border-top: 1.5px solid #94A3B8 !important;
+      }
+
+      .merged-photos-gallery {
+        width: 100% !important;
+      }
+      .merged-photo-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+      }
+      .merged-photo-img {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: 380px !important;
+        object-fit: cover !important;
+        display: block !important;
+        border-radius: 6px !important;
+      }
+      .notes-attached-photo-container {
+        width: 100% !important;
+        max-height: none !important;
+      }
+      .notes-attached-photo-img {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: 280px !important;
+        object-fit: cover !important;
+        display: block !important;
+        border-radius: 6px !important;
       }
 
       * {
@@ -1417,10 +1446,9 @@ function generateDesignPlanHtml(options = {}) {
                             const pCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
                             return `
                               <div class="merged-photo-card">
-                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Affiche / Photo')}" class="merged-photo-img" referrerpolicy="no-referrer"
+                                <img src="${pUrl}" alt="Affiche" class="merged-photo-img" referrerpolicy="no-referrer"
                                   data-file-id="${driveId || ''}"
-                                  onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w1200';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
-                                ${pCap ? `<div class="merged-photo-caption">${escapeHtml(pCap)}</div>` : ''}
+                                  onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w2560';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
                               </div>
                             `;
                           }).join('')}
@@ -1450,13 +1478,11 @@ function generateDesignPlanHtml(options = {}) {
                             const rawUrl = typeof p === 'string' ? p : (p.url || p.src || '');
                             const pUrl = formatDriveImageUrl(rawUrl);
                             const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
-                            const pCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
                             return `
                               <div class="merged-photo-card">
-                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Affiche / Photo')}" class="merged-photo-img" referrerpolicy="no-referrer"
+                                <img src="${pUrl}" alt="Affiche" class="merged-photo-img" referrerpolicy="no-referrer"
                                   data-file-id="${driveId || ''}"
-                                  onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w1200';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
-                                ${pCap ? `<div class="merged-photo-caption">${escapeHtml(pCap)}</div>` : ''}
+                                  onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w2560';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
                               </div>
                             `;
                           }).join('')}

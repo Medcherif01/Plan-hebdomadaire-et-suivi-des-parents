@@ -5313,7 +5313,7 @@ function renderParentPlanCards(rows) {
         const photos = rawPhotos.filter(p => p && (typeof p === 'string' ? p.trim() : (p.url || p.src || p.data)));
         if (photos.length === 0 && /f[eê]te\s*nationale/i.test(activeSpecialDay.title || '')) {
             photos.push({
-                url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+                url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w2560',
                 caption: 'Célébration Fête Nationale'
             });
         }
@@ -5650,7 +5650,7 @@ function formatPhotoUrl(url) {
     const clean = url.trim();
     if (clean.startsWith('data:image/')) return clean;
 
-    // Google Drive share link -> point d'accès direct thumbnail universel haute résolution (w1200)
+    // Google Drive share link -> point d'accès direct thumbnail universel haute résolution (w2560)
     // Ex: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
     // Ex: https://drive.google.com/open?id=FILE_ID
     // Ex: https://lh3.googleusercontent.com/d/FILE_ID
@@ -5658,7 +5658,7 @@ function formatPhotoUrl(url) {
                        clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || 
                        clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     if (driveMatch && driveMatch[1]) {
-        return `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w1200`;
+        return `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w2560`;
     }
     return clean;
 }
@@ -5789,7 +5789,7 @@ async function saveAdminSpecialDay() {
     // Si aucune photo et Fête Nationale, auto-ajouter l'affiche officielle
     if (adminSpecialPhotosList.length === 0 && /f[eê]te\s*nationale/i.test(title)) {
         adminSpecialPhotosList.push({
-            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w2560',
             caption: 'Célébration Fête Nationale'
         });
         renderAdminSpecialPhotosPreview();
@@ -6073,7 +6073,7 @@ async function saveQuickSpecialDay() {
     // Si aucune photo et Fête Nationale, auto-ajouter l'affiche officielle
     if (quickSpecialPhotosList.length === 0 && /f[eê]te\s*nationale/i.test(title)) {
         quickSpecialPhotosList.push({
-            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w2560',
             caption: 'Célébration Fête Nationale'
         });
         renderQuickSpecialPhotosPreview();
