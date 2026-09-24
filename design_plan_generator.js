@@ -97,13 +97,13 @@ function formatDriveImageUrl(url) {
   if (clean.startsWith('data:image/')) return clean;
   
   // Extraction de l'ID du fichier Google Drive
-  const driveMatch = clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || 
-                     clean.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
-                     clean.match(/file\/d\/([a-zA-Z0-9_-]+)/);
+  const driveMatch = clean.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+                     clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || 
+                     clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (driveMatch && driveMatch[1]) {
     const fileId = driveMatch[1];
-    // Utiliser le CDN direct Google lh3 avec paramètre taille s400
-    return `https://lh3.googleusercontent.com/d/${fileId}=s400`;
+    // Renvoyer le point d'accès direct thumbnail Google Drive avec haute résolution (w1200)
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
   }
   return clean;
 }
@@ -1103,33 +1103,40 @@ function generateDesignPlanHtml(options = {}) {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
-      gap: 10px;
-      margin-top: 10px;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+      margin-bottom: 6px;
     }
 
     .merged-photo-card {
       background: #FFFFFF;
-      padding: 4px;
-      border-radius: 6px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      border: 1px solid #E2E8F0;
-      max-width: 140px;
+      padding: 6px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border: 1px solid #CBD5E1;
+      max-width: 320px;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
     }
 
     .merged-photo-img {
-      width: 100%;
-      height: 85px;
-      object-fit: cover;
-      border-radius: 4px;
+      max-width: 100%;
+      max-height: 185px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border-radius: 6px;
       display: block;
     }
 
     .merged-photo-caption {
-      font-size: 0.68rem;
+      font-size: 0.75rem;
       font-weight: 700;
       color: #334155;
       text-align: center;
-      margin-top: 3px;
+      margin-top: 4px;
     }
 
     /* ========================================================================
@@ -1283,13 +1290,28 @@ function generateDesignPlanHtml(options = {}) {
         const sdDay = String(sd.day || '').trim().toLowerCase();
         const sdClass = String(sd.classe || 'all').trim().toLowerCase();
         const matchesDay = sdDay.includes(normDay) || normDay.includes(sdDay);
-        const matchesClass = sdClass === 'all' || sdClass === 'toutes' || sdClass === normClass || normClass.includes(sdClass);
+        const matchesClass = sdClass === 'all' || sdClass === 'toutes' || sdClass.includes('toutes') || sdClass === normClass || normClass.includes(sdClass) || sdClass.includes(normClass);
         return matchesDay && matchesClass;
       });
 
-      const specialPhotos = (matchedSpecialDay && Array.isArray(matchedSpecialDay.photos))
-        ? matchedSpecialDay.photos.filter(p => p && (typeof p === 'string' ? p.trim() : (p.url || p.src || p.data)))
-        : [];
+      let specialPhotos = [];
+      if (matchedSpecialDay) {
+        if (Array.isArray(matchedSpecialDay.photos) && matchedSpecialDay.photos.length > 0) {
+          specialPhotos = matchedSpecialDay.photos.filter(p => p && (typeof p === 'string' ? p.trim() : (p.url || p.src || p.data)));
+        }
+        if (matchedSpecialDay.photoUrl) specialPhotos.push({ url: matchedSpecialDay.photoUrl });
+        if (matchedSpecialDay.photo) specialPhotos.push({ url: matchedSpecialDay.photo });
+        if (matchedSpecialDay.imageUrl) specialPhotos.push({ url: matchedSpecialDay.imageUrl });
+        if (matchedSpecialDay.image) specialPhotos.push({ url: matchedSpecialDay.image });
+
+        // Si aucune photo n'a été rattachée à la Fête Nationale, injecter l'affiche officielle
+        if (specialPhotos.length === 0 && /f[eê]te\s*nationale/i.test(matchedSpecialDay.title || '')) {
+          specialPhotos.push({
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            caption: 'Célébration Fête Nationale'
+          });
+        }
+      }
 
       return `
       <section class="a4-page" id="page_day_${dayName.toLowerCase()}">
@@ -1343,7 +1365,7 @@ function generateDesignPlanHtml(options = {}) {
                   : `<div class="empty-notes-text"><i class="fas fa-info-circle"></i> Aucune consigne particulière pour cette semaine.</div>`}
                 ${resolvedNotesPhoto ? `
                   <div class="notes-attached-photo-container">
-                    <img src="${formatDriveImageUrl(resolvedNotesPhoto)}" alt="Photo Remarques" class="notes-attached-photo-img" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="if(!this.dataset.retry){this.dataset.retry=1;const id=this.src.match(/\\/d\\/([a-zA-Z0-9_-]+)/)?.[1];if(id){this.src='https://drive.google.com/thumbnail?id='+id+'&sz=w800';}else{this.parentElement.style.display='none';}}else{this.parentElement.style.display='none';}" />
+                    <img src="${formatDriveImageUrl(resolvedNotesPhoto)}" alt="Photo Remarques" class="notes-attached-photo-img" referrerpolicy="no-referrer" onerror="if(!this.dataset.retry){this.dataset.retry=1;const id=this.src.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1]||this.src.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1];if(id){this.src='https://drive.google.com/thumbnail?id='+id+'&sz=w800';}}" />
                   </div>
                 ` : ''}
               </div>
@@ -1389,11 +1411,15 @@ function generateDesignPlanHtml(options = {}) {
                       ${specialPhotos.length > 0 ? `
                         <div class="merged-photos-gallery">
                           ${specialPhotos.map(p => {
-                            const pUrl = formatDriveImageUrl(typeof p === 'string' ? p : (p.url || p.src || p.data));
+                            const rawUrl = typeof p === 'string' ? p : (p.url || p.src || p.data || '');
+                            const pUrl = formatDriveImageUrl(rawUrl);
+                            const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
                             const pCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
                             return `
                               <div class="merged-photo-card">
-                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Photo')}" class="merged-photo-img" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.parentElement.style.display='none';" />
+                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Affiche / Photo')}" class="merged-photo-img" referrerpolicy="no-referrer"
+                                  data-file-id="${driveId || ''}"
+                                  onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w1200';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
                                 ${pCap ? `<div class="merged-photo-caption">${escapeHtml(pCap)}</div>` : ''}
                               </div>
                             `;
@@ -1421,11 +1447,15 @@ function generateDesignPlanHtml(options = {}) {
                         ${(row['Travaux de classe'] || row.travaux) ? `<div class="merged-day-desc">${escapeHtml(row['Travaux de classe'] || row.travaux)}</div>` : ''}
                         <div class="merged-photos-gallery">
                           ${rowPhotos.map(p => {
-                            const pUrl = formatDriveImageUrl(typeof p === 'string' ? p : (p.url || p.src));
+                            const rawUrl = typeof p === 'string' ? p : (p.url || p.src || '');
+                            const pUrl = formatDriveImageUrl(rawUrl);
+                            const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
                             const pCap = typeof p === 'object' ? (p.caption || p.name || '') : '';
                             return `
                               <div class="merged-photo-card">
-                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Photo')}" class="merged-photo-img" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.parentElement.style.display='none';" />
+                                <img src="${pUrl}" alt="${escapeHtml(pCap || 'Affiche / Photo')}" class="merged-photo-img" referrerpolicy="no-referrer"
+                                  data-file-id="${driveId || ''}"
+                                  onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w1200';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
                                 ${pCap ? `<div class="merged-photo-caption">${escapeHtml(pCap)}</div>` : ''}
                               </div>
                             `;

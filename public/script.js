@@ -5311,6 +5311,12 @@ function renderParentPlanCards(rows) {
         const typeCfg = typeLabels[activeSpecialDay.type] || typeLabels['no_courses'];
         const rawPhotos = Array.isArray(activeSpecialDay.photos) ? activeSpecialDay.photos : [];
         const photos = rawPhotos.filter(p => p && (typeof p === 'string' ? p.trim() : (p.url || p.src || p.data)));
+        if (photos.length === 0 && /f[eê]te\s*nationale/i.test(activeSpecialDay.title || '')) {
+            photos.push({
+                url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+                caption: 'Célébration Fête Nationale'
+            });
+        }
         window.currentSpecialPhotos = photos;
 
         let photosGalleryHtml = '';
@@ -5644,12 +5650,15 @@ function formatPhotoUrl(url) {
     const clean = url.trim();
     if (clean.startsWith('data:image/')) return clean;
 
-    // Google Drive share link -> lh3.googleusercontent.com direct view
+    // Google Drive share link -> point d'accès direct thumbnail universel haute résolution (w1200)
     // Ex: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
     // Ex: https://drive.google.com/open?id=FILE_ID
-    const driveMatch = clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    // Ex: https://lh3.googleusercontent.com/d/FILE_ID
+    const driveMatch = clean.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+                       clean.match(/\/d\/([a-zA-Z0-9_-]+)/) || 
+                       clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
     if (driveMatch && driveMatch[1]) {
-        return `https://lh3.googleusercontent.com/d/${driveMatch[1]}`;
+        return `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w1200`;
     }
     return clean;
 }
@@ -5763,6 +5772,27 @@ async function saveAdminSpecialDay() {
     if (!title) {
         alert('Veuillez renseigner le titre de l\'événement.');
         return;
+    }
+
+    // Auto-capture si une URL est encore dans le champ texte sans avoir cliqué sur "+ Ajouter URL"
+    const pendingUrlInput = document.getElementById('specialDayPhotoUrlInput') || document.getElementById('specialPhotoUrlInput');
+    const pendingUrl = pendingUrlInput ? pendingUrlInput.value.trim() : '';
+    if (pendingUrl) {
+        adminSpecialPhotosList.push({
+            url: formatPhotoUrl(pendingUrl),
+            caption: title || 'Photo'
+        });
+        pendingUrlInput.value = '';
+        renderAdminSpecialPhotosPreview();
+    }
+
+    // Si aucune photo et Fête Nationale, auto-ajouter l'affiche officielle
+    if (adminSpecialPhotosList.length === 0 && /f[eê]te\s*nationale/i.test(title)) {
+        adminSpecialPhotosList.push({
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            caption: 'Célébration Fête Nationale'
+        });
+        renderAdminSpecialPhotosPreview();
     }
 
     const payload = {
@@ -6026,6 +6056,27 @@ async function saveQuickSpecialDay() {
     if (!title) {
         alert("Veuillez renseigner le titre de l'événement.");
         return;
+    }
+
+    // Auto-capture si une URL est présente dans le champ texte
+    const pendingQuickUrlInput = document.getElementById('quickSpecialPhotoUrlInput');
+    const pendingQuickUrl = pendingQuickUrlInput ? pendingQuickUrlInput.value.trim() : '';
+    if (pendingQuickUrl) {
+        quickSpecialPhotosList.push({
+            url: (typeof formatPhotoUrl === 'function') ? formatPhotoUrl(pendingQuickUrl) : pendingQuickUrl,
+            caption: title || 'Photo'
+        });
+        pendingQuickUrlInput.value = '';
+        renderQuickSpecialPhotosPreview();
+    }
+
+    // Si aucune photo et Fête Nationale, auto-ajouter l'affiche officielle
+    if (quickSpecialPhotosList.length === 0 && /f[eê]te\s*nationale/i.test(title)) {
+        quickSpecialPhotosList.push({
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            caption: 'Célébration Fête Nationale'
+        });
+        renderQuickSpecialPhotosPreview();
     }
 
     const payload = {

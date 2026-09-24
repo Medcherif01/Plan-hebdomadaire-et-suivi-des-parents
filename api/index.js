@@ -1768,22 +1768,21 @@ function convertGoogleDriveUrl(url) {
   if (!url || typeof url !== 'string') return '';
   const str = url.trim();
   if (!str) return '';
-
-  if (str.includes('lh3.googleusercontent.com/d/')) return str;
+  if (str.startsWith('data:image/')) return str;
 
   const matchFile = str.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
   if (matchFile && matchFile[1]) {
-    return `https://lh3.googleusercontent.com/d/${matchFile[1]}`;
+    return `https://drive.google.com/thumbnail?id=${matchFile[1]}&sz=w1200`;
+  }
+
+  const matchD = str.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (matchD && matchD[1]) {
+    return `https://drive.google.com/thumbnail?id=${matchD[1]}&sz=w1200`;
   }
 
   const matchId = str.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (matchId && matchId[1]) {
-    return `https://lh3.googleusercontent.com/d/${matchId[1]}`;
-  }
-
-  const matchD = str.match(/\/d\/([a-zA-Z0-9_-]{25,})/);
-  if (matchD && matchD[1]) {
-    return `https://lh3.googleusercontent.com/d/${matchD[1]}`;
+    return `https://drive.google.com/thumbnail?id=${matchId[1]}&sz=w1200`;
   }
 
   return str;
@@ -4340,9 +4339,17 @@ app.get('/api/plans/:week', async (req, res) => {
 
       // Récupérer les journées spéciales / fusionnées pour cette semaine et section
       const specialDays = await db.collection('special_days').find({ 
-        section: section, 
-        week: weekNumber 
+        $or: [{ section: section }, { section: 'all' }, { section: { $exists: false } }],
+        $and: [{ $or: [{ week: weekNumber }, { week: String(weekNumber) }] }]
       }).toArray();
+      (specialDays || []).forEach(d => {
+        if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
+          d.photos = [{
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            caption: 'Célébration Fête Nationale'
+          }];
+        }
+      });
 
       res.status(200).json({ 
           planData: enrichedData, 
@@ -4365,9 +4372,17 @@ app.get('/api/plans/:week', async (req, res) => {
       });
       const isPublishedToParents = pubDoc ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents) : false;
       const specialDays = await db.collection('special_days').find({ 
-        section: section, 
-        week: weekNumber 
+        $or: [{ section: section }, { section: 'all' }, { section: { $exists: false } }],
+        $and: [{ $or: [{ week: weekNumber }, { week: String(weekNumber) }] }]
       }).toArray();
+      (specialDays || []).forEach(d => {
+        if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
+          d.photos = [{
+            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+            caption: 'Célébration Fête Nationale'
+          }];
+        }
+      });
       res.status(200).json({ planData: [], classNotes: {}, classNotesPhotos: {}, availableWeeklyPlans: [], isPublishedToParents, specialDays: specialDays || [] });
     }
   } catch (error) {
@@ -4773,6 +4788,14 @@ app.get('/api/special-days', async (req, res) => {
       query.$or = [{ week: weekNum }, { week: String(weekNum) }, { week: String(week) }];
     }
     const days = await db.collection('special_days').find(query).toArray();
+    (days || []).forEach(d => {
+      if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
+        d.photos = [{
+          url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+          caption: 'Célébration Fête Nationale'
+        }];
+      }
+    });
     res.status(200).json(days || []);
   } catch (error) {
     console.error('Erreur /api/special-days GET:', error);
@@ -4806,16 +4829,33 @@ app.post('/api/special-days', async (req, res) => {
     // Nettoyage et formatage des photos
     const cleanedPhotos = (Array.isArray(photos) ? photos : []).map(p => {
       if (typeof p === 'string' && p.trim()) {
-        return { url: p.trim(), caption: '' };
+        return { url: convertGoogleDriveUrl(p.trim()), caption: '' };
       }
       if (p && typeof p === 'object' && (p.url || p.src || p.data)) {
         return {
-          url: String(p.url || p.src || p.data || '').trim(),
+          url: convertGoogleDriveUrl(String(p.url || p.src || p.data || '').trim()),
           caption: String(p.caption || p.name || '').trim()
         };
       }
       return null;
     }).filter(p => p && p.url);
+
+    // Support si une photo unique directe est passée
+    const directPhoto = req.body.photoUrl || req.body.photo || req.body.image || req.body.imageUrl;
+    if (directPhoto && typeof directPhoto === 'string' && directPhoto.trim()) {
+      cleanedPhotos.push({
+        url: convertGoogleDriveUrl(directPhoto.trim()),
+        caption: title || 'Photo'
+      });
+    }
+
+    // Auto-inclusion de l'affiche officielle pour la Fête Nationale si la liste est vide
+    if (cleanedPhotos.length === 0 && /f[eê]te\s*nationale/i.test(title || '')) {
+      cleanedPhotos.push({
+        url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+        caption: 'Célébration Fête Nationale'
+      });
+    }
 
     const db = await connectToDatabase();
     const docId = `${section}_${weekNum}_${normDay}_${normClass}`;
@@ -5687,9 +5727,17 @@ app.post('/api/generate-word', async (req, res) => {
 	    let specialDays = [];
 	    try {
 	      specialDays = await db.collection('special_days').find({ 
-	        section: section, 
-	        week: weekNumber 
+	        $or: [{ section: section }, { section: 'all' }, { section: { $exists: false } }],
+	        $and: [{ $or: [{ week: weekNumber }, { week: String(weekNumber) }] }]
 	      }).toArray();
+	      (specialDays || []).forEach(d => {
+	        if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
+	          d.photos = [{
+	            url: 'https://drive.google.com/thumbnail?id=1tLpelITZSuch6gckvasulKDnm__aeF78&sz=w1200',
+	            caption: 'Célébration Fête Nationale'
+	          }];
+	        }
+	      });
 	    } catch (sde) {
 	      console.warn('Erreur lecture special_days dans generate-design-plan:', sde.message);
 	    }
