@@ -1120,7 +1120,7 @@ app.post('/api/unsubscribe', async (req, res) => {
 
 // Fonction utilitaire pour déterminer la semaine actuelle :
 // L'affichage de plan hebdo de la semaine courante commence toujours du jeudi à 15:00 (pour le dimanche prochain à jeudi prochain)
-function getCurrentWeekNumber(refDate = new Date()) {
+function getCurrentWeekNumber(refDate = new Date(), section = 'garcons') {
   const d = new Date(refDate);
   const day = d.getDay(); // 0: Dimanche, 1: Lundi, 2: Mardi, 3: Mercredi, 4: Jeudi, 5: Vendredi, 6: Samedi
   const hour = d.getHours();
@@ -1142,7 +1142,10 @@ function getCurrentWeekNumber(refDate = new Date()) {
   const dayNum = String(targetSunday.getDate()).padStart(2, '0');
   const targetSundayStr = `${y}-${m}-${dayNum}`;
 
-  const config = specificWeekDateRangesNode;
+  const sec = String(section || 'garcons').toLowerCase().trim();
+  const config = (sectionSpecificWeekDateRangesNode && sectionSpecificWeekDateRangesNode[sec]) 
+    ? sectionSpecificWeekDateRangesNode[sec] 
+    : specificWeekDateRangesNode;
   const sortedWeeks = Object.keys(config)
     .map(k => parseInt(k, 10))
     .filter(n => !isNaN(n))
@@ -1725,11 +1728,21 @@ async function loadWeeksConfigurationFromDb(db) {
     for (const sec of SCHOOL_SECTIONS) {
       sectionSpecificWeekDateRangesNode[sec] = sectionSpecificWeekDateRangesNode[sec] || {};
       for (const [wNum, wData] of Object.entries(sectionsConfig[sec])) {
-        sectionSpecificWeekDateRangesNode[sec][wNum] = { start: wData.start, end: wData.end };
+        sectionSpecificWeekDateRangesNode[sec][wNum] = {
+          start: wData.start,
+          end: wData.end,
+          title: wData.title,
+          titleAr: wData.titleAr
+        };
       }
     }
     for (const [wNum, wData] of Object.entries(sectionsConfig.garcons)) {
-      specificWeekDateRangesNode[wNum] = { start: wData.start, end: wData.end };
+      specificWeekDateRangesNode[wNum] = {
+        start: wData.start,
+        end: wData.end,
+        title: wData.title,
+        titleAr: wData.titleAr
+      };
     }
 
     return {
@@ -1930,14 +1943,18 @@ app.post(['/api/admin/weeks-config', '/api/weeks-config'], async (req, res) => {
         };
         sectionSpecificWeekDateRangesNode[s][wNum] = {
           start: currentSections[s][wNum].start,
-          end: currentSections[s][wNum].end
+          end: currentSections[s][wNum].end,
+          title: currentSections[s][wNum].title,
+          titleAr: currentSections[s][wNum].titleAr
         };
       }
 
       // Synchroniser le fallback global
       specificWeekDateRangesNode[wNum] = {
         start: currentSections.garcons[wNum].start,
-        end: currentSections.garcons[wNum].end
+        end: currentSections.garcons[wNum].end,
+        title: currentSections.garcons[wNum].title,
+        titleAr: currentSections.garcons[wNum].titleAr
       };
 
       await db.collection('settings').updateOne(
@@ -3083,8 +3100,9 @@ app.get('/api/evaluations', async (req, res) => {
     if (week && !isNaN(parseInt(week, 10))) {
       targetWeekNumber = parseInt(week, 10);
     }
-    if (!targetWeekNumber && specificWeekDateRangesNode && typeof specificWeekDateRangesNode === 'object') {
-      for (const [wStr, dates] of Object.entries(specificWeekDateRangesNode)) {
+    const sectionWeekConfig = (sectionSpecificWeekDateRangesNode && sectionSpecificWeekDateRangesNode[section]) || specificWeekDateRangesNode;
+    if (!targetWeekNumber && sectionWeekConfig && typeof sectionWeekConfig === 'object') {
+      for (const [wStr, dates] of Object.entries(sectionWeekConfig)) {
         if (dates.start && dates.end && effectiveDateQuery >= dates.start && effectiveDateQuery <= dates.end) {
           targetWeekNumber = parseInt(wStr, 10);
           break;
@@ -3093,10 +3111,10 @@ app.get('/api/evaluations', async (req, res) => {
     }
 
     if (!targetWeekNumber) {
-      targetWeekNumber = getCurrentWeekNumber(new Date(effectiveDateQuery + 'T00:00:00Z'));
+      targetWeekNumber = getCurrentWeekNumber(new Date(effectiveDateQuery + 'T00:00:00Z'), section);
     }
 
-    const targetWeekConfig = (specificWeekDateRangesNode && specificWeekDateRangesNode[targetWeekNumber]) || {};
+    const targetWeekConfig = (sectionWeekConfig && sectionWeekConfig[targetWeekNumber]) || {};
     const weekStartDate = targetWeekConfig.start ? new Date(targetWeekConfig.start + 'T00:00:00Z') : null;
 
     // 2. EXTRACTION AUTOMATIQUE DES DEVOIRS DEPUIS 'plans' DE LA SECTION
@@ -6299,7 +6317,7 @@ app.post('/api/full-report-by-class', async (req, res) => {
     allPlans.forEach(plan => {
       const weekNumber = plan.week;
       let monthName = 'N/A';
-      const weekDates = specificWeekDateRangesNode[weekNumber];
+      const weekDates = getSectionWeekDates(section, weekNumber);
       if (weekDates?.start) {
         try {
           const startDate = new Date(weekDates.start + 'T00:00:00Z');

@@ -442,6 +442,7 @@
             localStorage.setItem('currentSection', section);
             applyParentUIMode(false);
             updateSectionBadges();
+            syncActiveSectionWeeks(section);
             
             const adminUploadSec = document.getElementById('adminUploadSectionSelect');
             if (adminUploadSec) adminUploadSec.value = section;
@@ -732,6 +733,7 @@
             
             updateSectionBadges();
             updateDualTeacherSectionButtons();
+            syncActiveSectionWeeks(newSection);
             
             if (typeof updateClassDropdowns === 'function') updateClassDropdowns();
             if (typeof populateNotesClassSelector === 'function') populateNotesClassSelector();
@@ -761,6 +763,10 @@
             });
 
             updateSectionBadges();
+            syncActiveSectionWeeks(newSection);
+            if (typeof switchAdminCalendarSection === 'function') {
+                switchAdminCalendarSection(newSection);
+            }
             
             // Mettre à jour les filtres d'onglets de gestion admin
             const adminFilter = document.getElementById('adminSectionFilter');
@@ -1117,8 +1123,23 @@
           return sectionWeeksConfig[target] || sectionWeeksConfig.garcons || weeksConfig;
         }
 
-        function syncActiveSectionWeeks() {
-          const activeCfg = getActiveSectionWeeksConfig(currentSection);
+        function getWeekDisplayTitle(weekNum, targetSection) {
+          if (!weekNum) return '';
+          const sec = targetSection || currentSection || 'garcons';
+          const secCfg = sectionWeeksConfig[sec] || weeksConfig;
+          const w = (secCfg && secCfg[weekNum]) || (weeksConfig && weeksConfig[weekNum]);
+          if (w) {
+            if (isArabicUser() && w.titleAr) return w.titleAr;
+            if (w.title) return w.title;
+          }
+          const weekLabel = (typeof t === 'function' ? t('week_label') : 'Semaine').replace(':', '').trim();
+          return `${weekLabel} ${weekNum}`;
+        }
+        window.getWeekDisplayTitle = getWeekDisplayTitle;
+
+        function syncActiveSectionWeeks(targetSec) {
+          const sec = targetSec || currentSection || 'garcons';
+          const activeCfg = getActiveSectionWeeksConfig(sec);
           weeksConfig = activeCfg;
           for (const [wNum, wData] of Object.entries(weeksConfig)) {
             specificWeekDateRanges[wNum] = { start: wData.start, end: wData.end };
@@ -1126,6 +1147,13 @@
           if (typeof populateMainWeekSelector === 'function') populateMainWeekSelector();
           if (typeof populateParentWeekSelector === 'function') populateParentWeekSelector();
           if (typeof populateAdminUploadWeekSelector === 'function') populateAdminUploadWeekSelector();
+          if (typeof updateDynamicUIElements === 'function' && typeof currentWeek !== 'undefined' && currentWeek) {
+            const dates = specificWeekDateRanges[parseInt(currentWeek, 10)];
+            if (dates?.start) {
+              weekStartDate = new Date(dates.start + 'T00:00:00Z');
+            }
+            updateDynamicUIElements();
+          }
         }
 
         function formatWeekDateRangeText(weekNum, targetSection) {
@@ -1176,11 +1204,13 @@
           const grid = document.getElementById('uploadWeeksCheckboxesGrid');
           const specialWeekSel = document.getElementById('specialDayWeek');
           
-          const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+          const currentSec = (document.getElementById('adminUploadSectionSelect')?.value) || currentSection || 'garcons';
+          const currentSecCfg = getActiveSectionWeeksConfig(currentSec);
+          const sortedWeekNums = Object.keys(currentSecCfg).map(n => parseInt(n, 10)).sort((a, b) => a - b);
           let optionsHtml = '';
           sortedWeekNums.forEach(wNum => {
-            const label = formatWeekDateRangeText(wNum);
-            optionsHtml += `<option value="${wNum}">${label}</option>`;
+            const label = formatWeekDateRangeText(wNum, currentSec);
+            optionsHtml += `<option value="${wNum}">${escapeHtml(label)}</option>`;
           });
 
           if (sel) {
@@ -1324,18 +1354,19 @@
           const sel = document.getElementById('weekSelector');
           if (!sel) return;
           const currentVal = sel.value;
-          const defaultText = t('select_week') || '-- Sélectionnez une semaine --';
+          const defaultText = (typeof t === 'function' ? t('select_week') : null) || '-- Sélectionnez une semaine --';
           
           let html = `<option value="">${defaultText}</option>`;
-          const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+          const currentSecCfg = getActiveSectionWeeksConfig(currentSection);
+          const sortedWeekNums = Object.keys(currentSecCfg).map(n => parseInt(n, 10)).sort((a, b) => a - b);
           
           sortedWeekNums.forEach(wNum => {
-            const label = formatWeekDateRangeText(wNum);
-            html += `<option value="${wNum}">${label}</option>`;
+            const title = formatWeekDateRangeText(wNum, currentSection);
+            html += `<option value="${wNum}">${escapeHtml(title)}</option>`;
           });
           
           sel.innerHTML = html;
-          if (currentVal && weeksConfig[currentVal]) {
+          if (currentVal && currentSecCfg[currentVal]) {
             sel.value = currentVal;
           }
         }
@@ -1393,7 +1424,9 @@
           const sortedWeekNums = Object.keys(currentSecCfg).map(n => parseInt(n, 10)).sort((a, b) => a - b);
           sortedWeekNums.forEach(wNum => {
             const w = currentSecCfg[wNum];
-            html += `<option value="${wNum}">Semaine ${wNum} : ${w?.title || ''} (${w?.start || ''} au ${w?.end || ''})</option>`;
+            const title = (isArabicUser() && w?.titleAr) ? w.titleAr : (w?.title || `Semaine ${wNum}`);
+            const dateStr = (w?.start && w?.end) ? ` (${w.start} au ${w.end})` : '';
+            html += `<option value="${wNum}">S${wNum} : ${escapeHtml(title)}${dateStr}</option>`;
           });
           sel.innerHTML = html;
           sel.value = currentSecCfg[currentVal] ? currentVal : (sortedWeekNums[0] || "1");
@@ -1464,7 +1497,15 @@
                 });
               }
 
-              syncActiveSectionWeeks();
+              // Mettre à jour l'entrée de la section ciblée
+              if (!sectionWeeksConfig[sec]) sectionWeeksConfig[sec] = {};
+              sectionWeeksConfig[sec][wNum] = { title, titleAr: titleAr || `الأسبوع ${wNum}`, start, end };
+
+              // Synchroniser la section active
+              syncActiveSectionWeeks(currentSection);
+              if (sec === currentSection) {
+                weeksConfig = sectionWeeksConfig[sec];
+              }
 
               const secLabel = {
                 garcons: 'Section Garçons 👦',
@@ -1482,6 +1523,10 @@
 
               populateAdminWeekSelectToEdit();
               renderAdminWeeksTable();
+              populateMainWeekSelector();
+              populateParentWeekSelector();
+              populateAdminUploadWeekSelector();
+
               if (currentWeek && String(currentWeek) === String(wNum)) {
                 updateDynamicUIElements();
               }
@@ -2239,26 +2284,30 @@
             planData = []; 
             headers = []; 
             weeklyClassNotes = {}; 
-            dateRangeEl.textContent = `${t('week_label')} ${week}: ${t('loading')}`; 
+            const secCfg = getActiveSectionWeeksConfig(currentSection);
+            const w = (secCfg && secCfg[weekNum]) || (weeksConfig && weeksConfig[weekNum]);
+            const dates = (w && w.start && w.end) ? { start: w.start, end: w.end } : specificWeekDateRanges[weekNum];
+            const weekTitle = getWeekDisplayTitle(weekNum);
+
+            dateRangeEl.textContent = `${weekTitle}: ${t('loading')}`; 
             displayPlanTable([]); 
             updateActionButtonsState(false); 
             updateCrossSectionToggleUI();
 
-            const dates = specificWeekDateRanges[weekNum]; 
             if (dates?.start && dates?.end) {
                 try {
                     const s = new Date(dates.start + 'T00:00:00Z'); 
                     const e = new Date(dates.end + 'T00:00:00Z'); 
                     if (!isNaN(s.getTime()) && !isNaN(e.getTime())) { 
                         weekStartDate = s; 
-                        dateRangeEl.textContent = `${t('week_label')} ${week} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'from' : 'du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;
+                        dateRangeEl.textContent = `${weekTitle} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'from' : 'du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;
                     } else throw new Error();
                 } catch(e) {
-                    dateRangeEl.textContent = `S ${week} (Err dates)`; 
+                    dateRangeEl.textContent = `${weekTitle} (Err dates)`; 
                     weekStartDate = null;
                 }
             } else {
-                dateRangeEl.textContent = `${t('week_label')} ${week} (${t('no_data')}: dates non définies)`; 
+                dateRangeEl.textContent = `${weekTitle} (${t('no_data')}: dates non définies)`; 
                 weekStartDate = null;
             } 
             updateProgressBar(30); 
@@ -2578,8 +2627,7 @@
                 const weekOptions = weekSel.querySelectorAll('option'); 
                 weekOptions.forEach(opt => { 
                     if (opt.value && opt.value.match(/^\d+$/)) { 
-                        const weekLabel = t('week_label'); 
-                        opt.textContent = `${weekLabel.replace(':', '')} ${opt.value}`; 
+                        opt.textContent = formatWeekDateRangeText(opt.value, currentSection); 
                     } 
                 }); 
             } 
@@ -4110,7 +4158,41 @@
         function applyLanguageSettings() { console.log(`Applying language: ${currentUserLanguage}`); document.documentElement.lang = currentUserLanguage; document.body.dir = (currentUserLanguage === 'ar') ? 'rtl' : 'ltr'; updateStaticUIElements(); if (currentWeek) { updateDynamicUIElements(); } else { document.getElementById('weekDateRange').textContent = ""; const initialTableMsg = document.getElementById('initial-table-message'); if (initialTableMsg) { initialTableMsg.textContent = t('select_week_to_display'); } else { const tBody = document.querySelector('#planTable tbody'); const colspanVal = document.querySelector('#planTable thead tr')?.querySelectorAll('th').length || 10; if (tBody) { tBody.innerHTML = `<tr id="initial-table-row"><td colspan="${colspanVal}" class="table-message">${t('select_week_to_display')}</td></tr>`; } } } if (document.getElementById('login-form').style.display !== 'none') { updateLoginUIElements(); } }
         function updateStaticUIElements() { console.log("Updating static UI for lang:", currentUserLanguage); if (document.getElementById('main-content').style.display !== 'none') { document.title = t('main_page_title'); } else { document.title = t('login_title'); } updateLoginUIElements(); const mainTitle = document.getElementById('main-title'); if(mainTitle) mainTitle.textContent = t('main_page_title'); const logoutBtnText = document.querySelector('#logout-button .btn-text'); if(logoutBtnText) logoutBtnText.textContent = t('logout_button'); const toggleBtn = document.getElementById('toggleIncompleteBtn'); if (toggleBtn) { const btnTextSpan = toggleBtn.querySelector('.btn-text'); const listDiv=document.getElementById('incompleteTeachersDisplay'); if (btnTextSpan) { btnTextSpan.textContent = (listDiv && listDiv.style.display !== 'none') ? t('hide_incomplete') : t('display_incomplete'); } } const incompleteH4 = document.querySelector('#incompleteTeachersDisplay h4'); if(incompleteH4) incompleteH4.textContent = t('incomplete_teachers_title'); const incompleteLi = document.querySelector('#incompleteList li'); if(incompleteLi && incompleteLi.textContent.match(/(Chargement|Loading|جاري التحميل)/)) incompleteLi.textContent = t('loading'); const weekLabel = document.querySelector('label[for="weekSelector"]'); if(weekLabel) weekLabel.innerHTML = `<i class="fas fa-calendar-week"></i> ${t('week_label')}`; const adminTitle = document.getElementById('admin-title'); if(adminTitle) adminTitle.textContent = t('admin_actions_title'); const adminExcelLabel = document.getElementById('admin-excel-label'); if(adminExcelLabel) adminExcelLabel.innerHTML = `<i class="fas fa-file-excel"></i> ${t('admin_excel_label')}`; const saveUploadedDataBtnText = document.querySelector('#saveUploadedDataBtn .btn-text'); if(saveUploadedDataBtnText) saveUploadedDataBtnText.textContent = t('admin_save_button'); const genWordBtnText = document.querySelector('#generateWordBtn .btn-text'); if(genWordBtnText) genWordBtnText.textContent = t('generate_word_button'); const genExcelBtnText = document.querySelector('#generateExcelBtn .btn-text'); if(genExcelBtnText) genExcelBtnText.textContent = t('generate_excel_button'); const saveAllBtnText = document.querySelector('#saveAllDisplayedBtn .btn-text'); if(saveAllBtnText) saveAllBtnText.textContent = t('save_all_button'); const weeklyLessonsBtnText = document.querySelector('#generateWeeklyLessonsBtn .btn-text'); if(weeklyLessonsBtnText) weeklyLessonsBtnText.textContent = t('generate_weekly_lessons_button'); const filterEnsLabel = document.getElementById('filter-enseignant-label'); if(filterEnsLabel) filterEnsLabel.innerHTML = `<i class="fas fa-user-tie"></i> ${t('filter_teacher_label')}`; const filterClsLabel = document.getElementById('filter-classe-label'); if(filterClsLabel) filterClsLabel.innerHTML = `<i class="fas fa-chalkboard-user"></i> ${t('filter_class_label')}`; const filterMatLabel = document.getElementById('filter-matiere-label'); if(filterMatLabel) filterMatLabel.innerHTML = `<i class="fas fa-book"></i> ${t('filter_material_label')}`; const filterPerLabel = document.getElementById('filter-periode-label'); if(filterPerLabel) filterPerLabel.innerHTML = `<i class="fas fa-clock"></i> ${t('filter_period_label')}`; const filterJourLabel = document.getElementById('filter-jour-label'); if(filterJourLabel) filterJourLabel.innerHTML = `<i class="fas fa-calendar-day"></i> ${t('filter_day_label')}`; const notesClsLabel = document.getElementById('notes-class-label'); if(notesClsLabel) notesClsLabel.innerHTML = `<i class="fas fa-sticky-note"></i> ${t('notes_for_class')}`; const notesInput = document.getElementById('notesInput'); if(notesInput && notesInput.placeholder.match(/(Sélectionnez|اختر|Select)/)){ notesInput.placeholder = t('select_class_placeholder'); } const saveNotesBtnText = document.querySelector('#saveNotesBtn .btn-text'); if(saveNotesBtnText) saveNotesBtnText.textContent = t('save_notes_button'); updateFilterOptionDefaultTexts(); const adminReportLabel = document.getElementById('admin-report-class-label'); if (adminReportLabel) adminReportLabel.innerHTML = `<i class="fas fa-school"></i> ${t('admin_report_class_label')}`; const adminReportBtnText = document.querySelector('#generateFullReportBtn .btn-text'); if (adminReportBtnText) adminReportBtnText.textContent = t('generate_full_report_button'); }
         function updateLoginUIElements() { const loginH1 = document.querySelector('#login-form h1'); if(loginH1) loginH1.textContent = t('login_title'); const userLabel = document.querySelector('label[for="username"]'); if(userLabel) userLabel.textContent = t('login_username_label'); const passLabel = document.querySelector('label[for="password"]'); if(passLabel) passLabel.textContent = t('login_password_label'); const rememberLabel = document.getElementById('remember-me-label'); if(rememberLabel) rememberLabel.textContent = t('remember_me'); const loginBtnText = document.querySelector('#login-button .btn-text'); if(loginBtnText) loginBtnText.textContent = t('login_button_text'); if (document.getElementById('login-form').style.display !== 'none') { document.title = t('login_title'); } }
-        function updateDynamicUIElements() { console.log("Updating dynamic UI for lang:", currentUserLanguage); const dateRangeEl=document.getElementById('weekDateRange'); const weekNum = parseInt(currentWeek, 10); const dates = specificWeekDateRanges[weekNum]; if(weekStartDate && dates?.end){ const s = weekStartDate; const e = new Date(dates.end+'T00:00:00Z'); if(!isNaN(s.getTime())&&!isNaN(e.getTime())){ dateRangeEl.textContent = `${t('week_label')} ${currentWeek} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'From' : 'Du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`; } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (Err dates)`; } } else { dateRangeEl.textContent=`${t('week_label')} ${currentWeek} (${t('no_data')}: dates non définies)`; } createTableHeader(); displayPlanTable(filteredAndSortedData); const notesInput = document.getElementById('notesInput'); const notesClassSel = document.getElementById('notesClassSelector'); if (notesInput && notesClassSel) { if (notesClassSel.value) { const selText = notesClassSel.options[notesClassSel.selectedIndex].text; notesInput.placeholder = t('notes_placeholder', { classText: selText }); } else { notesInput.placeholder = t('select_class_placeholder'); } } }
+        function updateDynamicUIElements() {
+          console.log("Updating dynamic UI for lang:", currentUserLanguage);
+          const dateRangeEl = document.getElementById('weekDateRange');
+          const weekNum = parseInt(currentWeek, 10);
+          const secCfg = getActiveSectionWeeksConfig(currentSection);
+          const w = (secCfg && secCfg[weekNum]) || (weeksConfig && weeksConfig[weekNum]);
+          const dates = (w && w.start && w.end) ? { start: w.start, end: w.end } : (specificWeekDateRanges && specificWeekDateRanges[weekNum]);
+          const weekTitle = getWeekDisplayTitle(weekNum, currentSection);
+          if (dateRangeEl) {
+            if (dates?.start && dates?.end) {
+              const s = new Date(dates.start + 'T00:00:00Z');
+              const e = new Date(dates.end + 'T00:00:00Z');
+              if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+                weekStartDate = s;
+                dateRangeEl.textContent = `${weekTitle} : ${isArabicUser() ? 'من' : (currentUserLanguage === 'en' ? 'From' : 'Du')} ${formatDateForDisplay(s)} ${isArabicUser() ? 'إلى' : (currentUserLanguage === 'en' ? 'to' : 'à')} ${formatDateForDisplay(e)}`;
+              } else {
+                dateRangeEl.textContent = `${weekTitle} (Err dates)`;
+              }
+            } else {
+              dateRangeEl.textContent = `${weekTitle} (${t('no_data')}: dates non définies)`;
+            }
+          }
+          createTableHeader();
+          displayPlanTable(filteredAndSortedData);
+          const notesInput = document.getElementById('notesInput');
+          const notesClassSel = document.getElementById('notesClassSelector');
+          if (notesInput && notesClassSel) {
+            if (notesClassSel.value) {
+              const selText = notesClassSel.options[notesClassSel.selectedIndex].text;
+              notesInput.placeholder = t('notes_placeholder', { classText: selText });
+            } else {
+              notesInput.placeholder = t('select_class_placeholder');
+            }
+          }
+        }
 
         function switchAdminTab(tabName) {
             const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days', 'schedule', 'teachers_photos'];
@@ -4203,6 +4285,7 @@
             
             updateSectionBadges();
             updateDualTeacherSectionButtons();
+            syncActiveSectionWeeks(currentSection);
             applyLanguageSettings();
             
             const roleBadge = currentUserRole === 'admin' ? ' [Administrateur Principal]' : (currentUserRole === 'supervisor' ? ' [Superviseur Direction]' : '');
@@ -5072,6 +5155,7 @@ function enterParentSpaceWithSection(section) {
     updateSectionBadges();
     applyParentLanguageUI();
     updateParentURL(section, 'parent-selection');
+    syncActiveSectionWeeks(section);
     
     // Basculer vers le portail devoirs/parents sur l'écran d'accueil du Suivi des Élèves
     switchMainTab('devoirs');
@@ -5098,6 +5182,7 @@ function toggleParentSection() {
     localStorage.setItem('currentSection', newSection);
     updateSectionBadges();
     updateParentURL(newSection);
+    syncActiveSectionWeeks(newSection);
     
     // Réinitialiser le cache pour la nouvelle section
     parentRawPlanData = [];
@@ -5175,11 +5260,12 @@ function populateParentWeekSelector() {
         : defaultParentWeek;
     select.innerHTML = '';
     
-    const sortedWeekNums = Object.keys(weeksConfig).map(n => parseInt(n, 10)).sort((a, b) => a - b);
+    const secCfg = getActiveSectionWeeksConfig(currentSection);
+    const sortedWeekNums = Object.keys(secCfg).map(n => parseInt(n, 10)).sort((a, b) => a - b);
     sortedWeekNums.forEach(wNum => {
         const option = document.createElement('option');
         option.value = String(wNum);
-        option.textContent = formatWeekDateRangeText(wNum);
+        option.textContent = formatWeekDateRangeText(wNum, currentSection);
         if (wNum === activeWeek) {
             option.selected = true;
         }
