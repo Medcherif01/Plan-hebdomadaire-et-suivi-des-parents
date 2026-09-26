@@ -139,8 +139,11 @@
         ];
 
         const primaireTeachersList = [
-            'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-            'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal'
+            'Mouna', 'Hajar', 'Meriem', 'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal'
+        ];
+
+        const maternelleTeachersList = [
+            'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Siham', 'Farah', 'Music', 'Musique', 'Amal'
         ];
 
         const isMusicTeacher = (name) => {
@@ -389,9 +392,9 @@
             toggleContainer.style.display = 'inline-flex';
             toggleCheckbox.checked = !!showCrossSectionView;
 
-            let otherSectionLabelFr = (currentSection === 'garcons') ? 'Section Filles' : (currentSection === 'filles' ? 'Section Garçons' : 'Section Secondaire');
-            let otherSectionLabelAr = (currentSection === 'garcons') ? 'قسم البنات' : (currentSection === 'filles' ? 'قسم البنين' : 'القسم الثانوي');
-            let otherSectionLabelEn = (currentSection === 'garcons') ? 'Girls Section' : (currentSection === 'filles' ? 'Boys Section' : 'Secondary Section');
+            let otherSectionLabelFr = (currentSection === 'garcons') ? 'Section Filles' : (currentSection === 'filles' ? 'Section Garçons' : (currentSection === 'maternelle' ? 'Section Primaire' : 'Section Maternelle'));
+            let otherSectionLabelAr = (currentSection === 'garcons') ? 'قسم البنات' : (currentSection === 'filles' ? 'قسم البنين' : (currentSection === 'maternelle' ? 'قسم الابتدائي' : 'قسم الروضة'));
+            let otherSectionLabelEn = (currentSection === 'garcons') ? 'Girls Section' : (currentSection === 'filles' ? 'Boys Section' : (currentSection === 'maternelle' ? 'Primary Section' : 'Kindergarten Section'));
 
             if (toggleLabelText) {
                 if (currentUserLanguage === 'ar') {
@@ -407,13 +410,15 @@
         const teachersSectionMap = {
             garcons: maleTeachersList,
             filles: femaleTeachersList,
-            primaire: primaireTeachersList
+            primaire: primaireTeachersList,
+            maternelle: maternelleTeachersList
         };
 
         const sectionClassesMap = {
             garcons: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
             filles: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
-            primaire: ["PS", "MS", "GS", "PP1", "PP2", "PP3", "PP4", "PP5"]
+            primaire: ["PP1", "PP2", "PP3", "PP4", "PP5"],
+            maternelle: ["PS", "MS", "GS"]
         };
 
         function getSectionClasses(sec) {
@@ -526,8 +531,8 @@
             url.searchParams.set('section', sec);
             const linkToCopy = url.toString();
             
-            const secNameFr = sec === 'garcons' ? 'Section Garçons 👦' : (sec === 'filles' ? 'Section Filles 👧' : 'Section Primaire & Maternelle 👶🎒');
-            const secNameAr = sec === 'garcons' ? 'قسم البنين 👦' : (sec === 'filles' ? 'قسم البنات 👧' : 'قسم الابتدائي والروضة 👶🎒');
+            const secNameFr = sec === 'garcons' ? 'Section Garçons 👦' : (sec === 'filles' ? 'Section Filles 👧' : (sec === 'maternelle' ? 'Section Maternelle 🧸🎨' : 'Section Primaire 🎒📚'));
+            const secNameAr = sec === 'garcons' ? 'قسم البنين 👦' : (sec === 'filles' ? 'قسم البنات 👧' : (sec === 'maternelle' ? 'قسم الروضة 🧸🎨' : 'قسم الابتدائي 🎒📚'));
 
             const copySuccess = () => {
                 const msg = currentUserLanguage === 'ar'
@@ -582,6 +587,7 @@
             const isBoys = currentSection === 'garcons';
             const isGirls = currentSection === 'filles';
             const isPrimaire = currentSection === 'primaire';
+            const isMaternelle = currentSection === 'maternelle';
             
             let badgeText = 'Section Garçons 👦';
             let badgeClass = 'section-badge badge-garcons';
@@ -592,9 +598,13 @@
                 badgeClass = 'section-badge badge-filles';
                 toggleText = currentUserLanguage === 'ar' ? 'قسم البنات 👧' : 'Section Filles 👧';
             } else if (isPrimaire) {
-                badgeText = 'Section Primaire & Maternelle 👶🎒';
+                badgeText = 'Section Primaire 🎒📚';
                 badgeClass = 'section-badge badge-primaire';
-                toggleText = currentUserLanguage === 'ar' ? 'الابتدائي والروضة 👶🎒' : 'Primaire & Maternelle 👶🎒';
+                toggleText = currentUserLanguage === 'ar' ? 'قسم الابتدائي 🎒📚' : 'Section Primaire 🎒📚';
+            } else if (isMaternelle) {
+                badgeText = 'Section Maternelle 🧸🎨';
+                badgeClass = 'section-badge badge-maternelle';
+                toggleText = currentUserLanguage === 'ar' ? 'قسم الروضة 🧸🎨' : 'Section Maternelle 🧸🎨';
             } else {
                 toggleText = currentUserLanguage === 'ar' ? 'قسم البنين 👦' : 'Section Garçons 👦';
             }
@@ -680,30 +690,36 @@
             // Mise à jour des boutons dans l'en-tête
             const btnFilles = document.getElementById('teacherSecBtn_filles');
             const btnPrimaire = document.getElementById('teacherSecBtn_primaire');
+            const btnMaternelle = document.getElementById('teacherSecBtn_maternelle');
             if (btnFilles) btnFilles.classList.toggle('active', currentSection === 'filles');
             if (btnPrimaire) btnPrimaire.classList.toggle('active', currentSection === 'primaire');
+            if (btnMaternelle) btnMaternelle.classList.toggle('active', currentSection === 'maternelle');
 
             // Mise à jour des boutons dans la bannière
             const bannerBtnFilles = document.getElementById('dualBannerBtn_filles');
             const bannerBtnPrimaire = document.getElementById('dualBannerBtn_primaire');
+            const bannerBtnMaternelle = document.getElementById('dualBannerBtn_maternelle');
             if (bannerBtnFilles) bannerBtnFilles.classList.toggle('active', currentSection === 'filles');
             if (bannerBtnPrimaire) bannerBtnPrimaire.classList.toggle('active', currentSection === 'primaire');
+            if (bannerBtnMaternelle) bannerBtnMaternelle.classList.toggle('active', currentSection === 'maternelle');
 
             // Mise à jour du texte de statut dans la bannière
             const statusText = document.getElementById('dualCurrentSectionText');
             if (statusText) {
                 if (currentSection === 'primaire') {
-                    statusText.innerHTML = `Section active : <span class="active-sec-pill pill-primaire">Section Primaire & Maternelle 👶🎒</span>`;
+                    statusText.innerHTML = `Section active : <span class="active-sec-pill pill-primaire">Section Primaire 🎒📚</span>`;
+                } else if (currentSection === 'maternelle') {
+                    statusText.innerHTML = `Section active : <span class="active-sec-pill pill-maternelle">Section Maternelle 🧸🎨</span>`;
                 } else {
                     statusText.innerHTML = `Section active : <span class="active-sec-pill pill-filles">Section Filles 👧</span>`;
                 }
             }
         }
 
-        // Permet aux enseignantes multi-sections (Farah, Amal) de basculer instantanément entre Section Filles et Section Primaire & Maternelle
+        // Permet aux enseignantes multi-sections (Farah, Amal) de basculer instantanément entre Section Filles, Section Primaire et Section Maternelle
         async function switchDualTeacherSection(newSection) {
             if (!newSection) return;
-            if (newSection !== 'filles' && newSection !== 'primaire') {
+            if (newSection !== 'filles' && newSection !== 'primaire' && newSection !== 'maternelle') {
                 newSection = 'filles';
             }
             if (newSection === currentSection) return;
@@ -724,7 +740,9 @@
                 await fetchPlanData(currentWeek);
             }
             
-            const secLabel = newSection === 'primaire' ? 'Section Primaire & Maternelle 👶🎒' : 'Section Filles 👧';
+            const secLabel = newSection === 'primaire' 
+                ? 'Section Primaire 🎒📚' 
+                : (newSection === 'maternelle' ? 'Section Maternelle 🧸🎨' : 'Section Filles 👧');
             displayAlert(`Section active : <strong>${secLabel}</strong>. Vous pouvez maintenant remplir et modifier le plan de cette section.`, false);
         }
 
@@ -736,6 +754,11 @@
             localStorage.setItem('selectedSection', newSection);
             localStorage.setItem('currentSection', newSection);
             
+            ['garcons', 'filles', 'primaire', 'maternelle'].forEach(s => {
+                const b = document.getElementById(`adminSecBtn_${s}`);
+                if (b) b.classList.toggle('active', s === newSection);
+            });
+
             updateSectionBadges();
             
             // Mettre à jour les filtres d'onglets de gestion admin
@@ -748,6 +771,18 @@
             const adminUploadSec = document.getElementById('adminUploadSectionSelect');
             if (adminUploadSec) adminUploadSec.value = newSection;
             if (typeof updateUploadTargetInfo === 'function') updateUploadTargetInfo();
+
+            const adminScheduleSec = document.getElementById('adminScheduleSectionSelect');
+            if (adminScheduleSec) {
+                adminScheduleSec.value = newSection;
+                if (typeof onAdminScheduleSectionChange === 'function') onAdminScheduleSectionChange();
+            }
+
+            const adminPhotoSec = document.getElementById('adminPhotoSectionFilter');
+            if (adminPhotoSec) {
+                adminPhotoSec.value = newSection;
+                if (typeof renderAdminTeachersPhotosGallery === 'function') renderAdminTeachersPhotosGallery();
+            }
             
             // Recharger l'onglet admin actuellement actif
             const activeTabBtn = document.querySelector('.admin-tab-btn.active');
@@ -765,7 +800,11 @@
                 if (typeof fetchPlanData === 'function') fetchPlanData(currentWeek);
             }
             
-            const secLabel = newSection === 'garcons' ? 'Section Garçons 👦' : (newSection === 'primaire' ? 'Section Primaire & Maternelle 👶🎒' : 'Section Filles 👧');
+            const secLabel = newSection === 'garcons' 
+                ? 'Section Garçons 👦' 
+                : (newSection === 'filles' 
+                    ? 'Section Filles 👧' 
+                    : (newSection === 'maternelle' ? 'Section Maternelle 🧸🎨' : 'Section Primaire 🎒📚'));
             displayAlert(`Section active de travail : <strong>${secLabel}</strong> (basculement immédiat)`, false);
         }
 
@@ -773,6 +812,7 @@
             let nextSec = 'garcons';
             if (currentSection === 'garcons') nextSec = 'filles';
             else if (currentSection === 'filles') nextSec = 'primaire';
+            else if (currentSection === 'primaire') nextSec = 'maternelle';
             else nextSec = 'garcons';
             switchAdminActiveSection(nextSec);
         }
@@ -941,7 +981,7 @@
                     return group.code.toUpperCase();
                 }
             }
-            return s.replace(/\s*(garçons|garcons|filles|primaire)\s*/gi, '').trim();
+            return s.replace(/\s*(garçons|garcons|filles|primaire|maternelle)\s*/gi, '').trim();
         }
 
         function normalizeClientName(str) {
@@ -1229,9 +1269,11 @@
           const sec = secSelect ? secSelect.value : (currentSection || 'garcons');
           const secBadge = (sec === 'garcons') 
             ? '<span style="background:#DBEAFE; color:#1D4ED8; padding:2px 8px; border-radius:6px; font-weight:700;">👦 Section Garçons</span>' 
-            : (sec === 'primaire' 
-              ? '<span style="background:#FEF3C7; color:#B45309; padding:2px 8px; border-radius:6px; font-weight:700;">👶🎒 Section Primaire & Maternelle</span>' 
-              : '<span style="background:#FCE7F3; color:#BE185D; padding:2px 8px; border-radius:6px; font-weight:700;">👧 Section Filles</span>');
+            : (sec === 'filles'
+              ? '<span style="background:#FCE7F3; color:#BE185D; padding:2px 8px; border-radius:6px; font-weight:700;">👧 Section Filles</span>'
+              : (sec === 'maternelle'
+                ? '<span style="background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:6px; font-weight:700;">🧸 Section Maternelle</span>'
+                : '<span style="background:#DCFCE7; color:#166534; padding:2px 8px; border-radius:6px; font-weight:700;">🎒 Section Primaire</span>'));
 
           if (countEl) {
             countEl.textContent = `${weeks.length} semaine(s) sélectionnée(s)`;
@@ -1623,7 +1665,7 @@
                 return;
             }
 
-            const secLabel = targetSection === 'garcons' ? 'Garçons 👦' : (targetSection === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧');
+            const secLabel = targetSection === 'garcons' ? 'Garçons 👦' : (targetSection === 'filles' ? 'Filles 👧' : (targetSection === 'maternelle' ? 'Maternelle 🧸🎨' : 'Primaire 🎒📚'));
             const isMulti = targetWeeks.length > 1;
             const weeksStr = isMulti ? `${targetWeeks.length} semaines (${targetWeeks.map(w => `S${w}`).join(', ')})` : `Semaine S${targetWeeks[0]}`;
 
@@ -1908,10 +1950,9 @@
             return 1;
         }
 
-        // Détermine le jour scolaire actif d'aujourd'hui pour les parents selon la règle :
-        // - Lié à la date du jour (ex: si aujourd'hui est 13/09/2026 -> affiche par défaut ce jour : Dimanche à Jeudi)
-        // - Vendredi : affiche un jour avant (Jeudi)
-        // - Samedi : affiche un jour après (Dimanche : s'il est déjà disponible dans le plan, sinon Jeudi dernier)
+        // Détermine le jour scolaire actif d'aujourd'hui pour les élèves et parents selon la règle :
+        // - Du Dimanche au Jeudi : affiche le jour même
+        // - Le Vendredi et Samedi : affiche les devoirs du Jeudi dernier (restent affichés tout le vendredi et samedi)
         function getTodaySchoolDayName(classRows = null) {
             const today = new Date();
             const dayIdx = today.getDay(); // 0=Dimanche, 1=Lundi, 2=Mardi, 3=Mercredi, 4=Jeudi, 5=Vendredi, 6=Samedi
@@ -1922,40 +1963,16 @@
                 return schoolDays[dayIdx];
             }
 
-            // Si aujourd'hui est Vendredi (5) : un jour avant -> Jeudi
-            if (dayIdx === 5) {
-                return "Jeudi";
-            }
-
-            // Si aujourd'hui est Samedi (6) : un jour après (Dimanche) s'il est déjà disponible, sinon Jeudi dernier
-            if (dayIdx === 6) {
-                const targetRows = (classRows && Array.isArray(classRows) && classRows.length > 0)
-                    ? classRows
-                    : (typeof parentRawPlanData !== 'undefined' && Array.isArray(parentRawPlanData) ? parentRawPlanData : []);
-
-                if (targetRows && targetRows.length > 0) {
-                    const hasSunday = targetRows.some(r => {
-                        if (!r) return false;
-                        const j = String(getRowField(r, 'Jour') || '').trim().toLowerCase();
-                        const isSun = j.startsWith('dim') || j.includes('الأحد') || j.includes('dimanche');
-                        if (!isSun) return false;
-                        const lecon = String(getRowField(r, 'Leçon') || '').trim();
-                        const dev = String(getRowField(r, 'Devoir') || getRowField(r, 'Devoirs') || '').trim();
-                        const mat = String(getRowField(r, 'Matière') || '').trim();
-                        return (lecon !== '' || dev !== '' || mat !== '');
-                    });
-
-                    if (hasSunday) {
-                        return "Dimanche";
-                    }
-                }
+            // Si aujourd'hui est Vendredi (5) ou Samedi (6) : reste toujours sur Jeudi dernier !
+            if (dayIdx === 5 || dayIdx === 6) {
                 return "Jeudi";
             }
 
             return "Dimanche";
         }
 
-        // Calcule la date initiale pour les devoirs (vendredi et samedi basculent automatiquement sur le jeudi précédent)
+        // Calcule la date initiale pour les devoirs des élèves :
+        // Vendredi et samedi basculent automatiquement sur le jeudi précédent (restent affichés vendredi et samedi)
         function getInitialHomeworkDate() {
             const today = new Date();
             const dayIdx = today.getDay(); // 0=Dimanche, 5=Vendredi, 6=Samedi
@@ -1966,6 +1983,29 @@
             }
             return today.toISOString().split('T')[0];
         }
+
+        // Fonction maîtresse pour résoudre la date effective pour les devoirs des élèves (toutes les sections)
+        function getStudentEffectiveHomeworkDate(requestedDateStr = null) {
+            let d = requestedDateStr ? new Date(requestedDateStr + (requestedDateStr.length === 10 ? 'T00:00:00Z' : '')) : new Date();
+            if (isNaN(d.getTime())) d = new Date();
+            const dayIdx = d.getDay(); // 0=Dimanche, 5=Vendredi, 6=Samedi
+            let isWeekendThursdayStay = false;
+            if (dayIdx === 5) { // Vendredi -> Jeudi (-1 jour)
+                d.setDate(d.getDate() - 1);
+                isWeekendThursdayStay = true;
+            } else if (dayIdx === 6) { // Samedi -> Jeudi (-2 jours)
+                d.setDate(d.getDate() - 2);
+                isWeekendThursdayStay = true;
+            }
+            return {
+                dateStr: d.toISOString().split('T')[0],
+                isWeekendThursdayStay,
+                dayIdx
+            };
+        }
+        window.getTodaySchoolDayName = getTodaySchoolDayName;
+        window.getInitialHomeworkDate = getInitialHomeworkDate;
+        window.getStudentEffectiveHomeworkDate = getStudentEffectiveHomeworkDate;
 
         // Fonction pour envoyer des notifications push aux enseignants incomplets
         async function notifyIncompleteTeachers(week, incompleteTeachersInfo) {
@@ -2699,6 +2739,10 @@
                     tr.classList.add('cross-section-row');
                     if (rowObj._section === 'filles') {
                         tr.classList.add('cross-section-row-filles');
+                    } else if (rowObj._section === 'primaire') {
+                        tr.classList.add('cross-section-row-primaire');
+                    } else if (rowObj._section === 'maternelle') {
+                        tr.classList.add('cross-section-row-maternelle');
                     } else {
                         tr.classList.add('cross-section-row-garcons');
                     }
@@ -2718,8 +2762,18 @@
                     const isEditable = !isCrossReadOnly && editHdrKeys.includes(header);
 
                     if (header === ensK && isCrossReadOnly) {
-                        const secLabel = (rowObj._section === 'filles') ? '👧 Filles' : '👦 Garçons';
-                        const badgeClass = (rowObj._section === 'filles') ? 'badge-filles' : 'badge-garcons';
+                        let secLabel = '👦 Garçons';
+                        let badgeClass = 'badge-garcons';
+                        if (rowObj._section === 'filles') {
+                            secLabel = '👧 Filles';
+                            badgeClass = 'badge-filles';
+                        } else if (rowObj._section === 'primaire') {
+                            secLabel = '🎒 Primaire';
+                            badgeClass = 'badge-primaire';
+                        } else if (rowObj._section === 'maternelle') {
+                            secLabel = '🧸 Maternelle';
+                            badgeClass = 'badge-maternelle';
+                        }
                         td.innerHTML = `<span class="cross-sec-badge ${badgeClass}">${secLabel}</span> ${escapeHtml(content)}`;
                     } else if (header === jK && content && !isAdmin) {
                         const dt = parseDateFromJourColumn(content);
@@ -3958,7 +4012,7 @@
             }
             
             if (isDualSectionTeacher(loggedInUser)) {
-                if (currentSection !== 'filles' && currentSection !== 'primaire') {
+                if (currentSection !== 'filles' && currentSection !== 'primaire' && currentSection !== 'maternelle') {
                     currentSection = 'filles';
                     localStorage.setItem('selectedSection', 'filles');
                     localStorage.setItem('currentSection', 'filles');
@@ -4275,7 +4329,7 @@
             `;
             
             users.forEach(u => {
-                const secLabel = u.section === 'garcons' ? '👦 Garçons' : (u.section === 'primaire' ? '👶🎒 Primaire' : '👧 Filles');
+                const secLabel = u.section === 'garcons' ? '👦 Garçons' : (u.section === 'filles' ? '👧 Filles' : (u.section === 'maternelle' ? '🧸 Maternelle' : '🎒 Primaire'));
                 const userLang = u.language || (arabicTeachers.includes(u.username) ? 'ar' : (englishTeachers.includes(u.username) ? 'en' : 'fr'));
                 const langInfo = langLabels[userLang] || langLabels.fr;
                 const safeUsername = (u.username || '').replace(/'/g, "\\'");
@@ -4521,10 +4575,10 @@
             const savedUser = localStorage.getItem('loggedInUser');
             const savedAuthVersion = localStorage.getItem('authVersion');
 
-            const isParentDirectLink = (spaceParam === 'parent') || (!savedUser && (sectionParam === 'garcons' || sectionParam === 'filles' || sectionParam === 'primaire'));
+            const isParentDirectLink = (spaceParam === 'parent') || (!savedUser && (sectionParam === 'garcons' || sectionParam === 'filles' || sectionParam === 'primaire' || sectionParam === 'maternelle'));
 
             if (isParentDirectLink) {
-                const targetSec = (sectionParam === 'filles' || sectionParam === 'primaire') ? sectionParam : 'garcons';
+                const targetSec = ['garcons', 'filles', 'primaire', 'maternelle'].includes(sectionParam) ? sectionParam : 'garcons';
                 console.log(`🔗 Accès direct Espace Parents détecté pour la section : ${targetSec}`);
                 currentUserLanguage = localStorage.getItem('parentLanguage') || 'fr';
                 enterParentSpaceWithSection(targetSec);
@@ -4653,9 +4707,10 @@ let isParentMode = false;
 function getStudentFallbackAvatar(section) {
     const isGirls = (section === 'filles' || currentSection === 'filles');
     const isPrimaire = (section === 'primaire' || currentSection === 'primaire');
-    const colorBg = isGirls ? '#FDF2F8' : (isPrimaire ? '#ECFDF5' : '#EFF6FF');
-    const colorFill = isGirls ? '#F472B6' : (isPrimaire ? '#34D399' : '#60A5FA');
-    const colorStroke = isGirls ? '#DB2777' : (isPrimaire ? '#059669' : '#2563EB');
+    const isMaternelle = (section === 'maternelle' || currentSection === 'maternelle');
+    const colorBg = isGirls ? '#FDF2F8' : (isMaternelle ? '#FFFBEB' : (isPrimaire ? '#ECFDF5' : '#EFF6FF'));
+    const colorFill = isGirls ? '#F472B6' : (isMaternelle ? '#FBBF24' : (isPrimaire ? '#34D399' : '#60A5FA'));
+    const colorStroke = isGirls ? '#DB2777' : (isMaternelle ? '#D97706' : (isPrimaire ? '#059669' : '#2563EB'));
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100" height="100">
         <rect width="120" height="120" rx="60" fill="${colorBg}"/>
         <circle cx="60" cy="45" r="22" fill="${colorFill}"/>
@@ -4863,6 +4918,7 @@ function toggleParentSection() {
     let newSection = 'garcons';
     if (currentSection === 'garcons') newSection = 'filles';
     else if (currentSection === 'filles') newSection = 'primaire';
+    else if (currentSection === 'primaire') newSection = 'maternelle';
     else newSection = 'garcons';
     
     currentSection = newSection;
@@ -4885,16 +4941,16 @@ function toggleParentSection() {
     loadClassStudents(defaultClass);
 }
 
-// Calcule la semaine par défaut pour l'espace parent :
-// Le vendredi, affiche le jeudi de la semaine passée (ex: vendredi de la semaine 4 -> semaine 3 et jour Jeudi)
+// Calcule la semaine par défaut pour l'espace parent et élèves :
+// Le vendredi et samedi, affiche le jeudi de la semaine passée (les devoirs de jeudi restent affichés vendredi et samedi)
 // Pour le cycle maternelle (PS, MS, GS) : toujours semaine des autres classes - 1 (Règle utilisateur 3)
 function getParentDefaultWeekNumber(className = null) {
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0=Dimanche, 5=Vendredi, 6=Samedi
     let baseWeek = 1;
-    if (dayOfWeek === 5) { // Vendredi
+    if (dayOfWeek === 5 || dayOfWeek === 6) { // Vendredi ou Samedi : se caler sur le jeudi de la semaine écoulée
         const prevThursday = new Date(today);
-        prevThursday.setDate(prevThursday.getDate() - 1);
+        prevThursday.setDate(prevThursday.getDate() - (dayOfWeek === 5 ? 1 : 2));
         prevThursday.setHours(10, 0, 0, 0);
         let w = (typeof getCurrentWeekNumber === 'function') ? getCurrentWeekNumber(prevThursday) : 1;
         const currentNextWeek = (typeof getCurrentWeekNumber === 'function') ? getCurrentWeekNumber(today) : 1;
@@ -5025,10 +5081,16 @@ async function loadParentWeeklyPlan() {
         const section = currentSection || 'garcons';
         
         if (sectionToggleBtnText) {
-            sectionToggleBtnText.textContent = section === 'garcons' ? 'Section Garçons 👦' : (section === 'filles' ? 'Section Filles 👧' : 'Primaire & Maternelle 👶🎒');
+            sectionToggleBtnText.textContent = section === 'garcons' 
+                ? 'Section Garçons 👦' 
+                : (section === 'filles' 
+                    ? 'Section Filles 👧' 
+                    : (section === 'maternelle' ? 'Section Maternelle 🧸🎨' : 'Section Primaire 🎒📚'));
         }
         
-        const secLabel = section === 'garcons' ? 'Garçons' : (section === 'filles' ? 'Filles' : 'Primaire');
+        const secLabel = section === 'garcons' 
+            ? 'Garçons' 
+            : (section === 'filles' ? 'Filles' : (section === 'maternelle' ? 'Maternelle' : 'Primaire'));
         container.innerHTML = `
             <div style="text-align:center; padding:40px; background:white; border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
                 <i class="fas fa-spinner fa-spin fa-2x" style="color:#10B981; margin-bottom:12px;"></i>
@@ -5080,23 +5142,36 @@ async function loadParentWeeklyPlan() {
 
         let fetchedData = data.planData || [];
         
-        // Double sécurité : filtrer les enseignants des autres sections
+        // Double sécurité : filtrer les enseignants et les classes des autres sections
         if (section === 'garcons') {
             fetchedData = fetchedData.filter(row => {
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
                 if (isDualSectionTeacher(ens)) return true;
                 return !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase()) &&
-                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase());
+                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase()) &&
+                       !maternelleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase());
             });
         } else if (section === 'filles') {
             fetchedData = fetchedData.filter(row => {
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
                 if (isDualSectionTeacher(ens)) return true;
                 return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
-                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase());
+                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase()) &&
+                       !maternelleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase());
             });
         } else if (section === 'primaire') {
             fetchedData = fetchedData.filter(row => {
+                const cls = (getRowField(row, 'Classe') || '').trim().toUpperCase();
+                if (['PS', 'MS', 'GS'].includes(cls) || (typeof isMaternelleClass === 'function' && isMaternelleClass(cls))) return false;
+                const ens = (getRowField(row, 'Enseignant') || '').trim();
+                if (isDualSectionTeacher(ens)) return true;
+                return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
+                       !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase());
+            });
+        } else if (section === 'maternelle') {
+            fetchedData = fetchedData.filter(row => {
+                const cls = (getRowField(row, 'Classe') || '').trim().toUpperCase();
+                if (cls && !['PS', 'MS', 'GS'].includes(cls) && !(typeof isMaternelleClass === 'function' && isMaternelleClass(cls))) return false;
                 const ens = (getRowField(row, 'Enseignant') || '').trim();
                 if (isDualSectionTeacher(ens)) return true;
                 return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
@@ -5558,8 +5633,10 @@ function updateAdminSpecialDaysClassDropdown() {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'filles') {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+    } else if (sec === 'maternelle') {
+        classes = ['PS', 'MS', 'GS'];
     } else {
-        classes = ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2', '1P', '2P', '3P', '4P', '5P'];
+        classes = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
     }
 
     let html = `<option value="ALL">🌟 Toutes les classes de la section</option>`;
@@ -5951,11 +6028,14 @@ function updateQuickSpecialClassesDropdown(targetClass) {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'filles') {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+    } else if (sec === 'maternelle') {
+        classes = ['PS', 'MS', 'GS'];
     } else {
-        classes = ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2', '1P', '2P', '3P', '4P', '5P'];
+        classes = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
     }
 
-    let html = `<option value="ALL">🌟 Toutes les classes (${sec === 'garcons' ? 'Garçons' : (sec === 'filles' ? 'Filles' : 'Primaire')})</option>`;
+    const quickSecLabel = sec === 'garcons' ? 'Garçons' : (sec === 'filles' ? 'Filles' : (sec === 'maternelle' ? 'Maternelle' : 'Primaire'));
+    let html = `<option value="ALL">🌟 Toutes les classes (${quickSecLabel})</option>`;
     classes.forEach(c => {
         const isSel = (targetClass && String(targetClass).toLowerCase() === String(c).toLowerCase());
         html += `<option value="${escapeHtml(c)}" ${isSel ? 'selected' : ''}>${escapeHtml(c)}</option>`;
@@ -6265,8 +6345,8 @@ function renderStudentsGrid(students, className, section) {
     const grid = document.getElementById('students-grid');
     if (!grid) return;
     
-    const secLabel = section === 'garcons' ? 'Garçons 👦' : (section === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧');
-    const borderColor = section === 'garcons' ? '#3B82F6' : (section === 'primaire' ? '#10B981' : '#EC4899');
+    const secLabel = section === 'garcons' ? 'Garçons 👦' : (section === 'filles' ? 'Filles 👧' : (section === 'maternelle' ? 'Maternelle 🧸🎨' : 'Primaire 🎒📚'));
+    const borderColor = section === 'garcons' ? '#3B82F6' : (section === 'filles' ? '#EC4899' : (section === 'maternelle' ? '#F59E0B' : '#10B981'));
     
     if (!students || students.length === 0) {
         grid.innerHTML = `
@@ -6697,7 +6777,7 @@ async function openStudentDashboard(studentName, className) {
         const photoEl = document.getElementById('student-profile-photo');
 
         if (nameEl) nameEl.innerText = cleanName;
-        if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : (section === 'primaire' ? 'Primaire & Maternelle 👶🎒' : 'Filles 👧')}`;
+        if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : (section === 'filles' ? 'Filles 👧' : (section === 'maternelle' ? 'Maternelle 🧸🎨' : 'Primaire 🎒📚'))}`;
         
         // Initialisation de la photo : utiliser en priorité l'objet préchargé en mémoire
         const normKey = cleanName.toLowerCase();
@@ -6843,29 +6923,65 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             if (studentName.includes('%')) studentName = decodeURIComponent(studentName);
         } catch (e) {}
 
-        currentHomeworkDate = dateStr;
+        // Règle devoirs élèves pour toutes les sections :
+        // Du dimanche au jeudi : devoirs du jour même.
+        // Le vendredi et samedi : devoirs du jeudi dernier (restent affichés tout le vendredi et samedi).
+        const dateResolution = (typeof getStudentEffectiveHomeworkDate === 'function') 
+            ? getStudentEffectiveHomeworkDate(dateStr) 
+            : { dateStr: (dateStr || new Date().toISOString().split('T')[0]), isWeekendThursdayStay: false };
+
+        const effectiveDateStr = dateResolution.dateStr;
+        const isWeekendStay = dateResolution.isWeekendThursdayStay;
+        currentHomeworkDate = effectiveDateStr;
+
         const section = currentSection || 'garcons';
-        
-        // Affichage de la date actuelle
+        const isAr = (currentUserLanguage === 'ar' || homeworkLang === 'ar');
+        const formattedDate = formatFrenchDate(effectiveDateStr);
+
+        // Mise à jour de l'en-tête de date des devoirs élève
         const dateDisplayEl = document.getElementById('current-homework-date-display');
-        const formattedDate = formatFrenchDate(dateStr);
-        const todayStr = new Date().toISOString().split('T')[0];
-        const isToday = (dateStr === todayStr);
-        const todayTag = isToday ? (currentUserLanguage === 'ar' ? ' (اليوم)' : ' (Aujourd\'hui)') : '';
-        
+        const subtitleEl = document.getElementById('student-homework-subtitle');
+        const badgeEl = document.getElementById('student-homework-tag');
+
         if (dateDisplayEl) {
-            dateDisplayEl.innerHTML = `<i class="fas fa-calendar-day" style="margin-right:6px;"></i> ${formattedDate}${todayTag}`;
+            if (isWeekendStay) {
+                dateDisplayEl.innerHTML = `<i class="fas fa-calendar-check" style="margin-right:6px; color:#2563EB;"></i> ${isAr ? 'واجبات يوم الخميس الماضي' : 'Devoirs du Jeudi dernier'} <span style="font-size:0.92rem; color:#475569; font-weight:600;">(${formattedDate})</span>`;
+            } else {
+                dateDisplayEl.innerHTML = `<i class="fas fa-calendar-day" style="margin-right:6px; color:#2563EB;"></i> ${isAr ? 'واجبات اليوم' : 'Devoirs d\'aujourd\'hui'} <span style="font-size:0.92rem; color:#475569; font-weight:600;">(${formattedDate})</span>`;
+            }
         }
 
-        // Alerte week-end
+        if (subtitleEl) {
+            if (isWeekendStay) {
+                subtitleEl.innerHTML = isAr 
+                    ? `<span style="color:#1E40AF; font-weight:600;"><i class="fas fa-umbrella-beach"></i> تظل واجبات يوم الخميس معروضة طوال يومي الجمعة والسبت لمتابعة عطلة نهاية الأسبوع</span>`
+                    : `<span style="color:#1E40AF; font-weight:600;"><i class="fas fa-umbrella-beach"></i> Les devoirs de jeudi restent affichés le vendredi et samedi durant le week-end</span>`;
+            } else {
+                subtitleEl.innerHTML = isAr ? 'الواجبات المبرمجة لليوم الدراسي الحالي' : 'Devoirs programmés pour cette journée de classe';
+            }
+        }
+
+        if (badgeEl) {
+            if (isWeekendStay) {
+                badgeEl.style.background = '#DBEAFE';
+                badgeEl.style.color = '#1E40AF';
+                badgeEl.innerHTML = `<i class="fas fa-calendar-week"></i> ${isAr ? 'عطلة نهاية الأسبوع' : 'Week-end (Jeudi)'}`;
+            } else {
+                badgeEl.style.background = '#ECFDF5';
+                badgeEl.style.color = '#065F46';
+                badgeEl.innerHTML = `<i class="fas fa-check-circle"></i> ${isAr ? 'يوم دراسي' : 'Aujourd\'hui'}`;
+            }
+        }
+
+        // Bannière d'information explicite pour le week-end (vendredi & samedi sur jeudi)
         const weekendNoticeEl = document.getElementById('student-weekend-notice');
         if (weekendNoticeEl) {
-            if (isDateWeekend(dateStr)) {
+            if (isWeekendStay) {
                 weekendNoticeEl.style.display = 'block';
                 weekendNoticeEl.innerHTML = `
-                    <div style="background:#FEF3C7; border:1px solid #FCD34D; border-radius:12px; padding:12px 18px; color:#92400E; font-size:0.9rem; display:flex; align-items:center; gap:10px; margin-bottom:15px;">
-                        <i class="fas fa-umbrella-beach" style="font-size:1.3rem; color:#D97706;"></i>
-                        <span>${currentUserLanguage === 'ar' ? 'اليوم عطلة نهاية الأسبوع (لا توجد دروس). يمكنك الاطلاع على واجبات أيام الأسبوع من خلال الأزرار أعلاه أو النقر على "عرض جميع واجبات الأسبوع".' : 'Aujourd\'hui c\'est le week-end (pas de cours). Vous pouvez consulter les devoirs des 5 jours d\'école ci-dessus ou afficher tous les devoirs de la semaine.'}</span>
+                    <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px; padding:12px 18px; color:#1E40AF; font-size:0.92rem; display:flex; align-items:center; gap:12px; margin-bottom:15px; box-shadow:0 2px 8px rgba(59,130,246,0.06);">
+                        <i class="fas fa-info-circle" style="font-size:1.35rem; color:#3B82F6; flex-shrink:0;"></i>
+                        <span>${isAr ? '📌 تذكير نهاية الأسبوع : تظل واجبات يوم الخميس الماضي معروضة طوال يومي الجمعة والسبت لمساعدة التلاميذ على مراجعتها وإنجازها قبل بداية الأسبوع القادم.' : '📌 Règle du week-end : Les devoirs de jeudi restent affichés le vendredi et le samedi afin de permettre aux élèves de les préparer sereinement durant tout le week-end.'}</span>
                     </div>
                 `;
             } else {
@@ -6873,49 +6989,42 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             }
         }
 
+        // La barre des jours et les toggles de semaine restent masqués pour les élèves afin de n'afficher strictement que les devoirs du jour (ou jeudi pour le weekend)
+        const schoolDaysBar = document.getElementById('student-school-days-bar');
+        if (schoolDaysBar) schoolDaysBar.style.display = 'none';
+
         const grid = document.getElementById('homework-items-grid');
         if (grid) grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#6B7280;"><i class="fas fa-spinner fa-spin fa-2x" style="color:#3B82F6; margin-bottom:10px;"></i><p>Chargement des devoirs en direct du plan hebdomadaire...</p></div>';
 
-        const res = await fetch(`/api/evaluations?class=${className}&student=${encodeURIComponent(studentName)}&date=${dateStr}&section=${section}`);
+        const res = await fetch(`/api/evaluations?class=${encodeURIComponent(className)}&student=${encodeURIComponent(studentName)}&date=${effectiveDateStr}&section=${section}`);
         if (res.ok) {
             const data = await res.json();
             lastEvaluationsData = data;
-            const { homeworks = [], weeklyHomeworks = [], schoolDays = [], evaluations = [], targetWeek } = data;
+            const { homeworks = [], evaluations = [] } = data;
 
-            // Rendre la barre des 5 jours d'école
-            renderSchoolDaysBar(schoolDays, dateStr, studentName, className);
-
-            // Mettre à jour le bouton de bascule semaine
-            const toggleWeekBtnText = document.getElementById('btnToggleWeeklyHomeworksText');
-            if (toggleWeekBtnText) {
-                if (isShowingWeeklyHomeworks) {
-                    toggleWeekBtnText.textContent = (currentUserLanguage === 'ar' || homeworkLang === 'ar') ? 'عرض واجبات اليوم المحدد' : 'Voir les devoirs de la date sélectionnée';
-                } else {
-                    const count = weeklyHomeworks.length;
-                    toggleWeekBtnText.textContent = (currentUserLanguage === 'ar' || homeworkLang === 'ar') ? `عرض جميع واجبات الأسبوع (${count})` : `Voir tous les devoirs de la semaine (${count})`;
-                }
-            }
-
-            // Choisir la liste à afficher
-            const displayList = isShowingWeeklyHomeworks ? weeklyHomeworks : homeworks;
+            // Règle stricte pour les élèves : afficher uniquement les devoirs du jour demandé (ou jeudi en cas de week-end)
+            const displayList = homeworks;
 
             if (displayList.length === 0) {
-                const isAr = (currentUserLanguage === 'ar' || homeworkLang === 'ar');
+                const noHwTitle = isWeekendStay
+                    ? (isAr ? 'لا توجد واجبات مسجلة ليوم الخميس الماضي' : 'Aucun devoir renseigné pour le jeudi dernier')
+                    : (isAr ? 'لا توجد واجبات مسجلة لهذا اليوم' : 'Aucun devoir renseigné pour aujourd\'hui');
+                const noHwDesc = isWeekendStay
+                    ? (isAr ? 'لم يقم المدرسون بإضافة واجبات محددة ليوم الخميس. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل.' : 'Les enseignants n\'ont pas programmé de devoirs spécifiques pour le jeudi. Vous pouvez consulter le plan hebdomadaire complet de la classe.')
+                    : (isAr ? 'لم يقم المدرسون بإضافة واجبات محددة لهذا اليوم. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل.' : 'Les enseignants n\'ont pas programmé de devoirs spécifiques pour cette date. Vous pouvez consulter le plan hebdomadaire complet de la classe.');
+
                 grid.innerHTML = `
                     <div style="grid-column: 1/-1; background:white; padding:35px 25px; border-radius:16px; text-align:center; color:#6B7280; box-shadow:0 4px 15px rgba(0,0,0,0.04); border:1px solid #E2E8F0;">
                         <div style="width:60px; height:60px; background:#ECFDF5; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 14px auto;">
                             <i class="fas fa-clipboard-check" style="font-size:2rem; color:#10B981;"></i>
                         </div>
                         <h4 style="color:#1E293B; font-size:1.15rem; margin:0 0 8px 0; font-weight:700;">
-                            ${isAr ? 'لا توجد واجبات مسجلة لهذا اليوم' : 'Aucun devoir renseigné pour cette date'}
+                            ${noHwTitle}
                         </h4>
                         <p style="margin:0 0 16px 0; font-size:0.92rem; color:#64748B;">
-                            ${isAr ? 'لم يقم المدرسون بإضافة واجبات محددة لهذا اليوم. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل.' : 'Les enseignants n\'ont pas programmé de devoirs spécifiques pour cette date. Vous pouvez consulter le plan hebdomadaire complet de la classe.'}
+                            ${noHwDesc}
                         </p>
                         <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
-                            <button type="button" class="pro-button" onclick="toggleWeeklyHomeworksView()" style="padding:10px 18px; font-weight:700; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE;">
-                                <i class="fas fa-calendar-week"></i> <span>${isAr ? 'عرض واجبات الأسبوع بالكامل' : 'Voir les devoirs de toute la semaine'}</span>
-                            </button>
                             <button type="button" class="pro-button primary-button" onclick="goToCurrentStudentClassPlan()" style="padding:10px 18px; font-weight:700;">
                                 <i class="fas fa-book-open"></i> <span>${isAr ? 'الخطة الأسبوعية للفصل' : 'Consulter le Plan Hebdo'}</span>
                             </button>
@@ -7306,7 +7415,7 @@ async function loadAdminStudentsList() {
             studentsToDisplay = allStudents.filter(s => s.class === className);
         }
 
-        const secLabel = section === 'garcons' ? 'Section Garçons 👦' : (section === 'primaire' ? 'Section Primaire & Maternelle 👶🎒' : 'Section Filles 👧');
+        const secLabel = section === 'garcons' ? 'Section Garçons 👦' : (section === 'filles' ? 'Section Filles 👧' : (section === 'maternelle' ? 'Section Maternelle 🧸🎨' : 'Section Primaire 🎒📚'));
         if (!studentsToDisplay || studentsToDisplay.length === 0) {
             const classLabel = className === 'all' ? 'Toutes les classes' : className;
             container.innerHTML = `<p style="color:#64748B; padding:15px; background:#F8FAFC; border-radius:8px; border:1px solid #E2E8F0;">
@@ -7880,15 +7989,23 @@ async function loadTeachersContactGrid() {
 
         // Filtre de sécurité frontend strict pour empêcher tout mélange entre sections
         if (currentSection === 'garcons') {
-            teachers = teachers.filter(t => !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()) && !isDualSectionTeacher(t));
+            teachers = teachers.filter(t => !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()) && !maternelleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !isDualSectionTeacher(t));
         } else if (currentSection === 'filles') {
-            teachers = teachers.filter(t => isDualSectionTeacher(t) || (!maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase())));
+            teachers = teachers.filter(t => isDualSectionTeacher(t) || (!maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()) && !maternelleTeachersList.some(m => m.toLowerCase() === t.toLowerCase())));
         } else if (currentSection === 'primaire') {
-            teachers = teachers.filter(t => isDualSectionTeacher(t) || (!maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase())));
+            teachers = teachers.filter(t => isDualSectionTeacher(t) || (!maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()) && (!maternelleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) || primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()))));
+        } else if (currentSection === 'maternelle') {
+            teachers = teachers.filter(t => isDualSectionTeacher(t) || (!maleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()) && !femaleTeachersList.some(f => f.toLowerCase() === t.toLowerCase()) && (!primaireTeachersList.some(p => p.toLowerCase() === t.toLowerCase()) || maternelleTeachersList.some(m => m.toLowerCase() === t.toLowerCase()))));
         }
 
         const t = parentI18n[currentUserLanguage] || parentI18n.fr;
-        const iconBg = currentSection === 'filles' ? 'linear-gradient(135deg, #EC4899, #DB2777)' : (currentSection === 'primaire' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #2563EB, #1D4ED8)');
+        const iconBg = currentSection === 'filles' 
+            ? 'linear-gradient(135deg, #EC4899, #DB2777)' 
+            : (currentSection === 'maternelle' 
+                ? 'linear-gradient(135deg, #F59E0B, #D97706)' 
+                : (currentSection === 'primaire' 
+                    ? 'linear-gradient(135deg, #10B981, #059669)' 
+                    : 'linear-gradient(135deg, #2563EB, #1D4ED8)'));
 
         // S'assurer que le cache des photos est chargé
         if (!window.globalTeachersPhotosMap || Object.keys(window.globalTeachersPhotosMap).length === 0) {
@@ -9628,7 +9745,7 @@ async function loadTeacherHomeworksDashboard() {
         if (secEl) {
             secEl.textContent = section === 'all'
                 ? 'Toutes les Écoles / Sections'
-                : (section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'primaire' ? 'Section Primaire & Maternelle (ابتدائي وروضة)' : 'Section Filles (بنات)'));
+                : (section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'filles' ? 'Section Filles (بنات)' : (section === 'maternelle' ? 'Section Maternelle (روضة)' : 'Section Primaire (ابتدائي)')));
         }
 
         // Rendu des filtres hiérarchiques : Écoles -> Semaines -> Classes -> Jours -> Matières
@@ -9662,10 +9779,12 @@ function renderTeacherSchoolIcons() {
     const container = document.getElementById('teacherSchoolIconsContainer');
     if (!container) return;
 
-    const counts = { all: allTeacherHomeworks.length, garcons: 0, filles: 0, primaire: 0 };
+    const counts = { all: allTeacherHomeworks.length, garcons: 0, filles: 0, primaire: 0, maternelle: 0 };
     allTeacherHomeworks.forEach(h => {
         const sec = (h.section || '').toLowerCase();
-        if (sec.includes('garcon') || sec === 'garcons') counts.garcons += 1;
+        const cls = (h.class || h.classe || '').toUpperCase();
+        if (sec.includes('mat') || sec === 'maternelle' || ['PS', 'MS', 'GS'].includes(cls)) counts.maternelle += 1;
+        else if (sec.includes('garcon') || sec === 'garcons') counts.garcons += 1;
         else if (sec.includes('fille') || sec === 'filles') counts.filles += 1;
         else if (sec.includes('prim') || sec === 'primaire') counts.primaire += 1;
     });
@@ -9678,6 +9797,8 @@ function renderTeacherSchoolIcons() {
     if (bFilles) bFilles.textContent = counts.filles;
     const bPrimaire = document.getElementById('badgeSchoolPrimaire');
     if (bPrimaire) bPrimaire.textContent = counts.primaire;
+    const bMaternelle = document.getElementById('badgeSchoolMaternelle');
+    if (bMaternelle) bMaternelle.textContent = counts.maternelle;
 
     const activeSec = activeTeacherHwFilters.section || 'all';
     const btns = container.querySelectorAll('.teacher-icon-btn');
@@ -9695,7 +9816,7 @@ function renderTeacherSchoolIcons() {
         if (activeSec === 'all') {
             countLabel.textContent = `Toutes les écoles (${allTeacherHomeworks.length} devoirs au total)`;
         } else {
-            const secName = activeSec === 'garcons' ? 'Section Garçons (بنين)' : (activeSec === 'filles' ? 'Section Filles (بنات)' : 'Section Primaire');
+            const secName = activeSec === 'garcons' ? 'Section Garçons (بنين)' : (activeSec === 'filles' ? 'Section Filles (بنات)' : (activeSec === 'maternelle' ? 'Section Maternelle (روضة)' : 'Section Primaire (ابتدائي)'));
             countLabel.textContent = `${secName} (${counts[activeSec] || 0} devoirs)`;
         }
     }
@@ -9765,6 +9886,12 @@ function renderTeacherWeeksIcons() {
     if (activeTeacherHwFilters.section !== 'all') {
         targetHws = targetHws.filter(h => {
             const sec = (h.section || '').toLowerCase();
+            const cls = (h.class || h.classe || '').toUpperCase();
+            if (activeTeacherHwFilters.section.toLowerCase() === 'maternelle') {
+                return sec === 'maternelle' || ['PS', 'MS', 'GS'].includes(cls);
+            } else if (activeTeacherHwFilters.section.toLowerCase() === 'primaire') {
+                return (sec === 'primaire' || sec.includes('prim')) && !['PS', 'MS', 'GS'].includes(cls);
+            }
             return sec.includes(activeTeacherHwFilters.section.toLowerCase());
         });
     }
@@ -10123,7 +10250,7 @@ function renderTeacherHomeworksDashboard() {
     if (tagsContainer) {
         let tagsHtml = '';
         if (activeTeacherHwFilters.section !== 'all') {
-            const secName = activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : 'Primaire');
+            const secName = activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : (activeTeacherHwFilters.section === 'maternelle' ? 'Maternelle' : 'Primaire'));
             tagsHtml += `<span style="background:#EFF6FF; color:#1D4ED8; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-school"></i> École: ${secName} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwSchoolFilter('all')"></i></span>`;
         }
         if (activeTeacherHwFilters.week !== 'all') {
@@ -10208,7 +10335,7 @@ function renderTeacherHomeworksDashboard() {
                 </span>
 
                 <button type="button" onclick="setTeacherHwSchoolFilter('all')" title="Filtrer ou afficher toutes les écoles" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-school"></i> ${activeTeacherHwFilters.section === 'all' ? 'Toutes Écoles' : (activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : 'Primaire'))}
+                    <i class="fas fa-school"></i> ${activeTeacherHwFilters.section === 'all' ? 'Toutes Écoles' : (activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : (activeTeacherHwFilters.section === 'maternelle' ? 'Maternelle' : 'Primaire')))}
                 </button>
 
                 <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
@@ -10340,7 +10467,7 @@ function renderTeacherHomeworksDashboard() {
                 const subjInfo = getSubjectIconAndColor(hw.matiere);
                 const dayInfo = getDayIconAndDetails(hw.jour);
 
-                const secBadge = hw.section === 'garcons' ? 'Garçons' : (hw.section === 'filles' ? 'Filles' : (hw.section === 'primaire' ? 'Primaire' : ''));
+                const secBadge = hw.section === 'garcons' ? 'Garçons' : (hw.section === 'filles' ? 'Filles' : (hw.section === 'maternelle' ? 'Maternelle' : (hw.section === 'primaire' ? 'Primaire' : '')));
 
                 html += `
                     <div style="background:${cardBg}; border:${cardBorder}; border-radius:14px; padding:18px; box-shadow:${shadow}; display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s, box-shadow 0.2s; position:relative;">
@@ -10757,7 +10884,9 @@ function renderAdminMessagesList(messages) {
             ? `<span style="background:#EFF6FF; color:#1D4ED8; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;">👦 Garçons</span>`
             : (msg.section === 'filles'
                 ? `<span style="background:#FDF2F8; color:#BE185D; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;">👧 Filles</span>`
-                : `<span style="background:#ECFDF5; color:#047857; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;">👶 Primaire</span>`);
+                : (msg.section === 'maternelle'
+                    ? `<span style="background:#FEF3C7; color:#92400E; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;">🧸 Maternelle</span>`
+                    : `<span style="background:#ECFDF5; color:#047857; font-size:0.75rem; font-weight:700; padding:3px 8px; border-radius:6px;">🎒 Primaire</span>`));
 
         const dateStr = msg.createdAt ? new Date(msg.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'Date inconnue';
 

@@ -513,17 +513,16 @@ function generateDesignPlanHtml(options = {}) {
     .a4-page {
       width: 210mm;
       min-height: 297mm;
-      height: 297mm;
       margin: 0 auto 25px auto;
       padding: 8mm 10mm; /* Marge optimisée pour ne jamais créer de rupture */
       background: #FFFFFF;
       box-shadow: 0 4px 20px rgba(0,0,0,0.14);
+      border-radius: 4px;
       box-sizing: border-box;
       position: relative;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      overflow: hidden;
       page-break-after: always;
       break-after: page;
     }
@@ -1053,11 +1052,11 @@ function generateDesignPlanHtml(options = {}) {
        ------------------------------------------------------------------------ */
     .a4-page-footer {
       margin-top: auto;
-      padding-top: 5px;
+      padding-top: 6px;
       padding-bottom: 2px;
       border-top: 1.5px solid var(--primary-color, #0F2E5C);
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
       font-size: 0.72rem;
       color: #475569;
@@ -1069,12 +1068,14 @@ function generateDesignPlanHtml(options = {}) {
     }
 
     .footer-left-info {
+      justify-self: start;
       display: flex;
       align-items: center;
       gap: 6px;
       font-size: 0.72rem;
       color: #334155;
       font-weight: 500;
+      white-space: nowrap;
     }
 
     .footer-doc-title {
@@ -1096,6 +1097,7 @@ function generateDesignPlanHtml(options = {}) {
     }
 
     .footer-center-stamp {
+      justify-self: center;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1104,7 +1106,7 @@ function generateDesignPlanHtml(options = {}) {
     .footer-stamp-frame {
       border: 1px dashed #64748B;
       background: #F8FAFC;
-      padding: 2.5px 14px;
+      padding: 3px 14px;
       border-radius: 4px;
       display: inline-flex;
       align-items: center;
@@ -1114,6 +1116,7 @@ function generateDesignPlanHtml(options = {}) {
       color: #1E293B;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+      white-space: nowrap;
     }
 
     .footer-stamp-icon {
@@ -1123,6 +1126,7 @@ function generateDesignPlanHtml(options = {}) {
     }
 
     .footer-right-page {
+      justify-self: end;
       display: flex;
       align-items: center;
     }
@@ -1139,6 +1143,7 @@ function generateDesignPlanHtml(options = {}) {
       align-items: center;
       gap: 3px;
       box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+      white-space: nowrap;
     }
 
     .footer-page-pill strong {
@@ -1392,9 +1397,9 @@ function generateDesignPlanHtml(options = {}) {
       /* Chaque section .a4-page s'ajuste rigoureusement à la page physique A4 */
       .a4-page {
         width: 100% !important;
-        height: 280mm !important;
-        min-height: 280mm !important;
-        max-height: 280mm !important;
+        height: 279mm !important;
+        min-height: 279mm !important;
+        max-height: 279mm !important;
         margin: 0 !important;
         padding: 0 !important; /* Marge assurée par @page { margin: 8mm 10mm } */
         box-shadow: none !important;
@@ -1457,9 +1462,9 @@ function generateDesignPlanHtml(options = {}) {
         margin-top: auto !important;
         padding-top: 5px !important;
         padding-bottom: 1px !important;
-        border-top: 1.5px solid #0F2E5C !important;
-        display: flex !important;
-        justify-content: space-between !important;
+        border-top: 1.5px solid var(--primary-color, #0F2E5C) !important;
+        display: grid !important;
+        grid-template-columns: 1fr auto 1fr !important;
         align-items: center !important;
         width: 100% !important;
         page-break-inside: avoid !important;
@@ -1467,18 +1472,33 @@ function generateDesignPlanHtml(options = {}) {
         flex-shrink: 0 !important;
       }
 
+      .footer-left-info {
+        justify-self: start !important;
+        white-space: nowrap !important;
+      }
+
+      .footer-center-stamp {
+        justify-self: center !important;
+      }
+
+      .footer-right-page {
+        justify-self: end !important;
+      }
+
       .footer-stamp-frame {
         border: 1px dashed #475569 !important;
         background: #F8FAFC !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        white-space: nowrap !important;
       }
 
       .footer-page-pill {
-        background: #0F2E5C !important;
+        background: var(--primary-color, #0F2E5C) !important;
         color: #FFFFFF !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+        white-space: nowrap !important;
       }
 
       .footer-page-pill strong {

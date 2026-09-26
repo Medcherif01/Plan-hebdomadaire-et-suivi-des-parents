@@ -99,6 +99,13 @@
         tr.cross-section-row-primaire:hover {
             background-color: #DCFCE7 !important;
         }
+        tr.cross-section-row-maternelle {
+            background-color: #FFFBEB !important;
+            border-left: 4px solid #F59E0B !important;
+        }
+        tr.cross-section-row-maternelle:hover {
+            background-color: #FEF3C7 !important;
+        }
 
         .badge-section-pill {
             display: inline-flex;
@@ -126,6 +133,11 @@
             background-color: #ECFDF5;
             color: #065F46;
             border: 1px solid #A7F3D0;
+        }
+        .badge-section-maternelle {
+            background-color: #FEF3C7;
+            color: #92400E;
+            border: 1px solid #FCD34D;
         }
 
         .badge-readonly-lock {
@@ -276,16 +288,28 @@
                                 <i class="fas fa-link"></i> <span>Copier lien direct (Garçons)</span>
                             </button>
                         </div>
-                        <div style="display:flex; flex-direction:column; gap:6px; flex:1; min-width:200px;">
+                        <div style="display:flex; flex-direction:column; gap:6px; flex:1; min-width:180px;">
                             <button type="button" class="space-section-btn primary-btn" onclick="enterParentSpaceWithSection('primaire')">
-                                <i class="fas fa-shapes"></i>
+                                <i class="fas fa-graduation-cap"></i>
                                 <div class="btn-labels">
-                                    <span class="btn-primary-text">Primaire & Maternelle</span>
-                                    <span class="btn-sub-text">الابتدائي والروضة 👶🎒</span>
+                                    <span class="btn-primary-text">Section Primaire</span>
+                                    <span class="btn-sub-text">قسم الابتدائي 🎒📚</span>
                                 </div>
                             </button>
                             <button type="button" class="copy-mini-btn" onclick="copyParentDirectLink('primaire')" title="Copier le lien direct pour les parents de la section Primaire">
                                 <i class="fas fa-link"></i> <span>Copier lien direct (Primaire)</span>
+                            </button>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:6px; flex:1; min-width:180px;">
+                            <button type="button" class="space-section-btn maternelle-btn" onclick="enterParentSpaceWithSection('maternelle')">
+                                <i class="fas fa-baby"></i>
+                                <div class="btn-labels">
+                                    <span class="btn-primary-text">Section Maternelle</span>
+                                    <span class="btn-sub-text">قسم الروضة 🧸🎨</span>
+                                </div>
+                            </button>
+                            <button type="button" class="copy-mini-btn" onclick="copyParentDirectLink('maternelle')" title="Copier le lien direct pour les parents de la section Maternelle">
+                                <i class="fas fa-link"></i> <span>Copier lien direct (Maternelle)</span>
                             </button>
                         </div>
                     </div>
@@ -317,10 +341,17 @@
                             </div>
                         </button>
                         <button type="button" class="space-section-btn primary-btn" onclick="chooseSection('primaire')">
-                            <i class="fas fa-shapes"></i>
+                            <i class="fas fa-graduation-cap"></i>
                             <div class="btn-labels">
-                                <span class="btn-primary-text">Primaire & Maternelle</span>
-                                <span class="btn-sub-text">الابتدائي والروضة 👶🎒</span>
+                                <span class="btn-primary-text">Section Primaire</span>
+                                <span class="btn-sub-text">قسم الابتدائي 🎒📚</span>
+                            </div>
+                        </button>
+                        <button type="button" class="space-section-btn maternelle-btn" onclick="chooseSection('maternelle')">
+                            <i class="fas fa-baby"></i>
+                            <div class="btn-labels">
+                                <span class="btn-primary-text">Section Maternelle</span>
+                                <span class="btn-sub-text">قسم الروضة 🧸🎨</span>
                             </div>
                         </button>
                     </div>
@@ -368,13 +399,16 @@
                  <div class="header-title-flex">
                     <h1 id="main-title">Plans Hebdomadaires</h1>
                     <span id="mainSectionBadge" class="section-badge badge-garcons">Section Garçons</span>
-                    <div id="dualTeacherSectionSwitch" class="dual-teacher-sec-switch" style="display:none;" title="Basculer entre la Section Filles et la Section Primaire & Maternelle">
+                    <div id="dualTeacherSectionSwitch" class="dual-teacher-sec-switch" style="display:none;" title="Basculer entre la Section Filles, Primaire et Maternelle">
                         <span class="dual-sec-label" id="dualSecTeacherLabel"><i class="fas fa-chalkboard-teacher"></i> <span id="dualSecTeacherName">Enseignante</span> :</span>
                         <button type="button" class="teacher-sec-toggle-btn" id="teacherSecBtn_filles" onclick="switchDualTeacherSection('filles')">
                             👧 Section Filles
                         </button>
                         <button type="button" class="teacher-sec-toggle-btn" id="teacherSecBtn_primaire" onclick="switchDualTeacherSection('primaire')">
-                            👶🎒 Primaire & Maternelle
+                            🎒 Section Primaire
+                        </button>
+                        <button type="button" class="teacher-sec-toggle-btn" id="teacherSecBtn_maternelle" onclick="switchDualTeacherSection('maternelle')">
+                            🧸 Section Maternelle
                         </button>
                     </div>
                     <button type="button" class="switch-section-btn" onclick="resetSectionChoice()"><i class="fas fa-exchange-alt"></i> Changer</button>
@@ -425,7 +459,10 @@
                      👧 Section Filles
                  </button>
                  <button type="button" class="dual-switch-pill btn-primaire" id="dualBannerBtn_primaire" onclick="switchDualTeacherSection('primaire')">
-                     👶🎒 Primaire & Maternelle
+                     🎒 Section Primaire
+                 </button>
+                 <button type="button" class="dual-switch-pill btn-maternelle" id="dualBannerBtn_maternelle" onclick="switchDualTeacherSection('maternelle')">
+                     🧸 Section Maternelle
                  </button>
              </div>
          </div>
@@ -463,7 +500,10 @@
                          👧 Filles
                      </button>
                      <button type="button" class="admin-sec-toggle-btn" id="adminSecBtn_primaire" onclick="switchAdminActiveSection('primaire')">
-                         👶🎒 Primaire & Maternelle
+                         🎒 Primaire
+                     </button>
+                     <button type="button" class="admin-sec-toggle-btn" id="adminSecBtn_maternelle" onclick="switchAdminActiveSection('maternelle')">
+                         🧸 Maternelle
                      </button>
                  </div>
              </div>
@@ -506,7 +546,7 @@
              <div id="adminTab_upload" class="admin-tab-content" style="display:block; width:100%;">
                  <div class="admin-card-inner">
                      <h4><i class="fas fa-file-excel" style="color:#10B981;"></i> Chargement & Import des Plans Hebdomadaires (Excel)</h4>
-                     <p class="admin-subtext">L'administrateur peut importer et enregistrer les plans pour chaque section séparément (<strong>Section Garçons</strong>, <strong>Section Filles</strong> ou <strong>Section Primaire & Maternelle</strong>) et les appliquer à une ou <strong>plusieurs semaines</strong> simultanément.</p>
+                     <p class="admin-subtext">L'administrateur peut importer et enregistrer les plans pour chaque section séparément (<strong>Section Garçons</strong>, <strong>Section Filles</strong> <strong>Section Primaire</strong> ou <strong>Section Maternelle</strong>) et les appliquer à une ou <strong>plusieurs semaines</strong> simultanément.</p>
                      
                      <div class="admin-grid-2col" style="margin-top:15px; margin-bottom:15px;">
                          <div>
@@ -516,7 +556,8 @@
                              <select id="adminUploadSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:2px solid #3B82F6; font-weight:700; background:#EFF6FF;" onchange="updateUploadTargetInfo()">
                                  <option value="garcons">👦 Section Garçons</option>
                                  <option value="filles">👧 Section Filles</option>
-                                 <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
+                                 <option value="primaire">🎒 Section Primaire</option>
+                                 <option value="maternelle">🧸 Section Maternelle</option>
                              </select>
                          </div>
                          <div>
@@ -612,7 +653,8 @@
                              <select id="adminSectionFilter" onchange="loadAdminUsersList()" style="padding:8px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700;">
                                  <option value="garcons">Section Garçons 👦</option>
                                  <option value="filles">Section Filles 👧</option>
-                                 <option value="primaire">Section Primaire & Maternelle 👶🎒</option>
+                                 <option value="primaire">Section Primaire 🎒</option>
+                                 <option value="maternelle">Section Maternelle 🧸</option>
                              </select>
                          </div>
                          <div style="flex:1; max-width:280px;">
@@ -764,7 +806,8 @@
                          <select id="adminStudentSectionFilter" onchange="loadAdminStudentsList()" style="padding:7px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
                              <option value="garcons">Section Garçons 👦</option>
                              <option value="filles">Section Filles 👧</option>
-                             <option value="primaire">Section Primaire & Maternelle 👶🎒</option>
+                             <option value="primaire">Section Primaire 🎒</option>
+                             <option value="maternelle">Section Maternelle 🧸</option>
                          </select>
                      </div>
 
@@ -958,7 +1001,8 @@
                                  <option value="all">Toutes les sections</option>
                                  <option value="garcons">👦 Section Garçons</option>
                                  <option value="filles">👧 Section Filles</option>
-                                 <option value="primaire">👶🎒 Primaire & Maternelle</option>
+                                 <option value="primaire">🎒 Section Primaire</option>
+                                 <option value="maternelle">🧸 Section Maternelle</option>
                              </select>
                          </div>
                          <div style="flex:1.5; min-width:220px;">
@@ -993,7 +1037,8 @@
                                  <select id="adminPublicationSectionSelector" onchange="loadAdminPublicationStatus()" style="padding:8px 12px; border-radius:8px; border:1.5px solid #10B981; font-weight:700; background:white; color:#065F46;">
                                      <option value="garcons">👦 Section Garçons</option>
                                      <option value="filles">👧 Section Filles</option>
-                                     <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
+                                     <option value="primaire">🎒 Section Primaire</option>
+                                     <option value="maternelle">🧸 Section Maternelle</option>
                                  </select>
                              </div>
                              <button type="button" class="pro-button success-button" onclick="bulkPublishAllWeeks(true)" style="padding:8px 14px; font-size:0.88rem;">
@@ -1044,7 +1089,8 @@
                                  <select id="specialDaySection" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;" onchange="loadAdminSpecialDaysList()">
                                      <option value="garcons">👦 Section Garçons</option>
                                      <option value="filles">👧 Section Filles</option>
-                                     <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
+                                     <option value="primaire">🎒 Section Primaire</option>
+                                     <option value="maternelle">🧸 Section Maternelle</option>
                                  </select>
                              </div>
                              <div>
@@ -1162,7 +1208,8 @@
                                   <select id="adminScheduleSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;" onchange="onAdminScheduleSectionChange()">
                                       <option value="garcons">👦 Section Garçons</option>
                                       <option value="filles">👧 Section Filles</option>
-                                      <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
+                                      <option value="primaire">🎒 Section Primaire</option>
+                                      <option value="maternelle">🧸 Section Maternelle</option>
                                   </select>
                               </div>
 
@@ -1341,7 +1388,8 @@
                               <select id="adminPhotoSectionFilter" onchange="renderAdminTeachersPhotosGallery()" style="padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;">
                                   <option value="garcons">Section Garçons 👦</option>
                                   <option value="filles">Section Filles 👧</option>
-                                  <option value="primaire">Section Primaire 👶🎒</option>
+                                  <option value="primaire">Section Primaire 🎒</option>
+                                  <option value="maternelle">Section Maternelle 🧸</option>
                               </select>
                               <button type="button" class="pro-button success-button" onclick="saveAllTeachersPhotos()" style="padding:8px 16px; font-weight:700;">
                                   <i class="fas fa-save"></i> <span>Enregistrer Toutes les Photos</span>
@@ -1886,23 +1934,32 @@
                     <!-- SECTION ÉVALUATION GÉNÉRALE ET ÉVOLUTION (8 SEMAINES) -->
                     <div id="general-evaluations-container"></div>
 
-                    <!-- SÉLECTEUR DE DATE ET DEVOIRS -->
-                    <div id="student-school-days-bar" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:15px;"></div>
+                    <!-- SÉLECTEUR DE DATE ET DEVOIRS (RÈGLE ÉLÈVES : JOUR MÊME, VENDREDI & SAMEDI SUR JEUDI) -->
+                    <div id="student-school-days-bar" style="display:none; gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:15px;"></div>
                     <div id="student-weekend-notice" style="display:none; margin-bottom:15px;"></div>
 
-                    <div class="filter-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px; background:white; padding:16px 20px; border-radius:14px; border:1px solid #E2E8F0;">
-                        <button class="pro-button" onclick="changeHomeworkDate(-1)"><i class="fas fa-chevron-left"></i> <span id="btnPrevDayText">Jour Précédent</span></button>
-                        <h3 id="current-homework-date-display" style="margin:0; color:#1E1B4B; font-size:1.15rem; font-weight:700;"><i class="fas fa-calendar-day"></i> </h3>
-                        <button class="pro-button" onclick="changeHomeworkDate(1)"><span id="btnNextDayText">Jour Suivant</span> <i class="fas fa-chevron-right"></i></button>
-                    </div>
-
-                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:20px; justify-content:space-between;">
-                        <button type="button" id="btnToggleWeeklyHomeworks" class="pro-button" onclick="toggleWeeklyHomeworksView()" style="font-size:0.9rem; font-weight:700; background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE;">
-                            <i class="fas fa-list-ul"></i> <span id="btnToggleWeeklyHomeworksText">Voir tous les devoirs de la semaine</span>
-                        </button>
-                        <button type="button" id="btnGoToClassPlan" class="pro-button primary-button" onclick="goToCurrentStudentClassPlan()" style="font-size:0.9rem; font-weight:700;">
-                            <i class="fas fa-calendar-alt"></i> <span id="btnGoToClassPlanText">Consulter le Plan Hebdo de la classe</span>
-                        </button>
+                    <div id="student-date-header-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px; background:white; padding:18px 24px; border-radius:16px; border:1px solid #E2E8F0; box-shadow:0 2px 10px rgba(0,0,0,0.03);">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div style="width:44px; height:44px; border-radius:12px; background:#EFF6FF; color:#2563EB; display:flex; align-items:center; justify-content:center; font-size:1.3rem;">
+                                <i class="fas fa-pencil-alt"></i>
+                            </div>
+                            <div>
+                                <h3 id="current-homework-date-display" style="margin:0; color:#1E1B4B; font-size:1.2rem; font-weight:800; display:flex; align-items:center; gap:8px;">
+                                    <i class="fas fa-calendar-day"></i> Devoirs d'aujourd'hui
+                                </h3>
+                                <p id="student-homework-subtitle" style="margin:3px 0 0 0; color:#64748B; font-size:0.88rem; font-weight:500;">
+                                    Affichage en direct des devoirs pour la classe
+                                </p>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <span id="student-homework-tag" style="display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px; font-size:0.85rem; font-weight:700; background:#ECFDF5; color:#065F46;">
+                                <i class="fas fa-check-circle"></i> Aujourd'hui
+                            </span>
+                            <button type="button" id="btnGoToClassPlan" class="pro-button" onclick="goToCurrentStudentClassPlan()" style="font-size:0.88rem; font-weight:700; padding:9px 16px; background:#F8FAFC; border:1px solid #CBD5E1; color:#334155;">
+                                <i class="fas fa-calendar-alt"></i> <span id="btnGoToClassPlanText">Plan Hebdo complet</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- GRILLE DES DEVOIRS POUR LA JOURNÉE (TRANSFERT AUTOMATIQUE) -->
@@ -1983,9 +2040,14 @@
                                     <span class="hw-badge" id="badgeSchoolFilles">0</span>
                                 </button>
                                 <button type="button" class="teacher-icon-btn" data-school="primaire" onclick="setTeacherHwSchoolFilter('primaire')">
-                                    <i class="fas fa-child" style="color:#10B981;"></i>
-                                    <span>Section Primaire & Maternelle</span>
+                                    <i class="fas fa-graduation-cap" style="color:#10B981;"></i>
+                                    <span>Section Primaire (ابتدائي)</span>
                                     <span class="hw-badge" id="badgeSchoolPrimaire">0</span>
+                                </button>
+                                <button type="button" class="teacher-icon-btn" data-school="maternelle" onclick="setTeacherHwSchoolFilter('maternelle')">
+                                    <i class="fas fa-baby" style="color:#F59E0B;"></i>
+                                    <span>Section Maternelle (روضة)</span>
+                                    <span class="hw-badge" id="badgeSchoolMaternelle">0</span>
                                 </button>
                             </div>
                         </div>
@@ -2383,10 +2445,19 @@
                 </div>
                 <div style="display:flex; gap:8px; align-items:stretch;">
                     <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('primaire')" style="flex:1; padding:14px 18px; background:linear-gradient(135deg, #10B981, #059669); color:white; border-radius:14px; font-weight:700; font-size:1.02rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(16,185,129,0.3);">
-                        <span><i class="fas fa-shapes" style="margin-right:8px; font-size:1.2rem;"></i> Section Primaire & Maternelle 👶🎒</span>
+                        <span><i class="fas fa-graduation-cap" style="margin-right:8px; font-size:1.2rem;"></i> Section Primaire 🎒📚</span>
                         <i class="fas fa-chevron-right"></i>
                     </button>
                     <button type="button" class="pro-button copy-mini-btn" onclick="copyParentDirectLink('primaire')" title="Copier le lien direct pour les parents (Section Primaire)">
+                        <i class="fas fa-link"></i>
+                    </button>
+                </div>
+                <div style="display:flex; gap:8px; align-items:stretch;">
+                    <button type="button" class="pro-button" onclick="enterParentSpaceWithSection('maternelle')" style="flex:1; padding:14px 18px; background:linear-gradient(135deg, #F59E0B, #D97706); color:white; border-radius:14px; font-weight:700; font-size:1.02rem; border:none; display:flex; align-items:center; justify-content:space-between; cursor:pointer; box-shadow:0 4px 15px rgba(245,158,11,0.3);">
+                        <span><i class="fas fa-baby" style="margin-right:8px; font-size:1.2rem;"></i> Section Maternelle 🧸🎨</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button type="button" class="pro-button copy-mini-btn" onclick="copyParentDirectLink('maternelle')" title="Copier le lien direct pour les parents (Section Maternelle)">
                         <i class="fas fa-link"></i>
                     </button>
                 </div>
@@ -2636,7 +2707,8 @@
                     <select id="quickSpecialSection" style="width:100%; padding:8px 10px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700;" onchange="onQuickSpecialSectionChange()">
                         <option value="garcons">👦 Section Garçons</option>
                         <option value="filles">👧 Section Filles</option>
-                        <option value="primaire">👶🎒 Section Primaire & Maternelle</option>
+                        <option value="primaire">🎒 Section Primaire</option>
+                        <option value="maternelle">🧸 Section Maternelle</option>
                     </select>
                 </div>
                 <div>

@@ -1,0 +1,345 @@
+{
+  "students": [
+    {
+      "_id": "maternelle_PS_Adam K.",
+      "name": "Adam K.",
+      "photo": "",
+      "birthday": "5/2023",
+      "class": "PS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.347Z",
+      "updatedAt": "2026-09-26T13:41:33.347Z"
+    },
+    {
+      "_id": "maternelle_PS_Lina M.",
+      "name": "Lina M.",
+      "photo": "",
+      "birthday": "8/2023",
+      "class": "PS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.347Z",
+      "updatedAt": "2026-09-26T13:41:33.347Z"
+    },
+    {
+      "_id": "maternelle_PS_Zaid B.",
+      "name": "Zaid B.",
+      "photo": "",
+      "birthday": "2/2023",
+      "class": "PS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.347Z",
+      "updatedAt": "2026-09-26T13:41:33.347Z"
+    },
+    {
+      "_id": "maternelle_PS_Maya S.",
+      "name": "Maya S.",
+      "photo": "",
+      "birthday": "11/2023",
+      "class": "PS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.347Z",
+      "updatedAt": "2026-09-26T13:41:33.347Z"
+    },
+    {
+      "_id": "maternelle_MS_Youssef T.",
+      "name": "Youssef T.",
+      "photo": "",
+      "birthday": "3/2022",
+      "class": "MS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.348Z",
+      "updatedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "maternelle_MS_Nour H.",
+      "name": "Nour H.",
+      "photo": "",
+      "birthday": "7/2022",
+      "class": "MS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.348Z",
+      "updatedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "maternelle_MS_Kareem A.",
+      "name": "Kareem A.",
+      "photo": "",
+      "birthday": "10/2022",
+      "class": "MS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.348Z",
+      "updatedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "maternelle_MS_Sarah B.",
+      "name": "Sarah B.",
+      "photo": "",
+      "birthday": "1/2022",
+      "class": "MS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.348Z",
+      "updatedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "maternelle_GS_Ilyas R.",
+      "name": "Ilyas R.",
+      "photo": "",
+      "birthday": "4/2021",
+      "class": "GS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.348Z",
+      "updatedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "maternelle_GS_Khadija F.",
+      "name": "Khadija F.",
+      "photo": "",
+      "birthday": "6/2021",
+      "class": "GS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.348Z",
+      "updatedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "maternelle_GS_Sami D.",
+      "name": "Sami D.",
+      "photo": "",
+      "birthday": "9/2021",
+      "class": "GS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.348Z",
+      "updatedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "maternelle_GS_Rania N.",
+      "name": "Rania N.",
+      "photo": "",
+      "birthday": "12/2021",
+      "class": "GS",
+      "section": "maternelle",
+      "createdAt": "2026-09-26T13:41:33.348Z",
+      "updatedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "primaire_PP1_Anas C.",
+      "name": "Anas C.",
+      "photo": "",
+      "birthday": "2/2020",
+      "class": "PP1",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP1_Salma K.",
+      "name": "Salma K.",
+      "photo": "",
+      "birthday": "5/2020",
+      "class": "PP1",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP1_Bilal E.",
+      "name": "Bilal E.",
+      "photo": "",
+      "birthday": "8/2020",
+      "class": "PP1",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP1_Aya M.",
+      "name": "Aya M.",
+      "photo": "",
+      "birthday": "11/2020",
+      "class": "PP1",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP2_Hamza L.",
+      "name": "Hamza L.",
+      "photo": "",
+      "birthday": "3/2019",
+      "class": "PP2",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP2_Mariam Z.",
+      "name": "Mariam Z.",
+      "photo": "",
+      "birthday": "7/2019",
+      "class": "PP2",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP2_Rayane V.",
+      "name": "Rayane V.",
+      "photo": "",
+      "birthday": "9/2019",
+      "class": "PP2",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP2_Ines G.",
+      "name": "Ines G.",
+      "photo": "",
+      "birthday": "12/2019",
+      "class": "PP2",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP3_Yassine S.",
+      "name": "Yassine S.",
+      "photo": "",
+      "birthday": "1/2018",
+      "class": "PP3",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP3_Fatima E.",
+      "name": "Fatima E.",
+      "photo": "",
+      "birthday": "4/2018",
+      "class": "PP3",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP3_Tariq B.",
+      "name": "Tariq B.",
+      "photo": "",
+      "birthday": "8/2018",
+      "class": "PP3",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP3_Hajar D.",
+      "name": "Hajar D.",
+      "photo": "",
+      "birthday": "10/2018",
+      "class": "PP3",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP4_Omar N.",
+      "name": "Omar N.",
+      "photo": "",
+      "birthday": "2/2017",
+      "class": "PP4",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP4_Zineb B.",
+      "name": "Zineb B.",
+      "photo": "",
+      "birthday": "6/2017",
+      "class": "PP4",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP4_Mehdi T.",
+      "name": "Mehdi T.",
+      "photo": "",
+      "birthday": "9/2017",
+      "class": "PP4",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP4_Imane L.",
+      "name": "Imane L.",
+      "photo": "",
+      "birthday": "11/2017",
+      "class": "PP4",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP5_Walid K.",
+      "name": "Walid K.",
+      "photo": "",
+      "birthday": "3/2016",
+      "class": "PP5",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP5_Manal R.",
+      "name": "Manal R.",
+      "photo": "",
+      "birthday": "5/2016",
+      "class": "PP5",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP5_Ilyas H.",
+      "name": "Ilyas H.",
+      "photo": "",
+      "birthday": "8/2016",
+      "class": "PP5",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    },
+    {
+      "_id": "primaire_PP5_Soukaina A.",
+      "name": "Soukaina A.",
+      "photo": "",
+      "birthday": "12/2016",
+      "class": "PP5",
+      "section": "primaire",
+      "createdAt": "2026-09-26T13:41:35.781Z",
+      "updatedAt": "2026-09-26T13:41:35.781Z"
+    }
+  ],
+  "evaluations": [],
+  "daily_stars": [],
+  "homework": [],
+  "deleted_students": [],
+  "plans": [],
+  "deleted_users": [],
+  "users": [],
+  "settings": [
+    {
+      "_id": "students_init_maternelle",
+      "initializedAt": "2026-09-26T13:41:33.348Z"
+    },
+    {
+      "_id": "students_init_primaire",
+      "initializedAt": "2026-09-26T13:41:35.781Z"
+    }
+  ],
+  "teachers_photos": [],
+  "published_plans": [],
+  "special_days": [],
+  "school_weeks_config": []
+}

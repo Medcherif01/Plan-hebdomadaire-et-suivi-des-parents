@@ -346,9 +346,23 @@ const femaleTeachers = [
 ];
 
 const primaireTeachers = [
-  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-  'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal'
+  'Mouna', 'Hajar', 'Meriem', 'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal'
 ];
+
+const maternelleTeachers = [
+  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Siham', 'Farah', 'Music', 'Musique', 'Amal'
+];
+
+function isMaternelleClassServer(cls) {
+  if (!cls) return false;
+  const c = String(cls).trim().toUpperCase();
+  const clean = c.replace(/[\s\-_]+/g, "");
+  return clean === "PS" || clean === "MS" || clean === "GS" ||
+         clean === "PETITESECTION" || clean === "MOYENNESECTION" || clean === "GRANDESECTION" ||
+         clean.includes("MATERNELLE") || clean.includes("روضة") || clean.includes("روضه") ||
+         clean === "PS1" || clean === "MS1" || clean === "GS1" ||
+         clean === "PS2" || clean === "MS2" || clean === "GS2";
+}
 
 const isMusicTeacher = (name) => {
   if (!name) return false;
@@ -1296,21 +1310,24 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Ce compte a été supprimé par l\'administrateur.' });
     }
 
-    // 2. Contrôle de section strict (enseignantes / enseignants / primaire)
+    // 2. Contrôle de section strict (enseignantes / enseignants / primaire / maternelle)
     if (isDualMusicTeacher(trimmedUsername)) {
       if (section === 'garcons') {
-        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignante '${trimmedUsername}' n'appartient qu'aux sections Filles et Primaire & Maternelle.` });
+        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignante '${trimmedUsername}' n'appartient qu'aux sections Filles, Primaire et Maternelle.` });
       }
-      // Autorisé pour la Section Filles et la Section Primaire & Maternelle
+      // Autorisé pour la Section Filles, la Section Primaire et la Section Maternelle
     } else {
-      if (section === 'garcons' && (femaleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername))) {
+      if (section === 'garcons' && (femaleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername) || maternelleTeachers.includes(trimmedUsername))) {
         return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Garçons.` });
       }
-      if (section === 'filles' && (maleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername))) {
+      if (section === 'filles' && (maleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername) || maternelleTeachers.includes(trimmedUsername))) {
         return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Filles.` });
       }
-      if (section === 'primaire' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername))) {
-        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Primaire & Maternelle.` });
+      if (section === 'primaire' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername) || (maternelleTeachers.includes(trimmedUsername) && !primaireTeachers.includes(trimmedUsername)))) {
+        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Primaire.` });
+      }
+      if (section === 'maternelle' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername) || (primaireTeachers.includes(trimmedUsername) && !maternelleTeachers.includes(trimmedUsername)))) {
+        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Maternelle.` });
       }
     }
 
@@ -1319,7 +1336,7 @@ app.post('/api/login', async (req, res) => {
     const userDoc = await db.collection('users').findOne(
       isDual 
         ? {
-            section: { $in: ['filles', 'primaire'] },
+            section: { $in: ['filles', 'primaire', 'maternelle'] },
             $or: [
               { username: trimmedUsername },
               { tableTeacherName: trimmedUsername },
@@ -1389,7 +1406,7 @@ app.get('/api/admin/users', async (req, res) => {
     let users = await db.collection('users').find({ section: section }).toArray();
 
     // Assurer que la liste par défaut des enseignants est visible dans le panel pour configuration facile
-    const defaultList = section === 'filles' ? femaleTeachers : (section === 'primaire' ? primaireTeachers : maleTeachers);
+    const defaultList = section === 'filles' ? femaleTeachers : (section === 'maternelle' ? maternelleTeachers : (section === 'primaire' ? primaireTeachers : maleTeachers));
     const existingUserMap = new Map();
     users.forEach(u => existingUserMap.set(u.username, u));
 
@@ -1421,20 +1438,23 @@ app.get('/api/admin/users', async (req, res) => {
     // Ajouter les utilisateurs personnalisés ajoutés par l'admin qui ne sont pas dans defaultList
     for (const u of users) {
       if (!deletedUserIds.has(u._id) && !defaultList.includes(u.username)) {
-        if (section === 'garcons' && (femaleTeachers.includes(u.username) || primaireTeachers.includes(u.username) || isDualMusicTeacher(u.username))) continue;
-        if (section === 'filles' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || primaireTeachers.includes(u.username))) continue;
+        if (section === 'garcons' && (femaleTeachers.includes(u.username) || primaireTeachers.includes(u.username) || maternelleTeachers.includes(u.username) || isDualMusicTeacher(u.username))) continue;
+        if (section === 'filles' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || primaireTeachers.includes(u.username) || maternelleTeachers.includes(u.username))) continue;
         if (section === 'primaire' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || femaleTeachers.includes(u.username))) continue;
+        if (section === 'maternelle' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || femaleTeachers.includes(u.username))) continue;
         completeList.push(u);
       }
     }
 
     // Filtre de sécurité strict par section
     if (section === 'garcons') {
-      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()) && !isDualMusicTeacher(u.username));
+      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()) && !maternelleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !isDualMusicTeacher(u.username));
     } else if (section === 'filles') {
-      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase())));
+      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()) && !maternelleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase())));
     } else if (section === 'primaire') {
-      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase())));
+      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && (!maternelleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) || primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()))));
+    } else if (section === 'maternelle') {
+      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && (!primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()) || maternelleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()))));
     }
 
     res.status(200).json(completeList);
@@ -1937,7 +1957,7 @@ const defaultGirlsStudents = {
   ]
 };
 
-const defaultPrimaireStudents = {
+const defaultMaternelleStudents = {
   PS: [
     { name: "Adam K.", photo: "", birthday: "5/2023" },
     { name: "Lina M.", photo: "", birthday: "8/2023" },
@@ -1955,7 +1975,10 @@ const defaultPrimaireStudents = {
     { name: "Khadija F.", photo: "", birthday: "6/2021" },
     { name: "Sami D.", photo: "", birthday: "9/2021" },
     { name: "Rania N.", photo: "", birthday: "12/2021" }
-  ],
+  ]
+};
+
+const defaultPrimaireStudents = {
   PP1: [
     { name: "Anas C.", photo: "", birthday: "2/2020" },
     { name: "Salma K.", photo: "", birthday: "5/2020" },
@@ -2170,10 +2193,36 @@ async function harmonizeEvaluationsForSection(db, section = 'garcons') {
 setTimeout(async () => {
   try {
     const db = await connectToDatabase();
+    const matClasses = ['PS', 'MS', 'GS', 'ps', 'ms', 'gs'];
+    await db.collection('students').updateMany(
+      { section: 'primaire', class: { $in: matClasses } },
+      { $set: { section: 'maternelle', updatedAt: new Date() } }
+    );
+    await db.collection('evaluations').updateMany(
+      { section: 'primaire', class: { $in: matClasses } },
+      { $set: { section: 'maternelle' } }
+    );
+    await db.collection('daily_stars').updateMany(
+      { section: 'primaire', $or: [
+        { class: { $in: matClasses } },
+        { className: { $in: matClasses } }
+      ]},
+      { $set: { section: 'maternelle' } }
+    );
+    await db.collection('homework').updateMany(
+      { section: 'primaire', class: { $in: matClasses } },
+      { $set: { section: 'maternelle' } }
+    );
+    await db.collection('deleted_students').updateMany(
+      { section: 'primaire', class: { $in: matClasses } },
+      { $set: { section: 'maternelle' } }
+    );
+
     await Promise.all([
       harmonizeEvaluationsForSection(db, 'garcons'),
       harmonizeEvaluationsForSection(db, 'filles'),
-      harmonizeEvaluationsForSection(db, 'primaire')
+      harmonizeEvaluationsForSection(db, 'primaire'),
+      harmonizeEvaluationsForSection(db, 'maternelle')
     ]);
   } catch (e) {
     console.warn('Note harmonisation initiale:', e.message);
@@ -2191,7 +2240,10 @@ app.get('/api/admin/students', async (req, res) => {
       const lower = targetClass.toLowerCase();
       if (lower.includes('garçon') || lower.includes('garcon')) section = 'garcons';
       else if (lower.includes('fille')) section = 'filles';
-      else if (lower.includes('primaire') || ['ps','ms','gs','pp1','pp2','pp3','pp4','pp5'].includes(canonicalClass.toLowerCase())) {
+      else if (lower.includes('maternelle') || ['ps','ms','gs'].includes(canonicalClass.toLowerCase())) {
+        if (!['garcons', 'filles'].includes(section)) section = 'maternelle';
+      }
+      else if (lower.includes('primaire') || ['pp1','pp2','pp3','pp4','pp5'].includes(canonicalClass.toLowerCase())) {
         if (!['garcons', 'filles'].includes(section)) section = 'primaire';
       }
     }
@@ -2221,7 +2273,7 @@ app.get('/api/admin/students', async (req, res) => {
     const totalExisting = await db.collection('students').countDocuments({ section: section });
 
     if (!initCheck && totalExisting === 0) {
-      const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents);
+      const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'maternelle' ? defaultMaternelleStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents));
       for (const [cls, list] of Object.entries(seedDict)) {
         for (const s of list) {
           const cleanSName = (s.name || '').trim();
@@ -2477,7 +2529,7 @@ app.post('/api/admin/students/move', async (req, res) => {
 
     // 4. Si l'élève n'était pas encore en base mais dans les dictionnaires par défaut
     if (!student && targetName) {
-      const allDicts = [defaultBoysStudents, defaultGirlsStudents, defaultPrimaireStudents];
+      const allDicts = [defaultBoysStudents, defaultGirlsStudents, defaultPrimaireStudents, defaultMaternelleStudents];
       for (const dict of allDicts) {
         for (const [cls, list] of Object.entries(dict)) {
           const match = list.find(s => s.name.trim().toLowerCase() === targetName.toLowerCase());
@@ -2812,7 +2864,50 @@ app.get('/api/evaluations', async (req, res) => {
 
     const db = await connectToDatabase();
 
-    // 1. EXTRACTION AUTOMATIQUE DES DEVOIRS DEPUIS 'plans' DE LA SECTION
+    // 1. DÉTECTION DU VENDREDI OU SAMEDI -> AFFICHER LES DEVOIRS DU JEUDI PRÉCÉDENT
+    // Règle devoirs élèves pour toutes les sections :
+    // Du dimanche au jeudi, afficher le jour même.
+    // Le vendredi et samedi, afficher les devoirs du jeudi dernier (ils restent affichés vendredi et samedi).
+    let effectiveDateQuery = dateQuery;
+    let isWeekendRedirect = false;
+    const qDate = new Date(dateQuery + (dateQuery.length === 10 ? 'T00:00:00Z' : ''));
+    if (!isNaN(qDate.getTime())) {
+      const qDay = qDate.getUTCDay(); // 0=Dimanche, 1=Lundi, 2=Mardi, 3=Mercredi, 4=Jeudi, 5=Vendredi, 6=Samedi
+      if (qDay === 5) { // Vendredi -> Jeudi précédent (-1 jour)
+        const prevThu = new Date(qDate);
+        prevThu.setUTCDate(qDate.getUTCDate() - 1);
+        effectiveDateQuery = prevThu.toISOString().split('T')[0];
+        isWeekendRedirect = true;
+      } else if (qDay === 6) { // Samedi -> Jeudi précédent (-2 jours)
+        const prevThu = new Date(qDate);
+        prevThu.setUTCDate(qDate.getUTCDate() - 2);
+        effectiveDateQuery = prevThu.toISOString().split('T')[0];
+        isWeekendRedirect = true;
+      }
+    }
+
+    // Déterminer la semaine cible basée sur la date effective (qui est Jeudi en cas de week-end)
+    let targetWeekNumber = null;
+    if (week && !isNaN(parseInt(week, 10))) {
+      targetWeekNumber = parseInt(week, 10);
+    }
+    if (!targetWeekNumber && specificWeekDateRangesNode && typeof specificWeekDateRangesNode === 'object') {
+      for (const [wStr, dates] of Object.entries(specificWeekDateRangesNode)) {
+        if (dates.start && dates.end && effectiveDateQuery >= dates.start && effectiveDateQuery <= dates.end) {
+          targetWeekNumber = parseInt(wStr, 10);
+          break;
+        }
+      }
+    }
+
+    if (!targetWeekNumber) {
+      targetWeekNumber = getCurrentWeekNumber(new Date(effectiveDateQuery + 'T00:00:00Z'));
+    }
+
+    const targetWeekConfig = (specificWeekDateRangesNode && specificWeekDateRangesNode[targetWeekNumber]) || {};
+    const weekStartDate = targetWeekConfig.start ? new Date(targetWeekConfig.start + 'T00:00:00Z') : null;
+
+    // 2. EXTRACTION AUTOMATIQUE DES DEVOIRS DEPUIS 'plans' DE LA SECTION
     let planDocs = await db.collection('plans').find({
       $or: [
         { section: section },
@@ -2821,41 +2916,16 @@ app.get('/api/evaluations', async (req, res) => {
       ]
     }).toArray();
 
-    // Déterminer la semaine cible pour la date demandée
-    let targetWeekNumber = null;
-    if (specificWeekDateRangesNode && typeof specificWeekDateRangesNode === 'object') {
-      for (const [wStr, dates] of Object.entries(specificWeekDateRangesNode)) {
-        if (dates.start && dates.end && dateQuery >= dates.start && dateQuery <= dates.end) {
-          targetWeekNumber = parseInt(wStr, 10);
-          break;
-        }
-      }
-      if (!targetWeekNumber) {
-        // Si dateQuery tombe un vendredi ou samedi (week-end), rattacher à la semaine scolaire correspondante
-        const qDate = new Date(dateQuery + 'T00:00:00Z');
-        if (!isNaN(qDate.getTime())) {
-          const qDay = qDate.getUTCDay();
-          if (qDay === 5 || qDay === 6) {
-            const prevThu = new Date(qDate);
-            prevThu.setUTCDate(qDate.getUTCDate() - (qDay === 5 ? 1 : 2));
-            const prevThuStr = prevThu.toISOString().split('T')[0];
-            for (const [wStr, dates] of Object.entries(specificWeekDateRangesNode)) {
-              if (dates.start && dates.end && prevThuStr >= dates.start && prevThuStr <= dates.end) {
-                targetWeekNumber = parseInt(wStr, 10);
-                break;
-              }
-            }
-          }
-        }
-      }
+    // Si section maternelle sans plan propre, vérifier le plan primaire (classes PS, MS, GS)
+    if ((!planDocs || planDocs.length === 0) && section === 'maternelle') {
+      planDocs = await db.collection('plans').find({
+        $or: [
+          { section: 'primaire' },
+          { _id: /^primaire_/ },
+          { _id: 'primaire' }
+        ]
+      }).toArray();
     }
-
-    if (!targetWeekNumber) {
-      targetWeekNumber = getCurrentWeekNumber(new Date(dateQuery));
-    }
-
-    const targetWeekConfig = (specificWeekDateRangesNode && specificWeekDateRangesNode[targetWeekNumber]) || {};
-    const weekStartDate = targetWeekConfig.start ? new Date(targetWeekConfig.start + 'T00:00:00Z') : null;
 
     // Préparer la liste des 5 jours d'école (Dimanche à Jeudi) avec leurs dates précises
     const schoolDays = [
@@ -2883,25 +2953,6 @@ app.get('/api/evaluations', async (req, res) => {
     let targetPlanDoc = planDocs.find(doc => Number(doc.week) === Number(targetWeekNumber));
     if (!targetPlanDoc && planDocs.length > 0) {
       targetPlanDoc = planDocs[0];
-    }
-
-    // Détection du vendredi ou samedi -> afficher les devoirs du jeudi précédent
-    let effectiveDateQuery = dateQuery;
-    let isWeekendRedirect = false;
-    const qDate = new Date(dateQuery + 'T00:00:00Z');
-    if (!isNaN(qDate.getTime())) {
-      const qDay = qDate.getUTCDay(); // 0=Dimanche, 1=Lundi, 2=Mardi, 3=Mercredi, 4=Jeudi, 5=Vendredi, 6=Samedi
-      if (qDay === 5) { // Vendredi -> Jeudi précédent (-1 jour)
-        const prevThu = new Date(qDate);
-        prevThu.setUTCDate(qDate.getUTCDate() - 1);
-        effectiveDateQuery = prevThu.toISOString().split('T')[0];
-        isWeekendRedirect = true;
-      } else if (qDay === 6) { // Samedi -> Jeudi précédent (-2 jours)
-        const prevThu = new Date(qDate);
-        prevThu.setUTCDate(qDate.getUTCDate() - 2);
-        effectiveDateQuery = prevThu.toISOString().split('T')[0];
-        isWeekendRedirect = true;
-      }
     }
 
     const dayNameFr = isWeekendRedirect ? "Jeudi" : getDayNameFr(effectiveDateQuery);
@@ -2936,6 +2987,8 @@ app.get('/api/evaluations', async (req, res) => {
           const rowTravaux = row[findKey(row, 'Travaux de classe')];
 
           if (rowClass && rowDevoirs && String(rowDevoirs).trim() !== '') {
+            if (section === 'maternelle' && typeof isMaternelleClassServer === 'function' && !isMaternelleClassServer(rowClass)) return;
+            if (section === 'primaire' && typeof isMaternelleClassServer === 'function' && isMaternelleClassServer(rowClass)) return;
             const rNorm = normClass(rowClass);
             const classMatch = (rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm));
 
@@ -4056,7 +4109,7 @@ app.post('/api/admin/toggle-plan-publication', async (req, res) => {
     }
     const db = await connectToDatabase();
     const isPub = Boolean(published);
-    const sectionsToUpdate = (section === 'all') ? ['garcons', 'filles', 'primaire', 'all'] : [section];
+    const sectionsToUpdate = (section === 'all') ? ['garcons', 'filles', 'primaire', 'maternelle', 'all'] : [section];
 
     for (const secKey of sectionsToUpdate) {
       const docId = `${secKey}_${weekNumber}`;
@@ -4263,6 +4316,17 @@ app.get('/api/plans/:week', async (req, res) => {
         { week: String(weekNumber), section: section }
       ]
     });
+
+    if (!planDocument && section === 'maternelle') {
+      planDocument = await db.collection('plans').findOne({
+        $or: [
+          { _id: `primaire_${weekNumber}` },
+          { _id: `primaire_${String(weekNumber)}` },
+          { week: weekNumber, section: 'primaire' },
+          { week: String(weekNumber), section: 'primaire' }
+        ]
+      });
+    }
     
     if (planDocument) {
       const lessonPlans = await db.collection('lessonPlans')
@@ -4280,23 +4344,36 @@ app.get('/api/plans/:week', async (req, res) => {
       console.log(`📋 Plans disponibles pour S${weekNumber} (${section}):`, Array.from(availableLessonPlanIds));
       
       let rawData = planDocument.data || [];
-      // Filtrage strict par section pour garantir qu'aucun enseignant de la mauvaise section ne figure dans le plan
+      // Filtrage strict par section pour garantir qu'aucun enseignant ou classe d'une autre section ne figure dans le plan
       if (section === 'garcons') {
         rawData = rawData.filter(row => {
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
           if (isDualMusicTeacher(enseignant)) return true;
           return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase()) &&
-                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase());
+                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
+                 !maternelleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
         });
       } else if (section === 'filles') {
         rawData = rawData.filter(row => {
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
           if (isDualMusicTeacher(enseignant)) return true;
           return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
-                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase());
+                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
+                 !maternelleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
         });
       } else if (section === 'primaire') {
         rawData = rawData.filter(row => {
+          const cls = (row[findKey(row, 'Classe')] || '').trim().toUpperCase();
+          if (['PS', 'MS', 'GS'].includes(cls) || isMaternelleClassServer(cls)) return false;
+          const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
+          if (isDualMusicTeacher(enseignant)) return true;
+          return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
+                 !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
+        });
+      } else if (section === 'maternelle') {
+        rawData = rawData.filter(row => {
+          const cls = (row[findKey(row, 'Classe')] || '').trim().toUpperCase();
+          if (cls && !['PS', 'MS', 'GS'].includes(cls) && !isMaternelleClassServer(cls)) return false;
           const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
           if (isDualMusicTeacher(enseignant)) return true;
           return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
@@ -4395,7 +4472,7 @@ app.post('/api/save-plan', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const data = req.body.data;
   const rawSection = String(req.body.section || 'garcons').toLowerCase().trim();
-  const section = ['garcons', 'filles', 'primaire'].includes(rawSection) ? rawSection : 'garcons';
+  const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSection) ? rawSection : 'garcons';
   if (isNaN(weekNumber) || !Array.isArray(data)) return res.status(400).json({ message: 'Données invalides.' });
   try {
     const db = await connectToDatabase();
@@ -4453,7 +4530,7 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
   try {
     const { weeks, data, section: rawSection = 'garcons' } = req.body;
     const cleanSection = String(rawSection || 'garcons').toLowerCase().trim();
-    const section = ['garcons', 'filles', 'primaire'].includes(cleanSection) ? cleanSection : 'garcons';
+    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(cleanSection) ? cleanSection : 'garcons';
 
     if (!Array.isArray(weeks) || weeks.length === 0 || !Array.isArray(data) || data.length === 0) {
       return res.status(400).json({ message: 'Données ou liste de semaines invalides.' });
@@ -4924,7 +5001,22 @@ app.get('/api/all-classes', async (req, res) => {
   try {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
-    const classes = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
+    let classes = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
+    
+    if (section === 'maternelle') {
+      const defMat = ['PS', 'MS', 'GS'];
+      const set = new Set([...defMat, ...(classes || []).filter(c => isMaternelleClassServer(c))]);
+      return res.status(200).json(Array.from(set));
+    } else if (section === 'primaire') {
+      const defPrim = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+      const set = new Set([...defPrim, ...(classes || []).filter(c => !isMaternelleClassServer(c))]);
+      return res.status(200).json(Array.from(set));
+    } else if (section === 'garcons' || section === 'filles') {
+      const defSec = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+      const set = new Set([...defSec, ...(classes || []).filter(c => !isMaternelleClassServer(c) && !['PP1','PP2','PP3','PP4','PP5'].includes(c.toUpperCase()))]);
+      return res.status(200).json(Array.from(set));
+    }
+    
     res.status(200).json((classes || []).sort());
   } catch (error) {
     console.error('Erreur MongoDB /api/all-classes:', error);
@@ -5292,7 +5384,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
 app.post('/api/generate-word', async (req, res) => {
   try {
     const { week, classe, data, notes, section: rawSection = 'garcons' } = req.body;
-    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
+    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
     const weekNumber = Number(week);
     if (!Number.isInteger(weekNumber) || !classe || !Array.isArray(data)) {
       return res.status(400).json({ message: 'Données invalides.' });
@@ -5428,7 +5520,7 @@ app.post('/api/generate-word', async (req, res) => {
 	app.post('/api/generate-weekly-plans-zip', async (req, res) => {
 	  try {
 	    const { week, classes, data, notes, section: rawSection = 'garcons' } = req.body;
-	    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
+	    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
 	    const weekNumber = Number(week);
 	    if (!Number.isInteger(weekNumber) || !Array.isArray(classes) || !Array.isArray(data)) {
 	      return res.status(400).json({ message: 'Données invalides (semaine, classes ou data manquantes).' });
@@ -5583,7 +5675,7 @@ app.post('/api/generate-word', async (req, res) => {
 	app.post('/api/generate-design-plan', async (req, res) => {
 	  try {
 	    const { week, classe, data, notes, section: rawSection = 'garcons', theme = 'indigo', showPhotos = true, download = false, isParent = false } = req.body;
-	    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
+	    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
 	    const weekNumber = Number(week);
 	    if (!Number.isInteger(weekNumber) || !classe) {
 	      return res.status(400).json({ message: 'Numéro de semaine et classe obligatoires pour la génération du plan hebdomadaire.' });
@@ -5841,7 +5933,7 @@ app.post('/api/generate-word', async (req, res) => {
 	    const weekNumber = Number(req.params.week);
 	    const classe = req.params.classe;
 	    const rawSection = String(req.query.section || 'garcons').toLowerCase().trim();
-	    const section = ['garcons', 'filles', 'primaire'].includes(rawSection) ? rawSection : 'garcons';
+	    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSection) ? rawSection : 'garcons';
 	    if (!Number.isInteger(weekNumber) || !classe) {
 	      return res.status(400).json({ message: 'Semaine ou classe invalide.' });
 	    }
@@ -6544,7 +6636,7 @@ ${jsonStructure}`;
     console.log(`📄 [AI Lesson Plan] Fichier produit: ${filename} (via ${providerUsed})`);
 
     const rawSection = req.body.section || rowData._section || 'garcons';
-    const section = ['garcons', 'filles', 'primaire'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
+    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
     const lessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_');
 
     docxBufferToSend = buf;
@@ -6802,6 +6894,7 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
           allPossibleIds.push(`garcons_${weekNumber}_${ens}_${cls}_${mat}_${per}_${jr}`.replace(/\s+/g, '_'));
           allPossibleIds.push(`filles_${weekNumber}_${ens}_${cls}_${mat}_${per}_${jr}`.replace(/\s+/g, '_'));
           allPossibleIds.push(`primaire_${weekNumber}_${ens}_${cls}_${mat}_${per}_${jr}`.replace(/\s+/g, '_'));
+          allPossibleIds.push(`maternelle_${weekNumber}_${ens}_${cls}_${mat}_${per}_${jr}`.replace(/\s+/g, '_'));
         });
 
         const existingPlans = await db.collection('lessonPlans').find({
@@ -6874,7 +6967,8 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
           `${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
           `garcons_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
           `filles_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
-          `primaire_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_')
+          `primaire_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_'),
+          `maternelle_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_')
         ].filter(Boolean);
 
         let cachedPlan = null;
@@ -7164,7 +7258,7 @@ app.get('/api/download-lesson-plan/:lessonPlanId', async (req, res) => {
     let lessonPlan = await db.collection('lessonPlans').findOne({ _id: lessonPlanId });
     if (!lessonPlan) {
       // Recherche souple si l'ID a ou non le préfixe de section
-      const strippedId = lessonPlanId.replace(/^(garcons|filles|primaire)_/, '');
+      const strippedId = lessonPlanId.replace(/^(garcons|filles|primaire|maternelle)_/, '');
       lessonPlan = await db.collection('lessonPlans').findOne({
         $or: [
           { _id: strippedId },
