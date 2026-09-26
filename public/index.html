@@ -728,14 +728,52 @@
              <!-- ONGLET 3 : CALENDRIER SCOLAIRE ET 38 SEMAINES -->
              <div id="adminTab_calendar" class="admin-tab-content" style="display:none; width:100%;">
                  <div class="admin-card-inner">
-                     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
-                         <h4 style="margin:0;"><i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Configuration des Semaines & Dates Scolaires (1 à 38)</h4>
-                         <button type="button" class="pro-button danger-button" onclick="adminResetWeeksToDefault()" style="padding:6px 12px; font-size:0.82rem; background:#EF4444;">
-                             <i class="fas fa-undo"></i> Rétablir Calendrier Officiel 2026/2027
-                         </button>
+                     <!-- Barre de sélection de la section indépendante -->
+                     <div style="background:#EFF6FF; border:1.5px solid #BFDBFE; border-radius:12px; padding:12px 16px; margin-bottom:16px;">
+                         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                             <div>
+                                 <span style="font-size:0.9rem; font-weight:800; color:#1E3A8A; display:flex; align-items:center; gap:6px;">
+                                     <i class="fas fa-layer-group" style="color:#2563EB;"></i> Section Scolaire à Configurer (Indépendante) :
+                                 </span>
+                                 <span style="font-size:0.8rem; color:#475569;">
+                                     Chaque section possède son propre calendrier de 38 semaines avec ses propres dates et intitulés indépendants.
+                                 </span>
+                             </div>
+                             <div style="display:flex; gap:6px; flex-wrap:wrap;" id="adminCalendarSectionButtonsGroup">
+                                 <button type="button" id="adminCalSecBtn_garcons" class="pro-button admin-cal-sec-btn active" onclick="switchAdminCalendarSection('garcons')" style="padding:7px 14px; font-size:0.84rem; border-radius:8px; font-weight:700; background:#2563EB; color:white; border:none; cursor:pointer;">
+                                     👦 Section Garçons
+                                 </button>
+                                 <button type="button" id="adminCalSecBtn_filles" class="pro-button admin-cal-sec-btn" onclick="switchAdminCalendarSection('filles')" style="padding:7px 14px; font-size:0.84rem; border-radius:8px; font-weight:700; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; cursor:pointer;">
+                                     👧 Section Filles
+                                 </button>
+                                 <button type="button" id="adminCalSecBtn_primaire" class="pro-button admin-cal-sec-btn" onclick="switchAdminCalendarSection('primaire')" style="padding:7px 14px; font-size:0.84rem; border-radius:8px; font-weight:700; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; cursor:pointer;">
+                                     🎒 Section Primaire
+                                 </button>
+                                 <button type="button" id="adminCalSecBtn_maternelle" class="pro-button admin-cal-sec-btn" onclick="switchAdminCalendarSection('maternelle')" style="padding:7px 14px; font-size:0.84rem; border-radius:8px; font-weight:700; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; cursor:pointer;">
+                                     🧸 Section Maternelle
+                                 </button>
+                             </div>
+                         </div>
+                     </div>
+
+                     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                             <h4 style="margin:0;"><i class="fas fa-calendar-alt" style="color:#2563EB;"></i> Configuration des Semaines & Dates Scolaires (1 à 38)</h4>
+                             <span id="adminCalActiveSectionBadge" class="badge-section-pill badge-section-garcons" style="font-size:0.82rem; padding:3px 10px;">
+                                 👦 Section Garçons
+                             </span>
+                         </div>
+                         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                             <button type="button" class="pro-button" onclick="adminCopyCalendarPrompt()" style="padding:6px 12px; font-size:0.82rem; background:#4F46E5; color:white;" title="Copier le calendrier d'une autre section">
+                                 <i class="fas fa-copy"></i> Copier d'une autre section
+                             </button>
+                             <button type="button" class="pro-button danger-button" onclick="adminResetWeeksToDefault()" style="padding:6px 12px; font-size:0.82rem; background:#EF4444;">
+                                 <i class="fas fa-undo"></i> Rétablir Calendrier Officiel 2026/2027
+                             </button>
+                         </div>
                      </div>
                      <p class="admin-subtext">
-                         Personnalisez le titre (Français et Arabe) ainsi que la plage de dates (du ... au ...) pour chaque semaine scolaire.
+                         Personnalisez le titre (Français et Arabe) ainsi que la plage de dates (du ... au ...) pour chaque semaine de cette section.
                      </p>
 
                      <!-- Formulaire de modification rapide -->
@@ -769,15 +807,27 @@
                                  </button>
                              </div>
                          </div>
-                         <div id="adminWeekConfigStatus" style="font-size:0.9rem; margin-top:10px; font-weight:600;"></div>
+                         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-top:10px;">
+                             <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; font-weight:600; color:#475569; cursor:pointer;">
+                                 <input type="checkbox" id="adminWeekApplyAllSectionsCheckbox" style="cursor:pointer;">
+                                 <span>Appliquer également cette modification à toutes les sections</span>
+                             </label>
+                             <div id="adminWeekConfigStatus" style="font-size:0.9rem; font-weight:600;"></div>
+                         </div>
                      </div>
 
                      <!-- Tableau récapitulatif des 38 semaines -->
                      <div style="margin-top:10px;">
-                         <div style="font-weight:700; font-size:0.9rem; color:#1E293B; margin-bottom:8px;">
-                             <i class="fas fa-table" style="color:#6366F1;"></i> Calendrier complet de l'année scolaire :
+                         <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                             <div style="font-weight:700; font-size:0.9rem; color:#1E293B; display:flex; align-items:center; gap:6px;">
+                                 <i class="fas fa-table" style="color:#6366F1;"></i> Calendrier complet des 38 semaines pour :
+                                 <span id="adminCalTableSectionName" style="color:#2563EB; font-weight:800;">Section Garçons</span>
+                             </div>
+                             <span style="font-size:0.78rem; color:#64748B;">
+                                 Cliquez sur « Modifier » pour charger instantanément une semaine dans le formulaire.
+                             </span>
                          </div>
-                         <div id="weeksTableContainer" class="users-table-wrapper" style="max-height:300px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:10px;">
+                         <div id="weeksTableContainer" class="users-table-wrapper" style="max-height:350px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:10px;">
                              <p style="text-align:center; padding:15px; color:#64748B;"><i class="fas fa-spinner fa-spin"></i> Chargement des semaines...</p>
                          </div>
                      </div>

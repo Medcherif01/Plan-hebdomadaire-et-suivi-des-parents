@@ -456,6 +456,28 @@ for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
   specificWeekDateRangesNode[wNum] = { start: wData.start, end: wData.end };
 }
 
+const SCHOOL_SECTIONS = ['garcons', 'filles', 'primaire', 'maternelle'];
+const sectionSpecificWeekDateRangesNode = {
+  garcons: {},
+  filles: {},
+  primaire: {},
+  maternelle: {}
+};
+for (const sec of SCHOOL_SECTIONS) {
+  for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
+    sectionSpecificWeekDateRangesNode[sec][wNum] = { start: wData.start, end: wData.end };
+  }
+}
+
+function getSectionWeekDates(section, weekNumber) {
+  const normSec = String(section || '').toLowerCase().trim();
+  const secDates = sectionSpecificWeekDateRangesNode[normSec];
+  if (secDates && secDates[weekNumber]) {
+    return secDates[weekNumber];
+  }
+  return specificWeekDateRangesNode[weekNumber] || { start: '', end: '', title: `Semaine ${weekNumber}`, titleAr: `الأسبوع ${weekNumber}` };
+}
+
 const validUsers = {
   // Garçons
   "Mohamed": "Mohamed", "Abas": "Abas", "Jaber": "Jaber", "Imad": "Imad", "Kamel": "Kamel",
@@ -1657,119 +1679,289 @@ app.post('/api/my-teacher-photo', async (req, res) => {
 async function loadWeeksConfigurationFromDb(db) {
   try {
     const configDoc = await db.collection('settings').findOne({ _id: 'weeks_configuration' });
-    const mergedConfig = {};
-    for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
-      mergedConfig[wNum] = { ...wData };
+    const sectionsConfig = {};
+    for (const sec of SCHOOL_SECTIONS) {
+      sectionsConfig[sec] = {};
+      for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
+        sectionsConfig[sec][wNum] = { ...wData };
+      }
     }
-    if (configDoc && configDoc.weeks) {
-      for (const [wNum, wData] of Object.entries(configDoc.weeks)) {
-        if (wData) {
-          mergedConfig[wNum] = {
-            title: wData.title || defaultWeeksConfig[wNum]?.title || `Semaine ${wNum}`,
-            titleAr: wData.titleAr || defaultWeeksConfig[wNum]?.titleAr || `الأسبوع ${wNum}`,
-            start: wData.start || defaultWeeksConfig[wNum]?.start || '',
-            end: wData.end || defaultWeeksConfig[wNum]?.end || ''
-          };
+
+    if (configDoc) {
+      if (configDoc.sections && typeof configDoc.sections === 'object') {
+        for (const sec of SCHOOL_SECTIONS) {
+          const secDoc = configDoc.sections[sec];
+          if (secDoc && typeof secDoc === 'object') {
+            for (const [wNum, wData] of Object.entries(secDoc)) {
+              if (wData && sectionsConfig[sec][wNum]) {
+                sectionsConfig[sec][wNum] = {
+                  title: wData.title !== undefined ? String(wData.title).trim() : (defaultWeeksConfig[wNum]?.title || `Semaine ${wNum}`),
+                  titleAr: wData.titleAr !== undefined ? String(wData.titleAr).trim() : (defaultWeeksConfig[wNum]?.titleAr || `الأسبوع ${wNum}`),
+                  start: wData.start !== undefined ? String(wData.start).trim() : (defaultWeeksConfig[wNum]?.start || ''),
+                  end: wData.end !== undefined ? String(wData.end).trim() : (defaultWeeksConfig[wNum]?.end || '')
+                };
+              }
+            }
+          }
+        }
+      } else if (configDoc.weeks && typeof configDoc.weeks === 'object') {
+        // Rétrocompatibilité avec l'ancien format global mono-section
+        for (const sec of SCHOOL_SECTIONS) {
+          for (const [wNum, wData] of Object.entries(configDoc.weeks)) {
+            if (wData && sectionsConfig[sec][wNum]) {
+              sectionsConfig[sec][wNum] = {
+                title: wData.title !== undefined ? String(wData.title).trim() : (defaultWeeksConfig[wNum]?.title || `Semaine ${wNum}`),
+                titleAr: wData.titleAr !== undefined ? String(wData.titleAr).trim() : (defaultWeeksConfig[wNum]?.titleAr || `الأسبوع ${wNum}`),
+                start: wData.start !== undefined ? String(wData.start).trim() : (defaultWeeksConfig[wNum]?.start || ''),
+                end: wData.end !== undefined ? String(wData.end).trim() : (defaultWeeksConfig[wNum]?.end || '')
+              };
+            }
+          }
         }
       }
     }
-    // Synchroniser en mémoire specificWeekDateRangesNode
-    for (const [wNum, wData] of Object.entries(mergedConfig)) {
+
+    // Synchroniser en mémoire les plages de dates par section et globales
+    for (const sec of SCHOOL_SECTIONS) {
+      sectionSpecificWeekDateRangesNode[sec] = sectionSpecificWeekDateRangesNode[sec] || {};
+      for (const [wNum, wData] of Object.entries(sectionsConfig[sec])) {
+        sectionSpecificWeekDateRangesNode[sec][wNum] = { start: wData.start, end: wData.end };
+      }
+    }
+    for (const [wNum, wData] of Object.entries(sectionsConfig.garcons)) {
       specificWeekDateRangesNode[wNum] = { start: wData.start, end: wData.end };
     }
-    return mergedConfig;
+
+    return {
+      sections: sectionsConfig,
+      weeks: sectionsConfig.garcons
+    };
   } catch (err) {
     console.error('Erreur chargement weeks_configuration:', err);
-    return defaultWeeksConfig;
+    const fallbackSections = {};
+    for (const sec of SCHOOL_SECTIONS) {
+      fallbackSections[sec] = JSON.parse(JSON.stringify(defaultWeeksConfig));
+    }
+    return { sections: fallbackSections, weeks: defaultWeeksConfig };
   }
 }
 
 app.get(['/api/weeks-config', '/api/admin/weeks-config'], async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const weeksConfig = await loadWeeksConfigurationFromDb(db);
-    res.status(200).json({ success: true, weeks: weeksConfig, defaultWeeks: defaultWeeksConfig });
+    const { sections, weeks } = await loadWeeksConfigurationFromDb(db);
+    const requestedSection = String(req.query.section || '').toLowerCase().trim();
+    const activeSection = SCHOOL_SECTIONS.includes(requestedSection) ? requestedSection : 'garcons';
+    const sectionWeeks = (sections && sections[activeSection]) ? sections[activeSection] : (weeks || defaultWeeksConfig);
+
+    res.status(200).json({
+      success: true,
+      section: activeSection,
+      weeks: sectionWeeks,
+      sections: sections,
+      defaultWeeks: defaultWeeksConfig
+    });
   } catch (error) {
     console.error('Erreur GET /api/weeks-config:', error);
-    res.status(200).json({ success: true, weeks: defaultWeeksConfig, defaultWeeks: defaultWeeksConfig });
+    const fallbackSections = {};
+    for (const sec of SCHOOL_SECTIONS) {
+      fallbackSections[sec] = JSON.parse(JSON.stringify(defaultWeeksConfig));
+    }
+    res.status(200).json({
+      success: true,
+      section: 'garcons',
+      weeks: defaultWeeksConfig,
+      sections: fallbackSections,
+      defaultWeeks: defaultWeeksConfig
+    });
   }
 });
 
 app.post(['/api/admin/weeks-config', '/api/weeks-config'], async (req, res) => {
   try {
     const db = await connectToDatabase();
-    const { week, title, titleAr, start, end, weeks, resetToDefault } = req.body;
+    const {
+      section: rawSection,
+      week,
+      title,
+      titleAr,
+      start,
+      end,
+      weeks,
+      resetToDefault,
+      applyToAllSections,
+      copyFromSection
+    } = req.body;
 
+    const { sections: currentSections } = await loadWeeksConfigurationFromDb(db);
+    let targetSection = String(rawSection || 'garcons').toLowerCase().trim();
+    if (targetSection !== 'all' && !SCHOOL_SECTIONS.includes(targetSection)) {
+      targetSection = 'garcons';
+    }
+
+    // 1. Réinitialisation par défaut
     if (resetToDefault) {
-      await db.collection('settings').updateOne(
-        { _id: 'weeks_configuration' },
-        { $set: { _id: 'weeks_configuration', weeks: defaultWeeksConfig, updatedAt: new Date() } },
-        { upsert: true }
-      );
+      const sectionsToReset = (targetSection === 'all' || applyToAllSections) ? SCHOOL_SECTIONS : [targetSection];
+      for (const s of sectionsToReset) {
+        currentSections[s] = JSON.parse(JSON.stringify(defaultWeeksConfig));
+        for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
+          sectionSpecificWeekDateRangesNode[s][wNum] = { start: wData.start, end: wData.end };
+        }
+      }
       for (const [wNum, wData] of Object.entries(defaultWeeksConfig)) {
         specificWeekDateRangesNode[wNum] = { start: wData.start, end: wData.end };
       }
-      return res.status(200).json({
-        success: true,
-        message: 'Calendrier scolaire réinitialisé aux dates officielles 2026/2027.',
-        weeks: defaultWeeksConfig
-      });
-    }
 
-    const currentConfig = await loadWeeksConfigurationFromDb(db);
-
-    if (weeks && typeof weeks === 'object') {
-      // Mise à jour multiple
-      for (const [wNum, wData] of Object.entries(weeks)) {
-        if (currentConfig[wNum]) {
-          currentConfig[wNum] = {
-            title: wData.title !== undefined ? String(wData.title).trim() : currentConfig[wNum].title,
-            titleAr: wData.titleAr !== undefined ? String(wData.titleAr).trim() : currentConfig[wNum].titleAr,
-            start: wData.start !== undefined ? String(wData.start).trim() : currentConfig[wNum].start,
-            end: wData.end !== undefined ? String(wData.end).trim() : currentConfig[wNum].end
-          };
-          specificWeekDateRangesNode[wNum] = { start: currentConfig[wNum].start, end: currentConfig[wNum].end };
-        }
-      }
       await db.collection('settings').updateOne(
         { _id: 'weeks_configuration' },
-        { $set: { _id: 'weeks_configuration', weeks: currentConfig, updatedAt: new Date() } },
+        {
+          $set: {
+            _id: 'weeks_configuration',
+            sections: currentSections,
+            weeks: currentSections.garcons,
+            updatedAt: new Date()
+          }
+        },
         { upsert: true }
       );
+
+      const respSection = targetSection === 'all' ? 'garcons' : targetSection;
       return res.status(200).json({
         success: true,
-        message: 'Toutes les semaines ont été mises à jour avec succès.',
-        weeks: currentConfig
+        message: targetSection === 'all' || applyToAllSections
+          ? 'Toutes les sections ont été réinitialisées aux dates officielles 2026/2027.'
+          : `La section ${targetSection} a été réinitialisée aux dates officielles 2026/2027.`,
+        section: respSection,
+        weeks: currentSections[respSection],
+        sections: currentSections
       });
     }
 
-    if (week) {
+    // 2. Copier le calendrier depuis une autre section
+    if (copyFromSection) {
+      const srcSec = String(copyFromSection).toLowerCase().trim();
+      if (SCHOOL_SECTIONS.includes(srcSec) && currentSections[srcSec]) {
+        currentSections[targetSection] = JSON.parse(JSON.stringify(currentSections[srcSec]));
+        for (const [wNum, wData] of Object.entries(currentSections[targetSection])) {
+          sectionSpecificWeekDateRangesNode[targetSection][wNum] = { start: wData.start, end: wData.end };
+        }
+
+        await db.collection('settings').updateOne(
+          { _id: 'weeks_configuration' },
+          {
+            $set: {
+              _id: 'weeks_configuration',
+              sections: currentSections,
+              weeks: currentSections.garcons,
+              updatedAt: new Date()
+            }
+          },
+          { upsert: true }
+        );
+
+        return res.status(200).json({
+          success: true,
+          message: `Le calendrier de la section ${srcSec} a été copié vers la section ${targetSection} avec succès.`,
+          section: targetSection,
+          weeks: currentSections[targetSection],
+          sections: currentSections
+        });
+      }
+    }
+
+    // 3. Mise à jour multiple (objet `weeks`)
+    if (weeks && typeof weeks === 'object') {
+      const targetSecs = (targetSection === 'all' || applyToAllSections) ? SCHOOL_SECTIONS : [targetSection];
+      for (const s of targetSecs) {
+        for (const [wNum, wData] of Object.entries(weeks)) {
+          if (currentSections[s] && currentSections[s][wNum]) {
+            currentSections[s][wNum] = {
+              title: wData.title !== undefined ? String(wData.title).trim() : currentSections[s][wNum].title,
+              titleAr: wData.titleAr !== undefined ? String(wData.titleAr).trim() : currentSections[s][wNum].titleAr,
+              start: wData.start !== undefined ? String(wData.start).trim() : currentSections[s][wNum].start,
+              end: wData.end !== undefined ? String(wData.end).trim() : currentSections[s][wNum].end
+            };
+            sectionSpecificWeekDateRangesNode[s][wNum] = {
+              start: currentSections[s][wNum].start,
+              end: currentSections[s][wNum].end
+            };
+          }
+        }
+      }
+
+      await db.collection('settings').updateOne(
+        { _id: 'weeks_configuration' },
+        {
+          $set: {
+            _id: 'weeks_configuration',
+            sections: currentSections,
+            weeks: currentSections.garcons,
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+
+      const respSection = targetSection === 'all' ? 'garcons' : targetSection;
+      return res.status(200).json({
+        success: true,
+        message: `Toutes les semaines ont été mises à jour avec succès pour la section ${targetSection}.`,
+        section: respSection,
+        weeks: currentSections[respSection],
+        sections: currentSections
+      });
+    }
+
+    // 4. Mise à jour d'une seule semaine (week, title, titleAr, start, end)
+    if (week !== undefined && week !== null) {
       const wNum = parseInt(week, 10);
       if (isNaN(wNum) || wNum < 1 || wNum > 52) {
         return res.status(400).json({ message: 'Numéro de semaine invalide.' });
       }
 
-      currentConfig[wNum] = {
-        title: title !== undefined ? String(title).trim() : (currentConfig[wNum]?.title || `Semaine ${wNum}`),
-        titleAr: titleAr !== undefined ? String(titleAr).trim() : (currentConfig[wNum]?.titleAr || `الأسبوع ${wNum}`),
-        start: start !== undefined ? String(start).trim() : (currentConfig[wNum]?.start || ''),
-        end: end !== undefined ? String(end).trim() : (currentConfig[wNum]?.end || '')
-      };
+      const targetSecs = (targetSection === 'all' || applyToAllSections) ? SCHOOL_SECTIONS : [targetSection];
+      for (const s of targetSecs) {
+        if (!currentSections[s]) currentSections[s] = JSON.parse(JSON.stringify(defaultWeeksConfig));
+        currentSections[s][wNum] = {
+          title: title !== undefined ? String(title).trim() : (currentSections[s][wNum]?.title || `Semaine ${wNum}`),
+          titleAr: titleAr !== undefined ? String(titleAr).trim() : (currentSections[s][wNum]?.titleAr || `الأسبوع ${wNum}`),
+          start: start !== undefined ? String(start).trim() : (currentSections[s][wNum]?.start || ''),
+          end: end !== undefined ? String(end).trim() : (currentSections[s][wNum]?.end || '')
+        };
+        sectionSpecificWeekDateRangesNode[s][wNum] = {
+          start: currentSections[s][wNum].start,
+          end: currentSections[s][wNum].end
+        };
+      }
 
-      specificWeekDateRangesNode[wNum] = { start: currentConfig[wNum].start, end: currentConfig[wNum].end };
+      // Synchroniser le fallback global
+      specificWeekDateRangesNode[wNum] = {
+        start: currentSections.garcons[wNum].start,
+        end: currentSections.garcons[wNum].end
+      };
 
       await db.collection('settings').updateOne(
         { _id: 'weeks_configuration' },
-        { $set: { _id: 'weeks_configuration', weeks: currentConfig, updatedAt: new Date() } },
+        {
+          $set: {
+            _id: 'weeks_configuration',
+            sections: currentSections,
+            weeks: currentSections.garcons,
+            updatedAt: new Date()
+          }
+        },
         { upsert: true }
       );
 
+      const respSection = targetSection === 'all' ? 'garcons' : targetSection;
       return res.status(200).json({
         success: true,
-        message: `Configuration de la semaine ${wNum} mise à jour avec succès.`,
+        message: `Configuration de la semaine ${wNum} mise à jour avec succès pour la section ${targetSection}.`,
+        section: respSection,
         week: wNum,
-        weekData: currentConfig[wNum],
-        weeks: currentConfig
+        weekData: currentSections[respSection][wNum],
+        weeks: currentSections[respSection],
+        sections: currentSections
       });
     }
 
@@ -5406,7 +5598,7 @@ app.post('/api/generate-word', async (req, res) => {
 
     const groupedByDay = {};
     const dayOrder = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
-    const datesNode = specificWeekDateRangesNode[weekNumber];
+    const datesNode = getSectionWeekDates(section, weekNumber);
     let weekStartDateNode = null;
     if (datesNode?.start) {
       weekStartDateNode = new Date(datesNode.start + 'T00:00:00Z');
@@ -5535,7 +5727,7 @@ app.post('/api/generate-word', async (req, res) => {
 	    archive.pipe(res);
 
 	    const dayOrder = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
-	    const datesNode = specificWeekDateRangesNode[weekNumber];
+	    const datesNode = getSectionWeekDates(section, weekNumber);
 	    let weekStartDateNode = null;
 	    if (datesNode?.start) {
 	      weekStartDateNode = new Date(datesNode.start + 'T00:00:00Z');
@@ -5845,7 +6037,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      if (u.tableTeacherName && u.photoUrl && !teachersPhotos[u.tableTeacherName]) teachersPhotos[u.tableTeacherName] = u.photoUrl;
 	    });
 
-	    const datesNode = specificWeekDateRangesNode[weekNumber];
+	    const datesNode = getSectionWeekDates(section, weekNumber);
 	    let weekStartDateNode = null;
 	    let plageSemaineText = '';
 	    if (datesNode?.start) {
@@ -6511,7 +6703,7 @@ app.post('/api/generate-ai-lesson-plan', async (req, res) => {
 
     // Date formatée
     let formattedDate = "";
-    const datesNode = specificWeekDateRangesNode[weekNumber];
+    const datesNode = getSectionWeekDates(req.body.section || rowData._section, weekNumber);
     if (jour && datesNode?.start) {
       const weekStartDateNode = new Date(datesNode.start + 'T00:00:00Z');
       if (!isNaN(weekStartDateNode.getTime())) {
@@ -6872,7 +7064,7 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${cleanAsciiFilename}"; filename*=UTF-8''${encodeURIComponent(zipFilename)}"`);
     archive.pipe(res);
 
-    const datesNode = specificWeekDateRangesNode[weekNumber];
+    const datesNode = getSectionWeekDates(req.body.section, weekNumber);
 
     let successCount = 0;
     let errorCount = 0;
@@ -8065,8 +8257,8 @@ app.use((err, req, res, next) => {
   }
 });
 
-// Configuration Port et Host
-const PORT = process.env.PORT || 3000;
+// Configuration Port et Host — Port 3000 requis pour l'environnement AI Studio
+const PORT = 3000;
 const HOST = '0.0.0.0';
 
 // Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel
