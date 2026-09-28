@@ -859,8 +859,10 @@
 
         const isEnglishTeacherActive = () => {
             if (isEnglishTeacher(loggedInUser, currentUserLanguage)) return true;
+            if (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable && isEnglishTeacher(loggedInTeacherTable)) return true;
             const ensFilter = document.getElementById('filterEnseignant')?.value;
             if (ensFilter && isEnglishTeacher(ensFilter)) return true;
+            if (typeof activeTeacherHwFilters !== 'undefined' && activeTeacherHwFilters.teacher && isEnglishTeacher(activeTeacherHwFilters.teacher)) return true;
             return false;
         };
 
@@ -3218,6 +3220,9 @@
 
             const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
             const supportKey = findHKey('Support');
+            const leconKey = findHKey('Leçon');
+            const taskKey = findHKey('Travaux de classe');
+            const devoirsKey = findHKey('Devoirs');
             const initialRow = document.getElementById('initial-table-row');
             if (initialRow) initialRow.remove();
             if (!currentWeek) {
@@ -3481,22 +3486,25 @@
             const modifiedRows = document.querySelectorAll('#planTable tbody tr.modified').length;
             
             const isAr = currentUserLanguage === 'ar';
-            countEl.textContent = isAr 
-                ? `${displayedCount} حصة معروضة` 
-                : `${displayedCount} cours affiché(s)`;
+            const isEn = currentUserLanguage === 'en';
+            countEl.textContent = isEn
+                ? `${displayedCount} class(es) displayed`
+                : (isAr ? `${displayedCount} حصة معروضة` : `${displayedCount} cours affiché(s)`);
                 
             if (modifiedRows > 0) {
-                modEl.innerHTML = isAr 
-                    ? `<span style="color:#DC2626; font-weight:800;">⚠️ ${modifiedRows} تعديل غير محفوظ</span>` 
-                    : `<span style="color:#DC2626; font-weight:800;">⚠️ ${modifiedRows} modification(s) non enregistrée(s)</span>`;
+                modEl.innerHTML = isEn
+                    ? `<span style="color:#DC2626; font-weight:800;">⚠️ ${modifiedRows} unsaved change(s)</span>`
+                    : (isAr ? `<span style="color:#DC2626; font-weight:800;">⚠️ ${modifiedRows} تعديل غير محفوظ</span>` 
+                           : `<span style="color:#DC2626; font-weight:800;">⚠️ ${modifiedRows} modification(s) non enregistrée(s)</span>`);
                 if (saveBtn) {
                     saveBtn.classList.add('has-pending-saves');
                     saveBtn.disabled = false;
                 }
             } else {
-                modEl.innerHTML = isAr 
-                    ? `<span style="color:#059669; font-weight:700;">✅ الكل محفوظ</span>` 
-                    : `<span style="color:#059669; font-weight:700;">Tout est enregistré ✅</span>`;
+                modEl.innerHTML = isEn
+                    ? `<span style="color:#059669; font-weight:700;">All changes saved ✅</span>`
+                    : (isAr ? `<span style="color:#059669; font-weight:700;">✅ الكل محفوظ</span>` 
+                           : `<span style="color:#059669; font-weight:700;">Tout est enregistré ✅</span>`);
                 if (saveBtn) {
                     saveBtn.classList.remove('has-pending-saves');
                 }
@@ -3511,7 +3519,7 @@
             if (selPeriode) selPeriode.value = '';
             if (selJour) selJour.value = '';
             sortAndDisplay();
-            showToastNotification(currentUserLanguage === 'ar' ? 'تمت إعادة ضبط جميع التصفِيات' : 'Filtres réinitialisés, tous les cours sont affichés.', 'success');
+            showToastNotification(currentUserLanguage === 'en' ? 'Filters reset, all classes displayed.' : (currentUserLanguage === 'ar' ? 'تمت إعادة ضبط جميع التصفِيات' : 'Filtres réinitialisés, tous les cours sont affichés.'), 'success');
         }
         
         async function generateAILessonPlan(rowData, tableRowElement) {
@@ -4515,33 +4523,44 @@
             if (sPend) sPend.textContent = t('stat_pending_hw');
 
             // Hub de filtres par icônes
-            const sSchoolLabel = document.querySelector('#teacherFilterHub .teacher-filter-row:nth-child(1) .teacher-filter-row-header span:first-child');
-            if (sSchoolLabel) sSchoolLabel.innerHTML = `<i class="fas fa-school" style="color:#2563EB;"></i> ${t('filter_school')}`;
-            const sSchoolSub = document.getElementById('teacherSchoolCountLabel');
-            if (sSchoolSub) sSchoolSub.textContent = t('filter_school_sub');
-            const bSchoolAll = document.querySelector('#teacherSchoolIconsContainer button[data-school="all"] span:first-of-type');
-            if (bSchoolAll) bSchoolAll.textContent = t('all_schools');
+            const isEn = (currentUserLanguage === 'en');
+            const isAr = (currentUserLanguage === 'ar');
 
-            const rWeeksHdr = document.querySelector('#rowTeacherWeeks .teacher-filter-row-header span:first-child');
-            if (rWeeksHdr) rWeeksHdr.innerHTML = `<i class="fas fa-calendar-week" style="color:#0284C7;"></i> ${t('filter_weeks')}`;
-            const rWeeksSub = document.getElementById('teacherWeeksCountLabel');
-            if (rWeeksSub) rWeeksSub.textContent = t('filter_weeks_sub');
+            // Mise à jour des labels des listes déroulantes de tri
+            const tfTitle = document.getElementById('teacherFilterTitle');
+            if (tfTitle) tfTitle.textContent = isEn ? 'Sort & Filter Homework via Dropdowns' : (isAr ? 'فرز وتصفية الواجبات بالقوائم المنسدلة' : 'Trier & Filtrer les Devoirs par Liste Déroulante');
+            const tfSub = document.getElementById('teacherFilterSubtitle');
+            if (tfSub) tfSub.innerHTML = isEn ? 'Select first <strong>Week</strong>, then <strong>Class</strong>, then <strong>Day</strong>' : (isAr ? 'اختر أولاً <strong>الأسبوع</strong>، ثم <strong>الفصل</strong>، ثم <strong>اليوم</strong>' : 'Sélectionnez d\'abord la <strong>Semaine</strong>, puis la <strong>Classe</strong>, puis le <strong>Jour</strong>');
+            
+            const lSchool = document.getElementById('lblTeacherSchool');
+            if (lSchool) lSchool.textContent = isEn ? '1. School / Section :' : (isAr ? '1. المدرسة / القسم :' : '1. École / Section :');
+            const lWeek = document.getElementById('lblTeacherWeek');
+            if (lWeek) lWeek.textContent = isEn ? '2. Week :' : (isAr ? '2. الأسبوع :' : '2. Semaine :');
+            const lClass = document.getElementById('lblTeacherClass');
+            if (lClass) lClass.textContent = isEn ? '3. Class :' : (isAr ? '3. الفصل :' : '3. Classe :');
+            const lDay = document.getElementById('lblTeacherDay');
+            if (lDay) lDay.textContent = isEn ? '4. School Day :' : (isAr ? '4. يوم الحصة :' : '4. Jour de Cours :');
+            const lSubj = document.getElementById('lblTeacherSubject');
+            if (lSubj) lSubj.textContent = isEn ? '5. Subject :' : (isAr ? '5. المادة :' : '5. Matière :');
+            const lStatus = document.getElementById('lblTeacherStatus');
+            if (lStatus) lStatus.textContent = isEn ? '6. Evaluation Status :' : (isAr ? '6. حالة التقييم :' : '6. Statut d\'Évaluation :');
 
-            const rClassesHdr = document.querySelector('#rowTeacherClasses .teacher-filter-row-header span:first-child');
-            if (rClassesHdr) rClassesHdr.innerHTML = `<i class="fas fa-graduation-cap" style="color:#2563EB;"></i> ${t('filter_classes')}`;
-            const rClassesSub = document.getElementById('teacherClassesCountLabel');
-            if (rClassesSub) rClassesSub.textContent = t('filter_classes_sub');
+            const btnResetF = document.getElementById('btnTeacherResetFilters');
+            if (btnResetF) btnResetF.textContent = isEn ? 'Reset filters' : (isAr ? 'إعادة ضبط الفلاتر' : 'Réinitialiser les filtres');
+            const btnRefreshF = document.getElementById('btnTeacherRefresh');
+            if (btnRefreshF) btnRefreshF.textContent = isEn ? 'Refresh' : (isAr ? 'تحديث' : 'Actualiser');
 
-            const rDaysHdr = document.querySelector('#rowTeacherDays .teacher-filter-row-header span:first-child');
-            if (rDaysHdr) rDaysHdr.innerHTML = `<i class="fas fa-calendar-day" style="color:#10B981;"></i> ${t('filter_days')}`;
-            const rDaysSub = document.getElementById('teacherDaysCountLabel');
-            if (rDaysSub) rDaysSub.textContent = t('filter_days_sub');
-
-            const rSubjHdr = document.querySelector('#rowTeacherSubjects .teacher-filter-row-header span:first-child');
-            if (rSubjHdr) rSubjHdr.innerHTML = `<i class="fas fa-book" style="color:#8B5CF6;"></i> ${t('filter_subjects')}`;
-
-            const rStatusHdr = document.querySelector('#rowTeacherStatus .teacher-filter-row-header span:first-child');
-            if (rStatusHdr) rStatusHdr.innerHTML = `<i class="fas fa-clipboard-check" style="color:#10B981;"></i> ${t('filter_status')}`;
+            // Navigation jours des parents
+            const txtPrevDay = document.getElementById('txtPrevDay');
+            if (txtPrevDay) txtPrevDay.textContent = isEn ? 'Previous Day' : (isAr ? 'اليوم السابق' : 'Jour précédent');
+            const txtNextDay = document.getElementById('txtNextDay');
+            if (txtNextDay) txtNextDay.textContent = isEn ? 'Next Day' : (isAr ? 'اليوم التالي' : 'Jour suivant');
+            const txtTodayBtn = document.getElementById('txtTodayBtn');
+            if (txtTodayBtn) txtTodayBtn.textContent = isEn ? 'Today' : (isAr ? 'اليوم' : 'Aujourd\'hui');
+            const btnBackStudents = document.getElementById('btnBackToStudentsList');
+            if (btnBackStudents) btnBackStudents.textContent = isEn ? 'Back to Students' : (isAr ? 'العودة للطلاب' : 'Retour aux élèves');
+            const btnPlanFull = document.getElementById('btnGoToClassPlanText');
+            if (btnPlanFull) btnPlanFull.textContent = isEn ? 'Full Weekly Plan' : (isAr ? 'الخطة الأسبوعية الكاملة' : 'Plan Hebdo complet');
 
             // Modal d'évaluation
             const mTitle = document.getElementById('evalModalTitle');
@@ -4568,7 +4587,15 @@
             const hwSearchInput = document.getElementById('teacherHwSearchInput');
             if (hwSearchInput) hwSearchInput.placeholder = (currentUserLanguage === 'en') ? 'Search by lesson, homework keyword...' : ((currentUserLanguage === 'ar') ? 'البحث بالدرس أو الكلمات المفتاحية...' : 'Rechercher par leçon, mot-clé du devoir...');
 
-            const mainTitle = document.getElementById('main-title'); if(mainTitle) mainTitle.textContent = t('main_page_title'); const logoutBtnText = document.querySelector('#logout-button .btn-text'); if(logoutBtnText) logoutBtnText.textContent = t('logout_button'); const toggleBtn = document.getElementById('toggleIncompleteBtn'); if (toggleBtn) { const btnTextSpan = toggleBtn.querySelector('.btn-text'); const listDiv=document.getElementById('incompleteTeachersDisplay'); if (btnTextSpan) { btnTextSpan.textContent = (listDiv && listDiv.style.display !== 'none') ? t('hide_incomplete') : t('display_incomplete'); } } const incompleteH4 = document.querySelector('#incompleteTeachersDisplay h4'); if(incompleteH4) incompleteH4.textContent = t('incomplete_teachers_title'); const incompleteLi = document.querySelector('#incompleteList li'); if(incompleteLi && incompleteLi.textContent.match(/(Chargement|Loading|جاري التحميل)/)) incompleteLi.textContent = t('loading'); const weekLabel = document.querySelector('label[for="weekSelector"]'); if(weekLabel) weekLabel.innerHTML = `<i class="fas fa-calendar-week"></i> ${t('week_label')}`; const adminTitle = document.getElementById('admin-title'); if(adminTitle) adminTitle.textContent = t('admin_actions_title'); const adminExcelLabel = document.getElementById('admin-excel-label'); if(adminExcelLabel) adminExcelLabel.innerHTML = `<i class="fas fa-file-excel"></i> ${t('admin_excel_label')}`; const saveUploadedDataBtnText = document.querySelector('#saveUploadedDataBtn .btn-text'); if(saveUploadedDataBtnText) saveUploadedDataBtnText.textContent = t('admin_save_button'); const genWordBtnText = document.querySelector('#generateWordBtn .btn-text'); if(genWordBtnText) genWordBtnText.textContent = t('generate_word_button'); const genExcelBtnText = document.querySelector('#generateExcelBtn .btn-text'); if(genExcelBtnText) genExcelBtnText.textContent = t('generate_excel_button'); const saveAllBtnText = document.querySelector('#saveAllDisplayedBtn .btn-text'); if(saveAllBtnText) saveAllBtnText.textContent = t('save_all_button'); const weeklyLessonsBtnText = document.querySelector('#generateWeeklyLessonsBtn .btn-text'); if(weeklyLessonsBtnText) weeklyLessonsBtnText.textContent = t('generate_weekly_lessons_button'); const filterEnsLabel = document.getElementById('filter-enseignant-label'); if(filterEnsLabel) filterEnsLabel.innerHTML = `<i class="fas fa-user-tie"></i> ${t('filter_teacher_label')}`; const filterClsLabel = document.getElementById('filter-classe-label'); if(filterClsLabel) filterClsLabel.innerHTML = `<i class="fas fa-chalkboard-user"></i> ${t('filter_class_label')}`; const filterMatLabel = document.getElementById('filter-matiere-label'); if(filterMatLabel) filterMatLabel.innerHTML = `<i class="fas fa-book"></i> ${t('filter_material_label')}`; const filterPerLabel = document.getElementById('filter-periode-label'); if(filterPerLabel) filterPerLabel.innerHTML = `<i class="fas fa-clock"></i> ${t('filter_period_label')}`; const filterJourLabel = document.getElementById('filter-jour-label'); if(filterJourLabel) filterJourLabel.innerHTML = `<i class="fas fa-calendar-day"></i> ${t('filter_day_label')}`; const notesClsLabel = document.getElementById('notes-class-label'); if(notesClsLabel) notesClsLabel.innerHTML = `<i class="fas fa-sticky-note"></i> ${t('notes_for_class')}`; const notesInput = document.getElementById('notesInput'); if(notesInput && notesInput.placeholder.match(/(Sélectionnez|اختر|Select)/)){ notesInput.placeholder = t('select_class_placeholder'); } const saveNotesBtnText = document.querySelector('#saveNotesBtn .btn-text'); if(saveNotesBtnText) saveNotesBtnText.textContent = t('save_notes_button'); updateFilterOptionDefaultTexts(); const adminReportLabel = document.getElementById('admin-report-class-label'); if (adminReportLabel) adminReportLabel.innerHTML = `<i class="fas fa-school"></i> ${t('admin_report_class_label')}`; const adminReportBtnText = document.querySelector('#generateFullReportBtn .btn-text'); if (adminReportBtnText) adminReportBtnText.textContent = t('generate_full_report_button'); }
+            const mainTitle = document.getElementById('main-title'); if(mainTitle) mainTitle.textContent = t('main_page_title'); const logoutBtnText = document.querySelector('#logout-button .btn-text'); if(logoutBtnText) logoutBtnText.textContent = t('logout_button'); const toggleBtn = document.getElementById('toggleIncompleteBtn'); if (toggleBtn) { const btnTextSpan = toggleBtn.querySelector('.btn-text'); const listDiv=document.getElementById('incompleteTeachersDisplay'); if (btnTextSpan) { btnTextSpan.textContent = (listDiv && listDiv.style.display !== 'none') ? t('hide_incomplete') : t('display_incomplete'); } } const incompleteH4 = document.querySelector('#incompleteTeachersDisplay h4'); if(incompleteH4) incompleteH4.textContent = t('incomplete_teachers_title'); const incompleteLi = document.querySelector('#incompleteList li'); if(incompleteLi && incompleteLi.textContent.match(/(Chargement|Loading|جاري التحميل)/)) incompleteLi.textContent = t('loading'); const weekLabel = document.querySelector('label[for="weekSelector"]'); if(weekLabel) weekLabel.innerHTML = `<i class="fas fa-calendar-week"></i> ${t('week_label')}`; const adminTitle = document.getElementById('admin-title'); if(adminTitle) adminTitle.textContent = t('admin_actions_title'); const adminExcelLabel = document.getElementById('admin-excel-label'); if(adminExcelLabel) adminExcelLabel.innerHTML = `<i class="fas fa-file-excel"></i> ${t('admin_excel_label')}`; const saveUploadedDataBtnText = document.querySelector('#saveUploadedDataBtn .btn-text'); if(saveUploadedDataBtnText) saveUploadedDataBtnText.textContent = t('admin_save_button'); const genWordBtnText = document.querySelector('#generateWordBtn .btn-text'); if(genWordBtnText) genWordBtnText.textContent = t('generate_word_button');
+            const btnDesignPlan = document.querySelector('#btnOpenDesignPlanModal .btn-text');
+            if (btnDesignPlan) btnDesignPlan.textContent = (currentUserLanguage === 'en') ? '📄 Weekly Plan (Design & PDF)' : ((currentUserLanguage === 'ar') ? '📄 الخطة الأسبوعية (تصميم و PDF)' : '📄 Plan Hebdomadaire (Design & PDF)');
+            const btnFullWord = document.querySelector('#generateFullClassWordBtn .btn-text');
+            if (btnFullWord) btnFullWord.textContent = (currentUserLanguage === 'en') ? '📄 Download Full Class Weekly Plan (All Subjects & Teachers)' : ((currentUserLanguage === 'ar') ? '📄 تحميل الخطة الأسبوعية الكاملة للفصل (جميع المواد والمعلمين)' : '📄 Télécharger le Plan Hebdo Complet par Classe (Toutes les matières & Tous les enseignants)');
+            const btnBulkZip = document.querySelector('#openTeachersBulkDownloadBtn .btn-text');
+            if (btnBulkZip) btnBulkZip.textContent = (currentUserLanguage === 'en') ? 'Teacher Plans (ZIP)' : ((currentUserLanguage === 'ar') ? 'خطط المعلمين (ZIP)' : 'Plans par Enseignants (ZIP)');
+            const btnGenByClass = document.querySelector('#openLessonPlanModalBtn .btn-text');
+            if (btnGenByClass) btnGenByClass.textContent = (currentUserLanguage === 'en') ? 'Generate by Classes/Subjects' : ((currentUserLanguage === 'ar') ? 'توليد حسب الفصول/المواد' : 'Générer par Classes/Matières'); const genExcelBtnText = document.querySelector('#generateExcelBtn .btn-text'); if(genExcelBtnText) genExcelBtnText.textContent = t('generate_excel_button'); const saveAllBtnText = document.querySelector('#saveAllDisplayedBtn .btn-text'); if(saveAllBtnText) saveAllBtnText.textContent = t('save_all_button'); const weeklyLessonsBtnText = document.querySelector('#generateWeeklyLessonsBtn .btn-text'); if(weeklyLessonsBtnText) weeklyLessonsBtnText.textContent = t('generate_weekly_lessons_button'); const filterEnsLabel = document.getElementById('filter-enseignant-label'); if(filterEnsLabel) filterEnsLabel.innerHTML = `<i class="fas fa-user-tie"></i> ${t('filter_teacher_label')}`; const filterClsLabel = document.getElementById('filter-classe-label'); if(filterClsLabel) filterClsLabel.innerHTML = `<i class="fas fa-chalkboard-user"></i> ${t('filter_class_label')}`; const filterMatLabel = document.getElementById('filter-matiere-label'); if(filterMatLabel) filterMatLabel.innerHTML = `<i class="fas fa-book"></i> ${t('filter_material_label')}`; const filterPerLabel = document.getElementById('filter-periode-label'); if(filterPerLabel) filterPerLabel.innerHTML = `<i class="fas fa-clock"></i> ${t('filter_period_label')}`; const filterJourLabel = document.getElementById('filter-jour-label'); if(filterJourLabel) filterJourLabel.innerHTML = `<i class="fas fa-calendar-day"></i> ${t('filter_day_label')}`; const notesClsLabel = document.getElementById('notes-class-label'); if(notesClsLabel) notesClsLabel.innerHTML = `<i class="fas fa-sticky-note"></i> ${t('notes_for_class')}`; const notesInput = document.getElementById('notesInput'); if(notesInput && notesInput.placeholder.match(/(Sélectionnez|اختر|Select)/)){ notesInput.placeholder = t('select_class_placeholder'); } const saveNotesBtnText = document.querySelector('#saveNotesBtn .btn-text'); if(saveNotesBtnText) saveNotesBtnText.textContent = t('save_notes_button'); updateFilterOptionDefaultTexts(); const adminReportLabel = document.getElementById('admin-report-class-label'); if (adminReportLabel) adminReportLabel.innerHTML = `<i class="fas fa-school"></i> ${t('admin_report_class_label')}`; const adminReportBtnText = document.querySelector('#generateFullReportBtn .btn-text'); if (adminReportBtnText) adminReportBtnText.textContent = t('generate_full_report_button'); }
         function updateLoginUIElements() { const loginH1 = document.querySelector('#login-form h1'); if(loginH1) loginH1.textContent = t('login_title'); const userLabel = document.querySelector('label[for="username"]'); if(userLabel) userLabel.textContent = t('login_username_label'); const passLabel = document.querySelector('label[for="password"]'); if(passLabel) passLabel.textContent = t('login_password_label'); const rememberLabel = document.getElementById('remember-me-label'); if(rememberLabel) rememberLabel.textContent = t('remember_me'); const loginBtnText = document.querySelector('#login-button .btn-text'); if(loginBtnText) loginBtnText.textContent = t('login_button_text'); if (document.getElementById('login-form').style.display !== 'none') { document.title = t('login_title'); } }
         function updateDynamicUIElements() {
           console.log("Updating dynamic UI for lang:", currentUserLanguage);
@@ -7589,6 +7616,67 @@ function renderSchoolDaysBar(schoolDays, activeDateStr, studentName, className) 
     }).join('');
 }
 
+
+// ==========================================
+// NAVIGATION JOURS ÉLÈVE & ESPACE PARENT
+// ==========================================
+let currentStudentSchoolDays = [];
+let currentStudentSelectedDate = '';
+
+function navigateStudentHomeworkDay(direction) {
+    if (!selectedStudentObj || !selectedStudentObj.name) return;
+    let targetDateStr = '';
+    const curDate = currentStudentSelectedDate || (typeof currentHomeworkDate !== 'undefined' ? currentHomeworkDate : '');
+    
+    if (currentStudentSchoolDays && currentStudentSchoolDays.length > 0) {
+        const idx = currentStudentSchoolDays.findIndex(d => d.date === curDate);
+        if (idx !== -1) {
+            const newIdx = idx + direction;
+            if (newIdx >= 0 && newIdx < currentStudentSchoolDays.length) {
+                targetDateStr = currentStudentSchoolDays[newIdx].date;
+            }
+        } else {
+            if (direction > 0) {
+                const nextDay = currentStudentSchoolDays.find(d => d.date > curDate);
+                if (nextDay) targetDateStr = nextDay.date;
+            } else {
+                const prevDays = currentStudentSchoolDays.filter(d => d.date < curDate);
+                if (prevDays.length > 0) targetDateStr = prevDays[prevDays.length - 1].date;
+            }
+        }
+    }
+    
+    // Si date non trouvée dans les 5 jours de la semaine courante, calcul de date en sautant vendredi et samedi
+    if (!targetDateStr) {
+        const base = curDate || new Date().toISOString().split('T')[0];
+        const parts = base.split('-');
+        if (parts.length === 3) {
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            const step = direction > 0 ? 1 : -1;
+            d.setDate(d.getDate() + step);
+            while (d.getDay() === 5 || d.getDay() === 6) { // sauter vendredi et samedi
+                d.setDate(d.getDate() + step);
+            }
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            targetDateStr = `${y}-${m}-${day}`;
+        }
+    }
+    
+    if (targetDateStr) {
+        loadStudentHomeworksForDate(selectedStudentObj.name, selectedStudentObj.class, targetDateStr, true);
+    }
+}
+window.navigateStudentHomeworkDay = navigateStudentHomeworkDay;
+
+function resetStudentHomeworkToToday() {
+    if (!selectedStudentObj || !selectedStudentObj.name) return;
+    const todayDate = (typeof getInitialHomeworkDate === 'function') ? getInitialHomeworkDate() : new Date().toISOString().split('T')[0];
+    loadStudentHomeworksForDate(selectedStudentObj.name, selectedStudentObj.class, todayDate, true);
+}
+window.resetStudentHomeworkToToday = resetStudentHomeworkToToday;
+
 async function loadStudentHomeworksForDate(studentName, className, dateStr, isDirectDayClick = false) {
     try {
         if (isDirectDayClick) {
@@ -7666,9 +7754,10 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             }
         }
 
-        // La barre des jours et les toggles de semaine restent masqués pour les élèves afin de n'afficher strictement que les devoirs du jour (ou jeudi pour le weekend)
+        // La barre des 5 jours d'école et toolbar de navigation sont affichées pour les parents
         const schoolDaysBar = document.getElementById('student-school-days-bar');
-        if (schoolDaysBar) schoolDaysBar.style.display = 'none';
+        if (schoolDaysBar) schoolDaysBar.style.display = 'flex';
+        currentStudentSelectedDate = effectiveDateStr;
 
         const grid = document.getElementById('homework-items-grid');
         if (grid) grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#6B7280;"><i class="fas fa-spinner fa-spin fa-2x" style="color:#3B82F6; margin-bottom:10px;"></i><p>Chargement des devoirs en direct du plan hebdomadaire...</p></div>';
@@ -7677,7 +7766,25 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
         if (res.ok) {
             const data = await res.json();
             lastEvaluationsData = data;
-            const { homeworks = [], evaluations = [] } = data;
+            const { homeworks = [], evaluations = [], schoolDays = [] } = data;
+            currentStudentSchoolDays = schoolDays || [];
+
+            // Mise à jour de la date active dans le badge de navigation
+            const navDayTextEl = document.getElementById('studentCurrentNavDayText');
+            if (navDayTextEl) {
+                navDayTextEl.textContent = formatFrenchDate(effectiveDateStr);
+            }
+            const txtPrevDay = document.getElementById('txtPrevDay');
+            const txtNextDay = document.getElementById('txtNextDay');
+            const txtTodayBtn = document.getElementById('txtTodayBtn');
+            if (txtPrevDay) txtPrevDay.textContent = (isAr ? 'اليوم السابق' : (currentUserLanguage === 'en' ? 'Previous Day' : 'Jour précédent'));
+            if (txtNextDay) txtNextDay.textContent = (isAr ? 'اليوم التالي' : (currentUserLanguage === 'en' ? 'Next Day' : 'Jour suivant'));
+            if (txtTodayBtn) txtTodayBtn.textContent = (isAr ? 'اليوم' : (currentUserLanguage === 'en' ? 'Today' : 'Aujourd\'hui'));
+
+            // Affichage de la barre des 5 jours d'école
+            if (typeof renderSchoolDaysBar === 'function') {
+                renderSchoolDaysBar(currentStudentSchoolDays, effectiveDateStr, studentName, className);
+            }
 
             // Règle stricte pour les élèves : afficher uniquement les devoirs du jour demandé (ou jeudi en cas de week-end)
             const displayList = homeworks;
@@ -10355,6 +10462,268 @@ function getDayIconAndDetails(dayNameOrStr) {
     return { key: dayNameOrStr, label: dayNameOrStr, ar: '', icon: 'far fa-calendar', color: '#64748B' };
 }
 
+
+// ==========================================
+// FILTRAGE DES DEVOIRS ENSEIGNANT PAR LISTES DÉROULANTES EN CASCADE
+// (Semaine -> Classe -> Jour -> Matière -> Statut)
+// ==========================================
+
+function populateTeacherDropdowns() {
+    const isEn = (currentUserLanguage === 'en');
+    const isAr = (currentUserLanguage === 'ar');
+
+    // 0. Sélecteur Établissement / Section
+    const schoolSel = document.getElementById('teacherSchoolSelect');
+    if (schoolSel) {
+        schoolSel.value = activeTeacherHwFilters.section || 'all';
+    }
+
+    // Filtrer les devoirs par école active
+    let targetHws = allTeacherHomeworks || [];
+    if (activeTeacherHwFilters.section !== 'all') {
+        const secFilter = activeTeacherHwFilters.section.toLowerCase();
+        targetHws = targetHws.filter(h => {
+            const sec = (h.section || '').toLowerCase();
+            const cls = (h.class || h.classe || '').toUpperCase();
+            if (secFilter === 'maternelle') {
+                return sec === 'maternelle' || ['PS', 'MS', 'GS'].includes(cls);
+            } else if (secFilter === 'primaire') {
+                return (sec === 'primaire' || sec.includes('prim')) && !['PS', 'MS', 'GS'].includes(cls);
+            }
+            return sec.includes(secFilter);
+        });
+    }
+
+    // 1. Liste déroulante : SEMAINES
+    const weekSel = document.getElementById('teacherWeekSelect');
+    if (weekSel) {
+        const weekMap = new Map();
+        targetHws.forEach(h => {
+            const w = String(h.week || '1');
+            if (!weekMap.has(w)) {
+                weekMap.set(w, { total: 0, evaluated: 0, rangeText: h.weekRangeText || '' });
+            }
+            const item = weekMap.get(w);
+            item.total += 1;
+            if (h.isEvaluated) item.evaluated += 1;
+            if (!item.rangeText && h.weekRangeText) item.rangeText = h.weekRangeText;
+        });
+
+        const sortedWeeks = Array.from(weekMap.keys()).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+        const allWeeksText = isEn ? '📅 All Weeks' : (isAr ? '📅 جميع الأسابيع' : '📅 Toutes les Semaines');
+        const weekPrefix = isEn ? 'Week ' : (isAr ? 'الأسبوع ' : 'Semaine ');
+        const evalSuffix = isEn ? 'evaluated' : (isAr ? 'تم تقييمها' : 'évalués');
+
+        let weekOptions = `<option value="all">${allWeeksText} (${targetHws.length})</option>`;
+        sortedWeeks.forEach(w => {
+            const item = weekMap.get(w);
+            const rangeInfo = item.rangeText ? ` - ${item.rangeText}` : '';
+            weekOptions += `<option value="${w}">${weekPrefix}${w}${rangeInfo} (${item.evaluated}/${item.total} ${evalSuffix})</option>`;
+        });
+        weekSel.innerHTML = weekOptions;
+        if (activeTeacherHwFilters.week && (activeTeacherHwFilters.week === 'all' || weekMap.has(String(activeTeacherHwFilters.week)))) {
+            weekSel.value = String(activeTeacherHwFilters.week);
+        } else {
+            activeTeacherHwFilters.week = 'all';
+            weekSel.value = 'all';
+        }
+    }
+
+    // Filtrer par semaine active pour la cascade des classes
+    let weekFilteredHws = targetHws;
+    if (activeTeacherHwFilters.week !== 'all') {
+        weekFilteredHws = weekFilteredHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
+    }
+
+    // 2. Liste déroulante : CLASSES (liée à la semaine sélectionnée)
+    const classSel = document.getElementById('teacherClassSelect');
+    if (classSel) {
+        const classMap = new Map();
+        weekFilteredHws.forEach(h => {
+            const c = h.classe || 'Général';
+            if (!classMap.has(c)) {
+                classMap.set(c, { total: 0, evaluated: 0 });
+            }
+            const item = classMap.get(c);
+            item.total += 1;
+            if (h.isEvaluated) item.evaluated += 1;
+        });
+
+        const sortedClasses = Array.from(classMap.keys()).sort(compareClasses);
+        const allClassesText = isEn ? '🎓 All Classes' : (isAr ? '🎓 جميع الفصول' : '🎓 Toutes les Classes');
+
+        let classOptions = `<option value="all">${allClassesText} (${weekFilteredHws.length})</option>`;
+        sortedClasses.forEach(c => {
+            const item = classMap.get(c);
+            const arCls = (typeof classTranslations !== 'undefined' && classTranslations[c]) ? classTranslations[c] : '';
+            const cLabel = arCls ? `${c} (${arCls})` : c;
+            classOptions += `<option value="${c}">${cLabel} (${item.evaluated}/${item.total})</option>`;
+        });
+        classSel.innerHTML = classOptions;
+        if (activeTeacherHwFilters.classe && (activeTeacherHwFilters.classe === 'all' || classMap.has(activeTeacherHwFilters.classe))) {
+            classSel.value = activeTeacherHwFilters.classe;
+        } else {
+            activeTeacherHwFilters.classe = 'all';
+            classSel.value = 'all';
+        }
+    }
+
+    // Filtrer par classe active pour la cascade des jours
+    let classFilteredHws = weekFilteredHws;
+    if (activeTeacherHwFilters.classe !== 'all') {
+        classFilteredHws = classFilteredHws.filter(h => h.classe === activeTeacherHwFilters.classe);
+    }
+
+    // 3. Liste déroulante : JOURS (liée à la classe sélectionnée)
+    const daySel = document.getElementById('teacherDaySelect');
+    if (daySel) {
+        const dayMap = new Map();
+        classFilteredHws.forEach(h => {
+            const j = h.jour || 'Autre';
+            if (!dayMap.has(j)) {
+                dayMap.set(j, { total: 0, evaluated: 0 });
+            }
+            const item = dayMap.get(j);
+            item.total += 1;
+            if (h.isEvaluated) item.evaluated += 1;
+        });
+
+        const dayOrder = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+        const sortedDays = Array.from(dayMap.keys()).sort((a, b) => {
+            const idxA = dayOrder.indexOf(a);
+            const idxB = dayOrder.indexOf(b);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            return a.localeCompare(b);
+        });
+
+        const allDaysText = isEn ? '☀️ All Days' : (isAr ? '☀️ جميع الأيام' : '☀️ Tous les Jours');
+        const daysAr = {
+            'Dimanche': 'الأحد',
+            'Lundi': 'الإثنين',
+            'Mardi': 'الثلاثاء',
+            'Mercredi': 'الأربعاء',
+            'Jeudi': 'الخميس'
+        };
+
+        let dayOptions = `<option value="all">${allDaysText} (${classFilteredHws.length})</option>`;
+        sortedDays.forEach(j => {
+            const item = dayMap.get(j);
+            const jDisplay = isAr ? (daysAr[j] || j) : j;
+            dayOptions += `<option value="${j}">${jDisplay} (${item.evaluated}/${item.total})</option>`;
+        });
+        daySel.innerHTML = dayOptions;
+        if (activeTeacherHwFilters.jour && (activeTeacherHwFilters.jour === 'all' || dayMap.has(activeTeacherHwFilters.jour))) {
+            daySel.value = activeTeacherHwFilters.jour;
+        } else {
+            activeTeacherHwFilters.jour = 'all';
+            daySel.value = 'all';
+        }
+    }
+
+    // 4. Liste déroulante : MATIÈRES
+    const subjSel = document.getElementById('teacherSubjectSelect');
+    if (subjSel) {
+        const subjMap = new Map();
+        classFilteredHws.forEach(h => {
+            const m = h.matiere || 'Autre';
+            if (!subjMap.has(m)) {
+                subjMap.set(m, { total: 0, evaluated: 0 });
+            }
+            const item = subjMap.get(m);
+            item.total += 1;
+            if (h.isEvaluated) item.evaluated += 1;
+        });
+
+        const sortedSubjects = Array.from(subjMap.keys()).sort();
+        const allSubjText = isEn ? '📚 All Subjects' : (isAr ? '📚 جميع المواد' : '📚 Toutes les Matières');
+
+        let subjOptions = `<option value="all">${allSubjText} (${classFilteredHws.length})</option>`;
+        sortedSubjects.forEach(m => {
+            const item = subjMap.get(m);
+            subjOptions += `<option value="${m}">${m} (${item.evaluated}/${item.total})</option>`;
+        });
+        subjSel.innerHTML = subjOptions;
+        if (activeTeacherHwFilters.matiere && (activeTeacherHwFilters.matiere === 'all' || subjMap.has(activeTeacherHwFilters.matiere))) {
+            subjSel.value = activeTeacherHwFilters.matiere;
+        } else {
+            activeTeacherHwFilters.matiere = 'all';
+            subjSel.value = 'all';
+        }
+    }
+
+    // 5. Statut d'évaluation
+    const statusSel = document.getElementById('teacherStatusSelect');
+    if (statusSel) {
+        statusSel.value = activeTeacherHwFilters.status || 'all';
+    }
+
+    // Sélecteur Enseignant (Admin / Superviseur)
+    const adminSel = document.getElementById('teacherAdminSelect');
+    const adminField = document.getElementById('teacherAdminSwitcherField');
+    const isAdmin = (typeof isUserAdminOrSupervisor === 'function') ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) : false;
+    if (adminField) {
+        adminField.style.display = (isAdmin && allSectionTeachersList && allSectionTeachersList.length > 0) ? 'block' : 'none';
+    }
+    if (adminSel && allSectionTeachersList && allSectionTeachersList.length > 0) {
+        let optHtml = `<option value="">${isEn ? 'All Teachers' : (isAr ? 'جميع المعلمين' : 'Tous les Enseignants')}</option>`;
+        allSectionTeachersList.forEach(tName => {
+            const isSel = (activeTeacherHwFilters.teacher === tName) ? 'selected' : '';
+            optHtml += `<option value="${escapeHtml(tName)}" ${isSel}>${escapeHtml(tName)}</option>`;
+        });
+        adminSel.innerHTML = optHtml;
+    }
+}
+window.populateTeacherDropdowns = populateTeacherDropdowns;
+
+// Gestionnaires des listes déroulantes
+function onTeacherSchoolSelectChange(school) {
+    activeTeacherHwFilters.section = school;
+    activeTeacherHwFilters.week = 'all';
+    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.jour = 'all';
+    activeTeacherHwFilters.matiere = 'all';
+    if (school !== 'all') {
+        currentSection = school;
+    }
+    loadTeacherHomeworksDashboard();
+}
+window.onTeacherSchoolSelectChange = onTeacherSchoolSelectChange;
+
+function onTeacherWeekSelectChange(week) {
+    activeTeacherHwFilters.week = week;
+    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.jour = 'all';
+    populateTeacherDropdowns();
+    renderTeacherHomeworksDashboard();
+}
+window.onTeacherWeekSelectChange = onTeacherWeekSelectChange;
+
+function onTeacherClassSelectChange(classe) {
+    activeTeacherHwFilters.classe = classe;
+    activeTeacherHwFilters.jour = 'all';
+    populateTeacherDropdowns();
+    renderTeacherHomeworksDashboard();
+}
+window.onTeacherClassSelectChange = onTeacherClassSelectChange;
+
+function onTeacherDaySelectChange(jour) {
+    activeTeacherHwFilters.jour = jour;
+    renderTeacherHomeworksDashboard();
+}
+window.onTeacherDaySelectChange = onTeacherDaySelectChange;
+
+function onTeacherSubjectSelectChange(matiere) {
+    activeTeacherHwFilters.matiere = matiere;
+    renderTeacherHomeworksDashboard();
+}
+window.onTeacherSubjectSelectChange = onTeacherSubjectSelectChange;
+
+function onTeacherStatusSelectChange(status) {
+    activeTeacherHwFilters.status = status;
+    renderTeacherHomeworksDashboard();
+}
+window.onTeacherStatusSelectChange = onTeacherStatusSelectChange;
+
 async function loadTeacherHomeworksDashboard() {
     const container = document.getElementById('teacher-homeworks-tree-container');
     if (!container) return;
@@ -10425,15 +10794,10 @@ async function loadTeacherHomeworksDashboard() {
                 : (section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'filles' ? 'Section Filles (بنات)' : (section === 'maternelle' ? 'Section Maternelle (روضة)' : 'Section Primaire (ابتدائي)')));
         }
 
-        // Rendu des filtres hiérarchiques : Écoles -> Semaines -> Classes -> Jours -> Matières
-        renderTeacherSchoolIcons();
-        if (isAdminOrSupervisor) {
-            renderTeacherAdminSwitcher(allSectionTeachersList);
+        // Rendu des listes déroulantes en cascade
+        if (typeof populateTeacherDropdowns === 'function') {
+            populateTeacherDropdowns();
         }
-        renderTeacherWeeksIcons();
-        renderTeacherClassesIcons();
-        renderTeacherDaysIcons();
-        renderTeacherSubjectsIcons();
 
         // Rendu du tableau de bord avec les filtres actifs
         renderTeacherHomeworksDashboard();
@@ -10901,12 +11265,10 @@ function resetAllTeacherHwFilters() {
     const searchInput = document.getElementById('teacherHwSearchInput');
     if (searchInput) searchInput.value = '';
 
-    renderTeacherSchoolIcons();
-    renderTeacherWeeksIcons();
-    renderTeacherClassesIcons();
-    renderTeacherDaysIcons();
-    renderTeacherSubjectsIcons();
-    setTeacherHwStatusFilter('all');
+    if (typeof populateTeacherDropdowns === 'function') {
+        populateTeacherDropdowns();
+    }
+    renderTeacherHomeworksDashboard();
 }
 
 // Rendu principal des devoirs
@@ -11017,43 +11379,58 @@ function renderTeacherHomeworksDashboard() {
         return;
     }
 
-    // Fil d'Ariane (Parcours École -> Semaine -> Classe -> Jour)
+    const isEn = (currentUserLanguage === 'en');
+    const isAr = (currentUserLanguage === 'ar');
+
+    // Fil d'Ariane (Parcours École -> Semaine -> Classe -> Jour) entièrement bilingue
+    const pathTxt = isEn ? 'Path :' : (isAr ? 'المسار :' : 'Parcours :');
+    const allSchoolsTxt = isEn ? 'All Schools' : (isAr ? 'جميع الأقسام' : 'Toutes Écoles');
+    const allWeeksTxt = isEn ? 'All Weeks' : (isAr ? 'جميع الأسابيع' : 'Toutes Semaines');
+    const weekTxt = isEn ? 'Week ' : (isAr ? 'الأسبوع ' : 'Semaine ');
+    const allClassesTxt = isEn ? 'All Classes' : (isAr ? 'جميع الفصول' : 'Toutes Classes');
+    const classTxt = isEn ? 'Class ' : (isAr ? 'الفصل ' : 'Classe ');
+    const allDaysTxt = isEn ? 'All Days' : (isAr ? 'جميع الأيام' : 'Tous Jours');
+    const resetTxt = isEn ? 'Reset' : (isAr ? 'إعادة ضبط' : 'Réinitialiser');
+    const hwCountTxt = isEn 
+        ? `${filtered.length} homework${filtered.length > 1 ? 's' : ''} displayed` 
+        : (isAr ? `${filtered.length} واجب(ات) معروضة` : `${filtered.length} devoir${filtered.length > 1 ? 's' : ''} affiché${filtered.length > 1 ? 's' : ''}`);
+
     let breadcrumbsHtml = `
         <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:12px 18px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.02); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
             <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
                 <span style="font-weight:700; color:#64748B; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
-                    <i class="fas fa-sitemap" style="color:#2563EB;"></i> Parcours :
+                    <i class="fas fa-sitemap" style="color:#2563EB;"></i> ${pathTxt}
                 </span>
 
-                <button type="button" onclick="setTeacherHwSchoolFilter('all')" title="Filtrer ou afficher toutes les écoles" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-school"></i> ${activeTeacherHwFilters.section === 'all' ? 'Toutes Écoles' : (activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : (activeTeacherHwFilters.section === 'maternelle' ? 'Maternelle' : 'Primaire')))}
+                <button type="button" onclick="onTeacherSchoolSelectChange('all')" title="Filtrer toutes les écoles" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-school"></i> ${activeTeacherHwFilters.section === 'all' ? allSchoolsTxt : (activeTeacherHwFilters.section === 'garcons' ? (isEn ? 'Boys' : (isAr ? 'بنين' : 'Garçons')) : (activeTeacherHwFilters.section === 'filles' ? (isEn ? 'Girls' : (isAr ? 'بنات' : 'Filles')) : (activeTeacherHwFilters.section === 'maternelle' ? (isEn ? 'KG' : (isAr ? 'روضة' : 'Maternelle')) : (isEn ? 'Primary' : (isAr ? 'ابتدائي' : 'Primaire')))))}
                 </button>
 
                 <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
 
-                <button type="button" onclick="setTeacherHwWeekFilter('all')" title="Filtrer ou afficher toutes les semaines" style="background:${activeTeacherHwFilters.week !== 'all' ? '#F0F9FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.week !== 'all' ? '#0284C7' : '#475569'}; border:1px solid ${activeTeacherHwFilters.week !== 'all' ? '#BAE6FD' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-calendar-week"></i> ${activeTeacherHwFilters.week !== 'all' ? 'Semaine ' + escapeHtml(activeTeacherHwFilters.week) : 'Toutes Semaines'}
+                <button type="button" onclick="onTeacherWeekSelectChange('all')" title="Toutes les semaines" style="background:${activeTeacherHwFilters.week !== 'all' ? '#F0F9FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.week !== 'all' ? '#0284C7' : '#475569'}; border:1px solid ${activeTeacherHwFilters.week !== 'all' ? '#BAE6FD' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-calendar-week"></i> ${activeTeacherHwFilters.week !== 'all' ? weekTxt + escapeHtml(activeTeacherHwFilters.week) : allWeeksTxt}
                 </button>
 
                 <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
 
-                <button type="button" onclick="setTeacherHwClassFilter('all')" title="Filtrer ou afficher toutes les classes" style="background:${activeTeacherHwFilters.classe !== 'all' ? '#EEF2FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.classe !== 'all' ? '#4F46E5' : '#475569'}; border:1px solid ${activeTeacherHwFilters.classe !== 'all' ? '#C7D2FE' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-graduation-cap"></i> ${activeTeacherHwFilters.classe !== 'all' ? 'Classe ' + escapeHtml(activeTeacherHwFilters.classe) : 'Toutes Classes'}
+                <button type="button" onclick="onTeacherClassSelectChange('all')" title="Toutes les classes" style="background:${activeTeacherHwFilters.classe !== 'all' ? '#EEF2FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.classe !== 'all' ? '#4F46E5' : '#475569'}; border:1px solid ${activeTeacherHwFilters.classe !== 'all' ? '#C7D2FE' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-graduation-cap"></i> ${activeTeacherHwFilters.classe !== 'all' ? classTxt + escapeHtml(activeTeacherHwFilters.classe) : allClassesTxt}
                 </button>
 
                 <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
 
-                <button type="button" onclick="setTeacherHwDayFilter('all')" title="Filtrer ou afficher tous les jours" style="background:${activeTeacherHwFilters.jour !== 'all' ? '#ECFDF5' : '#F8FAFC'}; color:${activeTeacherHwFilters.jour !== 'all' ? '#059669' : '#475569'}; border:1px solid ${activeTeacherHwFilters.jour !== 'all' ? '#A7F3D0' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-calendar-day"></i> ${activeTeacherHwFilters.jour !== 'all' ? escapeHtml(activeTeacherHwFilters.jour) : 'Tous Jours'}
+                <button type="button" onclick="onTeacherDaySelectChange('all')" title="Tous les jours" style="background:${activeTeacherHwFilters.jour !== 'all' ? '#ECFDF5' : '#F8FAFC'}; color:${activeTeacherHwFilters.jour !== 'all' ? '#059669' : '#475569'}; border:1px solid ${activeTeacherHwFilters.jour !== 'all' ? '#A7F3D0' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-calendar-day"></i> ${activeTeacherHwFilters.jour !== 'all' ? escapeHtml(activeTeacherHwFilters.jour) : allDaysTxt}
                 </button>
             </div>
 
             <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-weight:700; color:#1E293B; font-size:0.82rem; background:#F8FAFC; border:1px solid #E2E8F0; padding:4px 10px; border-radius:8px;">
-                    ${filtered.length} devoir${filtered.length > 1 ? 's' : ''} affiché${filtered.length > 1 ? 's' : ''}
+                    ${hwCountTxt}
                 </span>
                 <button type="button" class="pro-button outline-button" onclick="resetAllTeacherHwFilters()" style="padding:4px 8px; font-size:0.78rem; height:28px;">
-                    <i class="fas fa-undo"></i> Réinitialiser
+                    <i class="fas fa-undo"></i> ${resetTxt}
                 </button>
             </div>
         </div>
@@ -11101,15 +11478,15 @@ function renderTeacherHomeworksDashboard() {
                 <div style="background:linear-gradient(135deg, #1E293B 0%, #334155 100%); color:white; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                     <div style="display:flex; align-items:center; gap:12px;">
                         <span style="background:#3B82F6; color:white; padding:6px 14px; border-radius:10px; font-weight:800; font-size:1.05rem; letter-spacing:0.5px;">
-                            <i class="fas fa-calendar-week"></i> SEMAINE ${wKey}
+                            <i class="fas fa-calendar-week"></i> ${(isEn ? 'WEEK ' : (isAr ? 'الأسبوع ' : 'SEMAINE ')) + wKey}
                         </span>
                         ${wData.weekRangeText ? `<span style="color:#CBD5E1; font-weight:600; font-size:0.92rem;"><i class="far fa-clock"></i> ${wData.weekRangeText}</span>` : ''}
                     </div>
                     <div style="display:flex; align-items:center; gap:15px;">
                         <div style="text-align:right;">
-                            <div style="font-size:0.85rem; color:#94A3B8;">Progression Évaluations</div>
+                            <div style="font-size:0.85rem; color:#94A3B8;">${isEn ? 'Evaluation Progress' : (isAr ? 'تقدم التقييمات' : 'Progression Évaluations')}</div>
                             <div style="font-weight:700; font-size:0.95rem; color:${evaluatedInWeek === totalInWeek ? '#34D399' : '#FBBF24'};">
-                                ${evaluatedInWeek} / ${totalInWeek} Évalués (${weekPercent}%)
+                                ${evaluatedInWeek} / ${totalInWeek} ${isEn ? 'Evaluated' : (isAr ? 'تم تقييمها' : 'Évalués')} (${weekPercent}%)
                             </div>
                         </div>
                         <div style="width:70px; height:8px; background:rgba(255,255,255,0.2); border-radius:10px; overflow:hidden;">
@@ -11134,11 +11511,11 @@ function renderTeacherHomeworksDashboard() {
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
                         <h4 style="margin:0; font-size:1.1rem; color:#1E1B4B; display:flex; align-items:center; gap:8px;">
                             <span style="display:inline-block; width:10px; height:10px; background:#4F46E5; border-radius:50%;"></span>
-                            <i class="fas fa-users" style="color:#6366F1;"></i> Classe : <strong>${classTitle}</strong>
+                            <i class="fas fa-users" style="color:#6366F1;"></i> ${isEn ? 'Class :' : (isAr ? 'الفصل :' : 'Classe :')} <strong>${classTitle}</strong>
                         </h4>
                         <div style="display:flex; align-items:center; gap:8px;">
                             <span style="font-size:0.82rem; font-weight:700; color:#64748B; background:#F8FAFC; padding:4px 10px; border-radius:8px; border:1px solid #E2E8F0;">
-                                ${homeworksList.length} Devoir(s)
+                                ${homeworksList.length} ${isEn ? 'Homework(s)' : (isAr ? 'واجب(ات)' : 'Devoir(s)')}
                             </span>
                         </div>
                     </div>
@@ -11278,13 +11655,15 @@ async function openTeacherEvalModal(hwIndex) {
     const arCls = classTranslations[hw.classe];
     const classDisplay = arCls ? `${arCls} (${hw.classe})` : hw.classe;
 
-    if (bWeek) bWeek.textContent = `Semaine ${hw.week}`;
-    if (bClass) bClass.textContent = `Classe : ${classDisplay}`;
-    if (bSubj) bSubj.textContent = `Matière : ${hw.matiere || 'Devoir'}`;
-    if (bDate) bDate.textContent = `Date : ${hw.formattedDateFr || hw.date}`;
-    if (stEl) stEl.textContent = hw.devoir || 'Aucun énoncé spécifié';
-    if (lEl) lEl.textContent = hw.lecon ? `Leçon : ${hw.lecon}` : '';
-    if (titleEl) titleEl.textContent = `Évaluation : ${hw.matiere || 'Devoir'} - ${classDisplay}`;
+    const isEn = (currentUserLanguage === 'en');
+    const isAr = (currentUserLanguage === 'ar');
+    if (bWeek) bWeek.textContent = `${isEn ? 'Week ' : (isAr ? 'الأسبوع ' : 'Semaine ')}${hw.week}`;
+    if (bClass) bClass.textContent = `${isEn ? 'Class: ' : (isAr ? 'الفصل: ' : 'Classe : ')}${classDisplay}`;
+    if (bSubj) bSubj.textContent = `${isEn ? 'Subject: ' : (isAr ? 'المادة: ' : 'Matière : ')}${hw.matiere || (isEn ? 'Homework' : 'Devoir')}`;
+    if (bDate) bDate.textContent = `${isEn ? 'Date: ' : (isAr ? 'التاريخ: ' : 'Date : ')}${hw.formattedDateFr || hw.date}`;
+    if (stEl) stEl.textContent = hw.devoir || (isEn ? 'No statement specified' : (isAr ? 'لا يوجد نص محدد' : 'Aucun énoncé spécifié'));
+    if (lEl) lEl.textContent = hw.lecon ? `${isEn ? 'Lesson: ' : (isAr ? 'الدرس: ' : 'Leçon : ')}${hw.lecon}` : '';
+    if (titleEl) titleEl.textContent = `${isEn ? 'Evaluation: ' : (isAr ? 'التقييم: ' : 'Évaluation : ')}${hw.matiere || (isEn ? 'Homework' : 'Devoir')} - ${classDisplay}`;
 
     // Afficher le modal
     modal.style.display = 'block';

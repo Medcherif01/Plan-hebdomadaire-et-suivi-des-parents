@@ -1512,18 +1512,7 @@
              <select id="filterEnseignant" onchange="sortAndDisplay()"> <option value="">Tous</option> </select>
              
              <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
-             <div style="display:inline-flex; align-items:center; gap:6px;">
-                 <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
-                 <button type="button" id="btnQuickClassFullWord" onclick="downloadSelectedClassFullWord()" class="pro-button" style="padding: 6px 10px; font-size: 0.82rem; font-weight: 700; background: #EEF2FF; color: #1E40AF; border: 1.5px solid #BFDBFE; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger le document Word complet pour la classe sélectionnée">
-                     <i class="fas fa-file-word" style="color:#2563EB;"></i> <span>Word Classe</span>
-                 </button>
-                 <button type="button" id="btnQuickClassFullExcel" onclick="downloadSelectedClassFullExcel()" class="pro-button" style="padding: 6px 10px; font-size: 0.82rem; font-weight: 700; background: #ECFDF5; color: #047857; border: 1.5px solid #A7F3D0; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger le fichier Excel complet pour la classe sélectionnée">
-                     <i class="fas fa-file-excel" style="color:#10B981;"></i> <span>Excel Classe</span>
-                 </button>
-                 <button type="button" id="btnQuickClassFullDesign" onclick="downloadSelectedClassFullDesign()" class="pro-button" style="padding: 6px 10px; font-size: 0.82rem; font-weight: 700; background: #F0FDF4; color: #065F46; border: 1.5px solid #86EFAC; border-radius: 8px; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px;" title="Télécharger et imprimer le Plan Hebdomadaire pour la classe sélectionnée">
-                     <i class="fas fa-file-pdf" style="color:#059669;"></i> <span>Plan PDF</span>
-                 </button>
-             </div>
+             <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
 
              <label for="filterMatiere" id="filter-matiere-label"><i class="fas fa-book"></i> Matière:</label>
              <select id="filterMatiere" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
@@ -1815,14 +1804,7 @@
                         </button>
                     </div>
 
-                    <div style="display:none; gap:15px; justify-content:center; flex-wrap:wrap; margin-bottom:25px;" id="portal-role-buttons">
-                        <button type="button" class="pro-button primary-button" id="go-to-parent" onclick="showHomeworkView('parent-selection')" style="padding:15px 30px; font-size:1.1rem;">
-                            <i class="fas fa-user-friends"></i> Espace Parents
-                        </button>
-                        <button type="button" class="pro-button success-button" id="go-to-teacher" onclick="showHomeworkView('homework-teacher')" style="padding:15px 30px; font-size:1.1rem;">
-                            <i class="fas fa-chalkboard-teacher"></i> Espace Enseignants
-                        </button>
-                    </div>
+                    
 
                     <!-- SHOWCASE DE LA SEMAINE ET PHOTOS DE CÉLÉBRATION -->
                     <div class="home-showcase-container">
@@ -2007,8 +1989,26 @@
                     <!-- SECTION ÉVALUATION GÉNÉRALE ET ÉVOLUTION (8 SEMAINES) -->
                     <div id="general-evaluations-container"></div>
 
-                    <!-- SÉLECTEUR DE DATE ET DEVOIRS (RÈGLE ÉLÈVES : JOUR MÊME, VENDREDI & SAMEDI SUR JEUDI) -->
-                    <div id="student-school-days-bar" style="display:none; gap:8px; flex-wrap:wrap; justify-content:center; margin-bottom:15px;"></div>
+                    <!-- SÉLECTEUR DE DATE ET NAVIGATION DEVOIRS (JOURS PRÉCÉDENTS / JOURS SUIVANTS / CALENDRIER) -->
+                    <div id="student-days-nav-toolbar" style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:16px; padding:12px 18px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
+                        <button type="button" class="pro-button" onclick="navigateStudentHomeworkDay(-1)" id="btnPrevSchoolDay" style="background:#EFF6FF; color:#1D4ED8; font-weight:700; border:1.5px solid #BFDBFE; border-radius:10px; padding:9px 16px; display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition:all 0.2s ease;">
+                            <i class="fas fa-arrow-left"></i> <span id="txtPrevDay">Jour précédent</span>
+                        </button>
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center;">
+                            <span id="studentCurrentNavDayBadge" style="font-weight:800; color:#1E1B4B; font-size:0.98rem; padding:7px 16px; background:#F8FAFC; border-radius:10px; border:1.5px solid #CBD5E1; display:inline-flex; align-items:center; gap:8px;">
+                                <i class="fas fa-calendar-day" style="color:#2563EB;"></i> <span id="studentCurrentNavDayText">Chargement date...</span>
+                            </span>
+                            <button type="button" class="pro-button" onclick="resetStudentHomeworkToToday()" id="btnResetToToday" style="background:#ECFDF5; color:#065F46; border:1.5px solid #A7F3D0; font-weight:700; border-radius:10px; padding:8px 14px; font-size:0.86rem; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                                <i class="fas fa-calendar-check" style="color:#10B981;"></i> <span id="txtTodayBtn">Aujourd'hui</span>
+                            </button>
+                        </div>
+                        <button type="button" class="pro-button" onclick="navigateStudentHomeworkDay(1)" id="btnNextSchoolDay" style="background:#EFF6FF; color:#1D4ED8; font-weight:700; border:1.5px solid #BFDBFE; border-radius:10px; padding:9px 16px; display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition:all 0.2s ease;">
+                            <span id="txtNextDay">Jour suivant</span> <i class="fas fa-arrow-right"></i>
+                        </button>
+                    </div>
+
+                    <!-- BARRE DES 5 JOURS D'ÉCOLE (DIMANCHE À JEUDI) -->
+                    <div id="student-school-days-bar" style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-bottom:18px;"></div>
                     <div id="student-weekend-notice" style="display:none; margin-bottom:15px;"></div>
 
                     <div id="student-date-header-card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px; background:white; padding:18px 24px; border-radius:16px; border:1px solid #E2E8F0; box-shadow:0 2px 10px rgba(0,0,0,0.03);">
@@ -2085,144 +2085,123 @@
                         </div>
                     </div>
 
-                    <!-- Hub de Navigation Hiérarchique par Icônes : Écoles -> Semaines -> Classes -> Jours -->
-                    <div class="teacher-filter-hub" id="teacherFilterHub">
+                    <!-- Hub de Filtrage Enseignant par Listes Déroulantes en Cascade (Semaine -> Classe -> Jour -> Matière -> Statut) -->
+                    <div class="teacher-filter-hub" id="teacherFilterHub" style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:18px; padding:22px 24px; margin-bottom:24px; box-shadow:0 4px 18px rgba(0,0,0,0.04);">
                         
-                        <!-- 0. Rangée d'icônes : ÉCOLES / SECTIONS -->
-                        <div class="teacher-filter-row" style="background:#F8FAFC; padding:12px 16px; border-radius:12px; border:1.5px solid #E2E8F0; margin-bottom:12px;">
-                            <div class="teacher-filter-row-header">
-                                <span style="font-weight:700; color:#1E293B; font-size:0.95rem;">
-                                    <i class="fas fa-school" style="color:#2563EB;"></i> 0. École / Section :
-                                </span>
-                                <span id="teacherSchoolCountLabel" style="font-size:0.78rem; color:#64748B; font-weight:600; text-transform:none;">Filtrer par établissement scolaire</span>
-                            </div>
-                            <div id="teacherSchoolIconsContainer" class="teacher-icon-bar" style="margin-top:6px;">
-                                <button type="button" class="teacher-icon-btn active" data-school="all" onclick="setTeacherHwSchoolFilter('all')">
-                                    <i class="fas fa-globe-americas" style="color:#2563EB;"></i>
-                                    <span>Toutes les Écoles / Sections</span>
-                                    <span class="hw-badge" id="badgeSchoolAll">0</span>
-                                </button>
-                                <button type="button" class="teacher-icon-btn" data-school="garcons" onclick="setTeacherHwSchoolFilter('garcons')">
-                                    <i class="fas fa-male" style="color:#3B82F6;"></i>
-                                    <span>Section Garçons (بنين)</span>
-                                    <span class="hw-badge" id="badgeSchoolGarcons">0</span>
-                                </button>
-                                <button type="button" class="teacher-icon-btn" data-school="filles" onclick="setTeacherHwSchoolFilter('filles')">
-                                    <i class="fas fa-female" style="color:#EC4899;"></i>
-                                    <span>Section Filles (بنات)</span>
-                                    <span class="hw-badge" id="badgeSchoolFilles">0</span>
-                                </button>
-                                <button type="button" class="teacher-icon-btn" data-school="primaire" onclick="setTeacherHwSchoolFilter('primaire')">
-                                    <i class="fas fa-graduation-cap" style="color:#10B981;"></i>
-                                    <span>Section Primaire (ابتدائي)</span>
-                                    <span class="hw-badge" id="badgeSchoolPrimaire">0</span>
-                                </button>
-                                <button type="button" class="teacher-icon-btn" data-school="maternelle" onclick="setTeacherHwSchoolFilter('maternelle')">
-                                    <i class="fas fa-baby" style="color:#F59E0B;"></i>
-                                    <span>Section Maternelle (روضة)</span>
-                                    <span class="hw-badge" id="badgeSchoolMaternelle">0</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Sélecteur Enseignant (Visible uniquement pour Admin / Superviseur) -->
-                        <div id="teacherAdminSwitcherRow" class="teacher-filter-row" style="display:none; padding-bottom:14px; border-bottom:1px dashed #E2E8F0;">
-                            <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-user-shield" style="color:#6366F1;"></i> Choisir l'Enseignant à Suivre :</span>
-                                <span style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">(Affiche strictement et uniquement les devoirs de l'enseignant sélectionné)</span>
-                            </div>
-                            <div id="teacherAdminIconsContainer" class="teacher-icon-bar" style="margin-top:4px;">
-                                <!-- Peuplé dynamiquement avec les enseignants -->
-                            </div>
-                        </div>
-
-                        <!-- 1. Rangée d'icônes : SEMAINES SCOLAIRES (où l'enseignant a des devoirs) -->
-                        <div class="teacher-filter-row" id="rowTeacherWeeks">
-                            <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-calendar-week" style="color:#0284C7;"></i> 1. Semaines avec Devoirs</span>
-                                <span id="teacherWeeksCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">Cliquez sur une semaine pour voir ses classes</span>
-                            </div>
-                            <div id="teacherWeeksIconsContainer" class="teacher-icon-bar">
-                                <!-- Peuplé dynamiquement avec les semaines où l'enseignant a des devoirs -->
-                            </div>
-                        </div>
-
-                        <!-- 2. Rangée d'icônes : CLASSES (de la semaine sélectionnée) -->
-                        <div class="teacher-filter-row" id="rowTeacherClasses">
-                            <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-graduation-cap" style="color:#2563EB;"></i> 2. Classes de la Semaine</span>
-                                <span id="teacherClassesCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">Cliquez sur une classe pour voir ses jours</span>
-                            </div>
-                            <div id="teacherClassesIconsContainer" class="teacher-icon-bar">
-                                <!-- Peuplé dynamiquement avec les icônes de classes de la semaine -->
-                            </div>
-                        </div>
-
-                        <!-- 3. Rangée d'icônes : JOURS DE LA SEMAINE (de la classe sélectionnée) -->
-                        <div class="teacher-filter-row" id="rowTeacherDays">
-                            <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-calendar-day" style="color:#10B981;"></i> 3. Jours de Cours</span>
-                                <span id="teacherDaysCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">Jours où des devoirs ont été donnés</span>
-                            </div>
-                            <div id="teacherDaysIconsContainer" class="teacher-icon-bar">
-                                <!-- Peuplé dynamiquement avec les icônes des jours de la classe -->
-                            </div>
-                        </div>
-
-                        <!-- 4. Rangée d'icônes : MATIÈRES -->
-                        <div class="teacher-filter-row" id="rowTeacherSubjects">
-                            <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-book" style="color:#8B5CF6;"></i> 4. Matières</span>
-                                <span id="teacherSubjectsCountLabel" style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;"></span>
-                            </div>
-                            <div id="teacherSubjectsIconsContainer" class="teacher-icon-bar">
-                                <!-- Peuplé dynamiquement avec les icônes de matières -->
-                            </div>
-                        </div>
-
-                        <!-- 5. Rangée d'icônes : STATUT D'ÉVALUATION -->
-                        <div class="teacher-filter-row">
-                            <div class="teacher-filter-row-header">
-                                <span><i class="fas fa-tasks" style="color:#F59E0B;"></i> État d'Évaluation</span>
-                                <span style="font-size:0.75rem; color:#64748B; font-weight:600; text-transform:none;">Filtrer par statut</span>
-                            </div>
-                            <div id="teacherStatusIconsContainer" class="teacher-icon-bar">
-                                <button type="button" class="teacher-icon-btn active" data-status="all" onclick="setTeacherHwStatusFilter('all')">
-                                    <i class="fas fa-list-ul" style="color:#3B82F6;"></i>
-                                    <span>Tous les Devoirs</span>
-                                    <span class="hw-badge" id="badgeStatusAll">0</span>
-                                </button>
-                                <button type="button" class="teacher-icon-btn status-pending" data-status="pending" onclick="setTeacherHwStatusFilter('pending')">
-                                    <i class="fas fa-clock" style="color:#F59E0B;"></i>
-                                    <span>⏳ À Évaluer</span>
-                                    <span class="hw-badge" id="badgeStatusPending">0</span>
-                                </button>
-                                <button type="button" class="teacher-icon-btn status-evaluated" data-status="evaluated" onclick="setTeacherHwStatusFilter('evaluated')">
-                                    <i class="fas fa-check-circle" style="color:#10B981;"></i>
-                                    <span>✅ Évalués (Vert)</span>
-                                    <span class="hw-badge" id="badgeStatusEvaluated">0</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- 6. Outils & Recherche rapide -->
-                        <div class="teacher-filter-tools">
-                            <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:260px;">
-                                <div style="position:relative; width:100%; max-width:400px;">
-                                    <i class="fas fa-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94A3B8; font-size:0.9rem;"></i>
-                                    <input type="text" id="teacherHwSearchInput" oninput="renderTeacherHomeworksDashboard()" placeholder="Rechercher par leçon, mot-clé du devoir..." style="width:100%; padding:9px 12px 9px 36px; border-radius:10px; border:1px solid #CBD5E1; font-size:0.88rem; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#3B82F6'" onblur="this.style.borderColor='#CBD5E1'">
+                        <!-- Ligne d'en-tête du filtre -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid #F1F5F9;">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg, #EFF6FF, #DBEAFE); color:#2563EB; display:flex; align-items:center; justify-content:center; font-size:1.2rem; box-shadow:0 2px 8px rgba(37,99,235,0.15);">
+                                    <i class="fas fa-sliders-h"></i>
                                 </div>
-                                <div id="teacherActiveFiltersTags" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-                                    <!-- Badges des filtres actifs -->
+                                <div>
+                                    <h3 id="teacherFilterTitle" style="margin:0; font-size:1.1rem; font-weight:800; color:#1E293B;">
+                                        Trier &amp; Filtrer les Devoirs par Liste Déroulante
+                                    </h3>
+                                    <span id="teacherFilterSubtitle" style="font-size:0.84rem; color:#64748B;">
+                                        Sélectionnez d'abord la <strong>Semaine</strong>, puis la <strong>Classe</strong>, puis le <strong>Jour</strong>
+                                    </span>
                                 </div>
                             </div>
                             <div style="display:flex; gap:10px; align-items:center;">
-                                <button type="button" class="pro-button" onclick="resetAllTeacherHwFilters()" style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; padding:8px 14px; font-size:0.86rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px;">
-                                    <i class="fas fa-undo"></i> <span>Réinitialiser les filtres</span>
+                                <button type="button" class="pro-button" onclick="resetAllTeacherHwFilters()" style="background:#F8FAFC; color:#475569; border:1px solid #CBD5E1; padding:8px 16px; font-size:0.86rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px; font-weight:700; cursor:pointer;">
+                                    <i class="fas fa-undo"></i> <span id="btnTeacherResetFilters">Réinitialiser les filtres</span>
                                 </button>
-                                <button type="button" class="pro-button primary-button" onclick="loadTeacherHomeworksDashboard()" style="padding:8px 14px; font-size:0.86rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px;">
-                                    <i class="fas fa-sync"></i> <span>Actualiser</span>
+                                <button type="button" class="pro-button primary-button" onclick="loadTeacherHomeworksDashboard()" style="padding:8px 16px; font-size:0.86rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px; font-weight:700; cursor:pointer;">
+                                    <i class="fas fa-sync"></i> <span id="btnTeacherRefresh">Actualiser</span>
                                 </button>
+                            </div>
+                        </div>
+
+                        <!-- Grille des Listes Déroulantes en Cascade -->
+                        <div class="teacher-dropdowns-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:16px; margin-bottom:18px;">
+                            
+                            <!-- Étape 0 : Établissement / Section (si admin ou visible) -->
+                            <div class="filter-field-card" id="fieldTeacherSchool">
+                                <label for="teacherSchoolSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#334155; margin-bottom:7px;">
+                                    <i class="fas fa-school" style="color:#2563EB;"></i> <span id="lblTeacherSchool">1. École / Section :</span>
+                                </label>
+                                <select id="teacherSchoolSelect" onchange="onTeacherSchoolSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600; color:#1E293B; background:#FFFFFF; cursor:pointer; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#CBD5E1'">
+                                    <option value="all">🌍 Toutes les Écoles / Sections</option>
+                                    <option value="garcons">👦 Section Garçons (بنين)</option>
+                                    <option value="filles">👧 Section Filles (بنات)</option>
+                                    <option value="primaire">🎒 Section Primaire (ابتدائي)</option>
+                                    <option value="maternelle">🧸 Section Maternelle (روضة)</option>
+                                </select>
+                            </div>
+
+                            <!-- Étape 1 : Semaine (au tout début) -->
+                            <div class="filter-field-card">
+                                <label for="teacherWeekSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#0369A1; margin-bottom:7px;">
+                                    <i class="fas fa-calendar-week" style="color:#0284C7;"></i> <span id="lblTeacherWeek">2. Semaine :</span>
+                                </label>
+                                <select id="teacherWeekSelect" onchange="onTeacherWeekSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:2px solid #0284C7; font-size:0.92rem; font-weight:700; color:#0369A1; background:#F0F9FF; cursor:pointer; outline:none; transition:all 0.2s;">
+                                    <option value="all">📅 Toutes les Semaines</option>
+                                </select>
+                            </div>
+
+                            <!-- Étape 2 : Classe (après la semaine) -->
+                            <div class="filter-field-card">
+                                <label for="teacherClassSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#312E81; margin-bottom:7px;">
+                                    <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i> <span id="lblTeacherClass">3. Classe :</span>
+                                </label>
+                                <select id="teacherClassSelect" onchange="onTeacherClassSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:2px solid #C7D2FE; font-size:0.92rem; font-weight:700; color:#312E81; background:#EEF2FF; cursor:pointer; outline:none; transition:all 0.2s;">
+                                    <option value="all">🎓 Toutes les Classes</option>
+                                </select>
+                            </div>
+
+                            <!-- Étape 3 : Jour (après la classe) -->
+                            <div class="filter-field-card">
+                                <label for="teacherDaySelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#065F46; margin-bottom:7px;">
+                                    <i class="fas fa-calendar-day" style="color:#10B981;"></i> <span id="lblTeacherDay">4. Jour de Cours :</span>
+                                </label>
+                                <select id="teacherDaySelect" onchange="onTeacherDaySelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:2px solid #A7F3D0; font-size:0.92rem; font-weight:700; color:#065F46; background:#ECFDF5; cursor:pointer; outline:none; transition:all 0.2s;">
+                                    <option value="all">☀️ Tous les Jours</option>
+                                </select>
+                            </div>
+
+                            <!-- Étape 4 : Matière -->
+                            <div class="filter-field-card">
+                                <label for="teacherSubjectSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#5B21B6; margin-bottom:7px;">
+                                    <i class="fas fa-book" style="color:#8B5CF6;"></i> <span id="lblTeacherSubject">5. Matière :</span>
+                                </label>
+                                <select id="teacherSubjectSelect" onchange="onTeacherSubjectSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600; color:#1E293B; background:#FFFFFF; cursor:pointer; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#8B5CF6'" onblur="this.style.borderColor='#CBD5E1'">
+                                    <option value="all">📚 Toutes les Matières</option>
+                                </select>
+                            </div>
+
+                            <!-- Étape 5 : Statut d'évaluation -->
+                            <div class="filter-field-card">
+                                <label for="teacherStatusSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#92400E; margin-bottom:7px;">
+                                    <i class="fas fa-clipboard-check" style="color:#F59E0B;"></i> <span id="lblTeacherStatus">6. Statut d'Évaluation :</span>
+                                </label>
+                                <select id="teacherStatusSelect" onchange="onTeacherStatusSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:700; color:#1E293B; background:#FFFFFF; cursor:pointer; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#F59E0B'" onblur="this.style.borderColor='#CBD5E1'">
+                                    <option value="all">📋 Tous les Devoirs</option>
+                                    <option value="pending">⏳ À Évaluer</option>
+                                    <option value="evaluated">✅ Évalués (Vert)</option>
+                                </select>
+                            </div>
+
+                            <!-- Sélecteur Enseignant (Visible uniquement pour Admin / Superviseur) -->
+                            <div class="filter-field-card" id="teacherAdminSwitcherField" style="display:none;">
+                                <label for="teacherAdminSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#4338CA; margin-bottom:7px;">
+                                    <i class="fas fa-user-shield" style="color:#6366F1;"></i> <span>Enseignant Suivi :</span>
+                                </label>
+                                <select id="teacherAdminSelect" onchange="setTeacherHwTeacherFilter(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600; color:#1E293B; background:#FFFFFF; cursor:pointer; outline:none;">
+                                    <option value="">Tous les Enseignants</option>
+                                </select>
+                            </div>
+
+                        </div>
+
+                        <!-- Barre de recherche textuelle & Badges des filtres actifs -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; padding-top:14px; border-top:1px dashed #E2E8F0;">
+                            <div style="position:relative; flex:1; min-width:260px; max-width:480px;">
+                                <i class="fas fa-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#94A3B8; font-size:0.92rem;"></i>
+                                <input type="text" id="teacherHwSearchInput" oninput="renderTeacherHomeworksDashboard()" placeholder="Rechercher par leçon, mot-clé du devoir..." style="width:100%; padding:9px 12px 9px 36px; border-radius:10px; border:1px solid #CBD5E1; font-size:0.88rem; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#3B82F6'" onblur="this.style.borderColor='#CBD5E1'">
+                            </div>
+                            <div id="teacherActiveFiltersTags" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                                <!-- Badges dynamiques des filtres actifs -->
                             </div>
                         </div>
 
