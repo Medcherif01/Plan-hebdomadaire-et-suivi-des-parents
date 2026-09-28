@@ -827,9 +827,44 @@
         // Version d'authentification pour forcer la déconnexion
         const AUTH_VERSION = 2; // Incrémenter pour forcer tous les utilisateurs à se reconnecter
 
-        const arabicTeachers = ['Majed', 'Jaber', 'Imad'];
+        const arabicTeachers = ['Majed', 'Jaber', 'Imad', 'Saeed', 'Amal Arabe'];
         const englishTeachers = ['Kamel'];
-        const isArabicUser = () => currentUserLanguage === 'ar';
+
+        function isEnglishTeacher(username, userLang, subject) {
+            if (userLang === 'en') return true;
+            const u = String(username || '').trim().toLowerCase();
+            const s = String(subject || '').trim().toLowerCase();
+            if (englishTeachers.some(t => t.toLowerCase() === u || u.includes(t.toLowerCase()))) return true;
+            if (u.includes('kamel') || u.includes('english') || u.includes('anglais')) return true;
+            if (s.includes('anglais') || s.includes('english') || s.includes('esl')) return true;
+            return false;
+        }
+
+        function isArabicTeacher(username, userLang, subject) {
+            if (userLang === 'ar') return true;
+            const u = String(username || '').trim().toLowerCase();
+            const s = String(subject || '').trim().toLowerCase();
+            if (arabicTeachers.some(t => t.toLowerCase() === u || u.includes(t.toLowerCase()))) return true;
+            if (u.includes('majed') || u.includes('jaber') || u.includes('imad') || u.includes('saeed') || u.includes('amal arabe') || u.includes('arabe') || u.includes('arab') || /[؀-ۿ]/.test(u)) return true;
+            if (s.includes('arabe') || s.includes('islam') || s.includes('coran') || s.includes('tarbiya') || /[؀-ۿ]/.test(s)) return true;
+            return false;
+        }
+
+        const isArabicTeacherActive = () => {
+            if (isArabicTeacher(loggedInUser, currentUserLanguage)) return true;
+            const ensFilter = document.getElementById('filterEnseignant')?.value;
+            if (ensFilter && isArabicTeacher(ensFilter)) return true;
+            return false;
+        };
+
+        const isEnglishTeacherActive = () => {
+            if (isEnglishTeacher(loggedInUser, currentUserLanguage)) return true;
+            const ensFilter = document.getElementById('filterEnseignant')?.value;
+            if (ensFilter && isEnglishTeacher(ensFilter)) return true;
+            return false;
+        };
+
+        const isArabicUser = () => currentUserLanguage === 'ar' || isArabicTeacherActive();
         
         // Version du code pour vérifier le déploiement
         console.log('%c🚀 VERSION DÉPLOYÉE: 2026-01-23 15:30 - Garçons', 'background: #0066CC; color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold;');
@@ -842,19 +877,151 @@
                 login_title: "Connexion", login_username_label: "Nom d'utilisateur (Enseignant) :", login_password_label: "Mot de passe (idem Nom) :", login_button_text: "Se connecter", remember_me: "Rester connecté", logout_button: "Déconnecter", main_page_title: "Plans Hebdomadaires", week_label: "Semaine:", select_week: "-- Sélectionnez une semaine --", please_select_week: "Veuillez sélectionner une semaine.", admin_actions_title: "Actions Administrateur", admin_excel_label: "Fichier Excel :", admin_save_button: "Charger et Enregistrer dans la DB", generate_word_button: "Générer Word par Classe", generate_excel_button: "Générer Excel (1 Fichier)", save_all_button: "Enregistrer Lignes Affichées", filter_teacher_label: "Enseignant:", filter_class_label: "Classe:", filter_material_label: "Matière:", filter_period_label: "Période:", filter_day_label: "Jour:", all: "Tous", all_f: "Toutes", day_sun: "Dimanche", day_mon: "Lundi", day_tue: "Mardi", day_wed: "Mercredi", day_thu: "Jeudi", days: ["Dim", "Lun", "Mar", "Mer", "Jeu"], fullDays: ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"], months: ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"], headers: { 'Leçon': 'Leçon', 'Travaux de classe': 'Travaux de classe', 'Support': 'Support', 'Devoirs': 'Devoirs', 'Enseignant': 'Enseignant', 'Classe': 'Classe', 'Matière': 'Matière', 'Période': 'Période', 'Jour': 'Jour' }, actions: "Actions", updated_at: "Mis à jour", notes_for_class: "Notes pour la classe :", select_class: "-- Sélectionnez une classe --", select_class_placeholder: "Sélectionnez une classe pour voir ou ajouter des notes...", notes_placeholder: "Notes pour {classText}...", save_notes_button: "Enregistrer Notes", saving: "Enregistrement...", saved: "Enregistré", saving_notes_for: "Enregistrement notes pour {class} S{week}", notes_saved_success: "Notes enregistrées pour {class}, S{week}.", error_saving_notes: "Erreur d'enregistrement des notes: {error}", display_incomplete: "Afficher Incomplets", hide_incomplete: "Masquer Incomplets", incomplete_teachers_title: "Enseignants Incomplets", loading: "Chargement...", no_data: "Aucune donnée.", all_complete: "Tout complet!", error_config_columns: "Erreur config colonnes.", welcome_user: "Bienvenue {user} ! Veuillez sélectionner une semaine.", connected_as: "Connecté: {user}", loading_data_week: "Chargement données S{week}...", data_loaded_week: "Données S{week} chargées.", no_data_found_week: "Aucune donnée trouvée pour S{week}.", error_loading_week: "Erreur chargement S{week}: {error}", select_week_to_display: "Veuillez sélectionner une semaine pour afficher les données.", error_structure: "Erreur: Structure de données non définie.", no_data_to_display_filters: "Aucune donnée à afficher avec les filtres actuels.", save_row_title: "Enregistrer cette ligne", invalid_row: "Ligne invalide.", error_saving_row: "Erreur enregistrement ligne: {error}", no_rows_to_save: "Aucune ligne affichée à enregistrer.", confirm_save_all: "Confirmer l'enregistrement des {count} lignes affichées pour la S{week}?", save_all_cancelled: "Enregistrement annulé.", saving_all_displayed: "Enregistrement des {count} lignes en cours...", save_all_success: "{count} lignes enregistrées avec succès.", save_all_partial: "Enregistrement terminé: {success} succès, {error} erreurs.", generating_word: "Génération de {count} document(s) Word...", generating_word_success: "{count} document(s) Word généré(s).", generating_word_partial: "Génération Word terminée: {ok} succès, {err} erreurs.", generating_word_failed: "Échec de la génération Word ({err} erreurs).", generating_excel: "Génération du fichier Excel S{week}...", generating_excel_success: "Fichier Excel '{filename}' généré.", error_generating_excel: "Erreur génération Excel: {error}", no_file_selected: "Aucun fichier sélectionné.", reading_file: "Lecture du fichier {fileName}...", file_read_success: "Fichier {fileName} lu ({count} lignes).", file_error: "Erreur lecture fichier: {error}", invalid_file_type: "Type de fichier invalide (.xlsx ou .xls requis).", saving_uploaded_data: "Enregistrement des données chargées pour S{week}...", uploaded_data_saved: "Données chargées enregistrées pour S{week}.", uploaded_data_error: "Erreur enregistrement données chargées: {error}", no_word_dates: "Génération Word: Dates manquantes côté serveur pour la semaine S{week}.",
                 generate_ai_lesson_plan_button: "Plan de Leçon (IA)", generating_ai_lesson_plan: "Génération du plan de leçon IA...", error_generating_ai_lesson_plan: "Erreur génération plan IA: {error}", ai_lesson_plan_generated: "Plan de leçon IA généré.", quota_exceeded: "⚠️ Quota API épuisé ! La limite d'utilisation gratuite de l'IA a été atteinte aujourd'hui. Veuillez réessayer demain ou contacter l'administrateur.",
                 generate_weekly_lessons_button: "Générer Plans de Leçons (Semaine)", generating_weekly_lessons: "Génération des plans de leçons pour la semaine...", weekly_lessons_generated: "Plans de leçons hebdomadaires générés.",
-                admin_report_class_label: "Choisir une Classe :", generate_full_report_button: "Générer Rapport Complet par Classe", loading_classes: "-- Chargement des classes --", select_report_class: "-- Sélectionnez une classe pour le rapport --", no_classes_found: "-- Aucune classe trouvée --", generating_full_report: "Génération du rapport complet pour la classe {classe}...", generating_full_report_success: "Rapport complet pour {classe} généré.", generating_full_report_error: "Erreur génération du rapport pour {classe}: {error}", please_select_class_for_report: "Veuillez sélectionner une classe pour générer le rapport."
+                admin_report_class_label: "Choisir une Classe :", generate_full_report_button: "Générer Rapport Complet par Classe", loading_classes: "-- Chargement des classes --", select_report_class: "-- Sélectionnez une classe pour le rapport --", no_classes_found: "-- Aucune classe trouvée --", generating_full_report: "Génération du rapport complet pour la classe {classe}...", generating_full_report_success: "Rapport complet pour {classe} généré.", generating_full_report_error: "Erreur génération du rapport pour {classe}: {error}", please_select_class_for_report: "Veuillez sélectionner une classe pour générer le rapport.",
+                tab_plans: "Plans Hebdomadaires",
+                tab_devoirs: "Portail Suivi des Devoirs",
+                teacher_homework_title: "Espace Évaluation des Devoirs par l'Enseignant",
+                parent_messages: "Messages Parents",
+                connected_teacher: "Enseignant connecté :",
+                download_full_plan_word: "Télécharger Plan Complet (Word)",
+                stat_total_hw: "Total Devoirs",
+                stat_evaluated_hw: "Évalués (Vert)",
+                stat_pending_hw: "À Évaluer",
+                filter_school: "0. École / Section :",
+                filter_school_sub: "Filtrer par établissement scolaire",
+                all_schools: "Toutes les Écoles / Sections",
+                filter_weeks: "1. Semaines avec Devoirs",
+                filter_weeks_sub: "Cliquez sur une semaine pour voir ses classes",
+                filter_classes: "2. Classes de la Semaine",
+                filter_classes_sub: "Cliquez sur une classe pour voir ses jours",
+                filter_days: "3. Jours de Cours",
+                filter_days_sub: "Jours où des devoirs ont été donnés",
+                filter_subjects: "4. Matières",
+                all_subjects: "Toutes les Matières",
+                filter_status: "5. Statut d'Évaluation :",
+                all_statuses: "Tous les Statuts",
+                reset_filter: "Réinitialiser",
+                eval_modal_title: "Saisie de l'Évaluation des Élèves",
+                eval_all_done: 'Tout marquer "Fait" (10/10)',
+                eval_all_not_done: 'Tout marquer "Non Fait"',
+                eval_save_button: "Enregistrer l'Évaluation",
+                eval_close_button: "Fermer",
+                th_student_name: "Nom de l'Élève",
+                th_hw_status: "Statut du Devoir",
+                th_participation: "Participation (/10)",
+                th_behavior: "Comportement (/10)",
+                th_comment: "Remarque",
+                th_parent: "Parent",
+                opt_done: "✅ Fait",
+                opt_partial: "⚠️ Partiellement Fait",
+                opt_not_done: "❌ Non Fait",
+                opt_absent: "⚪ Absent",
+                btn_message: "Message",
+                eval_saved_toast: "Évaluation enregistrée avec succès ! Le devoir est désormais marqué comme Évalué (Vert).",
+                sec_boys: "Section Garçons",
+                sec_girls: "Section Filles",
+                sec_primary: "Section Primaire",
+                sec_maternelle: "Section Maternelle" 
             },
             ar: { 
                 login_title: "تسجيل الدخول", login_username_label: "اسم المستخدم (المعلم):", login_password_label: "كلمة المرور (نفس الاسم):", login_button_text: "تسجيل الدخول", remember_me: "تذكرني", logout_button: "تسجيل الخروج", main_page_title: "الخطط الأسبوعية", week_label: "الأسبوع:", select_week: "-- اختر أسبوع --", please_select_week: "يرجى اختيار أسبوع.", admin_actions_title: "إجراءات المسؤول", admin_excel_label: "ملف اكسل:", admin_save_button: "تحميل وحفظ في قاعدة البيانات", generate_word_button: "إنشاء ملف وورد حسب الفصل", generate_excel_button: "إنشاء ملف اكسل (ملف واحد)", save_all_button: "حفظ الصفوف المعروضة", filter_teacher_label: "المعلم:", filter_class_label: "الفصل:", filter_material_label: "المادة:", filter_period_label: "الحصة:", filter_day_label: "اليوم:", all: "الكل", all_f: "الكل", day_sun: "الأحد", day_mon: "الاثنين", day_tue: "الثلاثاء", day_wed: "الأربعاء", day_thu: "الخميس", days: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"], fullDays: ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"], months: ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"], headers: { 'Leçon': 'الدرس', 'Travaux de classe': 'أعمال الفصل', 'Support': 'الدعم', 'Devoirs': 'الواجبات', 'Enseignant': 'المعلم', 'Classe': 'الفصل', 'Matière': 'المادة', 'Période': 'الحصة', 'Jour': 'اليوم' }, actions: "إجراءات", updated_at: "آخر تحديث", notes_for_class: "ملاحظات للفصل:", select_class: "-- اختر فصل --", select_class_placeholder: "اختر فصلًا لعرض أو إضافة ملاحظات...", notes_placeholder: "ملاحظات ل {classText}...", save_notes_button: "حفظ الملاحظات", saving: "جاري الحفظ...", saved: "تم الحفظ", saving_notes_for: "جاري حفظ الملاحظات ل {class} أسبوع {week}", notes_saved_success: "تم حفظ الملاحظات ل {class}، أسبوع {week}.", error_saving_notes: "خطأ في حفظ الملاحظات: {error}", display_incomplete: "إظهار غير المكتمل", hide_incomplete: "إخفاء غير المكتمل", incomplete_teachers_title: "المعلمون غير المكتملين", loading: "جاري التحميل...", no_data: "لا توجد بيانات.", all_complete: "الكل مكتمل!", error_config_columns: "خطأ في إعداد الأعمدة.", welcome_user: "مرحباً {user}! يرجى اختيار أسبوع.", connected_as: "متصل: {user}", loading_data_week: "جاري تحميل بيانات الأسبوع {week}...", data_loaded_week: "تم تحميل بيانات الأسبوع {week}.", no_data_found_week: "لم يتم العثور على بيانات للأسبوع {week}.", error_loading_week: "خطأ في تحميل الأسبوع {week}: {error}", select_week_to_display: "يرجى اختيار أسبوع لعرض البيانات.", error_structure: "خطأ: هيكل البيانات غير محدد.", no_data_to_display_filters: "لا توجد بيانات لعرضها مع الفلاتر الحالية.", save_row_title: "حفظ هذا السطر", invalid_row: "سطر غير صالح.", error_saving_row: "خطأ في حفظ السطر: {error}", no_rows_to_save: "لا توجد أسطر معروضة للحفظ.", confirm_save_all: "تأكيد حفظ {count} أسطر معروضة للأسبوع {week}؟", save_all_cancelled: "تم إلغاء الحفظ.", saving_all_displayed: "جاري حفظ {count} أسطر...", save_all_success: "تم حفظ {count} أسطر بنجاح.", save_all_partial: "اكتمل الحفظ: {success} نجاح، {error} أخطاء.", generating_word: "جاري إنشاء {count} مستند (مستندات) وورد...", generating_word_success: "تم إنشاء {count} مستند (مستندات) وورد.", generating_word_partial: "اكتمل إنشاء الوورد: {ok} نجاح، {err} أخطاء.", generating_word_failed: "فشل إنشاء الوورد ({err} أخطاء).", generating_excel: "جاري إنشاء ملف اكسل للأسبوع {week}...", generating_excel_success: "تم إنشاء ملف اكسل '{filename}'.", error_generating_excel: "خطأ في إنشاء اكسل: {error}", no_file_selected: "لم يتم اختيار ملف.", reading_file: "قراءة الملف {fileName}...", file_read_success: "تمت قراءة الملف {fileName} ({count} أسطر).", file_error: "خطأ في قراءة الملف: {error}", invalid_file_type: "نوع الملف غير صالح (مطلوب .xlsx أو .xls).", saving_uploaded_data: "جاري حفظ البيانات المحملة للأسبوع {week}...", uploaded_data_saved: "تم حفظ البيانات المحملة للأسبوع {week}.", uploaded_data_error: "خطأ في حفظ البيانات المحملة: {error}", no_word_dates: "توليد وورد: التواريخ مفقودة على الخادم للأسبوع {week}.",
                 generate_ai_lesson_plan_button: "خطة الدرس (AI)", generating_ai_lesson_plan: "جاري إنشاء خطة الدرس بالذكاء الاصطناعي...", error_generating_ai_lesson_plan: "خطأ في إنشاء خطة الدرس بالذكاء الاصطناعي: {error}", ai_lesson_plan_generated: "تم إنشاء خطة الدرس بالذكاء الاصطناعي.", quota_exceeded: "⚠️ تم استنفاد حصة API! تم الوصول إلى حد الاستخدام المجاني للذكاء الاصطناعي اليوم. يرجى المحاولة غدًا أو الاتصال بالمسؤول.",
                 generate_weekly_lessons_button: "إنشاء خطط دروس الأسبوع", generating_weekly_lessons: "جاري إنشاء خطط دروس الأسبوع...", weekly_lessons_generated: "تم إنشاء خطط دروس الأسبوع.",
-                admin_report_class_label: "اختر فصل:", generate_full_report_button: "إنشاء تقرير كامل حسب الفصل", loading_classes: "-- جاري تحميل الفصول --", select_report_class: "-- اختر فصل للتقرير --", no_classes_found: "-- لم يتم العثور على فصول --", generating_full_report: "جاري إنشاء التقرير الكامل للفصل {classe}...", generating_full_report_success: "تم إنشاء التقرير الكامل للفصل {classe}.", generating_full_report_error: "خطأ في إنشاء التقرير للفصل {classe}: {error}", please_select_class_for_report: "يرجى اختيار فصل لإنشاء التقرير."
+                admin_report_class_label: "اختر فصل:", generate_full_report_button: "إنشاء تقرير كامل حسب الفصل", loading_classes: "-- جاري تحميل الفصول --", select_report_class: "-- اختر فصل للتقرير --", no_classes_found: "-- لم يتم العثور على فصول --", generating_full_report: "جاري إنشاء التقرير الكامل للفصل {classe}...", generating_full_report_success: "تم إنشاء التقرير الكامل للفصل {classe}.", generating_full_report_error: "خطأ في إنشاء التقرير للفصل {classe}: {error}", please_select_class_for_report: "يرجى اختيار فصل لإنشاء التقرير.",
+                tab_plans: "الخطط الأسبوعية",
+                tab_devoirs: "بوابة متابعة الواجبات والطلاب",
+                teacher_homework_title: "فضاء تقييم الواجبات ومتابعة الطلاب",
+                parent_messages: "رسائل أولياء الأمور",
+                connected_teacher: "المعلم المتصل:",
+                download_full_plan_word: "تحميل الخطة الكاملة (Word)",
+                stat_total_hw: "مجموع الواجبات",
+                stat_evaluated_hw: "تم التقييم (أخضر)",
+                stat_pending_hw: "قيد التقييم",
+                filter_school: "0. المدرسة / القسم:",
+                filter_school_sub: "تصفية حسب القسم المدرسي",
+                all_schools: "جميع المدارس / الأقسام",
+                filter_weeks: "1. الأسابيع ذات الواجبات",
+                filter_weeks_sub: "انقر على أسبوع لعرض فصوله",
+                filter_classes: "2. فصول الأسبوع",
+                filter_classes_sub: "انقر على فصل لعرض أيامه",
+                filter_days: "3. أيام الحصص",
+                filter_days_sub: "الأيام التي كُلّف فيها واجبات",
+                filter_subjects: "4. المواد الدراسية",
+                all_subjects: "جميع المواد",
+                filter_status: "5. حالة التقييم:",
+                all_statuses: "جميع الحالات",
+                reset_filter: "إعادة ضبط",
+                eval_modal_title: "استمارة تقييم الطلاب",
+                eval_all_done: 'الكل منجز (10/10)',
+                eval_all_not_done: 'الكل لم ينجز',
+                eval_save_button: "حفظ التقييمات",
+                eval_close_button: "إغلاق",
+                th_student_name: "اسم الطالب",
+                th_hw_status: "حالة الواجب",
+                th_participation: "المشاركة (/10)",
+                th_behavior: "السلوك (/10)",
+                th_comment: "ملاحظات",
+                th_parent: "ولي الأمر",
+                opt_done: "✅ تم الإنجاز",
+                opt_partial: "⚠️ منجز جزئياً",
+                opt_not_done: "❌ لم يُنجز",
+                opt_absent: "⚪ غائب",
+                btn_message: "رسالة",
+                eval_saved_toast: "تم حفظ التقييم بنجاح! تم تمييز الواجب كـ مُقيّم (باللون الأخضر).",
+                sec_boys: "قسم البنين",
+                sec_girls: "قسم البنات",
+                sec_primary: "قسم الابتدائي",
+                sec_maternelle: "قسم الروضة" 
             },
             en: { 
                 login_title: "Login", login_username_label: "Username (Teacher):", login_password_label: "Password (same as Name):", login_button_text: "Login", remember_me: "Remember me", logout_button: "Logout", main_page_title: "Weekly Plans", week_label: "Week:", select_week: "-- Select a week --", please_select_week: "Please select a week.", admin_actions_title: "Administrator Actions", admin_excel_label: "Excel File:", admin_save_button: "Load and Save to DB", generate_word_button: "Generate Word by Class", generate_excel_button: "Generate Excel (1 File)", save_all_button: "Save Displayed Rows", filter_teacher_label: "Teacher:", filter_class_label: "Class:", filter_material_label: "Subject:", filter_period_label: "Period:", filter_day_label: "Day:", all: "All", all_f: "All", day_sun: "Sunday", day_mon: "Monday", day_tue: "Tuesday", day_wed: "Wednesday", day_thu: "Thursday", days: ["Sun", "Mon", "Tue", "Wed", "Thu"], fullDays: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"], months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], headers: { 'Leçon': 'Lesson', 'Travaux de classe': 'Classwork', 'Support': 'Support', 'Devoirs': 'Homework', 'Enseignant': 'Teacher', 'Classe': 'Class', 'Matière': 'Subject', 'Période': 'Period', 'Jour': 'Day' }, actions: "Actions", updated_at: "Updated At", notes_for_class: "Notes for class:", select_class: "-- Select a class --", select_class_placeholder: "Select a class to view or add notes...", notes_placeholder: "Notes for {classText}...", save_notes_button: "Save Notes", saving: "Saving...", saved: "Saved", saving_notes_for: "Saving notes for {class} W{week}", notes_saved_success: "Notes saved for {class}, W{week}.", error_saving_notes: "Error saving notes: {error}", display_incomplete: "Show Incomplete", hide_incomplete: "Hide Incomplete", incomplete_teachers_title: "Incomplete Teachers", loading: "Loading...", no_data: "No data.", all_complete: "All complete!", error_config_columns: "Column config error.", welcome_user: "Welcome {user}! Please select a week.", connected_as: "Connected: {user}", loading_data_week: "Loading data W{week}...", data_loaded_week: "Data W{week} loaded.", no_data_found_week: "No data found for W{week}.", error_loading_week: "Error loading W{week}: {error}", select_week_to_display: "Please select a week to display data.", error_structure: "Error: Data structure undefined.", no_data_to_display_filters: "No data to display with current filters.", save_row_title: "Save this row", invalid_row: "Invalid row.", error_saving_row: "Error saving row: {error}", no_rows_to_save: "No displayed rows to save.", confirm_save_all: "Confirm saving the {count} displayed rows for W{week}?", save_all_cancelled: "Save cancelled.", saving_all_displayed: "Saving {count} rows...", save_all_success: "{count} rows saved successfully.", save_all_partial: "Save complete: {success} success, {error} errors.", generating_word: "Generating {count} Word document(s)...", generating_word_success: "{count} Word document(s) generated.", generating_word_partial: "Word generation complete: {ok} success, {err} errors.", generating_word_failed: "Word generation failed ({err} errors).", generating_excel: "Generating Excel file W{week}...", generating_excel_success: "Excel file '{filename}' generated.", error_generating_excel: "Error generating Excel: {error}", no_file_selected: "No file selected.", reading_file: "Reading file {fileName}...", file_read_success: "File {fileName} read ({count} rows).", file_error: "Error reading file: {error}", invalid_file_type: "Invalid file type (requires .xlsx or .xls).", saving_uploaded_data: "Saving uploaded data for W{week}...", uploaded_data_saved: "Uploaded data saved for W{week}.", uploaded_data_error: "Error saving uploaded data: {error}", no_word_dates: "Word generation: Server-side dates missing for week W{week}.",
                 generate_ai_lesson_plan_button: "Lesson Plan (AI)", generating_ai_lesson_plan: "Generating AI lesson plan...", error_generating_ai_lesson_plan: "Error generating AI lesson plan: {error}", ai_lesson_plan_generated: "AI lesson plan generated.", quota_exceeded: "⚠️ API Quota Exceeded! The free AI usage limit has been reached today. Please try again tomorrow or contact the administrator.",
                 generate_weekly_lessons_button: "Generate Weekly Lesson Plans", generating_weekly_lessons: "Generating weekly lesson plans...", weekly_lessons_generated: "Weekly lesson plans generated.",
-                admin_report_class_label: "Choose a Class:", generate_full_report_button: "Generate Full Report by Class", loading_classes: "-- Loading classes --", select_report_class: "-- Select a class for the report --", no_classes_found: "-- No classes found --", generating_full_report: "Generating full report for class {classe}...", generating_full_report_success: "Full report for {classe} generated.", generating_full_report_error: "Error generating report for {classe}: {error}", please_select_class_for_report: "Please select a class to generate the report."
+                admin_report_class_label: "Choose a Class:", generate_full_report_button: "Generate Full Report by Class", loading_classes: "-- Loading classes --", select_report_class: "-- Select a class for the report --", no_classes_found: "-- No classes found --", generating_full_report: "Generating full report for class {classe}...", generating_full_report_success: "Full report for {classe} generated.", generating_full_report_error: "Error generating report for {classe}: {error}", please_select_class_for_report: "Please select a class to generate the report.",
+                tab_plans: "Weekly Plans",
+                tab_devoirs: "Homework & Student Tracking Portal",
+                teacher_homework_title: "Teacher Homework & Student Evaluation Portal",
+                parent_messages: "Parent Messages",
+                connected_teacher: "Connected Teacher:",
+                download_full_plan_word: "Download Full Plan (Word)",
+                stat_total_hw: "Total Homeworks",
+                stat_evaluated_hw: "Evaluated (Green)",
+                stat_pending_hw: "Pending Evaluation",
+                filter_school: "0. School / Section:",
+                filter_school_sub: "Filter by school section",
+                all_schools: "All Schools / Sections",
+                filter_weeks: "1. Weeks with Homework",
+                filter_weeks_sub: "Click a week to view its classes",
+                filter_classes: "2. Classes of the Week",
+                filter_classes_sub: "Click a class to view its days",
+                filter_days: "3. Class Days",
+                filter_days_sub: "Days when homework was assigned",
+                filter_subjects: "4. Subjects",
+                all_subjects: "All Subjects",
+                filter_status: "5. Evaluation Status:",
+                all_statuses: "All Statuses",
+                reset_filter: "Reset",
+                eval_modal_title: "Student Evaluation Sheet",
+                eval_all_done: 'Mark All Done (10/10)',
+                eval_all_not_done: 'Mark All Not Done',
+                eval_save_button: "Save Evaluations",
+                eval_close_button: "Close",
+                th_student_name: "Student Name",
+                th_hw_status: "Homework Status",
+                th_participation: "Participation (/10)",
+                th_behavior: "Behavior (/10)",
+                th_comment: "Notes / Comment",
+                th_parent: "Parent",
+                opt_done: "✅ Done",
+                opt_partial: "⚠️ Partially Done",
+                opt_not_done: "❌ Not Done",
+                opt_absent: "⚪ Absent",
+                btn_message: "Message",
+                eval_saved_toast: "Evaluation saved successfully! The homework is now marked as Evaluated (Green).",
+                sec_boys: "Boys Section",
+                sec_girls: "Girls Section",
+                sec_primary: "Primary Section",
+                sec_maternelle: "Kindergarten Section" 
             }
         };
         const t = (key, params = {}) => { let text = translations[currentUserLanguage]?.[key] || translations.fr[key] || key; for (const p in params) { text = text.replace(`{${p}}`, params[p]); } return text; };
@@ -1863,6 +2030,124 @@
         function extractDayName(jourValue) { if (!jourValue || typeof jourValue !== 'string') return null; const trimmed = jourValue.trim(); const dayNames = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"]; if (dayNames.includes(trimmed)) { return trimmed; } const frenchDateRegex = /^(Dimanche|Lundi|Mardi|Mercredi|Jeudi)\s+/i; const match = trimmed.match(frenchDateRegex); if (match) { return match[1]; } const parsed = parseDateFromJourColumn(trimmed); if (parsed) { return dayNames[parsed.getUTCDay()]; } return null; }
         function formatUpdatedAt(dS) { if(!dS) return ''; try{const d=new Date(dS); if(isNaN(d.getTime())) return ''; return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; } catch(e){return '';} }
 
+                // --- Exportation / Importation Complète de la Base de Données (Admin) ---
+        async function exportDatabaseExcel() {
+            try {
+                const isAr = (currentUserLanguage === 'ar');
+                const isEn = (currentUserLanguage === 'en');
+                const msg = isAr ? 'جاري تصدير قاعدة البيانات كاملة إلى ملف Excel...' : (isEn ? 'Exporting complete database to Excel...' : 'Exportation complète de la base de données vers Excel en cours...');
+                displayAlert(msg, false);
+
+                const res = await fetch('/api/admin/export-database');
+                if (!res.ok) {
+                    throw new Error('Erreur HTTP ' + res.status);
+                }
+                const blob = await res.blob();
+                const disposition = res.headers.get('Content-Disposition');
+                let filename = `sauvegarde_base_de_donnees_${new Date().toISOString().split('T')[0]}.xlsx`;
+                if (disposition && disposition.includes('filename=')) {
+                    const m = disposition.match(/filename="?([^";]+)"?/);
+                    if (m && m[1]) filename = m[1];
+                }
+
+                if (typeof saveAs === 'function') {
+                    saveAs(blob, filename);
+                } else {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }
+
+                const successMsg = isAr ? 'تم تصدير قاعدة البيانات بنجاح !' : (isEn ? 'Database exported successfully!' : 'Base de données exportée avec succès !');
+                displayAlert(successMsg, false);
+            } catch (err) {
+                console.error('Erreur exportDatabaseExcel:', err);
+                displayAlert('Erreur lors de l\'exportation : ' + err.message, true);
+            }
+        }
+
+        async function handleImportDatabaseFile(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+
+            const isAr = (currentUserLanguage === 'ar');
+            const isEn = (currentUserLanguage === 'en');
+            const confirmMsg = isAr 
+                ? `هل أنت متأكد من رغبتك في استيراد البيانات من "${file.name}" إلى قاعدة البيانات؟ سيتم دمج وتحديث البيانات الحالية.`
+                : (isEn 
+                    ? `Are you sure you want to import data from "${file.name}" into the database? Existing data will be merged and updated.`
+                    : `Êtes-vous sûr de vouloir importer les données depuis "${file.name}" dans la base de données ? Les données existantes seront fusionnées/mises à jour.`);
+
+            if (!confirm(confirmMsg)) {
+                event.target.value = '';
+                return;
+            }
+
+            try {
+                const waitMsg = isAr ? 'جاري استيراد وتحديث قاعدة البيانات...' : (isEn ? 'Importing and updating database...' : 'Importation et mise à jour de la base de données en cours...');
+                displayAlert(waitMsg, false);
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const res = await fetch('/api/admin/import-database', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data.message || 'Erreur lors de l\'importation');
+                }
+
+                const summaryText = data.summary ? Object.entries(data.summary).map(([k, v]) => `${k}: ${v}`).join(', ') : '';
+                const okMsg = isAr
+                    ? `تم استيراد قاعدة البيانات بنجاح ! (${summaryText})`
+                    : (isEn
+                        ? `Database imported successfully! (${summaryText})`
+                        : `Base de données importée avec succès ! (${summaryText})`);
+
+                displayAlert(okMsg, false);
+                event.target.value = '';
+
+                if (currentWeek) {
+                    await fetchPlanData(currentWeek);
+                }
+            } catch (err) {
+                console.error('Erreur handleImportDatabaseFile:', err);
+                displayAlert('Erreur lors de l\'importation : ' + err.message, true);
+                event.target.value = '';
+            }
+        }
+
+        async function clearLessonPlansDb() {
+            const isAr = (currentUserLanguage === 'ar');
+            const isEn = (currentUserLanguage === 'en');
+            const confirmMsg = isAr
+                ? 'هل تريد بالتأكيد حذف جميع خطط الدروس المخزنة في قاعدة البيانات لتوفير المساحة؟ (لن يتم حذف الخطط الأسبوعية أو الواجبات)'
+                : (isEn
+                    ? 'Are you sure you want to clear all stored lesson plans from the database to free disk space? (Weekly plans and homework will NOT be affected)'
+                    : 'Voulez-vous vraiment supprimer tous les plans de leçons stockés dans la base de données pour libérer l\'espace disque ? (Les plans hebdomadaires et devoirs ne seront PAS affectés)');
+
+            if (!confirm(confirmMsg)) return;
+
+            try {
+                displayAlert(isAr ? 'جاري حذف خطط الدروس لتوفير المساحة...' : (isEn ? 'Clearing lesson plans from database...' : 'Suppression des plans de leçons en cours...'), false);
+                const res = await fetch('/api/admin/clear-lesson-plans', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.message || 'Erreur suppression');
+                displayAlert(data.message || (isAr ? 'تم تنظيف قاعدة البيانات وتوفير المساحة !' : (isEn ? 'Database cleared to free space!' : 'Base de données nettoyée pour libérer l\'espace !')), false);
+            } catch (err) {
+                console.error('Erreur clearLessonPlansDb:', err);
+                displayAlert('Erreur suppression plans : ' + err.message, true);
+            }
+        }
+
         // --- Fonctions Admin ---
         function handleFileUpload(event) { const file = event.target.files[0]; const statusSpan = document.getElementById('file-upload-status'); const saveBtn = document.getElementById('saveUploadedDataBtn'); uploadedPlanData = null; saveBtn.disabled = true; statusSpan.textContent = ''; if (!file) { statusSpan.textContent = t('no_file_selected'); return; } console.log(`[Admin Upload] Fichier: ${file.name}`); statusSpan.textContent = t('reading_file', { fileName: file.name }); if (!/\.(xlsx|xls)$/i.test(file.name)) { displayAlert("invalid_file_type", true); statusSpan.textContent = "Type invalide."; event.target.value = ''; return; } const reader = new FileReader(); reader.onload = function(e) { try { const data = e.target.result; const workbook = XLSX.read(data, { type: 'array' }); const firstSheetName = workbook.SheetNames[0]; const worksheet = workbook.Sheets[firstSheetName]; const jsonDataRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false }); if (!jsonDataRaw || jsonDataRaw.length < 1) throw new Error("Feuille Excel vide."); const headersRaw = jsonDataRaw[0]; if (!headersRaw || !Array.isArray(headersRaw) || headersRaw.length === 0) throw new Error("En-têtes non trouvés."); const extractedHeaders = headersRaw.map(h => h ? String(h).trim().replace(/\s+/g, ' ') : null).filter(Boolean); if (extractedHeaders.length === 0) throw new Error("Aucun en-tête valide."); const dataRows = jsonDataRaw.slice(1); uploadedPlanData = dataRows.map((row) => { if (!Array.isArray(row)) return null; const obj = {}; extractedHeaders.forEach((header, index) => { obj[header] = (row && index < row.length) ? row[index] : null; }); return Object.values(obj).some(val => val != null && String(val).trim() !== '') ? obj : null; }).filter(Boolean); console.log(`[Admin Upload] ${uploadedPlanData.length} lignes extraites.`); statusSpan.textContent = t('file_read_success', { count: uploadedPlanData.length }).replace(file.name, ''); displayAlert('file_read_success', false, { fileName: file.name, count: uploadedPlanData.length }); saveBtn.disabled = false; } catch (error) { console.error("Erreur lecture Excel:", error); displayAlert('file_error', true, { error: error.message }); statusSpan.textContent = t('file_error', { error: '' }).replace(': {error}', '.'); uploadedPlanData = null; saveBtn.disabled = true; event.target.value = ''; } }; reader.onerror = function(e) { console.error("Erreur FileReader:", e); displayAlert('file_error', true, { error: "Erreur FileReader" }); statusSpan.textContent = t('file_error', { error: '' }).replace(': {error}', '.'); uploadedPlanData = null; saveBtn.disabled = true; event.target.value = ''; }; reader.readAsArrayBuffer(file); }
         async function saveUploadedData() {
@@ -2522,13 +2807,17 @@
             );
             const headerTranslations = translations[currentUserLanguage]?.headers || translations.fr.headers;
             
-            const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
+            const isArTeacher = isArabicTeacherActive();
             const supportKey = findHKey('Support');
+            const leconKey = findHKey('Leçon');
 
             if (hDisp.length > 0) {
                 hDisp.forEach(h => {
-                    if (isAr && h === supportKey) {
-                        return;
+                    if (isArTeacher) {
+                        const hNorm = String(h).trim().toLowerCase();
+                        if (h === supportKey || h === leconKey || hNorm === 'support' || hNorm === 'leçon' || hNorm === 'lecon' || hNorm === 'درس') {
+                            return;
+                        }
                     }
                     
                     const th = document.createElement('th');
@@ -2968,9 +3257,13 @@
                     }
                 }
 
+                const isArTeacher = isArabicTeacherActive();
                 hDisp.forEach(header => {
-                    if (isAr && header === supportKey) {
-                        return;
+                    if (isArTeacher) {
+                        const hNorm = String(header).trim().toLowerCase();
+                        if (header === supportKey || header === leconKey || hNorm === 'support' || hNorm === 'leçon' || hNorm === 'lecon' || hNorm === 'درس') {
+                            return;
+                        }
                     }
                     
                     const td = document.createElement('td');
@@ -3065,7 +3358,7 @@
                         isRowForLoggedInTeacher(rowTeacher, loggedInUser, loggedInTeacherTable) || 
                         String(rowTeacher).trim().toLowerCase() === String(loggedInUser || '').trim().toLowerCase() ||
                         (loggedInTeacherTable && String(rowTeacher).trim().toLowerCase() === String(loggedInTeacherTable).trim().toLowerCase());
-                    const canGenerate = !rowObj.isReadOnlyCrossSection && (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || isRowTeacherMatch);
+                    const canGenerate = !isArTeacher && !rowObj.isReadOnlyCrossSection && (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || isRowTeacherMatch);
                     
                     if (canGenerate) {
                         const aiGenBtn = document.createElement('button');
@@ -3084,7 +3377,7 @@
                     }
                     
                     // Bouton pour télécharger le plan de leçon et badge d'état
-                    if (rowObj && rowObj.lessonPlanId) {
+                    if (!isArTeacher && rowObj && rowObj.lessonPlanId) {
                         tr.classList.add('has-lesson-plan');
                         if (rowObj.lessonPlanDownloaded) {
                             tr.classList.add('row-plan-downloaded');
@@ -4156,7 +4449,126 @@
         }
         async function loadPlanForWeek() { const sel = document.getElementById('weekSelector'); if (sel) { const wk = sel.value; if (wk) { await fetchPlanData(wk); } else { currentWeek = null; planData = []; headers = []; weeklyClassNotes = {}; filteredAndSortedData = []; createTableHeader(); displayPlanTable([]); document.getElementById('weekDateRange').textContent = ""; updateActionButtonsState(false); populateFilterOptions(); populateNotesClassSelector(); checkAndDisplayIncompleteTeachers(); displayAlert(''); } } else { console.error("#weekSelector absent"); displayAlert("error_structure", true); } }
         function applyLanguageSettings() { console.log(`Applying language: ${currentUserLanguage}`); document.documentElement.lang = currentUserLanguage; document.body.dir = (currentUserLanguage === 'ar') ? 'rtl' : 'ltr'; updateStaticUIElements(); if (currentWeek) { updateDynamicUIElements(); } else { document.getElementById('weekDateRange').textContent = ""; const initialTableMsg = document.getElementById('initial-table-message'); if (initialTableMsg) { initialTableMsg.textContent = t('select_week_to_display'); } else { const tBody = document.querySelector('#planTable tbody'); const colspanVal = document.querySelector('#planTable thead tr')?.querySelectorAll('th').length || 10; if (tBody) { tBody.innerHTML = `<tr id="initial-table-row"><td colspan="${colspanVal}" class="table-message">${t('select_week_to_display')}</td></tr>`; } } } if (document.getElementById('login-form').style.display !== 'none') { updateLoginUIElements(); } }
-        function updateStaticUIElements() { console.log("Updating static UI for lang:", currentUserLanguage); if (document.getElementById('main-content').style.display !== 'none') { document.title = t('main_page_title'); } else { document.title = t('login_title'); } updateLoginUIElements(); const mainTitle = document.getElementById('main-title'); if(mainTitle) mainTitle.textContent = t('main_page_title'); const logoutBtnText = document.querySelector('#logout-button .btn-text'); if(logoutBtnText) logoutBtnText.textContent = t('logout_button'); const toggleBtn = document.getElementById('toggleIncompleteBtn'); if (toggleBtn) { const btnTextSpan = toggleBtn.querySelector('.btn-text'); const listDiv=document.getElementById('incompleteTeachersDisplay'); if (btnTextSpan) { btnTextSpan.textContent = (listDiv && listDiv.style.display !== 'none') ? t('hide_incomplete') : t('display_incomplete'); } } const incompleteH4 = document.querySelector('#incompleteTeachersDisplay h4'); if(incompleteH4) incompleteH4.textContent = t('incomplete_teachers_title'); const incompleteLi = document.querySelector('#incompleteList li'); if(incompleteLi && incompleteLi.textContent.match(/(Chargement|Loading|جاري التحميل)/)) incompleteLi.textContent = t('loading'); const weekLabel = document.querySelector('label[for="weekSelector"]'); if(weekLabel) weekLabel.innerHTML = `<i class="fas fa-calendar-week"></i> ${t('week_label')}`; const adminTitle = document.getElementById('admin-title'); if(adminTitle) adminTitle.textContent = t('admin_actions_title'); const adminExcelLabel = document.getElementById('admin-excel-label'); if(adminExcelLabel) adminExcelLabel.innerHTML = `<i class="fas fa-file-excel"></i> ${t('admin_excel_label')}`; const saveUploadedDataBtnText = document.querySelector('#saveUploadedDataBtn .btn-text'); if(saveUploadedDataBtnText) saveUploadedDataBtnText.textContent = t('admin_save_button'); const genWordBtnText = document.querySelector('#generateWordBtn .btn-text'); if(genWordBtnText) genWordBtnText.textContent = t('generate_word_button'); const genExcelBtnText = document.querySelector('#generateExcelBtn .btn-text'); if(genExcelBtnText) genExcelBtnText.textContent = t('generate_excel_button'); const saveAllBtnText = document.querySelector('#saveAllDisplayedBtn .btn-text'); if(saveAllBtnText) saveAllBtnText.textContent = t('save_all_button'); const weeklyLessonsBtnText = document.querySelector('#generateWeeklyLessonsBtn .btn-text'); if(weeklyLessonsBtnText) weeklyLessonsBtnText.textContent = t('generate_weekly_lessons_button'); const filterEnsLabel = document.getElementById('filter-enseignant-label'); if(filterEnsLabel) filterEnsLabel.innerHTML = `<i class="fas fa-user-tie"></i> ${t('filter_teacher_label')}`; const filterClsLabel = document.getElementById('filter-classe-label'); if(filterClsLabel) filterClsLabel.innerHTML = `<i class="fas fa-chalkboard-user"></i> ${t('filter_class_label')}`; const filterMatLabel = document.getElementById('filter-matiere-label'); if(filterMatLabel) filterMatLabel.innerHTML = `<i class="fas fa-book"></i> ${t('filter_material_label')}`; const filterPerLabel = document.getElementById('filter-periode-label'); if(filterPerLabel) filterPerLabel.innerHTML = `<i class="fas fa-clock"></i> ${t('filter_period_label')}`; const filterJourLabel = document.getElementById('filter-jour-label'); if(filterJourLabel) filterJourLabel.innerHTML = `<i class="fas fa-calendar-day"></i> ${t('filter_day_label')}`; const notesClsLabel = document.getElementById('notes-class-label'); if(notesClsLabel) notesClsLabel.innerHTML = `<i class="fas fa-sticky-note"></i> ${t('notes_for_class')}`; const notesInput = document.getElementById('notesInput'); if(notesInput && notesInput.placeholder.match(/(Sélectionnez|اختر|Select)/)){ notesInput.placeholder = t('select_class_placeholder'); } const saveNotesBtnText = document.querySelector('#saveNotesBtn .btn-text'); if(saveNotesBtnText) saveNotesBtnText.textContent = t('save_notes_button'); updateFilterOptionDefaultTexts(); const adminReportLabel = document.getElementById('admin-report-class-label'); if (adminReportLabel) adminReportLabel.innerHTML = `<i class="fas fa-school"></i> ${t('admin_report_class_label')}`; const adminReportBtnText = document.querySelector('#generateFullReportBtn .btn-text'); if (adminReportBtnText) adminReportBtnText.textContent = t('generate_full_report_button'); }
+        function updateStaticUIElements() {
+            if (isEnglishTeacherActive()) {
+                currentUserLanguage = 'en';
+                document.documentElement.lang = 'en';
+                document.body.dir = 'ltr';
+            } else if (isArabicTeacherActive()) {
+                currentUserLanguage = 'ar';
+                document.documentElement.lang = 'ar';
+                document.body.dir = 'rtl';
+            }
+            console.log("Updating static UI for lang:", currentUserLanguage);
+            if (document.getElementById('main-content').style.display !== 'none') {
+                document.title = t('main_page_title');
+            } else {
+                document.title = t('login_title');
+            }
+            updateLoginUIElements();
+
+            // Navigation générale & Onglets
+            const tabPlansBtn = document.getElementById('tab-plans-btn');
+            if (tabPlansBtn) tabPlansBtn.innerHTML = `<i class="fas fa-calendar-alt"></i> ${t('tab_plans')}`;
+            const tabDevoirsBtn = document.getElementById('tab-devoirs-btn');
+            if (tabDevoirsBtn) tabDevoirsBtn.innerHTML = `<i class="fas fa-book-reader"></i> ${t('tab_devoirs')}`;
+            const backToHomeBtn = document.getElementById('btnBackToHomeFromTeacher');
+            if (backToHomeBtn) backToHomeBtn.textContent = t('tab_plans');
+            const teacherHdrMsg = document.getElementById('teacherHeaderMsgText');
+            if (teacherHdrMsg) teacherHdrMsg.textContent = t('parent_messages');
+
+            // Badges de section
+            const secBadgeMap = {
+                garcons: t('sec_boys'),
+                filles: t('sec_girls'),
+                primaire: t('sec_primary'),
+                maternelle: t('sec_maternelle')
+            };
+            const mainSecBadge = document.getElementById('mainSectionBadge');
+            if (mainSecBadge && currentSection && secBadgeMap[currentSection]) {
+                mainSecBadge.textContent = secBadgeMap[currentSection];
+            }
+
+            // Générateur de plan de leçon : Masqué STRICTEMENT pour le prof d'arabe
+            const lessonPlanGen = document.getElementById('lesson-plan-generator');
+            if (lessonPlanGen) {
+                lessonPlanGen.style.display = isArabicTeacherActive() ? 'none' : 'flex';
+            }
+
+            // Portail Suivi des Devoirs & Espace Enseignant
+            const teacherHwTitle = document.querySelector('#homework-teacher-view h2');
+            if (teacherHwTitle) {
+                teacherHwTitle.innerHTML = `<i class="fas fa-chalkboard-teacher" style="color:#60A5FA;"></i> ${t('teacher_homework_title')}`;
+            }
+            const evalHdrP = document.querySelector('#homework-teacher-view .teacher-dashboard-header p');
+            if (evalHdrP) {
+                evalHdrP.innerHTML = `${t('connected_teacher')} <strong id="teacherEvalActiveName" style="color:#93C5FD;">${escapeHtml(loggedInTeacherTable || loggedInUser || '--')}</strong> | ${t('filter_school')} <strong id="teacherEvalActiveSection" style="color:#A7F3D0;">${escapeHtml(currentSection || '--')}</strong>`;
+            }
+            const btnWordPlan = document.querySelector('#homework-teacher-view button[onclick="openFullClassWordModal()"] span');
+            if (btnWordPlan) btnWordPlan.textContent = t('download_full_plan_word');
+
+            const sTotal = document.querySelector('#statTotalHw ~ div');
+            if (sTotal) sTotal.textContent = t('stat_total_hw');
+            const sEval = document.querySelector('#statEvaluatedHw ~ div');
+            if (sEval) sEval.textContent = t('stat_evaluated_hw');
+            const sPend = document.querySelector('#statPendingHw ~ div');
+            if (sPend) sPend.textContent = t('stat_pending_hw');
+
+            // Hub de filtres par icônes
+            const sSchoolLabel = document.querySelector('#teacherFilterHub .teacher-filter-row:nth-child(1) .teacher-filter-row-header span:first-child');
+            if (sSchoolLabel) sSchoolLabel.innerHTML = `<i class="fas fa-school" style="color:#2563EB;"></i> ${t('filter_school')}`;
+            const sSchoolSub = document.getElementById('teacherSchoolCountLabel');
+            if (sSchoolSub) sSchoolSub.textContent = t('filter_school_sub');
+            const bSchoolAll = document.querySelector('#teacherSchoolIconsContainer button[data-school="all"] span:first-of-type');
+            if (bSchoolAll) bSchoolAll.textContent = t('all_schools');
+
+            const rWeeksHdr = document.querySelector('#rowTeacherWeeks .teacher-filter-row-header span:first-child');
+            if (rWeeksHdr) rWeeksHdr.innerHTML = `<i class="fas fa-calendar-week" style="color:#0284C7;"></i> ${t('filter_weeks')}`;
+            const rWeeksSub = document.getElementById('teacherWeeksCountLabel');
+            if (rWeeksSub) rWeeksSub.textContent = t('filter_weeks_sub');
+
+            const rClassesHdr = document.querySelector('#rowTeacherClasses .teacher-filter-row-header span:first-child');
+            if (rClassesHdr) rClassesHdr.innerHTML = `<i class="fas fa-graduation-cap" style="color:#2563EB;"></i> ${t('filter_classes')}`;
+            const rClassesSub = document.getElementById('teacherClassesCountLabel');
+            if (rClassesSub) rClassesSub.textContent = t('filter_classes_sub');
+
+            const rDaysHdr = document.querySelector('#rowTeacherDays .teacher-filter-row-header span:first-child');
+            if (rDaysHdr) rDaysHdr.innerHTML = `<i class="fas fa-calendar-day" style="color:#10B981;"></i> ${t('filter_days')}`;
+            const rDaysSub = document.getElementById('teacherDaysCountLabel');
+            if (rDaysSub) rDaysSub.textContent = t('filter_days_sub');
+
+            const rSubjHdr = document.querySelector('#rowTeacherSubjects .teacher-filter-row-header span:first-child');
+            if (rSubjHdr) rSubjHdr.innerHTML = `<i class="fas fa-book" style="color:#8B5CF6;"></i> ${t('filter_subjects')}`;
+
+            const rStatusHdr = document.querySelector('#rowTeacherStatus .teacher-filter-row-header span:first-child');
+            if (rStatusHdr) rStatusHdr.innerHTML = `<i class="fas fa-clipboard-check" style="color:#10B981;"></i> ${t('filter_status')}`;
+
+            // Modal d'évaluation
+            const mTitle = document.getElementById('evalModalTitle');
+            if (mTitle) mTitle.textContent = t('eval_modal_title');
+            const mBtnSave = document.getElementById('btnSaveEvalModal');
+            if (mBtnSave) mBtnSave.innerHTML = `<i class="fas fa-save"></i> ${t('eval_save_button')}`;
+            const mBtnMarkDone = document.getElementById('btnTextMarkAllDone');
+            if (mBtnMarkDone) mBtnMarkDone.textContent = t('eval_all_done');
+            const mBtnMarkNotDone = document.getElementById('btnTextMarkAllNotDone');
+            if (mBtnMarkNotDone) mBtnMarkNotDone.textContent = t('eval_all_not_done');
+            const mBtnClose = document.getElementById('btnTextCloseEval');
+            if (mBtnClose) mBtnClose.textContent = t('eval_close_button');
+            const mStudentsListTitle = document.getElementById('evalModalStudentsListTitle');
+            if (mStudentsListTitle) mStudentsListTitle.textContent = (currentUserLanguage === 'en') ? 'Class Students List' : ((currentUserLanguage === 'ar') ? 'قائمة طلاب الفصل' : 'Liste des élèves de la classe');
+
+            // Traduction des boutons de statut de devoirs
+            const btnStatusAll = document.querySelector('#teacherStatusIconsContainer button[data-status="all"] span:first-of-type');
+            if (btnStatusAll) btnStatusAll.textContent = (currentUserLanguage === 'en') ? 'All Homeworks' : ((currentUserLanguage === 'ar') ? 'جميع الواجبات' : 'Tous les Devoirs');
+            const btnStatusPending = document.querySelector('#teacherStatusIconsContainer button[data-status="pending"] span:first-of-type');
+            if (btnStatusPending) btnStatusPending.textContent = (currentUserLanguage === 'en') ? '⏳ To Evaluate' : ((currentUserLanguage === 'ar') ? '⏳ قيد التقييم' : '⏳ À Évaluer');
+            const btnStatusEvaluated = document.querySelector('#teacherStatusIconsContainer button[data-status="evaluated"] span:first-of-type');
+            if (btnStatusEvaluated) btnStatusEvaluated.textContent = (currentUserLanguage === 'en') ? '✅ Evaluated (Green)' : ((currentUserLanguage === 'ar') ? '✅ تم التقييم (أخضر)' : '✅ Évalués (Vert)');
+
+            const hwSearchInput = document.getElementById('teacherHwSearchInput');
+            if (hwSearchInput) hwSearchInput.placeholder = (currentUserLanguage === 'en') ? 'Search by lesson, homework keyword...' : ((currentUserLanguage === 'ar') ? 'البحث بالدرس أو الكلمات المفتاحية...' : 'Rechercher par leçon, mot-clé du devoir...');
+
+            const mainTitle = document.getElementById('main-title'); if(mainTitle) mainTitle.textContent = t('main_page_title'); const logoutBtnText = document.querySelector('#logout-button .btn-text'); if(logoutBtnText) logoutBtnText.textContent = t('logout_button'); const toggleBtn = document.getElementById('toggleIncompleteBtn'); if (toggleBtn) { const btnTextSpan = toggleBtn.querySelector('.btn-text'); const listDiv=document.getElementById('incompleteTeachersDisplay'); if (btnTextSpan) { btnTextSpan.textContent = (listDiv && listDiv.style.display !== 'none') ? t('hide_incomplete') : t('display_incomplete'); } } const incompleteH4 = document.querySelector('#incompleteTeachersDisplay h4'); if(incompleteH4) incompleteH4.textContent = t('incomplete_teachers_title'); const incompleteLi = document.querySelector('#incompleteList li'); if(incompleteLi && incompleteLi.textContent.match(/(Chargement|Loading|جاري التحميل)/)) incompleteLi.textContent = t('loading'); const weekLabel = document.querySelector('label[for="weekSelector"]'); if(weekLabel) weekLabel.innerHTML = `<i class="fas fa-calendar-week"></i> ${t('week_label')}`; const adminTitle = document.getElementById('admin-title'); if(adminTitle) adminTitle.textContent = t('admin_actions_title'); const adminExcelLabel = document.getElementById('admin-excel-label'); if(adminExcelLabel) adminExcelLabel.innerHTML = `<i class="fas fa-file-excel"></i> ${t('admin_excel_label')}`; const saveUploadedDataBtnText = document.querySelector('#saveUploadedDataBtn .btn-text'); if(saveUploadedDataBtnText) saveUploadedDataBtnText.textContent = t('admin_save_button'); const genWordBtnText = document.querySelector('#generateWordBtn .btn-text'); if(genWordBtnText) genWordBtnText.textContent = t('generate_word_button'); const genExcelBtnText = document.querySelector('#generateExcelBtn .btn-text'); if(genExcelBtnText) genExcelBtnText.textContent = t('generate_excel_button'); const saveAllBtnText = document.querySelector('#saveAllDisplayedBtn .btn-text'); if(saveAllBtnText) saveAllBtnText.textContent = t('save_all_button'); const weeklyLessonsBtnText = document.querySelector('#generateWeeklyLessonsBtn .btn-text'); if(weeklyLessonsBtnText) weeklyLessonsBtnText.textContent = t('generate_weekly_lessons_button'); const filterEnsLabel = document.getElementById('filter-enseignant-label'); if(filterEnsLabel) filterEnsLabel.innerHTML = `<i class="fas fa-user-tie"></i> ${t('filter_teacher_label')}`; const filterClsLabel = document.getElementById('filter-classe-label'); if(filterClsLabel) filterClsLabel.innerHTML = `<i class="fas fa-chalkboard-user"></i> ${t('filter_class_label')}`; const filterMatLabel = document.getElementById('filter-matiere-label'); if(filterMatLabel) filterMatLabel.innerHTML = `<i class="fas fa-book"></i> ${t('filter_material_label')}`; const filterPerLabel = document.getElementById('filter-periode-label'); if(filterPerLabel) filterPerLabel.innerHTML = `<i class="fas fa-clock"></i> ${t('filter_period_label')}`; const filterJourLabel = document.getElementById('filter-jour-label'); if(filterJourLabel) filterJourLabel.innerHTML = `<i class="fas fa-calendar-day"></i> ${t('filter_day_label')}`; const notesClsLabel = document.getElementById('notes-class-label'); if(notesClsLabel) notesClsLabel.innerHTML = `<i class="fas fa-sticky-note"></i> ${t('notes_for_class')}`; const notesInput = document.getElementById('notesInput'); if(notesInput && notesInput.placeholder.match(/(Sélectionnez|اختر|Select)/)){ notesInput.placeholder = t('select_class_placeholder'); } const saveNotesBtnText = document.querySelector('#saveNotesBtn .btn-text'); if(saveNotesBtnText) saveNotesBtnText.textContent = t('save_notes_button'); updateFilterOptionDefaultTexts(); const adminReportLabel = document.getElementById('admin-report-class-label'); if (adminReportLabel) adminReportLabel.innerHTML = `<i class="fas fa-school"></i> ${t('admin_report_class_label')}`; const adminReportBtnText = document.querySelector('#generateFullReportBtn .btn-text'); if (adminReportBtnText) adminReportBtnText.textContent = t('generate_full_report_button'); }
         function updateLoginUIElements() { const loginH1 = document.querySelector('#login-form h1'); if(loginH1) loginH1.textContent = t('login_title'); const userLabel = document.querySelector('label[for="username"]'); if(userLabel) userLabel.textContent = t('login_username_label'); const passLabel = document.querySelector('label[for="password"]'); if(passLabel) passLabel.textContent = t('login_password_label'); const rememberLabel = document.getElementById('remember-me-label'); if(rememberLabel) rememberLabel.textContent = t('remember_me'); const loginBtnText = document.querySelector('#login-button .btn-text'); if(loginBtnText) loginBtnText.textContent = t('login_button_text'); if (document.getElementById('login-form').style.display !== 'none') { document.title = t('login_title'); } }
         function updateDynamicUIElements() {
           console.log("Updating dynamic UI for lang:", currentUserLanguage);
@@ -4250,16 +4662,18 @@
             currentUserRole = role || localStorage.getItem('userRole') || (username === 'Med01' ? 'admin' : (username === 'Racha' ? 'supervisor' : 'teacher'));
             localStorage.setItem('userRole', currentUserRole);
             
-            if (customLang && ['fr', 'ar', 'en'].includes(customLang)) {
+            if (isEnglishTeacher(loggedInUser, customLang)) {
+                currentUserLanguage = 'en';
+                localStorage.setItem('userLanguage', 'en');
+            } else if (isArabicTeacher(loggedInUser, customLang)) {
+                currentUserLanguage = 'ar';
+                localStorage.setItem('userLanguage', 'ar');
+            } else if (customLang && ['fr', 'ar', 'en'].includes(customLang)) {
                 currentUserLanguage = customLang;
             } else {
                 const storedLang = localStorage.getItem('userLanguage');
                 if (storedLang && ['fr', 'ar', 'en'].includes(storedLang)) {
                     currentUserLanguage = storedLang;
-                } else if (arabicTeachers.includes(loggedInUser)) {
-                    currentUserLanguage = 'ar';
-                } else if (englishTeachers.includes(loggedInUser)) {
-                    currentUserLanguage = 'en';
                 } else {
                     currentUserLanguage = 'fr';
                 }
@@ -4341,12 +4755,12 @@
                 }
 
                 const lessonPlanGen = document.getElementById('lesson-plan-generator');
-                if (lessonPlanGen) lessonPlanGen.style.display = 'flex';
+                if (lessonPlanGen) lessonPlanGen.style.display = isArabicTeacherActive() ? 'none' : 'flex';
             } else {
                 const adminActionsEl = document.getElementById('admin-actions');
                 if (adminActionsEl) adminActionsEl.style.display = 'none';
                 const lessonPlanGen = document.getElementById('lesson-plan-generator');
-                if (lessonPlanGen) lessonPlanGen.style.display = 'flex';
+                if (lessonPlanGen) lessonPlanGen.style.display = isArabicTeacherActive() ? 'none' : 'flex';
             }
             
             currentWeek = null;
@@ -4914,7 +5328,12 @@
                     
                     if (typeof saveAs === 'function') {
                         saveAs(blob, filename);
-                        displayAlert('Plan de leçon téléchargé avec succès !', false);
+                        const dlSuccessMsg = (currentUserLanguage === 'en')
+                            ? 'Lesson plan downloaded to local disk and cleared from server database to free space!'
+                            : ((currentUserLanguage === 'ar')
+                                ? 'تم تحميل خطة الدرس بنجاح إلى جهازك وحذفها من قاعدة البيانات لتوفير المساحة!'
+                                : 'Plan de leçon téléchargé sur votre disque local et effacé de la base de données pour libérer l\'espace !');
+                        displayAlert(dlSuccessMsg, false);
                     }
 
                     if (rowData) {
@@ -10180,10 +10599,13 @@ function renderTeacherWeeksIcons() {
         return;
     }
 
+    const allWeeksLabel = (currentUserLanguage === 'en') ? 'All Weeks' : ((currentUserLanguage === 'ar') ? 'جميع الأسابيع' : 'Toutes les Semaines');
+    const weekLabelPrefix = (currentUserLanguage === 'en') ? 'Week ' : ((currentUserLanguage === 'ar') ? 'الأسبوع ' : 'Semaine ');
+
     let html = `
         <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.week === 'all' ? 'active' : ''}" onclick="setTeacherHwWeekFilter('all')">
             <i class="fas fa-calendar-week" style="color:#0284C7;"></i>
-            <span>Toutes les Semaines</span>
+            <span>${allWeeksLabel}</span>
             <span class="hw-badge">${targetHws.length}</span>
         </button>
     `;
@@ -10195,9 +10617,9 @@ function renderTeacherWeeksIcons() {
         const iconColor = isActive ? '#FFFFFF' : (allDone ? '#10B981' : '#0284C7');
 
         html += `
-            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwWeekFilter('${w}')" title="${item.rangeText ? item.rangeText : 'Semaine ' + w}">
+            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwWeekFilter('${w}')" title="${item.rangeText ? item.rangeText : weekLabelPrefix + w}">
                 <i class="fas ${allDone ? 'fa-check-circle' : 'fa-calendar-day'}" style="color:${iconColor};"></i>
-                <span>Semaine ${w}</span>
+                <span>${weekLabelPrefix}${w}</span>
                 ${item.rangeText ? `<small style="font-size:0.75rem; opacity:0.85;">(${escapeHtml(item.rangeText)})</small>` : ''}
                 <span class="hw-badge" style="${allDone ? 'background:#10B981; color:white;' : ''}">${item.evaluated}/${item.total}</span>
             </button>
@@ -10268,10 +10690,16 @@ function renderTeacherClassesIcons() {
         activeTeacherHwFilters.classe = 'all';
     }
 
+    const allClassesLabel = (currentUserLanguage === 'en')
+        ? (activeTeacherHwFilters.week !== 'all' ? 'All Classes of the Week' : 'All Classes')
+        : ((currentUserLanguage === 'ar')
+            ? (activeTeacherHwFilters.week !== 'all' ? 'جميع فصول الأسبوع' : 'جميع الفصول')
+            : (activeTeacherHwFilters.week !== 'all' ? 'Toutes les Classes de la Semaine' : 'Toutes les Classes'));
+
     let html = `
         <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.classe === 'all' ? 'active' : ''}" onclick="setTeacherHwClassFilter('all')">
             <i class="fas fa-layer-group" style="color:#2563EB;"></i>
-            <span>${activeTeacherHwFilters.week !== 'all' ? 'Toutes les Classes de la Semaine' : 'Toutes les Classes'}</span>
+            <span>${allClassesLabel}</span>
             <span class="hw-badge">${targetHws.length}</span>
         </button>
     `;
@@ -10338,30 +10766,33 @@ function renderTeacherDaysIcons() {
         countLabel.textContent = `(${activeDaysCount} jour${activeDaysCount > 1 ? 's' : ''} avec devoirs ${clsPrefix})`;
     }
 
+    const allDaysLabel = (currentUserLanguage === 'en') ? 'All Days' : ((currentUserLanguage === 'ar') ? 'جميع الأيام' : 'Tous les Jours');
+
     let html = `
         <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.jour === 'all' ? 'active' : ''}" onclick="setTeacherHwDayFilter('all')">
             <i class="fas fa-calendar-alt" style="color:#10B981;"></i>
-            <span>Tous les Jours</span>
+            <span>${allDaysLabel}</span>
             <span class="hw-badge">${targetHws.length}</span>
         </button>
     `;
 
     const standardDays = [
-        { key: 'Dimanche', label: 'Dimanche', ar: 'الأحد', icon: 'fas fa-sun', color: '#F59E0B' },
-        { key: 'Lundi', label: 'Lundi', ar: 'الإثنين', icon: 'fas fa-seedling', color: '#10B981' },
-        { key: 'Mardi', label: 'Mardi', ar: 'الثلاثاء', icon: 'fas fa-bolt', color: '#6366F1' },
-        { key: 'Mercredi', label: 'Mercredi', ar: 'الأربعاء', icon: 'fas fa-leaf', color: '#06B6D4' },
-        { key: 'Jeudi', label: 'Jeudi', ar: 'الخميس', icon: 'fas fa-star', color: '#EC4899' }
+        { key: 'Dimanche', fr: 'Dimanche', en: 'Sunday', ar: 'الأحد', icon: 'fas fa-sun', color: '#F59E0B' },
+        { key: 'Lundi', fr: 'Lundi', en: 'Monday', ar: 'الإثنين', icon: 'fas fa-seedling', color: '#10B981' },
+        { key: 'Mardi', fr: 'Mardi', en: 'Tuesday', ar: 'الثلاثاء', icon: 'fas fa-bolt', color: '#6366F1' },
+        { key: 'Mercredi', fr: 'Mercredi', en: 'Wednesday', ar: 'الأربعاء', icon: 'fas fa-leaf', color: '#06B6D4' },
+        { key: 'Jeudi', fr: 'Jeudi', en: 'Thursday', ar: 'الخميس', icon: 'fas fa-star', color: '#EC4899' }
     ];
 
     standardDays.forEach(d => {
         const count = dayCounts[d.key] || 0;
         const isActive = (activeTeacherHwFilters.jour === d.key);
+        const dayDisplay = (currentUserLanguage === 'en') ? d.en : ((currentUserLanguage === 'ar') ? d.ar : `${d.fr} <small style="opacity:0.85;">(${d.ar})</small>`);
 
         html += `
             <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwDayFilter('${d.key}')" style="${count === 0 ? 'opacity:0.55;' : 'font-weight:700;'}">
                 <i class="${d.icon}" style="color:${isActive ? '#FFFFFF' : d.color};"></i>
-                <span>${d.label} <small style="opacity:0.85;">(${d.ar})</small></span>
+                <span>${dayDisplay}</span>
                 <span class="hw-badge" style="${count > 0 ? 'background:#DBEAFE; color:#1D4ED8;' : ''}">${count}</span>
             </button>
         `;
@@ -10409,10 +10840,12 @@ function renderTeacherSubjectsIcons() {
     const subjects = Object.keys(subjectCounts).sort();
     if (countLabel) countLabel.textContent = `(${subjects.length} matière${subjects.length > 1 ? 's' : ''})`;
 
+    const allSubjLabel = (currentUserLanguage === 'en') ? 'All Subjects' : ((currentUserLanguage === 'ar') ? 'جميع المواد' : 'Toutes les Matières');
+
     let html = `
         <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.matiere === 'all' ? 'active' : ''}" onclick="setTeacherHwSubjectFilter('all')">
             <i class="fas fa-book" style="color:#8B5CF6;"></i>
-            <span>Toutes les Matières</span>
+            <span>${allSubjLabel}</span>
             <span class="hw-badge">${targetHws.length}</span>
         </button>
     `;
@@ -10725,7 +11158,24 @@ function renderTeacherHomeworksDashboard() {
                 const subjInfo = getSubjectIconAndColor(hw.matiere);
                 const dayInfo = getDayIconAndDetails(hw.jour);
 
-                const secBadge = hw.section === 'garcons' ? 'Garçons' : (hw.section === 'filles' ? 'Filles' : (hw.section === 'maternelle' ? 'Maternelle' : (hw.section === 'primaire' ? 'Primaire' : '')));
+                const secBadgeMap = {
+                    garcons: (currentUserLanguage === 'en') ? 'Boys Section' : ((currentUserLanguage === 'ar') ? 'قسم البنين' : 'Garçons'),
+                    filles: (currentUserLanguage === 'en') ? 'Girls Section' : ((currentUserLanguage === 'ar') ? 'قسم البنات' : 'Filles'),
+                    primaire: (currentUserLanguage === 'en') ? 'Primary' : ((currentUserLanguage === 'ar') ? 'ابتدائي' : 'Primaire'),
+                    maternelle: (currentUserLanguage === 'en') ? 'Kindergarten' : ((currentUserLanguage === 'ar') ? 'روضة' : 'Maternelle')
+                };
+                const secBadge = secBadgeMap[hw.section] || '';
+
+                const badgeEvaluatedText = (currentUserLanguage === 'en') ? 'Evaluated' : ((currentUserLanguage === 'ar') ? 'تم التقييم' : 'Évalué');
+                const badgePendingText = (currentUserLanguage === 'en') ? 'To Evaluate' : ((currentUserLanguage === 'ar') ? 'قيد التقييم' : 'À Évaluer');
+                const periodText = (currentUserLanguage === 'en') ? 'Period' : ((currentUserLanguage === 'ar') ? 'الحصة' : 'Période');
+                const lessonText = (currentUserLanguage === 'en') ? 'Lesson :' : ((currentUserLanguage === 'ar') ? 'الدرس:' : 'Leçon :');
+                const hwStatementText = (currentUserLanguage === 'en') ? 'Homework Statement :' : ((currentUserLanguage === 'ar') ? 'نص الواجب:' : 'Énoncé du Devoir :');
+                const dateText = (currentUserLanguage === 'en') ? 'Date :' : ((currentUserLanguage === 'ar') ? 'التاريخ:' : 'Date :');
+                const noStatementText = (currentUserLanguage === 'en') ? 'No statement' : ((currentUserLanguage === 'ar') ? 'لا يوجد نص' : 'Aucun énoncé');
+                const btnEvalText = isEvaluated 
+                    ? ((currentUserLanguage === 'en') ? 'Edit / Review' : ((currentUserLanguage === 'ar') ? 'تعديل / مراجعة' : 'Modifier / Revoir'))
+                    : ((currentUserLanguage === 'en') ? 'Enter Evaluation' : ((currentUserLanguage === 'ar') ? 'تسجيل التقييم' : 'Saisir l\'Évaluation'));
 
                 html += `
                     <div style="background:${cardBg}; border:${cardBorder}; border-radius:14px; padding:18px; box-shadow:${shadow}; display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s, box-shadow 0.2s; position:relative;">
@@ -10738,48 +11188,48 @@ function renderTeacherHomeworksDashboard() {
                                 </span>
                                 ${hw.jour ? `<span style="background:#F8FAFC; color:#334155; border:1px solid #E2E8F0; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem; display:inline-flex; align-items:center; gap:4px;"><i class="${dayInfo.icon}" style="color:${dayInfo.color};"></i> ${escapeHtml(hw.jour)}</span>` : ''}
                                 ${secBadge ? `<span style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:3px 8px; border-radius:6px; font-weight:700; font-size:0.75rem;"><i class="fas fa-school"></i> ${escapeHtml(secBadge)}</span>` : ''}
-                                ${hw.periode ? `<span style="background:#FEF3C7; color:#92400E; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem;">Période ${escapeHtml(hw.periode)}</span>` : ''}
+                                ${hw.periode ? `<span style="background:#FEF3C7; color:#92400E; padding:3px 8px; border-radius:6px; font-weight:600; font-size:0.78rem;">${periodText} ${escapeHtml(hw.periode)}</span>` : ''}
                             </div>
 
                             ${isEvaluated ? `
                                 <span style="background:#10B981; color:white; padding:4px 10px; border-radius:8px; font-weight:800; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(16,185,129,0.3);">
-                                    <i class="fas fa-check-circle"></i> Évalué
+                                    <i class="fas fa-check-circle"></i> ${badgeEvaluatedText}
                                 </span>
                             ` : `
                                 <span style="background:#F59E0B; color:white; padding:4px 10px; border-radius:8px; font-weight:800; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px;">
-                                    <i class="fas fa-clock"></i> À Évaluer
+                                    <i class="fas fa-clock"></i> ${badgePendingText}
                                 </span>
                             `}
                         </div>
 
                         <!-- Info leçon -->
-                        ${hw.lecon ? `
+                        ${hw.lecon && !isArabicTeacherActive() ? `
                             <div style="font-size:0.85rem; color:#475569; margin-bottom:10px; line-height:1.35;">
-                                <strong style="color:#1E293B;"><i class="fas fa-graduation-cap" style="color:#6366F1;"></i> Leçon :</strong> ${escapeHtml(hw.lecon)}
+                                <strong style="color:#1E293B;"><i class="fas fa-graduation-cap" style="color:#6366F1;"></i> ${lessonText}</strong> ${escapeHtml(hw.lecon)}
                             </div>
                         ` : ''}
 
                         <!-- ÉNONCÉ DU DEVOIR MIS EN ÉVIDENCE -->
                         <div style="background:${isEvaluated ? '#DCFCE7' : '#F8FAFC'}; border:1px solid ${isEvaluated ? '#86EFAC' : '#E2E8F0'}; border-left:4px solid ${isEvaluated ? '#10B981' : '#3B82F6'}; border-radius:10px; padding:12px; margin:10px 0 16px 0;">
                             <div style="font-size:0.75rem; font-weight:800; text-transform:uppercase; color:${isEvaluated ? '#047857' : '#2563EB'}; margin-bottom:4px; display:flex; align-items:center; gap:5px;">
-                                <i class="fas fa-book-open"></i> Énoncé du Devoir :
+                                <i class="fas fa-book-open"></i> ${hwStatementText}
                             </div>
                             <div style="font-size:0.95rem; font-weight:600; color:#0F172A; line-height:1.45; word-break:break-word;">
-                                ${escapeHtml(hw.devoir || 'Aucun énoncé')}
+                                ${escapeHtml(hw.devoir || noStatementText)}
                             </div>
                         </div>
 
                         <!-- Date et boutons d'action -->
                         <div style="margin-top:auto;">
                             <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:#64748B; margin-bottom:12px;">
-                                <span><i class="far fa-calendar-alt"></i> Date : <strong>${hw.formattedDateFr || hw.date}</strong></span>
+                                <span><i class="far fa-calendar-alt"></i> ${dateText} <strong>${hw.formattedDateFr || hw.date}</strong></span>
                                 <span><i class="fas fa-user-tie"></i> ${escapeHtml(hw.enseignant || 'Enseignant')}</span>
                             </div>
 
                             <div style="display:flex; gap:8px; align-items:center;">
                                 <button type="button" class="pro-button ${isEvaluated ? 'success-button' : 'primary-button'}" onclick="openTeacherEvalModal(${globalIndex})" style="flex:1; padding:10px 14px; font-weight:700; font-size:0.88rem; justify-content:center; gap:8px;">
                                     <i class="fas ${isEvaluated ? 'fa-check-double' : 'fa-edit'}"></i>
-                                    <span>${isEvaluated ? 'Modifier / Revoir' : 'Saisir l\'Évaluation'}</span>
+                                    <span>${btnEvalText}</span>
                                 </button>
                                 <button type="button" class="pro-button" onclick="if(typeof openTeacherMessagesModal==='function'){ openTeacherMessagesModal(); } else if(typeof openParentMessengerModal==='function'){ openParentMessengerModal(); }" title="Messagerie avec les parents" style="padding:10px 13px; background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; border-radius:10px; cursor:pointer;" onmouseover="this.style.background='#DBEAFE'" onmouseout="this.style.background='#EFF6FF'">
                                     <i class="fas fa-comment-dots"></i>
@@ -10880,18 +11330,31 @@ async function openTeacherEvalModal(hwIndex) {
             return;
         }
 
-        // Construire la table de saisie
+        // Construire la table de saisie avec internationalisation complète
+        const thStudentName = t('th_student_name') || "Nom de l'Élève";
+        const thHwStatus = t('th_hw_status') || "Statut du Devoir";
+        const thParticipation = t('th_participation') || "Participation (/10)";
+        const thBehavior = t('th_behavior') || "Comportement (/10)";
+        const thComment = t('th_comment') || "Remarque";
+        const thParent = t('th_parent') || "Parent";
+        const optDone = t('opt_done') || "✅ Fait";
+        const optPartial = t('opt_partial') || "⚠️ Partiellement Fait";
+        const optNotDone = t('opt_not_done') || "❌ Non Fait";
+        const optAbsent = t('opt_absent') || "⚪ Absent";
+        const btnMessage = t('btn_message') || "Message";
+        const commentPlaceholder = (currentUserLanguage === 'en') ? "Notes / Observation" : ((currentUserLanguage === 'ar') ? "ملاحظات" : "Observation / Remarque");
+
         let tableHtml = `
             <table class="users-table" style="width:100%; border-collapse:collapse; background:white;">
                 <thead>
                     <tr style="background:#F1F5F9; color:#1E293B;">
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">#</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">Nom de l'Élève</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; min-width:140px;">Statut du Devoir</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:100px;">Participation (/10)</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:100px;">Comportement (/10)</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">Remarque</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:90px;">Parent</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">${thStudentName}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; min-width:140px;">${thHwStatus}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:100px;">${thParticipation}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:100px;">${thBehavior}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">${thComment}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:90px;">${thParent}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -10918,10 +11381,10 @@ async function openTeacherEvalModal(hwIndex) {
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
                         <select class="modal-eval-status" data-student="${escapeHtml(st.name)}" style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
-                            <option value="Fait" ${curStatus === 'Fait' ? 'selected' : ''}>✅ Fait</option>
-                            <option value="Partiellement Fait" ${curStatus === 'Partiellement Fait' ? 'selected' : ''}>⚠️ Partiellement Fait</option>
-                            <option value="Non Fait" ${curStatus === 'Non Fait' ? 'selected' : ''}>❌ Non Fait</option>
-                            <option value="Absent" ${curStatus === 'Absent' ? 'selected' : ''}>⚪ Absent</option>
+                            <option value="Fait" ${curStatus === 'Fait' ? 'selected' : ''}>${optDone}</option>
+                            <option value="Partiellement Fait" ${curStatus === 'Partiellement Fait' ? 'selected' : ''}>${optPartial}</option>
+                            <option value="Non Fait" ${curStatus === 'Non Fait' ? 'selected' : ''}>${optNotDone}</option>
+                            <option value="Absent" ${curStatus === 'Absent' ? 'selected' : ''}>${optAbsent}</option>
                         </select>
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
@@ -10931,11 +11394,11 @@ async function openTeacherEvalModal(hwIndex) {
                         <input type="number" min="0" max="10" value="${curBeh}" class="modal-eval-beh" data-student="${escapeHtml(st.name)}" style="width:75px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0;">
-                        <input type="text" value="${escapeHtml(curComm)}" class="modal-eval-comm" data-student="${escapeHtml(st.name)}" placeholder="Observation / Remarque" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1;">
+                        <input type="text" value="${escapeHtml(curComm)}" class="modal-eval-comm" data-student="${escapeHtml(st.name)}" placeholder="${commentPlaceholder}" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1;">
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
                         <button type="button" onclick="contactParentFromEval('${escapeHtml(st.name).replace(/'/g, "\\'")}', '${escapeHtml(st.parentPhone || '').replace(/'/g, "\\'")}', '${escapeHtml(classDisplay).replace(/'/g, "\\'")}', '${escapeHtml(hw.matiere || '').replace(/'/g, "\\'")}', '${escapeHtml(hw.formattedDateFr || hw.date || '').replace(/'/g, "\\'")}')" class="pro-button" style="padding:5px 8px; font-size:0.75rem; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; border-radius:6px; font-weight:700; white-space:nowrap; cursor:pointer;" title="Envoyer un message au parent">
-                            <i class="fas fa-comment-dots"></i> Message
+                            <i class="fas fa-comment-dots"></i> ${btnMessage}
                         </button>
                     </td>
                 </tr>

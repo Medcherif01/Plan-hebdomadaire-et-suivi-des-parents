@@ -332,8 +332,28 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   console.warn('⚠️ Clés VAPID manquantes - notifications push désactivées');
 }
 
-const arabicTeachers = ['Majed', 'Jaber', 'Imad', 'Saeed'];
+const arabicTeachers = ['Majed', 'Jaber', 'Imad', 'Saeed', 'Amal Arabe'];
 const englishTeachers = ['Kamel'];
+
+function isEnglishTeacher(username, userLang, subject) {
+  if (userLang === 'en') return true;
+  const u = String(username || '').trim().toLowerCase();
+  const s = String(subject || '').trim().toLowerCase();
+  if (englishTeachers.some(t => t.toLowerCase() === u || u.includes(t.toLowerCase()))) return true;
+  if (u.includes('kamel') || u.includes('english') || u.includes('anglais')) return true;
+  if (s.includes('anglais') || s.includes('english') || s.includes('esl')) return true;
+  return false;
+}
+
+function isArabicTeacher(username, userLang, subject) {
+  if (userLang === 'ar') return true;
+  const u = String(username || '').trim().toLowerCase();
+  const s = String(subject || '').trim().toLowerCase();
+  if (arabicTeachers.some(t => t.toLowerCase() === u || u.includes(t.toLowerCase()))) return true;
+  if (u.includes('majed') || u.includes('jaber') || u.includes('imad') || u.includes('saeed') || u.includes('amal arabe') || u.includes('arabe') || u.includes('arab') || /[\u0600-\u06FF]/.test(u)) return true;
+  if (s.includes('arabe') || s.includes('islam') || s.includes('coran') || s.includes('tarbiya') || /[\u0600-\u06FF]/.test(s)) return true;
+  return false;
+}
 
 const maleTeachers = [
   'Mohamed', 'Abas', 'Jaber', 'Imad', 'Kamel', 'Majed', 'Mohamed Ali', 'Morched', 
@@ -861,11 +881,29 @@ class InMemoryDb {
   }
 }
 
+async function clearAllStoredLessonPlans(db) {
+  try {
+    if (!db) return;
+    const r1 = await db.collection('lessonPlans').deleteMany({});
+    const r2 = await db.collection('weeklyLessonPlans').deleteMany({});
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+    console.log(`🧹 [Nettoyage Espace DB] Supprimé ${r1?.deletedCount || 0} plans de leçons et ${r2?.deletedCount || 0} plans hebdomadaires enregistrés pour libérer l'espace.`);
+  } catch (err) {
+    console.warn('⚠️ Erreur nettoyage plans de leçon:', err.message);
+  }
+}
+
+let hasCleanedInitialPlans = false;
+
 async function connectToDatabase() {
   if (cachedDb) return cachedDb;
   const mongoUrl = (process.env.MONGO_URL || MONGO_URL || '').trim();
   if (!mongoUrl || (!mongoUrl.startsWith('mongodb://') && !mongoUrl.startsWith('mongodb+srv://'))) {
     cachedDb = new InMemoryDb();
+    if (!hasCleanedInitialPlans) {
+      hasCleanedInitialPlans = true;
+      clearAllStoredLessonPlans(cachedDb);
+    }
     return cachedDb;
   }
   try {
@@ -873,9 +911,17 @@ async function connectToDatabase() {
     await client.connect();
     const db = client.db();
     cachedDb = db;
+    if (!hasCleanedInitialPlans) {
+      hasCleanedInitialPlans = true;
+      clearAllStoredLessonPlans(cachedDb);
+    }
     return db;
   } catch (err) {
     cachedDb = new InMemoryDb();
+    if (!hasCleanedInitialPlans) {
+      hasCleanedInitialPlans = true;
+      clearAllStoredLessonPlans(cachedDb);
+    }
     return cachedDb;
   }
 }
@@ -1382,8 +1428,12 @@ app.post('/api/login', async (req, res) => {
       if (userDoc.password === password) {
         console.log('[LOGIN] Authentification réussie pour (DB):', trimmedUsername);
         let userLang = userDoc.language;
-        if (!userLang) {
-          userLang = arabicTeachers.includes(userDoc.username) ? 'ar' : (englishTeachers.includes(userDoc.username) ? 'en' : 'fr');
+        if (isEnglishTeacher(userDoc.username) || isEnglishTeacher(userDoc.tableTeacherName)) {
+          userLang = 'en';
+        } else if (isArabicTeacher(userDoc.username) || isArabicTeacher(userDoc.tableTeacherName)) {
+          userLang = 'ar';
+        } else if (!userLang) {
+          userLang = 'fr';
         }
         return res.status(200).json({ 
           success: true, 
@@ -1399,7 +1449,7 @@ app.post('/api/login', async (req, res) => {
       }
     } else if (validUsers[trimmedUsername] && (password === trimmedUsername || password.toLowerCase() === trimmedUsername.toLowerCase())) {
       console.log('[LOGIN] Authentification par défaut réussie pour enseignant:', trimmedUsername);
-      let userLang = arabicTeachers.includes(trimmedUsername) ? 'ar' : (englishTeachers.includes(trimmedUsername) ? 'en' : 'fr');
+      let userLang = isEnglishTeacher(trimmedUsername) ? 'en' : (isArabicTeacher(trimmedUsername) ? 'ar' : 'fr');
       return res.status(200).json({ 
         success: true, 
         username: trimmedUsername, 
@@ -1444,8 +1494,8 @@ app.get('/api/admin/users', async (req, res) => {
         completeList.push(existingUserMap.get(teacherName));
       } else {
         let defLang = 'fr';
-        if (arabicTeachers.includes(teacherName)) defLang = 'ar';
-        if (englishTeachers.includes(teacherName)) defLang = 'en';
+        if (isArabicTeacher(teacherName)) defLang = 'ar';
+        if (isEnglishTeacher(teacherName)) defLang = 'en';
         
         completeList.push({
           _id: uId,
@@ -1560,6 +1610,391 @@ app.delete('/api/admin/users', async (req, res) => {
   } catch (error) {
     console.error('Erreur DELETE /api/admin/users:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
+  }
+});
+
+// --- API EXPORT / IMPORT ET GESTION GLOBALE DE LA BASE DE DONNÉES (ADMIN) ---
+
+// 1. Exporter toute la base de données au format Excel (.xlsx) multi-feuilles avec sauvegarde JSON intégrée
+app.get('/api/admin/export-database', async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const wb = XLSX.utils.book_new();
+
+    // 1. Plans hebdomadaires (plans)
+    const rawPlans = await db.collection('plans').find({}).toArray();
+    const flatPlansRows = [];
+    rawPlans.forEach(p => {
+      const section = p.section || (p._id && p._id.split('_')[0]) || '';
+      const week = p.week || (p._id && p._id.split('_')[1]) || '';
+      const rows = Array.isArray(p.data) ? p.data : (Array.isArray(p.rowsData) ? p.rowsData : []);
+      rows.forEach(r => {
+        flatPlansRows.push({
+          'Section': section,
+          'Semaine': week,
+          'Enseignant': r['Enseignant'] || r['enseignant'] || '',
+          'Classe': r['Classe'] || r['classe'] || '',
+          'Matiere': r['Matière'] || r['matiere'] || r['Matiere'] || '',
+          'Periode': r['Période'] || r['periode'] || r['Periode'] || '',
+          'Jour': r['Jour'] || r['jour'] || '',
+          'Lecon': r['Leçon'] || r['lecon'] || r['Lecon'] || '',
+          'Travaux_de_classe': r['Travaux de classe'] || r['travaux de classe'] || r['travaux'] || '',
+          'Support': r['Support'] || r['support'] || '',
+          'Devoirs': r['Devoirs'] || r['devoirs'] || ''
+        });
+      });
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatPlansRows.length > 0 ? flatPlansRows : [{ Info: 'Aucun plan' }]), 'Plans');
+
+    // 2. Élèves (students)
+    const students = await db.collection('students').find({}).toArray();
+    const flatStudents = students.map(s => ({
+      'Section': s.section || '',
+      'Classe': s.class || s.classe || '',
+      'Nom': s.name || '',
+      'Date_Naissance': s.birthday || '',
+      'Photo': s.photo || '',
+      'Parent_Phone': s.parentPhone || ''
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatStudents.length > 0 ? flatStudents : [{ Info: 'Aucun élève' }]), 'Eleves');
+
+    // 3. Évaluations (evaluations)
+    const evals = await db.collection('evaluations').find({}).toArray();
+    const flatEvals = evals.map(e => ({
+      'Section': e.section || '',
+      'Classe': e.class || e.rawClass || '',
+      'Date': e.date || '',
+      'Matiere': e.subject || '',
+      'Eleve': e.studentName || '',
+      'Statut': e.status || '',
+      'Participation': e.participation ?? 10,
+      'Comportement': e.behavior ?? 10,
+      'Remarque': e.comment || '',
+      'Evalue_Par': e.evaluatedBy || ''
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatEvals.length > 0 ? flatEvals : [{ Info: 'Aucune évaluation' }]), 'Evaluations');
+
+    // 4. Utilisateurs / Enseignants (users)
+    const users = await db.collection('users').find({}).toArray();
+    const flatUsers = users.map(u => ({
+      'Section': u.section || '',
+      'Nom_Utilisateur': u.username || '',
+      'Nom_Tableau': u.tableTeacherName || '',
+      'Role': u.role || 'teacher',
+      'Langue': u.language || 'fr',
+      'Mot_de_passe': u.password || ''
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatUsers.length > 0 ? flatUsers : [{ Info: 'Aucun utilisateur' }]), 'Utilisateurs');
+
+    // 5. Notes de semaine (weekly_notes)
+    const notes = await db.collection('weekly_notes').find({}).toArray();
+    const flatNotes = notes.map(n => ({
+      'Section': n.section || '',
+      'Semaine': n.week || '',
+      'Classe': n.classe || '',
+      'Notes': n.notes || ''
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatNotes.length > 0 ? flatNotes : [{ Info: 'Aucune note' }]), 'Notes_Semaine');
+
+    // 6. Messages Parents / Enseignants (teacher_messages)
+    const messages = await db.collection('teacher_messages').find({}).toArray();
+    const flatMessages = messages.map(m => ({
+      'Section': m.section || '',
+      'Enseignant': m.teacherName || '',
+      'Parent': m.parentName || '',
+      'Telephone': m.parentPhone || '',
+      'Eleve': m.studentName || '',
+      'Classe': m.studentClass || '',
+      'Message': m.message || '',
+      'Date': m.date || m.createdAt || ''
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatMessages.length > 0 ? flatMessages : [{ Info: 'Aucun message' }]), 'Messages');
+
+    // 7. Calendrier des 38 semaines (school_weeks_config)
+    const weeksCfg = await db.collection('school_weeks_config').find({}).toArray();
+    const flatWeeks = [];
+    weeksCfg.forEach(doc => {
+      const section = doc.section || doc._id || '';
+      const weeksObj = doc.weeks || {};
+      for (const [wNum, wInfo] of Object.entries(weeksObj)) {
+        flatWeeks.push({
+          'Section': section,
+          'Semaine': wNum,
+          'Titre_FR': wInfo.title || '',
+          'Titre_AR': wInfo.titleAr || '',
+          'Date_Debut': wInfo.start || '',
+          'Date_Fin': wInfo.end || ''
+        });
+      }
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatWeeks.length > 0 ? flatWeeks : [{ Info: 'Aucune config' }]), 'Calendrier_Semaines');
+
+    // 8. Étoiles du Jour (daily_stars)
+    const stars = await db.collection('daily_stars').find({}).toArray();
+    const flatStars = [];
+    stars.forEach(st => {
+      const section = st.section || '';
+      const date = st.date || '';
+      const starsMap = st.stars || {};
+      for (const [cls, list] of Object.entries(starsMap)) {
+        if (Array.isArray(list)) {
+          list.forEach(s => {
+            flatStars.push({
+              'Section': section,
+              'Date': date,
+              'Classe': cls,
+              'Nom': s.name || s.studentName || '',
+              'Score': s.score ?? 20
+            });
+          });
+        }
+      }
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatStars.length > 0 ? flatStars : [{ Info: 'Aucune étoile' }]), 'Etoiles_du_Jour');
+
+    // 9. Sauvegarde JSON intégrale sans perte dans la feuille _RAW_BACKUP
+    const rawBackup = {
+      plans: rawPlans,
+      students,
+      evaluations: evals,
+      users,
+      weekly_notes: notes,
+      teacher_messages: messages,
+      school_weeks_config: weeksCfg,
+      daily_stars: stars,
+      exportedAt: new Date().toISOString()
+    };
+    const jsonStr = JSON.stringify(rawBackup);
+    const jsonChunks = [];
+    const chunkSize = 30000;
+    for (let i = 0; i < jsonStr.length; i += chunkSize) {
+      jsonChunks.push({ 'DATA_CHUNK': jsonStr.substring(i, i + chunkSize) });
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(jsonChunks), '_RAW_BACKUP');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `sauvegarde_base_de_donnees_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (err) {
+    console.error('❌ Erreur export-database:', err);
+    res.status(500).json({ success: false, message: 'Erreur lors de l\'exportation de la base de données: ' + err.message });
+  }
+});
+
+// 2. Importer et restaurer la base de données depuis un fichier Excel ou JSON
+app.post('/api/admin/import-database', async (req, res) => {
+  try {
+    let fileBuf = null;
+    let jsonBackup = null;
+
+    if (req.files && req.files.file) {
+      fileBuf = req.files.file.data;
+    } else if (req.body && req.body.data) {
+      jsonBackup = req.body.data;
+    }
+
+    if (!fileBuf && !jsonBackup) {
+      return res.status(400).json({ success: false, message: 'Aucun fichier ou donnée fourni pour l\'importation.' });
+    }
+
+    const db = await connectToDatabase();
+    const summary = {};
+
+    // Traitement du fichier Excel
+    if (fileBuf) {
+      const wb = XLSX.read(fileBuf, { type: 'buffer' });
+
+      // Vérifier si la feuille de restauration haute fidélité _RAW_BACKUP est présente
+      if (wb.SheetNames.includes('_RAW_BACKUP')) {
+        const rawSheet = wb.Sheets['_RAW_BACKUP'];
+        const chunkRows = XLSX.utils.sheet_to_json(rawSheet);
+        const fullJsonStr = chunkRows.map(r => r.DATA_CHUNK || '').join('');
+        if (fullJsonStr) {
+          try {
+            jsonBackup = JSON.parse(fullJsonStr);
+          } catch (e) {
+            console.warn('⚠️ Erreur parsing _RAW_BACKUP JSON, repli sur feuilles tabulaires:', e.message);
+          }
+        }
+      }
+
+      // Si pas de jsonBackup, importer feuille par feuille
+      if (!jsonBackup) {
+        if (wb.SheetNames.includes('Plans')) {
+          const planRows = XLSX.utils.sheet_to_json(wb.Sheets['Plans']);
+          const groups = new Map();
+          planRows.forEach(r => {
+            const sec = (r.Section || 'garcons').toLowerCase();
+            const wk = Number(r.Semaine) || 1;
+            const key = `${sec}_${wk}`;
+            if (!groups.has(key)) groups.set(key, { section: sec, week: wk, data: [] });
+            groups.get(key).data.push({
+              'Enseignant': r.Enseignant || '',
+              'Classe': r.Classe || '',
+              'Matière': r.Matiere || r.Matière || '',
+              'Période': r.Periode || r.Période || '',
+              'Jour': r.Jour || '',
+              'Leçon': r.Lecon || r.Leçon || '',
+              'Travaux de classe': r.Travaux_de_classe || r['Travaux de classe'] || '',
+              'Support': r.Support || '',
+              'Devoirs': r.Devoirs || ''
+            });
+          });
+          let plansCount = 0;
+          for (const [key, group] of groups.entries()) {
+            await db.collection('plans').updateOne(
+              { _id: key },
+              { $set: { _id: key, section: group.section, week: group.week, data: group.data, updatedAt: new Date() } },
+              { upsert: true }
+            );
+            plansCount += group.data.length;
+          }
+          summary.plans = plansCount;
+        }
+
+        if (wb.SheetNames.includes('Eleves')) {
+          const studentRows = XLSX.utils.sheet_to_json(wb.Sheets['Eleves']);
+          let sCount = 0;
+          for (const s of studentRows) {
+            if (!s.Nom) continue;
+            const sec = s.Section || 'garcons';
+            const cls = s.Classe || '';
+            const sId = `${sec}_${cls}_${s.Nom}`.replace(/\s+/g, '_');
+            await db.collection('students').updateOne(
+              { _id: sId },
+              { $set: { _id: sId, name: s.Nom, class: cls, section: sec, birthday: s.Date_Naissance || '', photo: s.Photo || '', parentPhone: s.Parent_Phone || '' } },
+              { upsert: true }
+            );
+            sCount++;
+          }
+          summary.students = sCount;
+        }
+
+        if (wb.SheetNames.includes('Evaluations')) {
+          const evalRows = XLSX.utils.sheet_to_json(wb.Sheets['Evaluations']);
+          let eCount = 0;
+          for (const e of evalRows) {
+            if (!e.Eleve) continue;
+            await db.collection('evaluations').insertOne({
+              section: e.Section || 'garcons',
+              class: e.Classe || '',
+              rawClass: e.Classe || '',
+              date: e.Date || '',
+              subject: e.Matiere || '',
+              studentName: e.Eleve,
+              status: e.Statut || 'Fait',
+              participation: Number(e.Participation) || 10,
+              behavior: Number(e.Comportement) || 10,
+              comment: e.Remarque || '',
+              evaluatedBy: e.Evalue_Par || 'Admin'
+            });
+            eCount++;
+          }
+          summary.evaluations = eCount;
+        }
+
+        if (wb.SheetNames.includes('Utilisateurs')) {
+          const userRows = XLSX.utils.sheet_to_json(wb.Sheets['Utilisateurs']);
+          let uCount = 0;
+          for (const u of userRows) {
+            if (!u.Nom_Utilisateur) continue;
+            const sec = u.Section || 'garcons';
+            const uId = `${sec}_${u.Nom_Utilisateur}`;
+            await db.collection('users').updateOne(
+              { _id: uId },
+              { $set: { _id: uId, username: u.Nom_Utilisateur, tableTeacherName: u.Nom_Tableau || '', role: u.Role || 'teacher', language: u.Langue || 'fr', password: u.Mot_de_passe || u.Nom_Utilisateur, section: sec } },
+              { upsert: true }
+            );
+            uCount++;
+          }
+          summary.users = uCount;
+        }
+      }
+    }
+
+    // Traitement de l'objet de restauration JSON intégrale (haute fidélité)
+    if (jsonBackup) {
+      if (Array.isArray(jsonBackup.plans)) {
+        for (const p of jsonBackup.plans) {
+          if (p._id) await db.collection('plans').updateOne({ _id: p._id }, { $set: p }, { upsert: true });
+        }
+        summary.plans = jsonBackup.plans.length;
+      }
+      if (Array.isArray(jsonBackup.students)) {
+        for (const s of jsonBackup.students) {
+          if (s._id) await db.collection('students').updateOne({ _id: s._id }, { $set: s }, { upsert: true });
+        }
+        summary.students = jsonBackup.students.length;
+      }
+      if (Array.isArray(jsonBackup.evaluations)) {
+        for (const e of jsonBackup.evaluations) {
+          await db.collection('evaluations').insertOne(e);
+        }
+        summary.evaluations = jsonBackup.evaluations.length;
+      }
+      if (Array.isArray(jsonBackup.users)) {
+        for (const u of jsonBackup.users) {
+          if (u._id) await db.collection('users').updateOne({ _id: u._id }, { $set: u }, { upsert: true });
+        }
+        summary.users = jsonBackup.users.length;
+      }
+      if (Array.isArray(jsonBackup.weekly_notes)) {
+        for (const n of jsonBackup.weekly_notes) {
+          if (n._id) await db.collection('weekly_notes').updateOne({ _id: n._id }, { $set: n }, { upsert: true });
+        }
+        summary.weekly_notes = jsonBackup.weekly_notes.length;
+      }
+      if (Array.isArray(jsonBackup.school_weeks_config)) {
+        for (const w of jsonBackup.school_weeks_config) {
+          if (w._id) await db.collection('school_weeks_config').updateOne({ _id: w._id }, { $set: w }, { upsert: true });
+        }
+        summary.school_weeks_config = jsonBackup.school_weeks_config.length;
+      }
+      if (Array.isArray(jsonBackup.daily_stars)) {
+        for (const s of jsonBackup.daily_stars) {
+          if (s._id) await db.collection('daily_stars').updateOne({ _id: s._id }, { $set: s }, { upsert: true });
+        }
+        summary.daily_stars = jsonBackup.daily_stars.length;
+      }
+      if (Array.isArray(jsonBackup.teacher_messages)) {
+        for (const m of jsonBackup.teacher_messages) {
+          if (m._id) await db.collection('teacher_messages').updateOne({ _id: m._id }, { $set: m }, { upsert: true });
+        }
+        summary.teacher_messages = jsonBackup.teacher_messages.length;
+      }
+    }
+
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    res.status(200).json({
+      success: true,
+      message: 'Base de données importée et restaurée avec succès !',
+      summary
+    });
+  } catch (err) {
+    console.error('❌ Erreur import-database:', err);
+    res.status(500).json({ success: false, message: 'Erreur lors de l\'importation de la base de données: ' + err.message });
+  }
+});
+
+// 3. Vider tous les plans de leçons pour libérer de l'espace disque / base de données
+app.post(['/api/admin/clear-lesson-plans', '/api/clear-lesson-plans'], async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const r1 = await db.collection('lessonPlans').deleteMany({});
+    const r2 = await db.collection('weeklyLessonPlans').deleteMany({});
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+    const totalDeleted = (r1?.deletedCount || 0) + (r2?.deletedCount || 0);
+    res.status(200).json({
+      success: true,
+      message: `Tous les plans de leçons ont été supprimés avec succès pour libérer l'espace (${totalDeleted} supprimés).`
+    });
+  } catch (err) {
+    console.error('❌ Erreur clear-lesson-plans:', err);
+    res.status(500).json({ success: false, message: 'Erreur suppression: ' + err.message });
   }
 });
 
@@ -6168,6 +6603,15 @@ app.post('/api/generate-word', async (req, res) => {
 	    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 	    res.send(planDocument.fileData.buffer); // fileData est un BSON Binary, on utilise .buffer pour le Buffer Node.js
 
+	    // Supprimer immédiatement le plan de leçon de la base de données pour libérer l'espace disque
+	    try {
+	      await db.collection('weeklyLessonPlans').deleteOne({ _id: planDocument._id });
+	      if (typeof db.saveToDisk === 'function') db.saveToDisk();
+	      console.log(`🗑️ [Libération Espace] Plan de leçon hebdomadaire ${planDocument._id} supprimé de la base de données après téléchargement sur disque.`);
+	    } catch (delErr) {
+	      console.warn('⚠️ Erreur suppression weekly plan après téléchargement:', delErr.message);
+	    }
+
 	  } catch (error) {
 	    console.error('❌ Erreur serveur /download-weekly-plan:', error);
 	    if (!res.headersSent) {
@@ -7503,6 +7947,15 @@ app.get('/api/download-lesson-plan/:lessonPlanId', async (req, res) => {
     res.send(bufToSend);
     
     console.log(`✅ [Download Lesson Plan] Envoyé: ${lessonPlan.filename}`);
+
+    // Supprimer immédiatement le plan de leçon de la base de données pour libérer l'espace disque
+    try {
+      await db.collection('lessonPlans').deleteOne({ _id: lessonPlan._id });
+      if (typeof db.saveToDisk === 'function') db.saveToDisk();
+      console.log(`🗑️ [Libération Espace] Plan de leçon ${lessonPlan._id} supprimé de la base de données après téléchargement sur disque local.`);
+    } catch (delErr) {
+      console.warn('⚠️ Erreur suppression plan de leçon après téléchargement:', delErr.message);
+    }
     
   } catch (error) {
     console.error('❌ Erreur téléchargement plan de leçon:', error);
