@@ -2825,7 +2825,26 @@
                     const th = document.createElement('th');
                     th.className = 'sortable-th';
                     th.style.cursor = 'pointer';
-                    th.title = 'Cliquer pour trier par cette colonne';
+                    th.title = (currentUserLanguage === 'en') ? 'Click to sort by this column' : ((currentUserLanguage === 'ar') ? 'انقر للترتيب بهذا العمود' : 'Cliquer pour trier par cette colonne');
+                    
+                    const isMetaCol = (col) => {
+                        const c = String(col).trim().toLowerCase();
+                        return c.includes('enseign') || c.includes('teacher') || c.includes('معلم') ||
+                               c.includes('class') || c.includes('صف') || c.includes('فصل') ||
+                               c.includes('mati') || c.includes('subject') || c.includes('مادة') ||
+                               c.includes('périod') || c.includes('period') || c.includes('حصة') ||
+                               c.includes('jour') || c.includes('day') || c.includes('يوم');
+                    };
+                    
+                    if (isMetaCol(h)) {
+                        th.classList.add('col-meta-compact');
+                        th.style.width = '1%';
+                        th.style.whiteSpace = 'nowrap';
+                    } else {
+                        th.classList.add('col-editable-header');
+                        th.style.width = 'auto';
+                        th.style.minWidth = '220px';
+                    }
                     
                     const getColIcon = (col) => {
                         const c = String(col).toLowerCase();
@@ -3193,7 +3212,142 @@
             updateActionButtonsState(filteredAndSortedData.length > 0); 
         }
         
-        function displayPlanTable(data) {
+        
+// ==========================================
+// COLLAGE MULTI-CELLULES DEPUIS EXCEL / WORD / TABLEAUX
+// Permet de coller une ligne ou plusieurs cases en même temps (ex: 4 colonnes)
+// ==========================================
+function handleCellTablePaste(e, targetTd) {
+    const clipboardData = e.clipboardData || window.clipboardData;
+    if (!clipboardData) return false;
+
+    const plainText = clipboardData.getData('text/plain') || '';
+    const htmlText = clipboardData.getData('text/html') || '';
+
+    let grid = [];
+
+    // 1. Tenter l'analyse d'un tableau HTML (copié depuis Excel, Word, Google Sheets ou page web)
+    if (htmlText && (htmlText.includes('<tr') || htmlText.includes('<table'))) {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html');
+            const trs = doc.querySelectorAll('tr');
+            if (trs.length > 0) {
+                trs.forEach(tr => {
+                    const cells = tr.querySelectorAll('td, th');
+                    if (cells.length > 0) {
+                        grid.push(Array.from(cells).map(c => c.textContent.replace(/[\r\n]+/g, ' ').trim()));
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn('HTML table paste parse error:', err);
+        }
+    }
+
+    // 2. Si pas de grille HTML multi-colonnes, analyser le texte brut avec séparateurs tabulations (\t) et retours ligne
+    if (!grid || grid.length === 0 || (grid.length === 1 && grid[0].length === 1)) {
+        if (plainText.includes('\t') || plainText.includes('\n') || plainText.includes('\r')) {
+            const lines = plainText.split(/\r?\n/).filter(line => line.trim().length > 0);
+            grid = lines.map(line => {
+                return line.split('\t').map(cell => {
+                    let c = cell.trim();
+                    if (c.startsWith('"') && c.endsWith('"') && c.length >= 2) {
+                        c = c.slice(1, -1).replace(/""/g, '"').trim();
+                    }
+                    return c;
+                });
+            });
+        }
+    }
+
+    // Si une seule valeur isolée sans tabulation ni saut de ligne, laisser le collage standard
+    if (!grid || grid.length === 0 || (grid.length === 1 && grid[0].length <= 1)) {
+        return false;
+    }
+
+    e.preventDefault();
+
+    const startTr = targetTd.closest('tr');
+    if (!startTr) return false;
+
+    const tbody = startTr.closest('tbody');
+    if (!tbody) return false;
+
+    const allTrs = Array.from(tbody.querySelectorAll('tr:not(#initial-table-row)'));
+    const startRowIdx = allTrs.indexOf(startTr);
+    if (startRowIdx === -1) return false;
+
+    const startRowEditables = Array.from(startTr.querySelectorAll('td.editable'));
+    const startColIdx = startRowEditables.indexOf(targetTd);
+    if (startColIdx === -1) return false;
+
+    let modifiedRowsCount = 0;
+    let cellsFilledCount = 0;
+
+    grid.forEach((rowValues, rOffset) => {
+        const curTr = allTrs[startRowIdx + rOffset];
+        if (!curTr) return;
+
+        const curEditables = Array.from(curTr.querySelectorAll('td.editable'));
+        if (curEditables.length === 0) return;
+
+        const rIdxAttr = curTr.dataset.rowIndex;
+        let rowObj = (filteredAndSortedData && rIdxAttr !== undefined) ? filteredAndSortedData[parseInt(rIdxAttr, 10)] : null;
+        if (!rowObj && curTr.dataset.id && filteredAndSortedData) {
+            rowObj = filteredAndSortedData.find(r => String(r._id) === String(curTr.dataset.id));
+        }
+        if (!rowObj && curTr.dataset.id && planData) {
+            rowObj = planData.find(r => String(r._id) === String(curTr.dataset.id));
+        }
+
+        let rowChanged = false;
+
+        rowValues.forEach((val, cOffset) => {
+            const targetCell = curEditables[startColIdx + cOffset];
+            if (!targetCell) return;
+
+            const cleanVal = String(val ?? '').trim();
+            targetCell.textContent = cleanVal;
+            applyRTLToElement(targetCell, cleanVal);
+
+            const colHeader = targetCell.dataset.header;
+            if (rowObj && colHeader) {
+                rowObj[colHeader] = cleanVal;
+                if (curTr.dataset.id && planData) {
+                    const pdMatch = planData.find(r => String(r._id) === String(curTr.dataset.id));
+                    if (pdMatch && pdMatch !== rowObj) {
+                        pdMatch[colHeader] = cleanVal;
+                    }
+                }
+                rowChanged = true;
+                cellsFilledCount++;
+            }
+        });
+
+        if (rowChanged) {
+            curTr.classList.add('modified');
+            const indicator = curTr.querySelector('.save-indicator');
+            if (indicator) indicator.style.display = 'none';
+            modifiedRowsCount++;
+        }
+    });
+
+    if (modifiedRowsCount > 0) {
+        updateTeacherCounters();
+        const msg = (currentUserLanguage === 'en')
+            ? `Pasted into ${cellsFilledCount} cell(s) across ${modifiedRowsCount} row(s). Press Save to keep changes.`
+            : ((currentUserLanguage === 'ar')
+                ? `تم لصق البيانات في ${cellsFilledCount} خانة (${modifiedRowsCount} سطر). اضغط حفظ لتأكيد التغييرات.`
+                : `Collage réussi dans ${cellsFilledCount} case(s) (${modifiedRowsCount} ligne(s)). N'oubliez pas d'enregistrer.`);
+        showToastNotification(msg, 'success');
+    }
+
+    return true;
+}
+window.handleCellTablePaste = handleCellTablePaste;
+
+function displayPlanTable(data) {
             const tBody = document.querySelector('#planTable tbody');
             const tHead = document.querySelector('#planTable thead tr');
             if (!tBody) return;
@@ -3276,8 +3430,27 @@
                     td.setAttribute('dir', 'auto');
                     td.dataset.header = header;
                     
+                    const isMetaColHeader = (col) => {
+                        const c = String(col).trim().toLowerCase();
+                        return c.includes('enseign') || c.includes('teacher') || c.includes('معلم') ||
+                               c.includes('class') || c.includes('صف') || c.includes('فصل') ||
+                               c.includes('mati') || c.includes('subject') || c.includes('مادة') ||
+                               c.includes('périod') || c.includes('period') || c.includes('حصة') ||
+                               c.includes('jour') || c.includes('day') || c.includes('يوم');
+                    };
+                    if (isMetaColHeader(header)) {
+                        td.classList.add('col-meta-compact');
+                        td.style.width = '1%';
+                        td.style.whiteSpace = 'nowrap';
+                    }
+                    
                     // Une ligne d'une autre section est TOUJOURS en lecture seule (non éditable)
                     const isEditable = !isCrossReadOnly && editHdrKeys.includes(header);
+                    if (isEditable) {
+                        td.classList.add('col-editable-content');
+                        td.style.width = 'auto';
+                        td.style.minWidth = '220px';
+                    }
 
                     if (header === ensK && isCrossReadOnly) {
                         let secLabel = '👦 Garçons';
@@ -3307,10 +3480,24 @@
                         applyRTLToElement(td, content);
                         
                         td.addEventListener('paste', (e) => {
-                            e.preventDefault();
-                            const text = (e.clipboardData || window.clipboardData).getData('text');
-                            const cleanedText = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-                            document.execCommand('insertText', false, cleanedText);
+                            const handled = handleCellTablePaste(e, td);
+                            if (!handled) {
+                                e.preventDefault();
+                                const text = (e.clipboardData || window.clipboardData).getData('text') || '';
+                                const cleanedText = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+                                document.execCommand('insertText', false, cleanedText);
+                                if (rowObj) {
+                                    rowObj[header] = td.textContent;
+                                    applyRTLToElement(td, td.textContent);
+                                }
+                                const parentTR = td.closest('tr');
+                                if (parentTR) {
+                                    parentTR.classList.add('modified');
+                                    const indicator = parentTR.querySelector('.save-indicator');
+                                    if (indicator) indicator.style.display = 'none';
+                                    updateTeacherCounters();
+                                }
+                            }
                         });
                         
                         td.addEventListener('input', (e) => {

@@ -3027,11 +3027,15 @@ tr.row-plan-error {
     box-shadow: 4px 0 10px rgba(0, 0, 0, 0.08) !important;
 }
 
-#planTable td.editable {
-    min-width: 130px;
-    max-width: 240px;
-    word-break: break-word;
-    white-space: normal;
+/* Colonnes éditables - Largeur MAXIMALE et prioritaire pour la saisie (Leçon, Travaux, Support, Devoirs) */
+#planTable td.editable,
+#planTable td.col-editable-content,
+#planTable th.col-editable-header {
+    width: auto !important;
+    min-width: 220px !important;
+    max-width: none !important;
+    word-break: break-word !important;
+    white-space: pre-wrap !important;
 }
 
 .table-responsive-wrapper {
@@ -3499,3 +3503,64 @@ tr.row-plan-error {
 }
 
 
+
+/* ==========================================================================
+   COLONNES ULTRA-COMPACTES (Enseignant, Classe, Matière, Période, Jour)
+   Largeur minimale calée exactement sur la largeur du texte d'en-tête
+   ========================================================================== */
+#planTable th.col-meta-compact,
+#planTable td.col-meta-compact {
+    width: 1% !important;
+    white-space: nowrap !important;
+    padding: 8px 6px !important;
+    text-align: center !important;
+    font-size: 0.85rem !important;
+    line-height: 1.25 !important;
+}
+
+#planTable th.col-meta-compact {
+    padding: 10px 6px !important;
+    font-weight: 800 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+}
+
+#planTable th.col-meta-compact span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+}
+
+#planTable td.col-meta-compact {
+    white-space: nowrap !important;
+    font-weight: 600;
+    color: #334155;
+}
+
+/* Colonnes de saisie (Leçon, Travaux, Support, Devoirs) : prennent tout l'espace disponible */
+#planTable th.col-editable-header {
+    width: auto !important;
+    min-width: 220px !important;
+    max-width: none !important;
+    padding: 10px 14px !important;
+    font-size: 0.9rem !important;
+}
+
+#planTable td.col-editable-content,
+#planTable td.editable {
+    width: auto !important;
+    min-width: 220px !important;
+    max-width: none !important;
+    padding: 12px 14px !important;
+    font-size: 0.93rem !important;
+    line-height: 1.55 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+}
+
+#planTable th.actions-column,
+#planTable td.actions-column {
+    width: 1% !important;
+    white-space: nowrap !important;
+}
