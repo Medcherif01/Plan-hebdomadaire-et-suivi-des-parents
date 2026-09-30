@@ -14413,9 +14413,13 @@ function renderAnnualDistributionTable(sessions) {
         tr.dataset.index = idx;
         if (s.completed) tr.classList.add('session-completed');
 
+        const schoolDaysList = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
+        const sDay = s.day || schoolDaysList[idx % 5];
+
         tr.innerHTML = `
             <td class="col-narrow-annual" style="font-weight:800; color:#1E293B;">${s.sessionNumber || (idx + 1)}</td>
             <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="week">${s.week || Math.floor(idx / 4) + 1}</td>
+            <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="day" style="font-weight:700; color:#0369A1;" title="Jour de cours (ex: Dimanche, Lundi, Mardi, Mercredi, Jeudi)">${escapeHtml(sDay)}</td>
             <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="period">${s.period || (idx % 4) + 1}</td>
             <td class="col-editable-annual" contenteditable="true" data-field="unit">${escapeHtml(s.unit || s.term || '')}</td>
             <td class="col-editable-annual" contenteditable="true" data-field="lessonTitle" style="font-weight:600; color:#0F172A;">${escapeHtml(s.lessonTitle || '')}</td>
@@ -14483,9 +14487,11 @@ function addNewAnnualSessionRow(data = {}) {
     if (!currentAnnualDistribution.sessions) currentAnnualDistribution.sessions = [];
 
     const idx = currentAnnualDistribution.sessions.length;
+    const schoolDaysList = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
     const newSession = {
         sessionNumber: idx + 1,
         week: data.week || Math.floor(idx / 4) + 1,
+        day: data.day || schoolDaysList[idx % 5],
         period: data.period || (idx % 4) + 1,
         term: data.term || (idx < 40 ? 'Trimestre 1' : (idx < 80 ? 'Trimestre 2' : 'Trimestre 3')),
         unit: data.unit || '',
@@ -14512,15 +14518,19 @@ function generateAnnualDistributionCanvas() {
         return;
     }
 
+    const schoolDays = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
     const sessions = [];
     for (let i = 1; i <= totalSessions; i++) {
         const weekNum = Math.floor((i - 1) / perWeek) + 1;
-        const periodNum = ((i - 1) % perWeek) + 1;
+        const dayIdx = (i - 1) % perWeek;
+        const dayName = schoolDays[dayIdx % schoolDays.length];
+        const periodNum = Math.floor(dayIdx / schoolDays.length) + 1;
         const termNum = weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3');
 
         sessions.push({
             sessionNumber: i,
             week: weekNum,
+            day: dayName,
             period: periodNum,
             term: termNum,
             unit: `Unité ${Math.floor((weekNum - 1) / 3) + 1}`,
@@ -14637,6 +14647,7 @@ function collectAnnualDistributionFromDOM() {
     trs.forEach((tr, idx) => {
         const numText = tr.querySelector('td:nth-child(1)')?.textContent.trim();
         const week = parseInt(tr.querySelector('[data-field="week"]')?.textContent.trim(), 10) || (Math.floor(idx / 4) + 1);
+        const day = tr.querySelector('[data-field="day"]')?.textContent.trim() || (['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'][idx % 5]);
         const period = parseInt(tr.querySelector('[data-field="period"]')?.textContent.trim(), 10) || ((idx % 4) + 1);
         const unit = tr.querySelector('[data-field="unit"]')?.textContent.trim() || '';
         const lessonTitle = tr.querySelector('[data-field="lessonTitle"]')?.textContent.trim() || '';
@@ -14648,6 +14659,7 @@ function collectAnnualDistributionFromDOM() {
         sessions.push({
             sessionNumber: parseInt(numText, 10) || (idx + 1),
             week,
+            day,
             period,
             term: week <= 10 ? 'Trimestre 1' : (week <= 20 ? 'Trimestre 2' : 'Trimestre 3'),
             unit,
@@ -15041,3 +15053,298 @@ window.autoFillWeeklyPlanFromAnnualDistribution = autoFillWeeklyPlanFromAnnualDi
 window.syncWeeklyPlanToAnnualDistribution = syncWeeklyPlanToAnnualDistribution;
 window.triggerAutoFillWeeklyFromModal = triggerAutoFillWeeklyFromModal;
 window.triggerSyncFromWeeklyFromModal = triggerSyncFromWeeklyFromModal;
+
+
+// ============================================================================
+// MOTEUR D'IMPRESSION A4 PAYSAGE - DISTRIBUTION ANNUELLE REGROUPÉE PAR SEMAINE
+// ============================================================================
+
+function buildAnnualDistributionLandscapeHTML() {
+    const teacherSel = document.getElementById('annualDistTeacherSelect');
+    const classSel = document.getElementById('annualDistClassSelect');
+    const subjectSel = document.getElementById('annualDistSubjectSelect');
+    const yearSel = document.getElementById('annualDistYearSelect');
+
+    const teacher = teacherSel ? teacherSel.value.trim() : (loggedInUser || 'Enseignant');
+    const classe = classSel ? classSel.value.trim() : 'Toutes';
+    const matiere = subjectSel ? subjectSel.value.trim() : 'Toutes';
+    const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
+
+    const sessions = collectAnnualDistributionFromDOM();
+    const totalPlanned = sessions.length;
+    const completedCount = sessions.filter(s => s.completed).length;
+    const remainingCount = Math.max(0, totalPlanned - completedCount);
+    const progressRate = totalPlanned > 0 ? Math.round((completedCount / totalPlanned) * 100) : 0;
+
+    let sectionLabel = 'Section Garçons';
+    if (currentSection === 'filles') sectionLabel = 'Section Filles';
+    else if (currentSection === 'primaire') sectionLabel = 'Section Primaire';
+    else if (currentSection === 'maternelle') sectionLabel = 'Section Maternelle';
+
+    // Regrouper les jours de la même semaine ensemble
+    const weeksMap = new Map();
+    sessions.forEach(s => {
+        const w = parseInt(s.week, 10) || 1;
+        if (!weeksMap.has(w)) weeksMap.set(w, []);
+        weeksMap.get(w).push(s);
+    });
+
+    const sortedWeeks = Array.from(weeksMap.keys()).sort((a, b) => a - b);
+    const dayOrder = { 'dimanche': 1, 'lundi': 2, 'mardi': 3, 'mercredi': 4, 'jeudi': 5, 'vendredi': 6, 'samedi': 7 };
+
+    let weeksBlocksHTML = '';
+
+    sortedWeeks.forEach(weekNum => {
+        const weekSessions = weeksMap.get(weekNum) || [];
+        // Trier les séances de cette semaine par ordre des jours de cours scolaires
+        weekSessions.sort((a, b) => {
+            const dayA = dayOrder[String(a.day || '').trim().toLowerCase()] || 99;
+            const dayB = dayOrder[String(b.day || '').trim().toLowerCase()] || 99;
+            if (dayA !== dayB) return dayA - dayB;
+            return (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0);
+        });
+
+        // Trouver le trimestre et l'unité de cette semaine
+        const firstSession = weekSessions[0] || {};
+        const termName = firstSession.term || (weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3'));
+        const unitName = firstSession.unit || '';
+
+        // Récupérer les dates de cette semaine si configurées
+        const secCfg = (typeof getActiveSectionWeeksConfig === 'function') ? getActiveSectionWeeksConfig(currentSection) : null;
+        const wDates = (secCfg && secCfg[weekNum]) || (typeof weeksConfig !== 'undefined' && weeksConfig ? weeksConfig[weekNum] : null);
+        let dateRangeText = '';
+        if (wDates && wDates.start && wDates.end) {
+            dateRangeText = `(Du ${wDates.start} au ${wDates.end})`;
+        }
+
+        let rowsHTML = '';
+        weekSessions.forEach((s, sIdx) => {
+            const isCompleted = s.completed;
+            const statusBadge = isCompleted 
+                ? '<span style="color:#15803D; font-weight:800;">✓ Réalisé</span>' 
+                : '<span style="color:#0284C7; font-weight:600;">⏳ Prévu</span>';
+
+            rowsHTML += `
+                <tr style="${isCompleted ? 'background:#F0FDF4;' : ''}">
+                    <td style="font-weight:800; color:#1E293B; white-space:nowrap;">
+                        <span class="annual-print-day-badge">${escapeHtml(s.day || 'Dimanche')}</span>
+                    </td>
+                    <td style="text-align:center; font-weight:700; color:#475569;">P${s.period || (sIdx + 1)}</td>
+                    <td style="font-weight:700; color:#0F172A;">${escapeHtml(s.lessonTitle || '-')}</td>
+                    <td style="color:#334155;">${escapeHtml(s.classwork || '-')}</td>
+                    <td style="color:#475569;">${escapeHtml(s.support || '-')}</td>
+                    <td style="color:#475569;">${escapeHtml(s.homework || '-')}</td>
+                    <td style="text-align:center; white-space:nowrap;">${statusBadge}</td>
+                </tr>
+            `;
+        });
+
+        weeksBlocksHTML += `
+            <div class="annual-print-week-block">
+                <div class="annual-print-week-header">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:0.98rem; letter-spacing:0.5px; text-transform:uppercase;">
+                            📅 SEMAINE ${weekNum}
+                        </span>
+                        <span style="background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:4px; font-size:0.8rem; font-weight:600;">
+                            ${escapeHtml(termName)}
+                        </span>
+                        ${unitName ? `<span style="font-size:0.85rem; font-weight:600; opacity:0.9;">• ${escapeHtml(unitName)}</span>` : ''}
+                        ${dateRangeText ? `<span style="font-size:0.78rem; opacity:0.85;">${escapeHtml(dateRangeText)}</span>` : ''}
+                    </div>
+                    <div style="font-size:0.8rem; opacity:0.9; font-weight:600;">
+                        ${weekSessions.length} séance(s) / jour(s)
+                    </div>
+                </div>
+
+                <table class="annual-print-week-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 12%;">Jour</th>
+                            <th style="width: 6%; text-align:center;">Période</th>
+                            <th style="width: 24%;">Titre de la Leçon</th>
+                            <th style="width: 28%;">Activités & Travaux de classe</th>
+                            <th style="width: 13%;">Support & Outils</th>
+                            <th style="width: 11%;">Devoirs & Évaluation</th>
+                            <th style="width: 6%; text-align:center;">Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHTML}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    });
+
+    const currentDateStr = new Date().toLocaleDateString('fr-FR', {
+        day: '2-digit', month: 'long', year: 'numeric'
+    });
+
+    const fullHTML = `
+        <div class="annual-print-header">
+            <div class="annual-print-header-top">
+                <div style="font-weight:800; font-size:0.9rem; color:#1E3A8A; text-transform:uppercase;">
+                    Établissement Scolaire • ${escapeHtml(sectionLabel)}
+                </div>
+                <div style="font-weight:700; font-size:0.85rem; color:#475569;">
+                    Année Scolaire : ${escapeHtml(schoolYear)}
+                </div>
+            </div>
+
+            <h1 class="annual-print-title">
+                RÉPARTITION ANNUELLE DES ENSEIGNEMENTS
+            </h1>
+            <p class="annual-print-subtitle">
+                التوزيع السنوي للمنهاج الدراسي والتعلمات • Format A4 Paysage avec regroupement hebdomadaire
+            </p>
+
+            <div class="annual-print-meta-grid">
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Enseignant(e)</span>
+                    <span class="meta-value">${escapeHtml(teacher)}</span>
+                </div>
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Classe / Niveau</span>
+                    <span class="meta-value">${escapeHtml(classe)}</span>
+                </div>
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Matière</span>
+                    <span class="meta-value">${escapeHtml(matiere)}</span>
+                </div>
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Volume Annuel</span>
+                    <span class="meta-value">${totalPlanned} séances (${sortedWeeks.length} semaines)</span>
+                </div>
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Avancement</span>
+                    <span class="meta-value" style="color:#059669;">${completedCount} / ${totalPlanned} (${progressRate}%)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="annual-print-weeks-container">
+            ${weeksBlocksHTML}
+        </div>
+
+        <div class="annual-print-footer">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; color:#64748B;">
+                <span>Document officiel pédagogique • Généré le ${currentDateStr}</span>
+                <span>Taux de réalisation global : <strong>${progressRate}%</strong></span>
+            </div>
+
+            <div class="annual-print-signatures">
+                <div class="annual-signature-box">
+                    <span>Visa et Signature de l'Enseignant(e) :</span>
+                    <span style="font-size:0.75rem; color:#94A3B8; text-align:right;">Date : ______________</span>
+                </div>
+                <div class="annual-signature-box">
+                    <span>Visa de la Direction des Études / Inspection :</span>
+                    <span style="font-size:0.75rem; color:#94A3B8; text-align:right;">Cachet et Date : ______________</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    return fullHTML;
+}
+
+function openAnnualPrintPreviewModal() {
+    const previewModal = document.getElementById('annualPrintPreviewModal');
+    const sheetContainer = document.getElementById('annualLandscapePrintSheet');
+    if (!previewModal || !sheetContainer) return;
+
+    sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML();
+    previewModal.style.display = 'flex';
+}
+
+function closeAnnualPrintPreviewModal() {
+    const previewModal = document.getElementById('annualPrintPreviewModal');
+    if (previewModal) previewModal.style.display = 'none';
+}
+
+function printAnnualDistributionLandscape() {
+    // 1. Remplir le conteneur d'impression paysage
+    const sheetContainer = document.getElementById('annualLandscapePrintSheet');
+    if (sheetContainer) {
+        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML();
+    }
+
+    // 2. Ouvrir le modal d'aperçu pour que la feuille soit dans le DOM
+    const previewModal = document.getElementById('annualPrintPreviewModal');
+    if (previewModal) previewModal.style.display = 'flex';
+
+    // 3. Déclencher l'impression avec @page { size: A4 landscape; }
+    setTimeout(() => {
+        window.print();
+    }, 250);
+}
+
+function triggerDirectPrintLandscape() {
+    window.print();
+}
+
+function downloadAnnualPrintHTML() {
+    const fullHTML = buildAnnualDistributionLandscapeHTML();
+    const teacherSel = document.getElementById('annualDistTeacherSelect');
+    const classSel = document.getElementById('annualDistClassSelect');
+    const teacher = teacherSel ? teacherSel.value.trim() : 'Enseignant';
+    const classe = classSel ? classSel.value.trim() : 'Classe';
+
+    const standaloneDocument = `<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <title>Repartition_Annuelle_${teacher}_${classe}</title>
+    <style>
+        @page { size: A4 landscape; margin: 8mm 8mm 8mm 8mm; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 12px; color: #0F172A; background: #FFF; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .annual-print-header { border-bottom: 2.5px solid #0284C7; padding-bottom: 12px; margin-bottom: 16px; }
+        .annual-print-header-top { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .annual-print-title { font-size: 1.3rem; font-weight: 800; color: #0F172A; text-align: center; margin: 0; }
+        .annual-print-subtitle { font-size: 0.85rem; color: #475569; text-align: center; margin: 2px 0 0 0; }
+        .annual-print-meta-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; margin-top: 10px; }
+        .annual-print-meta-item { display: flex; flex-direction: column; }
+        .meta-label { font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; }
+        .meta-value { font-size: 0.85rem; font-weight: 800; color: #0F172A; }
+        .annual-print-week-block { break-inside: avoid; page-break-inside: avoid; margin-bottom: 14px; border: 1.5px solid #94A3B8; border-radius: 6px; overflow: hidden; background: #FFF; }
+        .annual-print-week-header { background: #1E293B; color: #FFF; padding: 6px 12px; font-size: 0.88rem; font-weight: 800; display: flex; justify-content: space-between; }
+        .annual-print-week-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; table-layout: fixed; }
+        .annual-print-week-table th { background: #F1F5F9; color: #1E293B; font-weight: 800; padding: 5px 6px; border: 1px solid #CBD5E1; text-align: left; }
+        .annual-print-week-table td { padding: 5px 6px; border: 1px solid #CBD5E1; vertical-align: top; word-break: break-word; }
+        .annual-print-week-table tr:nth-child(even) td { background: #F8FAFC; }
+        .annual-print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 20px; border-top: 1.5px solid #94A3B8; padding-top: 12px; }
+        .annual-print-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 14px; }
+        .annual-signature-box { border: 1px dashed #94A3B8; border-radius: 6px; padding: 10px 14px; height: 80px; display: flex; flex-direction: column; justify-content: space-between; font-size: 0.8rem; font-weight: 700; color: #475569; }
+    </style>
+</head>
+<body>
+    ${fullHTML}
+    <script>
+        window.onload = function() { window.print(); };
+    </script>
+</body>
+</html>`;
+
+    const blob = new Blob([standaloneDocument], { type: 'text/html;charset=utf-8' });
+    const filename = `Repartition_Annuelle_A4_Paysage_${teacher}_${classe}.html`.replace(/\s+/g, '_');
+    if (typeof saveAs === 'function') {
+        saveAs(blob, filename);
+    } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }
+}
+
+window.buildAnnualDistributionLandscapeHTML = buildAnnualDistributionLandscapeHTML;
+window.openAnnualPrintPreviewModal = openAnnualPrintPreviewModal;
+window.closeAnnualPrintPreviewModal = closeAnnualPrintPreviewModal;
+window.printAnnualDistributionLandscape = printAnnualDistributionLandscape;
+window.triggerDirectPrintLandscape = triggerDirectPrintLandscape;
+window.downloadAnnualPrintHTML = downloadAnnualPrintHTML;

@@ -5668,7 +5668,9 @@ app.post('/api/annual-distribution/upload-excel', async (req, res) => {
     rawRows.forEach((r, idx) => {
       const sessionNumRaw = findCol(r, ['seance', 'séance', 'session', 'n°', 'no', 'num', 'numero', 'الحصة', 'رقم']);
       const weekRaw = findCol(r, ['semaine', 'week', 'الأسبوع', 'اسبوع', 'sem']);
-      const termRaw = findCol(r, ['trimestre', 'semestre', 'periode', 'période', 'term', 'الفصل', 'الفترة']);
+      const dayRaw = findCol(r, ['jour', 'day', 'اليوم', 'يوم', 'jours']);
+      const periodRaw = findCol(r, ['periode', 'période', 'period', 'heure', 'الحصة', 'الفترة']);
+      const termRaw = findCol(r, ['trimestre', 'semestre', 'term', 'الفصل']);
       const unitRaw = findCol(r, ['unite', 'unité', 'chapitre', 'module', 'axe', 'unit', 'chapter', 'المحور', 'الوحدة']);
       const lessonRaw = findCol(r, ['lecon', 'leçon', 'titre', 'lesson', 'title', 'intitule', 'intitulé', 'الدرس', 'عنوان الدرس']);
       const classworkRaw = findCol(r, ['travaux', 'travaux de classe', 'activites', 'activités', 'classwork', 'activite', 'العمل الصفي', 'أنشطة التعلم']);
@@ -5683,10 +5685,15 @@ app.post('/api/annual-distribution/upload-excel', async (req, res) => {
       const weekNum = parseInt(weekRaw, 10) || (Math.floor((sessionCount - 1) / 4) + 1);
       const sessionNum = parseInt(sessionNumRaw, 10) || sessionCount;
 
+      const schoolDaysList = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
+      const defaultDay = schoolDaysList[(sessionCount - 1) % 5];
+      const parsedPeriod = parseInt(periodRaw, 10) || (((sessionCount - 1) % 4) + 1);
+
       sessions.push({
         sessionNumber: sessionNum,
         week: weekNum,
-        period: ((sessionCount - 1) % 4) + 1,
+        day: String(dayRaw || defaultDay).trim(),
+        period: parsedPeriod,
         term: String(termRaw || (weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3'))).trim(),
         unit: String(unitRaw || '').trim(),
         lessonTitle: String(lessonRaw || '').trim(),
@@ -5713,8 +5720,10 @@ app.get('/api/annual-distribution/download-template', (req, res) => {
   try {
     const wb = XLSX.utils.book_new();
     const headers = [
-      'Semaine',
       'Séance N°',
+      'Semaine',
+      'Jour',
+      'Période',
       'Trimestre',
       'Unité / Chapitre',
       'Titre de la Leçon',
@@ -5723,11 +5732,11 @@ app.get('/api/annual-distribution/download-template', (req, res) => {
       'Devoirs / Évaluation'
     ];
     const sampleRows = [
-      [1, 1, 'Trimestre 1', 'Unité 1', 'Prise de contact et révisions', 'Évaluation diagnostique', 'Manuel p.6-7', 'Exercice 1 p.8'],
-      [1, 2, 'Trimestre 1', 'Unité 1', 'Leçon 1 : Les notions de base', 'Lecture et analyse de texte', 'Cahier d activités', 'Fiche n°1'],
-      [1, 3, 'Trimestre 1', 'Unité 1', 'Leçon 2 : Applications pratiques', 'Exercices d entraînement en groupe', 'Tableau interactif', 'Exercice 3 p.9'],
-      [1, 4, 'Trimestre 1', 'Unité 1', 'Bilan et remédiation', 'Correction collective et synthèse', 'Fiches de remédiation', 'Auto-évaluation'],
-      [2, 5, 'Trimestre 1', 'Unité 2', 'Leçon 3 : Approfondissement', 'Découverte de la nouvelle règle', 'Manuel p.12', 'Exercice 1 p.13']
+      [1, 1, 'Dimanche', 1, 'Trimestre 1', 'Unité 1', 'Prise de contact et révisions', 'Évaluation diagnostique', 'Manuel p.6-7', 'Exercice 1 p.8'],
+      [2, 1, 'Lundi', 2, 'Trimestre 1', 'Unité 1', 'Leçon 1 : Les notions de base', 'Lecture et analyse de texte', 'Cahier d activités', 'Fiche n°1'],
+      [3, 1, 'Mardi', 1, 'Trimestre 1', 'Unité 1', 'Leçon 2 : Applications pratiques', 'Exercices d entraînement en groupe', 'Tableau interactif', 'Exercice 3 p.9'],
+      [4, 1, 'Mercredi', 3, 'Trimestre 1', 'Unité 1', 'Bilan et remédiation', 'Correction collective et synthèse', 'Fiches de remédiation', 'Auto-évaluation'],
+      [5, 2, 'Dimanche', 1, 'Trimestre 1', 'Unité 2', 'Leçon 3 : Approfondissement', 'Découverte de la nouvelle règle', 'Manuel p.12', 'Exercice 1 p.13']
     ];
     const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
     ws['!cols'] = [
@@ -5950,10 +5959,14 @@ app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
         session.completedDate = new Date().toISOString();
         syncedCount++;
       } else {
+        const rowDay = (row[findKey(row, 'Jour')] || '').trim();
+        const rowPeriode = parseInt((row[findKey(row, 'Période')] || '').replace(/\D/g, ''), 10) || (idx + 1);
+
         distDoc.sessions.push({
           sessionNumber: distDoc.sessions.length + 1,
           week: weekNum,
-          period: idx + 1,
+          day: rowDay || (['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'][idx % 5]),
+          period: rowPeriode,
           term: weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3'),
           unit: '',
           lessonTitle,

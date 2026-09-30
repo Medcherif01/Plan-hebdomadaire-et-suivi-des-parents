@@ -2991,6 +2991,13 @@
                     </div>
 
                     <div class="annual-actions-right">
+                        <!-- IMPRESSION A4 PAYSAGE REGROUPÉE PAR SEMAINE -->
+                        <button type="button" class="btn-annual" style="background:#0F172A; color:#FFFFFF;" onclick="printAnnualDistributionLandscape()" title="Imprimer la distribution annuelle regroupée par semaine en format A4 Paysage">
+                            <i class="fas fa-print" style="color:#38BDF8;"></i> <span>🖨️ Imprimer A4 Paysage</span>
+                        </button>
+                        <button type="button" class="btn-annual btn-annual-secondary" onclick="openAnnualPrintPreviewModal()" title="Aperçu avant impression en A4 Paysage">
+                            <i class="fas fa-eye" style="color:#0284C7;"></i> <span>Aperçu Paysage</span>
+                        </button>
                         <!-- LIAISON ÉTROITE AVEC LE PLAN HEBDOMADAIRE (DIRECT ET INVERSE) -->
                         <button type="button" class="btn-annual btn-annual-purple" onclick="triggerAutoFillWeeklyFromModal()" title="Remplir automatiquement les cases du plan hebdomadaire de la semaine sélectionnée à partir de cette distribution">
                             <i class="fas fa-bolt"></i> <span>⚡ Remplir le Plan Hebdo</span>
@@ -3007,35 +3014,71 @@
                 <!-- Info d'aide collage -->
                 <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:8px 14px; font-size:0.83rem; color:#1E40AF; display:flex; align-items:center; gap:8px;">
                     <i class="fas fa-lightbulb" style="color:#2563EB; font-size:1.1rem;"></i>
-                    <span><strong>Astuce :</strong> Vous pouvez copier plusieurs lignes ou colonnes depuis Excel et faire <em>Ctrl + V</em> dans n'importe quelle cellule du tableau pour coller 4 cases ou plus en même temps ! Cliquez sur le badge statut pour marquer une séance comme réalisée.</span>
+                    <span><strong>Astuce :</strong> La distribution annuelle est organisée <strong>par jours</strong> (Dimanche, Lundi, etc.). Vous pouvez copier plusieurs lignes ou colonnes depuis Excel et faire <em>Ctrl + V</em> dans n'importe quelle cellule du tableau pour coller 4 cases ou plus en même temps ! Cliquez sur <em>Imprimer A4 Paysage</em> pour obtenir le document officiel regroupé <strong>par semaine</strong>.</span>
                 </div>
 
-                <!-- 4. La Grille Interactive des Séances -->
+                <!-- 4. La Grille Interactive des Séances (Par Jour) -->
                 <div class="annual-table-wrapper" id="annualDistTableWrapper">
                     <table class="annual-table" id="annualDistTable">
                         <thead>
                             <tr>
-                                <th style="width: 50px; text-align:center;">N°</th>
-                                <th style="width: 75px; text-align:center;">Semaine</th>
-                                <th style="width: 80px; text-align:center;">Période</th>
-                                <th style="width: 140px;">Trimestre / Unité</th>
+                                <th style="width: 45px; text-align:center;">N°</th>
+                                <th style="width: 70px; text-align:center;">Semaine</th>
+                                <th style="width: 95px; text-align:center;">Jour</th>
+                                <th style="width: 65px; text-align:center;">Période</th>
+                                <th style="width: 130px;">Trimestre / Unité</th>
                                 <th style="min-width: 200px;">Titre de la Leçon</th>
                                 <th style="min-width: 220px;">Activités / Travaux de classe</th>
                                 <th style="min-width: 150px;">Support / Matériel</th>
                                 <th style="min-width: 160px;">Devoirs / Évaluation</th>
-                                <th style="width: 110px; text-align:center;">Statut</th>
-                                <th style="width: 60px; text-align:center;">Action</th>
+                                <th style="width: 95px; text-align:center;">Statut</th>
+                                <th style="width: 45px; text-align:center;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="annualDistTableBody">
                             <tr>
-                                <td colspan="10" style="text-align:center; padding:35px 20px; color:#64748B;">
+                                <td colspan="11" style="text-align:center; padding:35px 20px; color:#64748B;">
                                     <i class="fas fa-calendar-alt" style="font-size:2.2rem; color:#CBD5E1; margin-bottom:10px; display:block;"></i>
                                     Veuillez sélectionner un enseignant, une classe et une matière pour charger ou créer la distribution annuelle.
                                 </td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL APERÇU IMPRESSION A4 PAYSAGE (REGROUPEMENT PAR SEMAINE)        -->
+    <!-- ===================================================================== -->
+    <div id="annualPrintPreviewModal" class="annual-dist-modal" onclick="if(event.target===this)closeAnnualPrintPreviewModal()">
+        <div class="annual-dist-content" style="max-width: 1320px; height: 96vh;" onclick="event.stopPropagation()">
+            <div class="annual-dist-header" style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);">
+                <div class="annual-dist-title-box">
+                    <h3>
+                        <i class="fas fa-print" style="color:#38BDF8;"></i>
+                        <span>Aperçu Impression A4 Paysage - Répartition Annuelle par Semaine</span>
+                    </h3>
+                    <p>Mise en page A4 Paysage professionnelle avec regroupement automatique des jours de la même semaine</p>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <button type="button" class="btn-annual" style="background:#0284C7; color:#FFFFFF; padding:9px 18px; font-size:0.92rem;" onclick="triggerDirectPrintLandscape()">
+                        <i class="fas fa-print"></i> <span>🖨️ Imprimer A4 Paysage</span>
+                    </button>
+                    <button type="button" class="btn-annual btn-annual-secondary" onclick="downloadAnnualPrintHTML()">
+                        <i class="fas fa-file-code"></i> <span>Télécharger HTML</span>
+                    </button>
+                    <button type="button" class="annual-dist-close-btn" onclick="closeAnnualPrintPreviewModal()" title="Fermer">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="annual-dist-body" style="background:#475569; padding: 20px; display:flex; justify-content:center; overflow-y:auto;">
+                <!-- Conteneur simulateur de feuille A4 Paysage -->
+                <div id="annualLandscapePrintSheet" class="annual-landscape-sheet">
+                    <!-- Rempli dynamiquement avec le document complet groupé par semaine -->
                 </div>
             </div>
         </div>

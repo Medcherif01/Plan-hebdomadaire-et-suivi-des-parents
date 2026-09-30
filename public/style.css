@@ -4021,3 +4021,248 @@ tr.row-plan-error {
     to { transform: translateY(0); opacity: 1; }
 }
 
+/* ==========================================================================
+   STYLE IMPRESSION A4 PAYSAGE - DISTRIBUTION ANNUELLE REGROUPÉE PAR SEMAINE
+   ========================================================================== */
+.annual-landscape-sheet {
+    width: 100%;
+    max-width: 1240px;
+    background: #FFFFFF;
+    border-radius: 8px;
+    padding: 28px 32px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #0F172A;
+}
+
+.annual-print-header {
+    border-bottom: 2.5px solid #0284C7;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+}
+
+.annual-print-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.annual-print-title {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #0F172A;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    text-align: center;
+}
+
+.annual-print-subtitle {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #475569;
+    margin: 3px 0 0 0;
+    text-align: center;
+}
+
+.annual-print-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    background: #F8FAFC;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 10px;
+}
+
+.annual-print-meta-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.annual-print-meta-item .meta-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #64748B;
+    text-transform: uppercase;
+}
+
+.annual-print-meta-item .meta-value {
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: #0F172A;
+}
+
+/* Bloc d'une semaine regroupée */
+.annual-print-week-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 16px;
+    border: 1.5px solid #94A3B8;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #FFFFFF;
+}
+
+.annual-print-week-header {
+    background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
+    color: #FFFFFF;
+    padding: 7px 14px;
+    font-size: 0.9rem;
+    font-weight: 800;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+.annual-print-week-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+    table-layout: fixed;
+}
+
+.annual-print-week-table th {
+    background: #F1F5F9;
+    color: #1E293B;
+    font-weight: 800;
+    padding: 6px 7px;
+    border: 1px solid #CBD5E1;
+    text-align: left;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+.annual-print-week-table td {
+    padding: 6px 8px;
+    border: 1px solid #CBD5E1;
+    vertical-align: top;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.annual-print-week-table tr:nth-child(even) td {
+    background: #F8FAFC;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+.annual-print-day-badge {
+    font-weight: 800;
+    color: #1E293B;
+    display: inline-block;
+    white-space: nowrap;
+}
+
+/* Pied de page et signatures */
+.annual-print-footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 24px;
+    border-top: 1.5px solid #94A3B8;
+    padding-top: 14px;
+}
+
+.annual-print-signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    margin-top: 16px;
+}
+
+.annual-signature-box {
+    border: 1px dashed #94A3B8;
+    border-radius: 8px;
+    padding: 12px 16px;
+    height: 90px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.annual-signature-box span {
+    font-weight: 700;
+    font-size: 0.82rem;
+    color: #475569;
+}
+
+/* RÈGLES SPÉCIFIQUES D'IMPRESSION A4 PAYSAGE */
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 8mm 8mm 8mm 8mm;
+    }
+
+    body {
+        background: #FFFFFF !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Masquer tous les éléments de l'application hors de la feuille d'impression */
+    body > *:not(#annualPrintPreviewModal) {
+        display: none !important;
+    }
+
+    #annualPrintPreviewModal {
+        position: static !important;
+        background: transparent !important;
+        display: block !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+
+    #annualPrintPreviewModal .annual-dist-content {
+        max-width: none !important;
+        width: 100% !important;
+        height: auto !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        border: none !important;
+        overflow: visible !important;
+    }
+
+    #annualPrintPreviewModal .annual-dist-header,
+    #annualPrintPreviewModal .annual-actions-bar,
+    #annualPrintPreviewModal .annual-dist-close-btn {
+        display: none !important;
+    }
+
+    #annualPrintPreviewModal .annual-dist-body {
+        background: #FFFFFF !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    .annual-landscape-sheet {
+        max-width: none !important;
+        width: 100% !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+    }
+
+    .annual-print-week-block {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+        margin-bottom: 12px !important;
+    }
+
+    .annual-print-footer {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+}
+
