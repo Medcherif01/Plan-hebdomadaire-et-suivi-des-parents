@@ -3466,6 +3466,17 @@ function displayPlanTable(data) {
                         td.style.minWidth = '220px';
                     }
 
+                    if (header === ensK && (!content || !content.trim()) && !isCrossReadOnly) {
+                        const curMat = rowObj ? rowObj[matK] : '';
+                        if (curMat && typeof findLinkedTeacherForSubject === 'function') {
+                            const autoTeacher = findLinkedTeacherForSubject(curMat);
+                            if (autoTeacher) {
+                                content = autoTeacher;
+                                if (rowObj) rowObj[ensK] = autoTeacher;
+                            }
+                        }
+                    }
+
                     if (header === ensK && isCrossReadOnly) {
                         let secLabel = '👦 Garçons';
                         let badgeClass = 'badge-garcons';
@@ -3518,6 +3529,25 @@ function displayPlanTable(data) {
                             if (rowObj) {
                                 rowObj[header] = e.target.textContent;
                                 applyRTLToElement(e.target, e.target.textContent);
+
+                                // Si la matière est modifiée, attribuer automatiquement l'enseignant lié si vide
+                                if (header === matK && ensK && typeof findLinkedTeacherForSubject === 'function') {
+                                    const newSubject = (e.target.textContent || '').trim();
+                                    const curEns = rowObj[ensK] ? rowObj[ensK].trim() : '';
+                                    if ((!curEns || curEns === '') && newSubject) {
+                                        const autoEns = findLinkedTeacherForSubject(newSubject);
+                                        if (autoEns) {
+                                            rowObj[ensK] = autoEns;
+                                            const parentRow = e.target.closest('tr');
+                                            const ensCell = parentRow ? parentRow.querySelector(`td[data-header="${ensK}"]`) : null;
+                                            if (ensCell) {
+                                                ensCell.textContent = autoEns;
+                                                ensCell.style.color = '#0284C7';
+                                                ensCell.style.fontWeight = '700';
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             const parentTR = e.target.closest('tr');
                             if (parentTR) {
@@ -13691,6 +13721,24 @@ async function loadAdminScheduleForClass() {
         window.currentAdminScheduleSlots = data.slots || [];
         window.adminScheduleTeachersCache = data.teachers || [];
         window.adminScheduleSubjectsCache = data.distinctSubjects || [];
+        window.currentClassSubjectTeachersMap = data.subjectTeachersMap || {};
+        window.currentAdminScheduleClass = selectedClass;
+
+        // Récupérer et consolider les attributions existantes pour la classe
+        (window.currentAdminScheduleSlots || []).forEach(s => {
+            if (s.matiere && s.enseignant && s.enseignant.trim()) {
+                if (!window.currentClassSubjectTeachersMap[s.matiere]) {
+                    window.currentClassSubjectTeachersMap[s.matiere] = s.enseignant.trim();
+                }
+            }
+        });
+
+        // Compléter tout créneau qui n'a pas d'enseignant avec l'enseignant lié à sa matière
+        window.currentAdminScheduleSlots.forEach(s => {
+            if ((!s.enseignant || !s.enseignant.trim()) && s.matiere && window.currentClassSubjectTeachersMap[s.matiere]) {
+                s.enseignant = window.currentClassSubjectTeachersMap[s.matiere];
+            }
+        });
 
         let maxP = 7;
         window.currentAdminScheduleSlots.forEach(s => {
@@ -13708,6 +13756,7 @@ async function loadAdminScheduleForClass() {
         }
 
         updateScheduleModalDatalists();
+        renderSubjectTeacherLinkingList();
 
         if (msgEl) msgEl.style.display = 'none';
         if (tblEl) tblEl.style.display = 'table';
@@ -13859,12 +13908,252 @@ function renderAdminScheduleGrid() {
     }
 }
 
+function findLinkedTeacherForSubject(matiere) {
+    if (!matiere || typeof matiere !== 'string') return '';
+    const norm = matiere.trim().toLowerCase();
+    
+    // 1. Chercher dans le dictionnaire de liaison de la classe
+    if (window.currentClassSubjectTeachersMap) {
+        if (window.currentClassSubjectTeachersMap[matiere.trim()]) {
+            return window.currentClassSubjectTeachersMap[matiere.trim()];
+        }
+        for (const [m, t] of Object.entries(window.currentClassSubjectTeachersMap)) {
+            if (m.trim().toLowerCase() === norm && t) return t;
+        }
+    }
+
+    // 2. Chercher dans les créneaux déjà configurés pour cette classe
+    if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
+        const found = window.currentAdminScheduleSlots.find(s => 
+            s.matiere && s.matiere.trim().toLowerCase() === norm && s.enseignant && s.enseignant.trim()
+        );
+        if (found && found.enseignant) return found.enseignant.trim();
+    }
+
+    // 3. Chercher dans les plans hebdomadaires généraux en mémoire
+    if (window.planData && Array.isArray(window.planData)) {
+        const matK = findHKey('Matière');
+        const ensK = findHKey('Enseignant');
+        const clsK = findHKey('Classe');
+        const currentClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
+        if (matK && ensK) {
+            const foundRow = window.planData.find(r => 
+                !r.isReadOnlyCrossSection && 
+                (!currentClass || !clsK || isClassMatch(r[clsK], currentClass)) &&
+                r[matK] && r[matK].trim().toLowerCase() === norm && 
+                r[ensK] && r[ensK].trim()
+            );
+            if (foundRow && foundRow[ensK]) return foundRow[ensK].trim();
+        }
+    }
+
+    return '';
+}
+
+function onSlotModalMatiereChange() {
+    const matInput = document.getElementById('slotModalMatiereInput');
+    const tSel = document.getElementById('slotModalTeacherSelect');
+    const notice = document.getElementById('slotModalAutoLinkNotice');
+    if (!matInput || !tSel) return;
+
+    const val = matInput.value.trim();
+    if (!val) {
+        if (notice) notice.style.display = 'none';
+        return;
+    }
+
+    const linkedTeacher = findLinkedTeacherForSubject(val);
+    if (linkedTeacher) {
+        // Sélectionner l'enseignant si présent dans la liste
+        let foundOpt = Array.from(tSel.options).find(opt => opt.value.trim().toLowerCase() === linkedTeacher.toLowerCase());
+        if (!foundOpt) {
+            // Ajouter l'option si manquante
+            const newOpt = document.createElement('option');
+            newOpt.value = linkedTeacher;
+            newOpt.textContent = linkedTeacher;
+            tSel.appendChild(newOpt);
+            foundOpt = newOpt;
+        }
+        tSel.value = foundOpt.value;
+
+        if (notice) {
+            notice.style.display = 'inline-flex';
+            notice.innerHTML = '<i class="fas fa-check-circle" style="color:#16A34A;"></i> <span>Enseignant attribué automatiquement : <strong>' + escapeHtml(linkedTeacher) + '</strong></span>';
+        }
+    } else {
+        if (notice) notice.style.display = 'none';
+    }
+}
+
+function renderSubjectTeacherLinkingList() {
+    const card = document.getElementById('adminScheduleSubjectTeacherLinkingCard');
+    const list = document.getElementById('adminScheduleSubjectTeacherList');
+    const titleClass = document.getElementById('scheduleLinkingClassName');
+    const selectedClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
+
+    if (!card || !list) return;
+
+    if (!selectedClass) {
+        card.style.display = 'none';
+        return;
+    }
+
+    if (titleClass) titleClass.textContent = selectedClass;
+    card.style.display = 'block';
+    list.innerHTML = '';
+
+    // Trouver toutes les matières uniques de cette classe
+    const subjectsSet = new Set();
+    (window.currentAdminScheduleSlots || []).forEach(s => {
+        if (s.matiere && s.matiere.trim()) subjectsSet.add(s.matiere.trim());
+    });
+    if (window.currentClassSubjectTeachersMap) {
+        Object.keys(window.currentClassSubjectTeachersMap).forEach(m => {
+            if (m && m.trim()) subjectsSet.add(m.trim());
+        });
+    }
+
+    const subjects = Array.from(subjectsSet).sort();
+    if (subjects.length === 0) {
+        list.innerHTML = '<div style="color:#64748B; font-style:italic; font-size:0.85rem; padding:6px 0;">Aucune matière actuellement dans l\'emploi du temps de cette classe. Ajoutez des créneaux ci-dessous pour lier vos enseignants.</div>';
+        return;
+    }
+
+    const teachersList = window.adminScheduleTeachersCache || [];
+
+    subjects.forEach(matiere => {
+        const currentTeacher = (window.currentClassSubjectTeachersMap && window.currentClassSubjectTeachersMap[matiere]) || '';
+        const colors = getSubjectBadgeColor(matiere);
+
+        const itemDiv = document.createElement('div');
+        itemDiv.style.background = '#FFFFFF';
+        itemDiv.style.border = '1px solid #CBD5E1';
+        itemDiv.style.borderRadius = '8px';
+        itemDiv.style.padding = '8px 12px';
+        itemDiv.style.display = 'flex';
+        itemDiv.style.flexDirection = 'column';
+        itemDiv.style.gap = '6px';
+        itemDiv.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)';
+
+        let optionsHtml = '<option value="">-- Sélectionner l\'enseignant --</option>';
+        teachersList.forEach(t => {
+            const isSel = (currentTeacher.toLowerCase() === t.toLowerCase()) ? 'selected' : '';
+            optionsHtml += `<option value="${escapeHtml(t)}" ${isSel}>${escapeHtml(t)}</option>`;
+        });
+
+        // Si l'enseignant actuel n'est pas dans la liste des profs, l'ajouter
+        if (currentTeacher && !teachersList.some(t => t.toLowerCase() === currentTeacher.toLowerCase())) {
+            optionsHtml += `<option value="${escapeHtml(currentTeacher)}" selected>${escapeHtml(currentTeacher)}</option>`;
+        }
+
+        itemDiv.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:800; font-size:0.86rem; color:${colors.text}; display:inline-flex; align-items:center; gap:6px;">
+                    <span style="width:8px; height:8px; border-radius:50%; background:${colors.dot};"></span>
+                    ${escapeHtml(matiere)}
+                </span>
+                ${currentTeacher ? `<span style="font-size:0.75rem; background:#DCFCE7; color:#15803D; font-weight:700; padding:2px 6px; border-radius:4px;"><i class="fas fa-check"></i> Lié</span>` : `<span style="font-size:0.75rem; background:#F1F5F9; color:#64748B; padding:2px 6px; border-radius:4px;">Non assigné</span>`}
+            </div>
+            <div>
+                <select onchange="onClassSubjectTeacherChange('${escapeHtml(matiere).replace(/'/g, "\\'")}', this.value)" style="width:100%; padding:6px 8px; border-radius:6px; border:1.5px solid #CBD5E1; font-weight:600; font-size:0.84rem; background:#FAFAFA;">
+                    ${optionsHtml}
+                </select>
+            </div>
+        `;
+
+        list.appendChild(itemDiv);
+    });
+}
+
+function onClassSubjectTeacherChange(matiere, newTeacher) {
+    if (!matiere) return;
+    if (!window.currentClassSubjectTeachersMap) window.currentClassSubjectTeachersMap = {};
+    window.currentClassSubjectTeachersMap[matiere] = newTeacher ? newTeacher.trim() : '';
+
+    // Mettre à jour immédiatement tous les créneaux de cette matière dans la grille de cette classe
+    let updatedSlots = 0;
+    if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
+        window.currentAdminScheduleSlots.forEach(s => {
+            if (s.matiere && s.matiere.trim().toLowerCase() === matiere.trim().toLowerCase()) {
+                s.enseignant = newTeacher ? newTeacher.trim() : '';
+                updatedSlots++;
+            }
+        });
+    }
+
+    renderSubjectTeacherLinkingList();
+    renderAdminScheduleGrid();
+
+    if (newTeacher) {
+        showToastNotification(`L'enseignant "${newTeacher}" a été attribué à tous les créneaux de ${matiere} (${updatedSlots} créneau(x)).`, 'success');
+    }
+}
+
+async function saveSubjectTeacherAssignmentsForCurrentClass() {
+    const selectedClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value;
+    const targetSection = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
+    const assignments = window.currentClassSubjectTeachersMap || {};
+
+    if (!selectedClass) {
+        alert("Veuillez d'abord sélectionner une classe.");
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/admin/class-subject-teachers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                section: targetSection,
+                classe: selectedClass,
+                assignments: assignments
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Erreur HTTP ' + res.status);
+        }
+
+        renderSubjectTeacherLinkingList();
+        renderAdminScheduleGrid();
+
+        // Répercuter immédiatement les enseignants liés sur le tableau principal si affiché
+        if (window.planData && Array.isArray(window.planData)) {
+            const clsK = findHKey('Classe');
+            const matK = findHKey('Matière');
+            const ensK = findHKey('Enseignant');
+            if (clsK && matK && ensK) {
+                let updatedTableRows = 0;
+                window.planData.forEach(r => {
+                    if (!r.isReadOnlyCrossSection && isClassMatch(r[clsK], selectedClass) && r[matK]) {
+                        const newT = assignments[r[matK].trim()];
+                        if (newT) {
+                            r[ensK] = newT;
+                            updatedTableRows++;
+                        }
+                    }
+                });
+                if (updatedTableRows > 0 && typeof renderTable === 'function') {
+                    renderTable();
+                }
+            }
+        }
+
+        showToastNotification("Liaisons Matières ➔ Enseignants enregistrées et appliquées avec succès dans l'emploi et le tableau !", 'success');
+    } catch (e) {
+        console.error("Erreur saveSubjectTeacherAssignmentsForCurrentClass:", e);
+        alert("Erreur lors de l'enregistrement des liaisons : " + e.message);
+    }
+}
+
 function openScheduleSlotModal(day, period) {
     window.currentEditingSlot = { day, period };
     const modal = document.getElementById('scheduleSlotModal');
     const titleEl = document.getElementById('scheduleSlotModalTitle');
     const matInput = document.getElementById('slotModalMatiereInput');
     const tSel = document.getElementById('slotModalTeacherSelect');
+    const notice = document.getElementById('slotModalAutoLinkNotice');
 
     if (!modal) return;
 
@@ -13878,11 +14167,29 @@ function openScheduleSlotModal(day, period) {
         return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(period);
     });
 
+    const existingMat = existing ? (existing.matiere || '') : '';
+    let existingEns = existing ? (existing.enseignant || '') : '';
+
     if (matInput) {
-        matInput.value = existing ? (existing.matiere || '') : '';
+        matInput.value = existingMat;
     }
+
+    // Si le créneau n'avait pas d'enseignant, vérifier s'il existe une liaison pour cette matière
+    if (!existingEns && existingMat) {
+        existingEns = findLinkedTeacherForSubject(existingMat);
+    }
+
     if (tSel) {
-        tSel.value = existing ? (existing.enseignant || '') : '';
+        tSel.value = existingEns;
+    }
+
+    if (notice) {
+        if (existingEns && existingMat) {
+            notice.style.display = 'inline-flex';
+            notice.innerHTML = '<i class="fas fa-check-circle" style="color:#16A34A;"></i> <span>Enseignant attribué automatiquement : <strong>' + escapeHtml(existingEns) + '</strong></span>';
+        } else {
+            notice.style.display = 'none';
+        }
     }
 
     modal.style.display = 'flex';
@@ -13903,12 +14210,23 @@ function applyScheduleSlotModal() {
     const tSel = document.getElementById('slotModalTeacherSelect');
 
     const matiere = matInput ? matInput.value.trim() : '';
-    const enseignant = tSel ? tSel.value.trim() : '';
+    let enseignant = tSel ? tSel.value.trim() : '';
 
     if (!matiere) {
         alert("Veuillez saisir ou sélectionner une matière.");
         if (matInput) matInput.focus();
         return;
+    }
+
+    // Si aucun enseignant n'a été manuellement choisi, chercher la liaison existante
+    if (!enseignant) {
+        enseignant = findLinkedTeacherForSubject(matiere);
+    }
+
+    // Mémoriser la liaison pour la matière
+    if (enseignant) {
+        if (!window.currentClassSubjectTeachersMap) window.currentClassSubjectTeachersMap = {};
+        window.currentClassSubjectTeachersMap[matiere] = enseignant;
     }
 
     if (!window.currentAdminScheduleSlots) window.currentAdminScheduleSlots = [];
@@ -13934,7 +14252,17 @@ function applyScheduleSlotModal() {
         });
     }
 
+    // Propager également cet enseignant aux autres créneaux de cette même matière qui n'ont pas encore d'enseignant
+    if (enseignant) {
+        window.currentAdminScheduleSlots.forEach(s => {
+            if (s.matiere && s.matiere.trim().toLowerCase() === matiere.toLowerCase() && (!s.enseignant || !s.enseignant.trim())) {
+                s.enseignant = enseignant;
+            }
+        });
+    }
+
     closeScheduleSlotModal();
+    renderSubjectTeacherLinkingList();
     renderAdminScheduleGrid();
 }
 
@@ -14299,6 +14627,99 @@ function populateAnnualDistSelectors() {
     if (curS && subjects.includes(curS)) subjectSel.value = curS;
 }
 
+function detectScheduleSlotsForClassAndSubject(classe, matiere) {
+    if (!classe || !matiere || classe === 'Toutes' || matiere === 'Toutes') return [];
+    
+    // 1. Chercher dans les créneaux admin actuellement chargés en mémoire
+    if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
+        const currentCls = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
+        if (!currentCls || isClassMatch(currentCls, classe)) {
+            const matching = window.currentAdminScheduleSlots.filter(s => 
+                s.matiere && isEquivalentSubject(s.matiere, matiere)
+            );
+            if (matching.length > 0) return matching;
+        }
+    }
+
+    // 2. Chercher dans le plan hebdomadaire global planData
+    if (window.planData && Array.isArray(window.planData)) {
+        const clsK = findHKey('Classe');
+        const matK = findHKey('Matière');
+        const jK = findHKey('Jour');
+        const pK = findHKey('Période');
+        if (clsK && matK) {
+            const matchingRows = window.planData.filter(r => 
+                !r.isReadOnlyCrossSection && 
+                isClassMatch(r[clsK], classe) && 
+                isEquivalentSubject(r[matK], matiere)
+            );
+            if (matchingRows.length > 0) {
+                // Dédupliquer les créneaux par jour et période
+                const seenKeys = new Set();
+                const slots = [];
+                matchingRows.forEach(r => {
+                    const rawJ = (r[jK] || '').trim();
+                    const day = extractDayNameFromString(rawJ) || rawJ;
+                    const per = String(r[pK] || '1').replace(/[^0-9]/g, '') || '1';
+                    const key = `${day}_${per}`;
+                    if (!seenKeys.has(key)) {
+                        seenKeys.add(key);
+                        slots.push({ jour: day, periode: per, matiere: (r[matK] || '').trim() });
+                    }
+                });
+                return slots;
+            }
+        }
+    }
+
+    return [];
+}
+
+async function updateAnnualDistWeeklySessionsFromSchedule(classe, matiere) {
+    const perWeekInput = document.getElementById('annualDistPerWeekInput');
+    const totalInput = document.getElementById('annualDistTotalSessionsInput');
+    const noticeEl = document.getElementById('annualDistScheduleNotice');
+
+    if (!classe || !matiere || classe === 'Toutes' || matiere === 'Toutes') {
+        if (noticeEl) noticeEl.innerHTML = '';
+        return;
+    }
+
+    let slots = detectScheduleSlotsForClassAndSubject(classe, matiere);
+
+    // Si aucun créneau trouvé en local, interroger le serveur
+    if (slots.length === 0) {
+        try {
+            const sec = currentSection || 'garcons';
+            const res = await fetch(`/api/admin/schedule-class?section=${encodeURIComponent(sec)}&classe=${encodeURIComponent(classe)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.slots && Array.isArray(data.slots)) {
+                    slots = data.slots.filter(s => s.matiere && isEquivalentSubject(s.matiere, matiere));
+                }
+            }
+        } catch (e) {
+            console.warn("Note: Recherche emploi du temps serveur:", e.message);
+        }
+    }
+
+    const count = slots.length;
+    if (count > 0) {
+        window.currentAnnualDistDetectedSlots = slots;
+        if (perWeekInput) perWeekInput.value = count;
+        if (totalInput) totalInput.value = count * 30;
+        if (noticeEl) {
+            const slotDetails = slots.map(s => (s.jour ? s.jour.substring(0, 3) : '') + ' P' + s.periode).join(', ');
+            noticeEl.innerHTML = `<span style="background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; padding:2px 6px; border-radius:4px; font-size:0.75rem;"><i class="fas fa-check-circle" style="color:#2563EB;"></i> <strong>${count} séance(s)/semaine</strong> selon l'emploi du temps (${slotDetails})</span>`;
+        }
+    } else {
+        window.currentAnnualDistDetectedSlots = null;
+        if (noticeEl) {
+            noticeEl.innerHTML = `<span style="color:#64748B; font-size:0.75rem;">(4 séances/sem. par défaut)</span>`;
+        }
+    }
+}
+
 async function handleAnnualDistFilterChange() {
     const teacherSel = document.getElementById('annualDistTeacherSelect');
     const classSel = document.getElementById('annualDistClassSelect');
@@ -14306,14 +14727,52 @@ async function handleAnnualDistFilterChange() {
     const yearSel = document.getElementById('annualDistYearSelect');
 
     const teacher = teacherSel ? teacherSel.value.trim() : '';
-    const classe = classSel ? classSel.value.trim() : '';
-    const matiere = subjectSel ? subjectSel.value.trim() : '';
+    let classe = classSel ? classSel.value.trim() : '';
+    let matiere = subjectSel ? subjectSel.value.trim() : '';
     const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
+
+    // Si un enseignant est sélectionné, pré-sélectionner automatiquement sa classe et sa matière si non choisies
+    if (teacher && (!classe || classe === 'Toutes' || !matiere || matiere === 'Toutes')) {
+        let tClasses = new Set();
+        let tSubjects = new Set();
+        if (window.planData && Array.isArray(window.planData)) {
+            const ensK = findHKey('Enseignant');
+            const clsK = findHKey('Classe');
+            const matK = findHKey('Matière');
+            if (ensK && clsK && matK) {
+                window.planData.forEach(r => {
+                    if (!r.isReadOnlyCrossSection && r[ensK] && r[ensK].trim().toLowerCase() === teacher.toLowerCase()) {
+                        if (r[clsK]) tClasses.add(r[clsK].trim());
+                        if (r[matK]) tSubjects.add(r[matK].trim());
+                    }
+                });
+            }
+        }
+        if ((!classe || classe === 'Toutes') && tClasses.size > 0) {
+            const firstC = Array.from(tClasses)[0];
+            if (classSel && Array.from(classSel.options).some(o => o.value === firstC)) {
+                classSel.value = firstC;
+                classe = firstC;
+            }
+        }
+        if ((!matiere || matiere === 'Toutes') && tSubjects.size > 0) {
+            const firstS = Array.from(tSubjects)[0];
+            if (subjectSel && Array.from(subjectSel.options).some(o => o.value === firstS)) {
+                subjectSel.value = firstS;
+                matiere = firstS;
+            }
+        }
+    }
+
+    // Mise à jour automatique du nombre de séances par semaine selon l'emploi du temps
+    if (classe && matiere && classe !== 'Toutes' && matiere !== 'Toutes') {
+        await updateAnnualDistWeeklySessionsFromSchedule(classe, matiere);
+    }
 
     const tbody = document.getElementById('annualDistTableBody');
     if (!teacher) {
         if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:35px 20px; color:#64748B;">
+            tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:35px 20px; color:#64748B;">
                 <i class="fas fa-calendar-alt" style="font-size:2.2rem; color:#CBD5E1; margin-bottom:10px; display:block;"></i>
                 Veuillez sélectionner un enseignant pour afficher sa distribution annuelle.
             </td></tr>`;
@@ -14323,7 +14782,7 @@ async function handleAnnualDistFilterChange() {
     }
 
     if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:35px 20px; color:#0284C7;">
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:35px 20px; color:#0284C7;">
             <i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
             Chargement de la distribution annuelle...
         </td></tr>`;
@@ -14357,24 +14816,27 @@ async function handleAnnualDistFilterChange() {
             }
             renderAnnualDistributionTable(dist.sessions);
         } else {
+            const detectedPerWeek = parseInt(document.getElementById('annualDistPerWeekInput')?.value, 10) || 4;
+            const detectedTotal = parseInt(document.getElementById('annualDistTotalSessionsInput')?.value, 10) || (detectedPerWeek * 30);
+
             currentAnnualDistribution = {
                 teacher,
                 classe: classe || 'Toutes',
                 matiere: matiere || 'Toutes',
                 section: currentSection,
                 schoolYear,
-                totalSessionsPerYear: 120,
-                sessionsPerWeek: 4,
+                totalSessionsPerYear: detectedTotal,
+                sessionsPerWeek: detectedPerWeek,
                 weeksCount: 30,
                 sessions: []
             };
             if (tbody) {
-                tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:35px 20px; color:#64748B;">
+                tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:35px 20px; color:#64748B;">
                     <i class="fas fa-folder-open" style="font-size:2.2rem; color:#CBD5E1; margin-bottom:10px; display:block;"></i>
                     Aucune distribution enregistrée pour ce choix.<br>
-                    <div style="margin-top:12px; display:flex; justify-content:center; gap:10px;">
+                    <div style="margin-top:12px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
                         <button type="button" class="btn-annual btn-annual-primary" onclick="generateAnnualDistributionCanvas()">
-                            <i class="fas fa-magic"></i> Générer le canevas annuel (30 semaines)
+                            <i class="fas fa-magic"></i> Générer le canevas selon l'emploi du temps (${detectedPerWeek} séances/sem.)
                         </button>
                         <button type="button" class="btn-annual btn-annual-secondary" onclick="document.getElementById('annualDistExcelFileInput').click()">
                             <i class="fas fa-file-excel"></i> Importer depuis Excel
@@ -14387,7 +14849,7 @@ async function handleAnnualDistFilterChange() {
     } catch (e) {
         console.error('Erreur chargement distribution:', e);
         if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:35px 20px; color:#EF4444;">
+            tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:35px 20px; color:#EF4444;">
                 <i class="fas fa-exclamation-triangle" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
                 Erreur lors du chargement de la distribution : ${escapeHtml(e.message)}
             </td></tr>`;
@@ -14401,12 +14863,14 @@ function renderAnnualDistributionTable(sessions) {
     tbody.innerHTML = '';
 
     if (!sessions || sessions.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:#64748B;">
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:30px; color:#64748B;">
             Aucune séance dans cette distribution. Cliquez sur "Ajouter une séance" ou "Générer canevas".
         </td></tr>`;
         recalculateAnnualStats([]);
         return;
     }
+
+    const secCfg = (typeof getActiveSectionWeeksConfig === 'function') ? getActiveSectionWeeksConfig(currentSection) : null;
 
     sessions.forEach((s, idx) => {
         const tr = document.createElement('tr');
@@ -14415,17 +14879,30 @@ function renderAnnualDistributionTable(sessions) {
 
         const schoolDaysList = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
         const sDay = s.day || schoolDaysList[idx % 5];
+        const weekNum = parseInt(s.week, 10) || (Math.floor(idx / 4) + 1);
+
+        // Récupérer les dates de la semaine depuis le calendrier officiel déjà en place
+        const wDates = (secCfg && secCfg[weekNum]) || (typeof defaultSchoolWeeksConfig !== 'undefined' && defaultSchoolWeeksConfig[weekNum]);
+        let weekDatesTag = '';
+        if (wDates && wDates.start) {
+            const sP = wDates.start.split('-');
+            const eP = (wDates.end || wDates.start).split('-');
+            weekDatesTag = `${sP[2]}/${sP[1]} - ${eP[2]}/${eP[1]}`;
+        }
 
         tr.innerHTML = `
-            <td class="col-narrow-annual" style="font-weight:800; color:#1E293B;">${s.sessionNumber || (idx + 1)}</td>
-            <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="week">${s.week || Math.floor(idx / 4) + 1}</td>
+            <td class="col-narrow-annual" style="font-weight:800; color:#1E293B; text-align:center;">${s.sessionNumber || (idx + 1)}</td>
+            <td class="col-narrow-annual" style="text-align:center;">
+                <div class="col-editable-annual" contenteditable="true" data-field="week" style="font-weight:800; font-size:0.92rem; color:#0F172A;">${weekNum}</div>
+                ${weekDatesTag ? `<div style="font-size:0.70rem; color:#0284C7; font-weight:700; white-space:nowrap; margin-top:2px;" title="Dates officielles du calendrier : ${weekDatesTag}">📅 ${weekDatesTag}</div>` : ''}
+            </td>
             <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="day" style="font-weight:700; color:#0369A1;" title="Jour de cours (ex: Dimanche, Lundi, Mardi, Mercredi, Jeudi)">${escapeHtml(sDay)}</td>
-            <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="period">${s.period || (idx % 4) + 1}</td>
+            <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="period" style="text-align:center; font-weight:700;">${s.period || (idx % 4) + 1}</td>
             <td class="col-editable-annual" contenteditable="true" data-field="unit">${escapeHtml(s.unit || s.term || '')}</td>
-            <td class="col-editable-annual" contenteditable="true" data-field="lessonTitle" style="font-weight:600; color:#0F172A;">${escapeHtml(s.lessonTitle || '')}</td>
+            <td class="col-editable-annual" contenteditable="true" data-field="lessonTitle" style="font-weight:700; color:#0F172A;">${escapeHtml(s.lessonTitle || '')}</td>
             <td class="col-editable-annual" contenteditable="true" data-field="classwork">${escapeHtml(s.classwork || '')}</td>
             <td class="col-editable-annual" contenteditable="true" data-field="support">${escapeHtml(s.support || '')}</td>
-            <td class="col-editable-annual" contenteditable="true" data-field="homework">${escapeHtml(s.homework || '')}</td>
+            <td class="col-editable-annual" contenteditable="true" data-field="homework" style="background:#F0FDF4; color:#065F46;">${escapeHtml(s.homework || '')}</td>
             <td style="text-align:center; white-space:nowrap;">
                 <span class="annual-badge-status ${s.completed ? 'completed' : 'planned'}" onclick="toggleAnnualSessionStatus(${idx})" title="Cliquer pour basculer le statut">
                     <i class="fas ${s.completed ? 'fa-check' : 'fa-hourglass-half'}"></i>
@@ -14439,7 +14916,7 @@ function renderAnnualDistributionTable(sessions) {
             </td>
         `;
 
-        tr.querySelectorAll('td.col-editable-annual').forEach(td => {
+        tr.querySelectorAll('td.col-editable-annual, div.col-editable-annual').forEach(td => {
             td.addEventListener('paste', (e) => {
                 handleAnnualTablePaste(e, td);
             });
@@ -14452,6 +14929,81 @@ function renderAnnualDistributionTable(sessions) {
     });
 
     recalculateAnnualStats(sessions);
+}
+
+function generateAnnualDistributionCanvas() {
+    const classSel = document.getElementById('annualDistClassSelect');
+    const subjectSel = document.getElementById('annualDistSubjectSelect');
+    const classe = classSel ? classSel.value.trim() : '';
+    const matiere = subjectSel ? subjectSel.value.trim() : '';
+
+    // Détecter automatiquement le nombre de séances selon l'emploi du temps
+    let detectedSlots = window.currentAnnualDistDetectedSlots || detectScheduleSlotsForClassAndSubject(classe, matiere);
+    let perWeek = detectedSlots.length > 0 ? detectedSlots.length : (parseInt(document.getElementById('annualDistPerWeekInput')?.value, 10) || 4);
+    
+    // Mettre à jour l'input de séances par semaine
+    const perWeekInput = document.getElementById('annualDistPerWeekInput');
+    if (perWeekInput) perWeekInput.value = perWeek;
+
+    const totalSessions = parseInt(document.getElementById('annualDistTotalSessionsInput')?.value, 10) || (perWeek * 30);
+    const weeksCount = Math.ceil(totalSessions / perWeek) || 30;
+
+    const slotSummary = (detectedSlots.length > 0) 
+        ? ` (${detectedSlots.map(s => (s.jour ? s.jour.substring(0,3) : '') + ' P' + s.periode).join(', ')})`
+        : '';
+
+    if (!confirm(`Générer un canevas annuel de ${totalSessions} séances réparties sur ${weeksCount} semaines ?\n\n• Nombre de séances par semaine : ${perWeek} séance(s)${slotSummary}\n• Les dates de chaque semaine seront directement calquées sur le calendrier officiel.`)) {
+        return;
+    }
+
+    const schoolDays = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
+    const sessions = [];
+
+    for (let i = 1; i <= totalSessions; i++) {
+        const weekNum = Math.floor((i - 1) / perWeek) + 1;
+        const sessionInWeekIndex = (i - 1) % perWeek;
+
+        let dayName = '';
+        let periodNum = 1;
+
+        if (detectedSlots && detectedSlots.length > 0) {
+            const slotMatch = detectedSlots[sessionInWeekIndex % detectedSlots.length];
+            if (slotMatch) {
+                dayName = slotMatch.jour || schoolDays[sessionInWeekIndex % schoolDays.length];
+                periodNum = parseInt(slotMatch.periode, 10) || (sessionInWeekIndex + 1);
+            }
+        }
+
+        if (!dayName) {
+            dayName = schoolDays[sessionInWeekIndex % schoolDays.length];
+            periodNum = Math.floor(sessionInWeekIndex / schoolDays.length) + 1;
+        }
+
+        const termNum = weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3');
+
+        sessions.push({
+            sessionNumber: i,
+            week: weekNum,
+            day: dayName,
+            period: periodNum,
+            term: termNum,
+            unit: `Unité ${Math.floor((weekNum - 1) / 3) + 1}`,
+            lessonTitle: '',
+            classwork: '',
+            support: '',
+            homework: '',
+            completed: false
+        });
+    }
+
+    if (!currentAnnualDistribution) currentAnnualDistribution = {};
+    currentAnnualDistribution.sessions = sessions;
+    currentAnnualDistribution.totalSessionsPerYear = totalSessions;
+    currentAnnualDistribution.sessionsPerWeek = perWeek;
+    currentAnnualDistribution.weeksCount = weeksCount;
+
+    renderAnnualDistributionTable(sessions);
+    showToastNotification(`Canevas de ${totalSessions} séances (${perWeek} séances/semaine selon l'emploi du temps) généré avec succès !`, 'success');
 }
 
 function toggleAnnualSessionStatus(idx) {
@@ -15084,6 +15636,7 @@ window.triggerSyncFromWeeklyFromModal = triggerSyncFromWeeklyFromModal;
 // ============================================================================
 
 let currentPrintSemesterView = 'all'; // 'all', 1, 2
+let currentPrintLayoutMode = 'table'; // 'table' (Tableau Pédagogique Officiel) ou 'matrix' (Grille Synthétique)
 
 function switchPrintSemesterView(sem) {
     currentPrintSemesterView = sem;
@@ -15098,20 +15651,37 @@ function switchPrintSemesterView(sem) {
 
     const sheetContainer = document.getElementById('annualLandscapePrintSheet');
     if (sheetContainer) {
-        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView);
+        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView, currentPrintLayoutMode);
     }
 }
 
-function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all') {
+function switchPrintLayoutMode(mode) {
+    currentPrintLayoutMode = mode;
+
+    const btnTbl = document.getElementById('btnLayoutTable');
+    const btnMat = document.getElementById('btnLayoutMatrix');
+
+    if (btnTbl) btnTbl.classList.toggle('active', mode === 'table');
+    if (btnMat) btnMat.classList.toggle('active', mode === 'matrix');
+
+    const sheetContainer = document.getElementById('annualLandscapePrintSheet');
+    if (sheetContainer) {
+        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView, currentPrintLayoutMode);
+    }
+}
+
+function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all', layoutMode = (currentPrintLayoutMode || 'table')) {
     const teacherSel = document.getElementById('annualDistTeacherSelect');
     const classSel = document.getElementById('annualDistClassSelect');
     const subjectSel = document.getElementById('annualDistSubjectSelect');
     const yearSel = document.getElementById('annualDistYearSelect');
+    const perWeekInput = document.getElementById('annualDistPerWeekInput');
 
     const teacher = teacherSel ? teacherSel.value.trim() : (loggedInUser || 'Enseignant');
     const classe = classSel ? classSel.value.trim() : 'Toutes';
     const matiere = subjectSel ? subjectSel.value.trim() : 'Toutes';
     const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
+    const detectedWeeklyQuota = parseInt(perWeekInput?.value, 10) || (currentAnnualDistribution ? currentAnnualDistribution.sessionsPerWeek : 4) || 4;
 
     const sessions = collectAnnualDistributionFromDOM();
     const totalPlanned = sessions.length;
@@ -15123,7 +15693,7 @@ function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all') {
     else if (currentSection === 'primaire') sectionLabel = 'Section Primaire';
     else if (currentSection === 'maternelle') sectionLabel = 'Section Maternelle';
 
-    // Configuration des semaines pour les dates et les mois
+    // Configuration officielle des semaines pour les dates réelles du calendrier
     const secCfg = (typeof getActiveSectionWeeksConfig === 'function') ? getActiveSectionWeeksConfig(currentSection) : null;
 
     // Regrouper les séances par Semaine
@@ -15137,11 +15707,11 @@ function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all') {
     const sortedWeekNums = Array.from(weeksMap.keys()).sort((a, b) => a - b);
     const dayOrder = { 'dimanche': 1, 'lundi': 2, 'mardi': 3, 'mercredi': 4, 'jeudi': 5, 'vendredi': 6, 'samedi': 7 };
 
-    // Construire les données structurées de chaque semaine (sans mentionner les jours)
+    // Construire les données structurées de chaque semaine avec dates du calendrier
     const weeksData = [];
     sortedWeekNums.forEach(wNum => {
         const wSessions = weeksMap.get(wNum) || [];
-        // Trier les séances dans l'ordre chronologique des périodes
+        // Trier les séances dans l'ordre chronologique des jours et des périodes
         wSessions.sort((a, b) => {
             const dA = dayOrder[String(a.day || '').trim().toLowerCase()] || 99;
             const dB = dayOrder[String(b.day || '').trim().toLowerCase()] || 99;
@@ -15149,27 +15719,28 @@ function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all') {
             return (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0);
         });
 
-        // Détection du mois et des dates
+        // Détection exacte des dates depuis le calendrier
         const wDates = (secCfg && secCfg[wNum]) || (typeof defaultSchoolWeeksConfig !== 'undefined' && defaultSchoolWeeksConfig[wNum]);
         let dateRange = '';
+        let dateRangeFull = '';
+        let dateRangeBadge = '';
         let monthName = '';
         if (wDates && wDates.start) {
-            const p = wDates.start.split('-');
-            const mNum = parseInt(p[1], 10);
+            const sP = wDates.start.split('-');
+            const eP = (wDates.end || wDates.start).split('-');
+            const mNum = parseInt(sP[1], 10);
             const mNames = {
                 1: 'Janvier', 2: 'Février', 3: 'Mars', 4: 'Avril',
                 5: 'Mai', 6: 'Juin', 7: 'Juillet', 8: 'Août',
                 9: 'Septembre', 10: 'Octobre', 11: 'Novembre', 12: 'Décembre'
             };
             monthName = mNames[mNum] || '';
-            if (wDates.end) {
-                const sP = wDates.start.split('-');
-                const eP = wDates.end.split('-');
-                dateRange = `${sP[2]}/${sP[1]} - ${eP[2]}/${eP[1]}`;
-            }
+            dateRange = `${sP[2]}/${sP[1]} - ${eP[2]}/${eP[1]}`;
+            dateRangeFull = `Du ${sP[2]}/${sP[1]}/${sP[0]} au ${eP[2]}/${eP[1]}/${eP[0]}`;
+            dateRangeBadge = `Du ${sP[2]}/${sP[1]} au ${eP[2]}/${eP[1]}`;
         }
 
-        // Fallback mois mathématique selon le rythme scolaire
+        // Fallback mois mathématique
         if (!monthName) {
             if (wNum <= 4) monthName = 'Septembre';
             else if (wNum <= 8) monthName = 'Octobre';
@@ -15191,6 +15762,8 @@ function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all') {
             monthName,
             semesterNum,
             dateRange,
+            dateRangeFull,
+            dateRangeBadge,
             sessions: wSessions
         });
     });
@@ -15224,137 +15797,255 @@ function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all') {
             monthsMap.get(w.monthName).push(w);
         });
 
-        let monthsHTML = '';
-        monthsMap.forEach((mWeeks, mName) => {
-            // Pour chaque mois : les semaines forment les colonnes du tableau
-            let thColsHTML = '';
-            let tdColsHTML = '';
+        let bodyContentHTML = '';
 
-            mWeeks.forEach(w => {
-                thColsHTML += `
-                    <th class="annual-matrix-week-head">
-                        <div class="matrix-week-title">SEMAINE ${w.weekNum}</div>
-                        ${w.dateRange ? `<div class="matrix-week-dates">${w.dateRange}</div>` : ''}
-                    </th>
-                `;
-
-                // Dans la colonne de chaque semaine : mettre les jours sans mentionner les noms des jours
-                let sessionsListHTML = '';
-                if (w.sessions.length === 0) {
-                    sessionsListHTML = '<div class="matrix-session-empty">(Séances à planifier)</div>';
-                } else {
-                    w.sessions.forEach((s, sIdx) => {
-                        const isDone = s.completed;
-                        const lessonText = s.lessonTitle ? escapeHtml(s.lessonTitle) : '<span style="color:#94A3B8; font-style:italic;">(Séance non renseignée)</span>';
-                        sessionsListHTML += `
-                            <div class="annual-matrix-day-item ${isDone ? 'done' : ''}">
-                                <div class="matrix-day-header">
-                                    <span class="matrix-session-pill">Séance ${sIdx + 1}</span>
-                                    ${isDone ? '<span class="matrix-badge-done">✓ Réalisé</span>' : '<span class="matrix-badge-plan">⏳ Prévu</span>'}
-                                </div>
-                                <div class="matrix-lesson-name">${lessonText}</div>
-                                ${s.classwork ? `<div class="matrix-sub-info"><strong>Travaux :</strong> ${escapeHtml(s.classwork)}</div>` : ''}
-                                ${s.homework ? `<div class="matrix-sub-info"><strong>Devoirs :</strong> ${escapeHtml(s.homework)}</div>` : ''}
-                            </div>
+        if (layoutMode === 'table') {
+            // MODE TABLEAU PÉDAGOGIQUE OFFICIEL (EXÉCUTIF & ULTRA-LISIBLE)
+            let monthsTableHTML = '';
+            monthsMap.forEach((mWeeks, mName) => {
+                let rowsHTML = '';
+                mWeeks.forEach(w => {
+                    if (w.sessions.length === 0) {
+                        rowsHTML += `
+                            <tr>
+                                <td style="padding:6px; border:1px solid #CBD5E1; text-align:center; background:#F8FAFC;">
+                                    <div style="font-weight:900; font-size:0.90rem; color:#0F172A;">SEMAINE ${w.weekNum}</div>
+                                    <div style="font-size:0.74rem; font-weight:700; color:#0284C7; margin-top:3px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:4px; padding:2px 4px;">📅 ${w.dateRangeBadge || w.dateRange || 'Calendrier officiel'}</div>
+                                </td>
+                                <td colspan="7" style="padding:8px; border:1px solid #CBD5E1; text-align:center; color:#94A3B8; font-style:italic;">
+                                    (Séances de cette semaine à planifier)
+                                </td>
+                            </tr>
                         `;
-                    });
-                }
+                    } else {
+                        w.sessions.forEach((s, sIdx) => {
+                            const isDone = s.completed;
+                            const weekCellHTML = (sIdx === 0) ? `
+                                <td rowspan="${w.sessions.length}" style="padding:6px; border:1px solid #CBD5E1; text-align:center; vertical-align:middle; background:#F8FAFC;">
+                                    <div style="font-weight:900; font-size:0.92rem; color:#0F172A;">SEMAINE ${w.weekNum}</div>
+                                    <div style="font-size:0.74rem; font-weight:700; color:#0284C7; margin-top:4px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:4px; padding:2px 4px;">📅 ${w.dateRangeBadge || w.dateRange || 'Calendrier'}</div>
+                                    <div style="font-size:0.70rem; color:#64748B; margin-top:3px;">${w.sessions.length} séance(s)</div>
+                                </td>
+                            ` : '';
 
-                tdColsHTML += `
-                    <td class="annual-matrix-week-col">
-                        ${sessionsListHTML}
-                    </td>
+                            rowsHTML += `
+                                <tr style="background:${isDone ? '#F0FDF4' : (sIdx % 2 === 0 ? '#FFFFFF' : '#F8FAFC')};">
+                                    ${weekCellHTML}
+                                    <td style="padding:5px; border:1px solid #CBD5E1; text-align:center; font-weight:800; color:#0F172A;">
+                                        N° ${s.sessionNumber || (sIdx + 1)}
+                                    </td>
+                                    <td style="padding:5px; border:1px solid #CBD5E1; text-align:center; font-weight:700; color:#334155;">
+                                        ${escapeHtml(s.day || '')} ${s.period ? `<span style="background:#E2E8F0; padding:1px 5px; border-radius:3px; font-size:0.75rem;">P${s.period}</span>` : ''}
+                                    </td>
+                                    <td style="padding:5px; border:1px solid #CBD5E1; color:#334155; font-weight:600;">
+                                        ${escapeHtml(s.unit || s.term || '-')}
+                                    </td>
+                                    <td style="padding:5px 8px; border:1px solid #CBD5E1; font-weight:700; color:#0F172A; line-height:1.35;">
+                                        ${s.lessonTitle ? escapeHtml(s.lessonTitle) : '<span style="color:#94A3B8; font-style:italic;">(Non renseigné)</span>'}
+                                    </td>
+                                    <td style="padding:5px 8px; border:1px solid #CBD5E1; color:#334155; font-size:7.6pt; line-height:1.3;">
+                                        ${s.classwork ? escapeHtml(s.classwork) : '<span style="color:#CBD5E1;">—</span>'}
+                                    </td>
+                                    <td style="padding:5px 8px; border:1px solid #CBD5E1; background:${isDone ? '#DCFCE7' : '#F0FDF4'}; color:#065F46; font-weight:600; font-size:7.6pt; line-height:1.3;">
+                                        ${s.homework ? escapeHtml(s.homework) : '<span style="color:#A7F3D0;">—</span>'}
+                                    </td>
+                                    <td style="padding:5px; border:1px solid #CBD5E1; text-align:center; white-space:nowrap;">
+                                        ${isDone ? '<span style="color:#059669; font-weight:800; font-size:0.75rem;">✓ Réalisé</span>' : '<span style="color:#64748B; font-weight:600; font-size:0.75rem;">⏳ Prévu</span>'}
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                    }
+                });
+
+                monthsTableHTML += `
+                    <div class="annual-month-official-section" style="margin-bottom:14px; break-inside:avoid; page-break-inside:avoid;">
+                        <div style="background:linear-gradient(135deg, #0F172A 0%, #1E293B 100%); color:white; padding:6px 14px; font-size:0.86rem; font-weight:800; display:flex; justify-content:space-between; align-items:center; border-radius:6px 6px 0 0; -webkit-print-color-adjust:exact; print-color-adjust:exact;">
+                            <span style="letter-spacing:0.5px;">🗓️ MOIS : ${escapeHtml(mName.toUpperCase())}</span>
+                            <span style="font-size:0.76rem; background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:4px; font-weight:700;">
+                                ${mWeeks.length} semaine(s) • ${mWeeks.reduce((acc, w) => acc + w.sessions.length, 0)} séances
+                            </span>
+                        </div>
+                        <table style="width:100%; border-collapse:collapse; font-size:7.8pt; border:1px solid #CBD5E1; table-layout:fixed;">
+                            <colgroup>
+                                <col style="width: 130px;">
+                                <col style="width: 50px;">
+                                <col style="width: 85px;">
+                                <col style="width: 100px;">
+                                <col style="width: 25%;">
+                                <col style="width: 20%;">
+                                <col style="width: 18%;">
+                                <col style="width: 65px;">
+                            </colgroup>
+                            <thead>
+                                <tr style="background:#F1F5F9; color:#0F172A; border-bottom:1.5px solid #94A3B8; font-weight:800; text-align:left;">
+                                    <th style="padding:6px; border:1px solid #CBD5E1; text-align:center;">Semaine & Dates</th>
+                                    <th style="padding:6px; border:1px solid #CBD5E1; text-align:center;">Séance</th>
+                                    <th style="padding:6px; border:1px solid #CBD5E1; text-align:center;">Créneau</th>
+                                    <th style="padding:6px; border:1px solid #CBD5E1;">Unité / Thème</th>
+                                    <th style="padding:6px; border:1px solid #CBD5E1;">Titre de la Leçon & Contenu</th>
+                                    <th style="padding:6px; border:1px solid #CBD5E1;">Travaux de Classe / Activités</th>
+                                    <th style="padding:6px; border:1px solid #CBD5E1; background:#F0FDF4; color:#065F46;">Devoirs & Évaluations</th>
+                                    <th style="padding:6px; border:1px solid #CBD5E1; text-align:center;">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHTML}
+                            </tbody>
+                        </table>
+                    </div>
                 `;
             });
+            bodyContentHTML = monthsTableHTML;
 
-            monthsHTML += `
-                <div class="annual-matrix-month-block">
-                    <div class="annual-matrix-month-banner">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span class="matrix-month-name">🗓️ MOIS : ${escapeHtml(mName.toUpperCase())}</span>
-                            <span class="matrix-month-badge">${mWeeks.length} semaine(s)</span>
+        } else {
+            // MODE GRILLE SYNTHÉTIQUE (MATRICE MOIS ➔ SEMAINES EN COLONNES)
+            let monthsMatrixHTML = '';
+            monthsMap.forEach((mWeeks, mName) => {
+                let thColsHTML = '';
+                let tdColsHTML = '';
+
+                mWeeks.forEach(w => {
+                    thColsHTML += `
+                        <th class="annual-matrix-week-head" style="background:#F1F5F9; color:#0F172A; font-weight:800; padding:6px 4px; border:1px solid #CBD5E1; text-align:center;">
+                            <div class="matrix-week-title" style="font-size:0.84rem; font-weight:900; color:#0F172A;">SEMAINE ${w.weekNum}</div>
+                            <div class="matrix-week-dates" style="font-size:0.72rem; color:#0284C7; font-weight:800; margin-top:2px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:4px; padding:2px 4px;">📅 ${w.dateRangeBadge || w.dateRange || 'Calendrier officiel'}</div>
+                        </th>
+                    `;
+
+                    let sessionsListHTML = '';
+                    if (w.sessions.length === 0) {
+                        sessionsListHTML = '<div class="matrix-session-empty" style="color:#94A3B8; font-style:italic; padding:10px; text-align:center;">(Séances à planifier)</div>';
+                    } else {
+                        w.sessions.forEach((s, sIdx) => {
+                            const isDone = s.completed;
+                            const lessonText = s.lessonTitle ? escapeHtml(s.lessonTitle) : '<span style="color:#94A3B8; font-style:italic;">(Séance non renseignée)</span>';
+                            sessionsListHTML += `
+                                <div class="annual-matrix-day-item ${isDone ? 'done' : ''}" style="border:1px solid ${isDone ? '#86EFAC' : '#E2E8F0'}; background:${isDone ? '#F0FDF4' : '#F8FAFC'}; border-radius:5px; padding:5px 6px; margin-bottom:5px; font-size:7.6pt; line-height:1.3;">
+                                    <div class="matrix-day-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px; padding-bottom:2px; border-bottom:1px dashed #CBD5E1;">
+                                        <span class="matrix-session-pill" style="font-weight:900; color:#0369A1; font-size:0.72rem;">Séance ${sIdx + 1} ${s.day ? `• ${s.day.substring(0,3)}` : ''}</span>
+                                        ${isDone ? '<span class="matrix-badge-done" style="color:#15803D; font-weight:800; font-size:0.68rem;">✓ Réalisé</span>' : '<span class="matrix-badge-plan" style="color:#64748B; font-weight:600; font-size:0.68rem;">⏳ Prévu</span>'}
+                                    </div>
+                                    <div class="matrix-lesson-name" style="font-weight:800; color:#0F172A; word-break:break-word;">${lessonText}</div>
+                                    ${s.classwork ? `<div class="matrix-sub-info" style="font-size:7.2pt; color:#475569; margin-top:2px;"><strong>Travaux :</strong> ${escapeHtml(s.classwork)}</div>` : ''}
+                                    ${s.homework ? `<div class="matrix-sub-info" style="font-size:7.2pt; color:#065F46; margin-top:2px; background:#DCFCE7; padding:1px 3px; border-radius:3px;"><strong>Devoirs :</strong> ${escapeHtml(s.homework)}</div>` : ''}
+                                </div>
+                            `;
+                        });
+                    }
+
+                    tdColsHTML += `
+                        <td class="annual-matrix-week-col" style="padding:5px 6px; border:1px solid #CBD5E1; vertical-align:top; background:#FFFFFF;">
+                            ${sessionsListHTML}
+                        </td>
+                    `;
+                });
+
+                monthsMatrixHTML += `
+                    <div class="annual-matrix-month-block" style="margin-bottom:12px; border:1.5px solid #64748B; border-radius:6px; overflow:hidden; background:#FFFFFF; break-inside:avoid; page-break-inside:avoid;">
+                        <div class="annual-matrix-month-banner" style="background:#0F172A; color:#FFFFFF; padding:6px 12px; font-size:0.86rem; font-weight:800; display:flex; justify-content:space-between; align-items:center;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="matrix-month-name" style="letter-spacing:0.5px;">🗓️ MOIS : ${escapeHtml(mName.toUpperCase())}</span>
+                                <span class="matrix-month-badge" style="background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:700;">${mWeeks.length} semaine(s)</span>
+                            </div>
+                            <div style="font-size:0.8rem; opacity:0.9;">
+                                ${mWeeks.reduce((acc, w) => acc + w.sessions.length, 0)} séances
+                            </div>
                         </div>
-                        <div style="font-size:0.8rem; opacity:0.9;">
-                            ${mWeeks.reduce((acc, w) => acc + w.sessions.length, 0)} séances
-                        </div>
+                        <table class="annual-matrix-table" style="width:100%; border-collapse:collapse; table-layout:fixed; font-size:8pt;">
+                            <thead>
+                                <tr>${thColsHTML}</tr>
+                            </thead>
+                            <tbody>
+                                <tr>${tdColsHTML}</tr>
+                            </tbody>
+                        </table>
                     </div>
-                    <table class="annual-matrix-table">
-                        <thead>
-                            <tr>
-                                ${thColsHTML}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                ${tdColsHTML}
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        });
+                `;
+            });
+            bodyContentHTML = monthsMatrixHTML;
+        }
 
         return `
-            <div class="annual-semester-page">
-                <div class="annual-print-header">
-                    <div class="annual-print-header-top">
-                        <div style="font-weight:800; font-size:0.88rem; color:#1E3A8A; text-transform:uppercase;">
-                            Établissement Scolaire • ${escapeHtml(sectionLabel)}
+            <div class="annual-semester-page" style="width:100%; background:#FFFFFF; box-sizing:border-box; page-break-inside:avoid; break-inside:avoid; margin-bottom:24px;">
+                <!-- EN-TÊTE OFFICIEL DE L'ÉCOLE -->
+                <div class="annual-print-header" style="border-bottom:2.5px solid #0284C7; padding-bottom:12px; margin-bottom:14px;">
+                    <div class="annual-print-header-top" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <img src="/logo-alkawthar.svg" alt="Al Kawthar" style="height:44px; width:auto;" onerror="this.style.display='none';">
+                            <div>
+                                <div style="font-weight:900; font-size:0.98rem; color:#1E3A8A; letter-spacing:0.5px;">ÉTABLISSEMENT SCOLAIRE AL KAWTHAR</div>
+                                <div style="font-size:0.76rem; color:#64748B; font-weight:700;">Direction Pédagogique • ${escapeHtml(sectionLabel)}</div>
+                            </div>
                         </div>
-                        <div style="font-weight:700; font-size:0.82rem; color:#475569;">
-                            Année Scolaire : ${escapeHtml(schoolYear)}
+                        <div style="text-align:right;">
+                            <div style="font-weight:900; font-size:0.88rem; color:#0F172A;">Année Scolaire : ${escapeHtml(schoolYear)}</div>
+                            <div style="font-size:0.74rem; color:#64748B;">Progression & Répartition Pédagogique Officielle</div>
                         </div>
                     </div>
 
-                    <h1 class="annual-print-title">
-                        RÉPARTITION ANNUELLE DU PROGRAMME • ${escapeHtml(semTitle)}
-                    </h1>
-                    <p class="annual-print-subtitle">
-                        التوزيع السنوي للمنهاج الدراسي والتعلمات • ${escapeHtml(semTitleAr)}
-                    </p>
+                    <div style="text-align:center; margin:8px 0 10px 0;">
+                        <h1 class="annual-print-title" style="font-size:1.20rem; font-weight:900; color:#0F172A; text-align:center; margin:0; text-transform:uppercase; letter-spacing:0.5px;">
+                            RÉPARTITION ANNUELLE DES ENSEIGNEMENTS & DE LA PROGRESSION PÉDAGOGIQUE
+                        </h1>
+                        <div class="annual-print-subtitle" style="font-size:0.88rem; font-weight:800; color:#0284C7; text-align:center; margin:3px 0 0 0;">
+                            ${escapeHtml(semTitle)} • ${escapeHtml(semTitleAr)}
+                        </div>
+                    </div>
 
-                    <div class="annual-print-meta-grid">
+                    <!-- GRILLE DE MÉTADONNÉES PÉDAGOGIQUES -->
+                    <div class="annual-print-meta-grid" style="display:grid; grid-template-columns: repeat(6, 1fr); gap:8px; background:#F8FAFC; border:1px solid #CBD5E1; border-radius:6px; padding:8px 12px;">
                         <div class="annual-print-meta-item">
-                            <span class="meta-label">Enseignant(e)</span>
-                            <span class="meta-value">${escapeHtml(teacher)}</span>
+                            <span class="meta-label" style="font-size:0.68rem; font-weight:700; color:#64748B; text-transform:uppercase;">Enseignant(e)</span>
+                            <span class="meta-value" style="font-size:0.85rem; font-weight:800; color:#0F172A;">${escapeHtml(teacher)}</span>
                         </div>
                         <div class="annual-print-meta-item">
-                            <span class="meta-label">Classe / Niveau</span>
-                            <span class="meta-value">${escapeHtml(classe)}</span>
+                            <span class="meta-label" style="font-size:0.68rem; font-weight:700; color:#64748B; text-transform:uppercase;">Classe / Niveau</span>
+                            <span class="meta-value" style="font-size:0.85rem; font-weight:800; color:#0F172A;">${escapeHtml(classe)}</span>
                         </div>
                         <div class="annual-print-meta-item">
-                            <span class="meta-label">Matière</span>
-                            <span class="meta-value">${escapeHtml(matiere)}</span>
+                            <span class="meta-label" style="font-size:0.68rem; font-weight:700; color:#64748B; text-transform:uppercase;">Matière</span>
+                            <span class="meta-value" style="font-size:0.85rem; font-weight:800; color:#0F172A;">${escapeHtml(matiere)}</span>
                         </div>
                         <div class="annual-print-meta-item">
-                            <span class="meta-label">Volume du Semestre</span>
-                            <span class="meta-value">${semTotal} séances (${semWeeks.length} semaines)</span>
+                            <span class="meta-label" style="font-size:0.68rem; font-weight:700; color:#64748B; text-transform:uppercase;">Horaire Hebdo</span>
+                            <span class="meta-value" style="font-size:0.85rem; font-weight:800; color:#0284C7;">${detectedWeeklyQuota} séance(s) / sem.</span>
                         </div>
                         <div class="annual-print-meta-item">
-                            <span class="meta-label">Réalisation Semestre</span>
-                            <span class="meta-value" style="color:#059669;">${semCompleted} / ${semTotal} (${semRate}%)</span>
+                            <span class="meta-label" style="font-size:0.68rem; font-weight:700; color:#64748B; text-transform:uppercase;">Volume Semestre</span>
+                            <span class="meta-value" style="font-size:0.85rem; font-weight:800; color:#0F172A;">${semTotal} séances (${semWeeks.length} sem.)</span>
+                        </div>
+                        <div class="annual-print-meta-item">
+                            <span class="meta-label" style="font-size:0.68rem; font-weight:700; color:#64748B; text-transform:uppercase;">Taux d'Avancement</span>
+                            <span class="meta-value" style="font-size:0.85rem; font-weight:800; color:#059669;">${semCompleted} / ${semTotal} (${semRate}%)</span>
                         </div>
                     </div>
                 </div>
 
+                <!-- CORPS DE LA RÉPARTITION DU SEMESTRE -->
                 <div class="annual-print-semester-body">
-                    ${monthsHTML}
+                    ${bodyContentHTML}
                 </div>
 
-                <div class="annual-print-footer">
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:#64748B;">
+                <!-- PIED DE PAGE ET VISAS OFFICIELS -->
+                <div class="annual-print-footer" style="break-inside:avoid; page-break-inside:avoid; margin-top:16px; border-top:1.5px solid #94A3B8; padding-top:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.78rem; color:#64748B; margin-bottom:12px;">
                         <span>Document pédagogique officiel • Semestre ${semNum} • Édité le ${currentDateStr}</span>
-                        <span>Progression Semestre : <strong>${semRate}%</strong></span>
+                        <span>Progression dans le programme du semestre : <strong>${semRate}%</strong></span>
                     </div>
 
-                    <div class="annual-print-signatures">
-                        <div class="annual-signature-box">
-                            <span>Visa et Signature de l'Enseignant(e) :</span>
-                            <span style="font-size:0.75rem; color:#94A3B8; text-align:right;">Date : ______________</span>
+                    <div class="annual-print-signatures" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px;">
+                        <div class="annual-signature-box" style="border:1px solid #CBD5E1; border-radius:6px; padding:10px 12px; height:70px; display:flex; flex-direction:column; justify-content:space-between; background:#F8FAFC;">
+                            <span style="font-size:0.78rem; font-weight:800; color:#1E293B;">Visa & Émargement Enseignant(e) :</span>
+                            <span style="font-size:0.72rem; color:#94A3B8; text-align:right;">Date : ______________</span>
                         </div>
-                        <div class="annual-signature-box">
-                            <span>Visa de la Direction des Études / Inspection :</span>
-                            <span style="font-size:0.75rem; color:#94A3B8; text-align:right;">Cachet et Date : ______________</span>
+                        <div class="annual-signature-box" style="border:1px solid #CBD5E1; border-radius:6px; padding:10px 12px; height:70px; display:flex; flex-direction:column; justify-content:space-between; background:#F8FAFC;">
+                            <span style="font-size:0.78rem; font-weight:800; color:#1E293B;">Visa du Coordinateur de Discipline :</span>
+                            <span style="font-size:0.72rem; color:#94A3B8; text-align:right;">Avis : ______________</span>
+                        </div>
+                        <div class="annual-signature-box" style="border:1px solid #CBD5E1; border-radius:6px; padding:10px 12px; height:70px; display:flex; flex-direction:column; justify-content:space-between; background:#F8FAFC;">
+                            <span style="font-size:0.78rem; font-weight:800; color:#1E293B;">Visa Direction des Études / Inspection :</span>
+                            <span style="font-size:0.72rem; color:#94A3B8; text-align:right;">Tampon & Date</span>
                         </div>
                     </div>
                 </div>
@@ -15370,7 +16061,7 @@ function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all') {
         // Les 2 Semestres : Page 1 = Semestre 1, Page 2 = Semestre 2
         return `
             ${renderSemesterHTML(1)}
-            <div class="annual-print-page-break"></div>
+            <div class="annual-print-page-break" style="page-break-after:always; break-after:page; height:0; display:block;"></div>
             ${renderSemesterHTML(2)}
         `;
     }
@@ -15389,7 +16080,12 @@ function openAnnualPrintPreviewModal() {
     if (btn1) btn1.classList.remove('active');
     if (btn2) btn2.classList.remove('active');
 
-    sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView);
+    const btnTbl = document.getElementById('btnLayoutTable');
+    const btnMat = document.getElementById('btnLayoutMatrix');
+    if (btnTbl) btnTbl.classList.toggle('active', currentPrintLayoutMode === 'table');
+    if (btnMat) btnMat.classList.toggle('active', currentPrintLayoutMode === 'matrix');
+
+    sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView, currentPrintLayoutMode);
     previewModal.style.display = 'flex';
 }
 
@@ -15399,20 +16095,16 @@ function closeAnnualPrintPreviewModal() {
 }
 
 function printAnnualDistributionLandscape() {
-    // 1. Remplir le conteneur d'impression paysage
     const sheetContainer = document.getElementById('annualLandscapePrintSheet');
     if (sheetContainer) {
-        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView);
+        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView, currentPrintLayoutMode);
     }
 
-    // 2. Ouvrir le modal d'aperçu pour que la feuille soit dans le DOM
     const previewModal = document.getElementById('annualPrintPreviewModal');
     if (previewModal) previewModal.style.display = 'flex';
 
-    // 3. Activer le mode d'impression A4 paysage
     document.body.classList.add('printing-annual-landscape');
 
-    // 4. Déclencher l'impression avec @page { size: A4 landscape; }
     setTimeout(() => {
         window.print();
         setTimeout(() => {
@@ -15424,7 +16116,7 @@ function printAnnualDistributionLandscape() {
 function triggerDirectPrintLandscape() {
     const sheetContainer = document.getElementById('annualLandscapePrintSheet');
     if (sheetContainer) {
-        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView);
+        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView, currentPrintLayoutMode);
     }
     document.body.classList.add('printing-annual-landscape');
     setTimeout(() => {
@@ -15440,7 +16132,7 @@ window.addEventListener('afterprint', () => {
 });
 
 function downloadAnnualPrintHTML() {
-    const fullHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView);
+    const fullHTML = buildAnnualDistributionLandscapeHTML(currentPrintSemesterView, currentPrintLayoutMode);
     const teacherSel = document.getElementById('annualDistTeacherSelect');
     const classSel = document.getElementById('annualDistClassSelect');
     const teacher = teacherSel ? teacherSel.value.trim() : 'Enseignant';
@@ -15461,9 +16153,9 @@ function downloadAnnualPrintHTML() {
         .annual-print-header-top { display: flex; justify-content: space-between; margin-bottom: 8px; }
         .annual-print-title { font-size: 1.25rem; font-weight: 800; color: #0F172A; text-align: center; margin: 0; text-transform: uppercase; }
         .annual-print-subtitle { font-size: 0.85rem; color: #475569; text-align: center; margin: 2px 0 0 0; }
-        .annual-print-meta-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; margin-top: 10px; }
+        .annual-print-meta-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; margin-top: 10px; }
         .annual-print-meta-item { display: flex; flex-direction: column; }
-        .meta-label { font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; }
+        .meta-label { font-size: 0.68rem; font-weight: 700; color: #64748B; text-transform: uppercase; }
         .meta-value { font-size: 0.85rem; font-weight: 800; color: #0F172A; }
         .annual-matrix-month-block { margin-bottom: 12px; border: 1.5px solid #64748B; border-radius: 6px; overflow: hidden; background: #FFFFFF; break-inside: avoid; page-break-inside: avoid; }
         .annual-matrix-month-banner { background: #0F172A; color: #FFFFFF; padding: 6px 12px; font-size: 0.85rem; font-weight: 800; display: flex; justify-content: space-between; }
@@ -15483,8 +16175,8 @@ function downloadAnnualPrintHTML() {
         .matrix-lesson-name { font-weight: 700; color: #0F172A; word-break: break-word; }
         .matrix-sub-info { font-size: 7.2pt; color: #475569; margin-top: 2px; word-break: break-word; }
         .annual-print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 16px; border-top: 1.5px solid #94A3B8; padding-top: 10px; }
-        .annual-print-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 12px; }
-        .annual-signature-box { border: 1px dashed #94A3B8; border-radius: 6px; padding: 10px 14px; height: 75px; display: flex; flex-direction: column; justify-content: space-between; font-size: 0.8rem; font-weight: 700; color: #475569; }
+        .annual-print-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; }
+        .annual-signature-box { border: 1px dashed #94A3B8; border-radius: 6px; padding: 10px 14px; height: 70px; display: flex; flex-direction: column; justify-content: space-between; font-size: 0.8rem; font-weight: 700; color: #475569; }
     </style>
 </head>
 <body>
@@ -15512,9 +16204,14 @@ function downloadAnnualPrintHTML() {
 }
 
 window.switchPrintSemesterView = switchPrintSemesterView;
+window.switchPrintLayoutMode = switchPrintLayoutMode;
 window.buildAnnualDistributionLandscapeHTML = buildAnnualDistributionLandscapeHTML;
 window.openAnnualPrintPreviewModal = openAnnualPrintPreviewModal;
 window.closeAnnualPrintPreviewModal = closeAnnualPrintPreviewModal;
 window.printAnnualDistributionLandscape = printAnnualDistributionLandscape;
 window.triggerDirectPrintLandscape = triggerDirectPrintLandscape;
 window.downloadAnnualPrintHTML = downloadAnnualPrintHTML;
+window.onSlotModalMatiereChange = onSlotModalMatiereChange;
+window.renderSubjectTeacherLinkingList = renderSubjectTeacherLinkingList;
+window.onClassSubjectTeacherChange = onClassSubjectTeacherChange;
+window.saveSubjectTeacherAssignmentsForCurrentClass = saveSubjectTeacherAssignmentsForCurrentClass;

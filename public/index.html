@@ -1410,6 +1410,29 @@
                           </div>
                       </div>
 
+                      <!-- CARTE DE LIAISON AUTOMATIQUE MATIÈRES ➔ ENSEIGNANTS -->
+                      <div id="adminScheduleSubjectTeacherLinkingCard" style="display:none; background:#F0FDF4; border:1.5px solid #86EFAC; border-radius:12px; padding:16px 18px; margin-bottom:18px;">
+                          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+                              <div style="display:flex; align-items:center; gap:8px;">
+                                  <i class="fas fa-link" style="color:#16A34A; font-size:1.15rem;"></i>
+                                  <span style="font-weight:800; color:#14532D; font-size:0.95rem;">
+                                      Liaison Automatique Matières ➔ Enseignants (<span id="scheduleLinkingClassName" style="color:#047857; text-decoration:underline;">Classe</span>)
+                                  </span>
+                              </div>
+                              <div style="display:flex; gap:8px; align-items:center;">
+                                  <button type="button" class="pro-button" onclick="saveSubjectTeacherAssignmentsForCurrentClass()" style="padding:6px 14px; font-size:0.84rem; font-weight:700; background:#16A34A; color:white; border:none; border-radius:8px; cursor:pointer;">
+                                      <i class="fas fa-check-double"></i> Appliquer à tous les créneaux & Sauvegarder
+                                  </button>
+                              </div>
+                          </div>
+                          <p style="font-size:0.83rem; color:#15803D; margin:0 0 12px 0; line-height:1.4;">
+                              ✨ <strong>Saisie automatique & gain de temps :</strong> Reliez chaque matière à son enseignant ici. Tous les créneaux de cette matière dans l'emploi du temps recevront <strong>automatiquement</strong> le bon enseignant, sans avoir à le réécrire à chaque fois.
+                          </p>
+                          <div id="adminScheduleSubjectTeacherList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px;">
+                              <!-- Rempli dynamiquement avec chaque matière et son menu déroulant enseignant -->
+                          </div>
+                      </div>
+
                       <!-- GRILLE D'EMPLOI DU TEMPS HEBDOMADAIRE (INTERACTIVE) -->
                       <div style="background:white; border:1.5px solid #E2E8F0; border-radius:12px; overflow-x:auto; padding:10px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
                           <div id="adminScheduleGridMessage" style="padding:25px; text-align:center; color:#64748B; font-weight:600;">
@@ -2668,10 +2691,7 @@
                     <i class="fas fa-sliders-h" style="color:#059669;"></i> Options d'affichage :
                 </div>
                 <div style="display:flex; flex-wrap:wrap; gap:16px;">
-                    <label style="display:inline-flex; align-items:center; gap:8px; font-size:0.88rem; color:#334155; cursor:pointer;">
-                        <input type="checkbox" id="designOptShowPhotos" checked style="width:17px; height:17px; accent-color:#059669;">
-                        <span>Afficher les photos des enseignants</span>
-                    </label>
+                    <input type="checkbox" id="designOptShowPhotos" style="display:none;">
                     <label style="display:inline-flex; align-items:center; gap:8px; font-size:0.88rem; color:#334155; cursor:pointer;">
                         <input type="checkbox" id="designOptHighlightHomework" checked style="width:17px; height:17px; accent-color:#059669;">
                         <span>Mettre en évidence les devoirs (Homework badge)</span>
@@ -2906,9 +2926,10 @@
                         <input type="number" id="annualDistTotalSessionsInput" min="1" max="300" value="120" onchange="recalculateAnnualStats()" title="Volume annuel de séances">
                     </div>
 
-                    <div class="annual-control-group" style="width: 120px;">
+                    <div class="annual-control-group" style="min-width: 140px;">
                         <label for="annualDistPerWeekInput"><i class="fas fa-clock" style="color:#0891B2;"></i> Séances / sem :</label>
                         <input type="number" id="annualDistPerWeekInput" min="1" max="15" value="4" onchange="recalculateAnnualStats()" title="Nombre de séances par semaine">
+                        <div id="annualDistScheduleNotice" style="font-size:0.75rem; color:#0369A1; font-weight:700; margin-top:2px;"></div>
                     </div>
 
                     <div style="margin-left: auto; display: flex; align-items: flex-end; gap: 8px;">
@@ -3076,6 +3097,16 @@
                     </button>
                 </div>
 
+                <!-- Sélecteur de Style de Présentation A4 -->
+                <div class="layout-tabs-container" style="display:flex; gap:6px; background:#1E293B; padding:4px 6px; border-radius:8px; border:1px solid #334155;">
+                    <button type="button" class="btn-sem-tab active" id="btnLayoutTable" onclick="switchPrintLayoutMode('table')">
+                        <i class="fas fa-table"></i> Tableau Pédagogique
+                    </button>
+                    <button type="button" class="btn-sem-tab" id="btnLayoutMatrix" onclick="switchPrintLayoutMode('matrix')">
+                        <i class="fas fa-th"></i> Grille Synthétique
+                    </button>
+                </div>
+
                 <div style="display:flex; align-items:center; gap:10px;">
                     <button type="button" class="btn-annual" style="background:#0284C7; color:#FFFFFF; padding:9px 18px; font-size:0.92rem;" onclick="triggerDirectPrintLandscape()">
                         <i class="fas fa-print"></i> <span>🖨️ Imprimer A4 Paysage</span>
@@ -3116,17 +3147,20 @@
                 <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:6px;">
                     <i class="fas fa-book" style="color:#0284C7;"></i> Matière :
                 </label>
-                <input type="text" id="slotModalMatiereInput" list="slotModalSubjectsDatalist" placeholder="Ex: Mathématiques, Français, Arabe..." style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.95rem; font-weight:600; box-sizing:border-box;">
+                <input type="text" id="slotModalMatiereInput" list="slotModalSubjectsDatalist" oninput="onSlotModalMatiereChange()" onchange="onSlotModalMatiereChange()" placeholder="Ex: Mathématiques, Français, Arabe..." style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.95rem; font-weight:600; box-sizing:border-box;">
                 <datalist id="slotModalSubjectsDatalist"></datalist>
             </div>
 
             <div style="margin-bottom:18px;">
                 <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:6px;">
-                    <i class="fas fa-user-tie" style="color:#0284C7;"></i> Enseignant (optionnel) :
+                    <i class="fas fa-user-tie" style="color:#0284C7;"></i> Enseignant associé :
                 </label>
                 <select id="slotModalTeacherSelect" style="width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.95rem; font-weight:600; background:white; box-sizing:border-box;">
                     <option value="">-- Conserver l'enseignant actuel / Non spécifié --</option>
                 </select>
+                <div id="slotModalAutoLinkNotice" style="font-size:0.8rem; font-weight:700; color:#15803D; margin-top:5px; display:none; align-items:center; gap:5px;">
+                    <i class="fas fa-check-circle"></i> <span>Enseignant attribué automatiquement selon la matière</span>
+                </div>
             </div>
 
             <div style="display:flex; justify-content:space-between; gap:10px;">

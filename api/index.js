@@ -5026,12 +5026,32 @@ app.get('/api/plans/:week', async (req, res) => {
         });
       }
 
+      // Récupérer les liaisons Matière ➔ Enseignant configurées pour cette section
+      const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
+      const subTeacherMap = new Map();
+      subTeacherDocs.forEach(d => {
+        if (d.classe && d.matiere && d.enseignant) {
+          const k = `${d.classe.trim().toLowerCase()}_${d.matiere.trim().toLowerCase()}`;
+          subTeacherMap.set(k, d.enseignant.trim());
+        }
+      });
+
       const enrichedData = rawData.map(row => {
-        const enseignant = row[findKey(row, 'Enseignant')] || '';
+        const ensKey = findKey(row, 'Enseignant') || 'Enseignant';
+        let enseignant = row[ensKey] || '';
         const classe = row[findKey(row, 'Classe')] || '';
         const matiere = row[findKey(row, 'Matière')] || '';
         const periode = row[findKey(row, 'Période')] || '';
         const jour = row[findKey(row, 'Jour')] || '';
+
+        // Si l'enseignant n'est pas renseigné, attribuer automatiquement l'enseignant lié à cette matière
+        if ((!enseignant || !enseignant.trim()) && classe && matiere) {
+          const k = `${classe.trim().toLowerCase()}_${matiere.trim().toLowerCase()}`;
+          if (subTeacherMap.has(k)) {
+            enseignant = subTeacherMap.get(k);
+            row[ensKey] = enseignant;
+          }
+        }
         
         const potentialLessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
         const fallbackId = `${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
@@ -6329,6 +6349,36 @@ app.get('/api/admin/schedule-class', async (req, res) => {
 
     const distinctSubjects = Array.from(new Set(sourceRows.map(r => r[findKey(r, 'Matière')]).filter(Boolean))).sort();
 
+    // Récupérer les liaisons enregistrées Matière ➔ Enseignant
+    const subjectTeachersMap = {};
+    try {
+      const savedMappings = await db.collection('class_subject_teachers').find({
+        section: section,
+        $or: [{ classe: classe }, { classe: 'all' }, { classe: '' }, { classe: { $exists: false } }]
+      }).toArray();
+      savedMappings.forEach(m => {
+        if (m.matiere && m.enseignant) {
+          subjectTeachersMap[m.matiere.trim()] = m.enseignant.trim();
+        }
+      });
+    } catch (e) {}
+
+    // Compléter avec les attributions existantes dans les cours de la classe
+    classRows.forEach(r => {
+      const m = (r[findKey(r, 'Matière')] || '').trim();
+      const e = (r[findKey(r, 'Enseignant')] || '').trim();
+      if (m && e && !subjectTeachersMap[m]) {
+        subjectTeachersMap[m] = e;
+      }
+    });
+
+    // Si certains créneaux n'ont pas d'enseignant mais que la matière est liée, leur attribuer automatiquement
+    slots.forEach(s => {
+      if ((!s.enseignant || !s.enseignant.trim()) && s.matiere && subjectTeachersMap[s.matiere]) {
+        s.enseignant = subjectTeachersMap[s.matiere];
+      }
+    });
+
     let teachers = [];
     try {
       const users = await db.collection('users').find({
@@ -6353,6 +6403,7 @@ app.get('/api/admin/schedule-class', async (req, res) => {
       classe,
       slots,
       teachers,
+      subjectTeachersMap,
       distinctSubjects,
       distinctClasses,
       filledSlotsCount,
@@ -6360,6 +6411,83 @@ app.get('/api/admin/schedule-class', async (req, res) => {
     });
   } catch (error) {
     console.error('Erreur /api/admin/schedule-class:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoints dédiés pour la liaison Matière ➔ Enseignant par classe
+app.get('/api/admin/class-subject-teachers', async (req, res) => {
+  try {
+    const { section = 'garcons', classe = '' } = req.query;
+    const db = await connectToDatabase();
+    const query = { section };
+    if (classe) {
+      query.$or = [{ classe }, { classe: 'all' }];
+    }
+    const docs = await db.collection('class_subject_teachers').find(query).toArray();
+    const mapping = {};
+    docs.forEach(d => {
+      if (d.matiere && d.enseignant) {
+        mapping[d.matiere.trim()] = d.enseignant.trim();
+      }
+    });
+    res.status(200).json({ success: true, mapping, docs });
+  } catch (error) {
+    console.error('Erreur GET /api/admin/class-subject-teachers:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/admin/class-subject-teachers', async (req, res) => {
+  try {
+    const { section = 'garcons', classe = '', assignments = {} } = req.body;
+    if (!classe) return res.status(400).json({ error: 'Classe requise.' });
+    const db = await connectToDatabase();
+    const now = new Date();
+    for (const [matiere, enseignant] of Object.entries(assignments)) {
+      if (!matiere || !matiere.trim()) continue;
+      const cleanMat = matiere.trim();
+      const cleanEns = (enseignant || '').trim();
+      await db.collection('class_subject_teachers').updateOne(
+        { section, classe, matiere: cleanMat },
+        { $set: { section, classe, matiere: cleanMat, enseignant: cleanEns, updatedAt: now } },
+        { upsert: true }
+      );
+    }
+
+    // Répercuter immédiatement les enseignants liés sur toutes les semaines de cette classe dans le tableau
+    try {
+      const planDocs = await db.collection('plans').find({ section }).toArray();
+      for (const pDoc of planDocs) {
+        if (Array.isArray(pDoc.data) && pDoc.data.length > 0) {
+          let modified = false;
+          pDoc.data.forEach(row => {
+            const rowCls = row[findKey(row, 'Classe')];
+            const rowMat = row[findKey(row, 'Matière')];
+            if (rowCls && isClassMatchServer(rowCls, classe) && rowMat) {
+              const matchedEns = assignments[rowMat.trim()];
+              if (matchedEns && matchedEns.trim()) {
+                const ensKey = findKey(row, 'Enseignant') || 'Enseignant';
+                row[ensKey] = matchedEns.trim();
+                modified = true;
+              }
+            }
+          });
+          if (modified) {
+            await db.collection('plans').updateOne(
+              { _id: pDoc._id },
+              { $set: { data: pDoc.data, updatedAt: now } }
+            );
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.warn('Note synchronisation class_subject_teachers vers plans:', syncErr.message);
+    }
+
+    res.status(200).json({ success: true, message: 'Liaisons Matières ➔ Enseignants enregistrées et appliquées à l\'emploi du temps et au tableau.' });
+  } catch (error) {
+    console.error('Erreur POST /api/admin/class-subject-teachers:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -6414,6 +6542,24 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
         if (dDiff !== 0) return dDiff;
         return getPerNum(a.periode) - getPerNum(b.periode);
       });
+    }
+
+    // Sauvegarder automatiquement les attributions Matière ➔ Enseignant détectées
+    try {
+      const nowAuto = new Date();
+      for (const [cls, clsSlots] of Object.entries(schedulesToApply)) {
+        for (const slot of clsSlots) {
+          if (slot.matiere && slot.enseignant && slot.enseignant.trim()) {
+            await db.collection('class_subject_teachers').updateOne(
+              { section, classe: cls, matiere: slot.matiere.trim() },
+              { $set: { section, classe: cls, matiere: slot.matiere.trim(), enseignant: slot.enseignant.trim(), updatedAt: nowAuto } },
+              { upsert: true }
+            );
+          }
+        }
+      }
+    } catch (saveErr) {
+      console.warn('Note: Sauvegarde automatique class_subject_teachers:', saveErr.message);
     }
 
     let affectedWeeksCount = 0;

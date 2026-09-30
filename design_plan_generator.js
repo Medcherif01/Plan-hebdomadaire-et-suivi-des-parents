@@ -1811,11 +1811,7 @@ function generateDesignPlanHtml(options = {}) {
                       </div>
 
                       <div class="teacher-item-box">
-                        ${(showPhotos && photoUrl) 
-                          ? `<img src="${photoUrl}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" referrerpolicy="no-referrer" crossorigin="anonymous" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">
-                             <span class="teacher-fallback-thumb" style="display:none;">${teacherInitial}</span>`
-                          : `<span class="teacher-fallback-thumb">${teacherInitial}</span>`
-                        }
+                        <i class="fas fa-chalkboard-teacher" style="color:#64748B; font-size:0.75rem;"></i>
                         <div class="teacher-name-print">${escapeHtml(enseignant)}</div>
                       </div>
                     </td>
