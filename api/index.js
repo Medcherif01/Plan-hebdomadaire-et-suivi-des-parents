@@ -6504,12 +6504,15 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
       classSchedules = {}
     } = req.body;
 
-    const sWeek = parseInt(startWeek, 10);
+    let sWeek = parseInt(startWeek, 10);
     let eWeek = parseInt(endWeek, 10);
-    if (isNaN(sWeek) || sWeek < 1) {
-      return res.status(400).json({ error: 'Semaine de départ invalide.' });
-    }
-    if (targetMode === 'remaining') {
+    if (targetMode === 'all_year' || targetMode === 'all') {
+      sWeek = 1;
+      eWeek = 38;
+    } else if (isNaN(sWeek) || sWeek < 1) {
+      sWeek = 1;
+      eWeek = (targetMode === 'remaining' ? 38 : 1);
+    } else if (targetMode === 'remaining') {
       eWeek = 38;
     } else if (isNaN(eWeek) || eWeek < sWeek) {
       eWeek = sWeek;

@@ -13676,7 +13676,9 @@ function updateAdminScheduleScopeInfo() {
     const summaryText = document.getElementById('adminScheduleScopeSummaryText');
     if (!summaryText) return;
 
-    if (mode === 'single') {
+    if (mode === 'all_year') {
+        summaryText.innerHTML = '🌟 <strong>Toute l\'année dès le début :</strong> L\'emploi du temps sera appliqué à <u>TOUTES les 38 semaines</u> (de la <strong>Semaine 1</strong> jusqu\'à la <strong>Semaine 38</strong> incluse). <span style="color:#15803D; font-weight:800;"><i class="fas fa-shield-alt"></i> Garantie absolue : toutes les leçons, devoirs et travaux déjà saisis par les enseignants sont 100% conservés.</span>';
+    } else if (mode === 'single') {
         summaryText.innerHTML = '📌 <strong>Semaine unique :</strong> Les modifications s\'appliqueront <u>exclusivement à la Semaine ' + selWeek + '</u>. Les autres semaines resteront inchangées.';
     } else {
         const remainingCount = 38 - selWeek + 1;
@@ -14444,16 +14446,30 @@ async function saveAndReorganizeSchedule() {
         return;
     }
 
-    const scopeDescription = (targetMode === 'single')
-        ? ('la Semaine ' + selectedWeek + ' uniquement')
-        : ('toutes les semaines restantes de la Semaine ' + selectedWeek + ' jusqu\'à la Semaine 38');
+    let startW = selectedWeek;
+    let endW = selectedWeek;
+    let scopeDescription = '';
+
+    if (targetMode === 'all_year') {
+        startW = 1;
+        endW = 38;
+        scopeDescription = 'TOUTES les semaines dès le début (Semaine 1 jusqu\'à la Semaine 38, année complète)';
+    } else if (targetMode === 'remaining') {
+        startW = selectedWeek;
+        endW = 38;
+        scopeDescription = 'toutes les semaines restantes de la Semaine ' + selectedWeek + ' jusqu\'à la Semaine 38';
+    } else {
+        startW = selectedWeek;
+        endW = selectedWeek;
+        scopeDescription = 'la Semaine ' + selectedWeek + ' uniquement';
+    }
 
     const confirmMsg = 'Confirmez-vous la réorganisation de l\'emploi du temps ?\n\n' +
         '• Classe : ' + selectedClass + '\n' +
         '• Section : ' + targetSection + '\n' +
         '• Portée : ' + scopeDescription + '\n' +
         '• Nombre de créneaux hebdomadaires : ' + window.currentAdminScheduleSlots.length + '\n\n' +
-        'Garantie : Toutes les informations déjà saisies par les enseignants (leçons, devoirs) seront scrupuleusement conservées et déplacées selon les nouveaux créneaux.';
+        '🛡️ Garantie absolue : Toutes les informations déjà saisies par les enseignants (leçons, devoirs, travaux) seront scrupuleusement conservées et réagencées selon les nouveaux créneaux.';
 
     if (!confirm(confirmMsg)) return;
 
@@ -14471,8 +14487,8 @@ async function saveAndReorganizeSchedule() {
             body: JSON.stringify({
                 section: targetSection,
                 classe: selectedClass,
-                startWeek: selectedWeek,
-                endWeek: targetMode === 'remaining' ? 38 : selectedWeek,
+                startWeek: startW,
+                endWeek: endW,
                 targetMode: targetMode,
                 slots: window.currentAdminScheduleSlots
             })
