@@ -3054,14 +3054,28 @@
     <!-- ===================================================================== -->
     <div id="annualPrintPreviewModal" class="annual-dist-modal" onclick="if(event.target===this)closeAnnualPrintPreviewModal()">
         <div class="annual-dist-content" style="max-width: 1320px; height: 96vh;" onclick="event.stopPropagation()">
-            <div class="annual-dist-header" style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);">
+            <div class="annual-dist-header" style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); flex-wrap: wrap; gap: 10px;">
                 <div class="annual-dist-title-box">
                     <h3>
                         <i class="fas fa-print" style="color:#38BDF8;"></i>
-                        <span>Aperçu Impression A4 Paysage - Répartition Annuelle par Semaine</span>
+                        <span>Aperçu Impression A4 Paysage - Répartition Annuelle (2 Semestres : Mois ➔ Semaines)</span>
                     </h3>
-                    <p>Mise en page A4 Paysage professionnelle avec regroupement automatique des jours de la même semaine</p>
+                    <p>Format A4 Paysage semestriel • Mois avec semaines en colonnes et séances quotidiennes ordonnées sans les noms des jours</p>
                 </div>
+
+                <!-- Sélecteur de Semestres (Semestre 1 / Semestre 2 / Les 2) -->
+                <div class="semester-tabs-container" style="display:flex; gap:6px; background:#1E293B; padding:4px 6px; border-radius:8px; border:1px solid #334155;">
+                    <button type="button" class="btn-sem-tab active" id="btnSemTabAll" onclick="switchPrintSemesterView('all')">
+                        <i class="fas fa-book-open"></i> Les 2 Semestres
+                    </button>
+                    <button type="button" class="btn-sem-tab" id="btnSemTab1" onclick="switchPrintSemesterView(1)">
+                        <i class="fas fa-calendar-day"></i> Semestre 1 (Sept - Jan)
+                    </button>
+                    <button type="button" class="btn-sem-tab" id="btnSemTab2" onclick="switchPrintSemesterView(2)">
+                        <i class="fas fa-calendar-day"></i> Semestre 2 (Fév - Juin)
+                    </button>
+                </div>
+
                 <div style="display:flex; align-items:center; gap:10px;">
                     <button type="button" class="btn-annual" style="background:#0284C7; color:#FFFFFF; padding:9px 18px; font-size:0.92rem;" onclick="triggerDirectPrintLandscape()">
                         <i class="fas fa-print"></i> <span>🖨️ Imprimer A4 Paysage</span>

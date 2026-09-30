@@ -6031,6 +6031,41 @@ app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
       });
     }
 
+    // Laisser le reste des jours vers la fin de l'année disponibles pour que l'enseignant puisse continuer à saisir manuellement
+    const targetWeeksCount = Math.max(parseInt(distDoc.weeksCount, 10) || 30, 30);
+    const sessionsPerWeek = Math.max(parseInt(distDoc.sessionsPerWeek, 10) || 4, 1);
+
+    for (let w = 1; w <= targetWeeksCount; w++) {
+      const existingForWeek = distDoc.sessions.filter(s => parseInt(s.week, 10) === w);
+      if (existingForWeek.length < sessionsPerWeek) {
+        const needed = sessionsPerWeek - existingForWeek.length;
+        const startDayIdx = existingForWeek.length;
+        for (let d = 0; d < needed; d++) {
+          const dayIdx = (startDayIdx + d) % schoolDaysList.length;
+          const dayName = schoolDaysList[dayIdx];
+          const periodNum = Math.floor((startDayIdx + d) / schoolDaysList.length) + 1;
+          const termNum = w <= 18 ? 'Semestre 1' : 'Semestre 2';
+          
+          distDoc.sessions.push({
+            sessionNumber: distDoc.sessions.length + 1,
+            week: w,
+            day: dayName,
+            period: periodNum,
+            term: termNum,
+            unit: '',
+            lessonTitle: '',
+            classwork: '',
+            support: '',
+            homework: '',
+            completed: false
+          });
+        }
+      }
+    }
+
+    distDoc.weeksCount = targetWeeksCount;
+    distDoc.sessionsPerWeek = sessionsPerWeek;
+
     // Réorganiser et numéroter les séances par Semaine puis par Jour
     const dayOrder = { 'dimanche': 1, 'lundi': 2, 'mardi': 3, 'mercredi': 4, 'jeudi': 5, 'vendredi': 6, 'samedi': 7 };
     distDoc.sessions.sort((a, b) => {
@@ -6047,6 +6082,7 @@ app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
       s.sessionNumber = i + 1;
     });
 
+    distDoc.totalSessionsPerYear = distDoc.sessions.length;
     distDoc.updatedAt = new Date().toISOString();
     await db.collection('annual_distributions').updateOne(
       { _id: distDoc._id },
@@ -6065,7 +6101,7 @@ app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
       weeksScannedCount: weeksArray.length,
       weeksLabel,
       distribution: distDoc,
-      message: `${syncedCount} séance(s) synchronisée(s) avec succès ${weeksLabel} ! Vous pouvez maintenant continuer la saisie pour les semaines suivantes, supprimer ou modifier.`
+      message: `${syncedCount} séance(s) synchronisée(s) avec succès ${weeksLabel} ! Les semaines restantes jusqu'à la fin de l'année (Semaine ${targetWeeksCount}) sont disponibles (${distDoc.sessions.length} séances au total) pour que vous puissiez continuer la saisie manuelle.`
     });
   } catch (error) {
     console.error('Erreur sync-from-weekly-plan:', error);
