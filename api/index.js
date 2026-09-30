@@ -5948,87 +5948,153 @@ app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
     const weeksWithData = new Set();
     const schoolDaysList = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
 
-    // Parcourir chaque semaine de la Semaine 1 jusqu'à la semaine actuelle
-    for (const planDoc of relevantPlans) {
-      const wNum = parseInt(planDoc.week, 10);
-      const ensK = findKey(planDoc.data[0] || {}, 'Enseignant') || 'Enseignant';
-      const clsK = findKey(planDoc.data[0] || {}, 'Classe') || 'Classe';
-      const matK = findKey(planDoc.data[0] || {}, 'Matière') || 'Matière';
-      const leconK = findKey(planDoc.data[0] || {}, 'Leçon') || 'Leçon';
-      const taskK = findKey(planDoc.data[0] || {}, 'Travaux de classe') || 'Travaux de classe';
-      const supportK = findKey(planDoc.data[0] || {}, 'Support') || 'Support';
-      const devoirsK = findKey(planDoc.data[0] || {}, 'Devoirs') || 'Devoirs';
-      const jourK = findKey(planDoc.data[0] || {}, 'Jour') || 'Jour';
-      const periodeK = findKey(planDoc.data[0] || {}, 'Période') || 'Période';
+    // Calculer le nombre de séances par semaine détecté dans l'emploi du temps
+    let detectedSessionsPerWeek = 4;
+    for (const p of relevantPlans) {
+      const ensK = findKey(p.data[0] || {}, 'Enseignant') || 'Enseignant';
+      const count = p.data.filter(r => (r[ensK] || '').trim().toLowerCase() === teacher.trim().toLowerCase()).length;
+      if (count > detectedSessionsPerWeek) detectedSessionsPerWeek = count;
+    }
+    const sessionsPerWeek = Math.max(1, parseInt(distDoc.sessionsPerWeek, 10) || detectedSessionsPerWeek || 4);
+    const totalSchoolWeeks = Math.max(34, parseInt(distDoc.weeksCount, 10) || 34);
 
-      const teacherRows = planDoc.data.filter(row => {
-        const rowTeacher = (row[ensK] || '').trim();
-        const rowClass = (row[clsK] || '').trim();
-        const rowSubject = (row[matK] || '').trim();
+    // 1. Parcourir chaque semaine de la Semaine 1 jusqu'à la semaine actuelle
+    for (let wNum = startWeek; wNum <= endWeek; wNum++) {
+      const planDoc = relevantPlans.find(p => parseInt(p.week, 10) === wNum);
+      let teacherRows = [];
 
-        const teacherMatches = rowTeacher.toLowerCase() === teacher.trim().toLowerCase();
-        const classMatches = !classe || classe === 'all' || classe === 'Toutes' || rowClass.toLowerCase() === classe.trim().toLowerCase();
-        const subjectMatches = !matiere || matiere === 'all' || matiere === 'Toutes' || rowSubject.toLowerCase() === matiere.trim().toLowerCase();
-        return teacherMatches && classMatches && subjectMatches;
-      });
+      if (planDoc && Array.isArray(planDoc.data)) {
+        const ensK = findKey(planDoc.data[0] || {}, 'Enseignant') || 'Enseignant';
+        const clsK = findKey(planDoc.data[0] || {}, 'Classe') || 'Classe';
+        const matK = findKey(planDoc.data[0] || {}, 'Matière') || 'Matière';
 
-      if (teacherRows.length === 0) continue;
-      weeksWithData.add(wNum);
+        teacherRows = planDoc.data.filter(row => {
+          const rowTeacher = (row[ensK] || '').trim();
+          const rowClass = (row[clsK] || '').trim();
+          const rowSubject = (row[matK] || '').trim();
 
-      teacherRows.forEach((row, rIdx) => {
-        const lessonTitle = (row[leconK] || '').trim();
-        const classwork = (row[taskK] || '').trim();
-        const support = (row[supportK] || '').trim();
-        const homework = (row[devoirsK] || '').trim();
-        const rowDay = (row[jourK] || '').trim() || schoolDaysList[rIdx % 5];
-        const rowPeriod = parseInt(String(row[periodeK] || '').replace(/\D/g, ''), 10) || (rIdx + 1);
+          const teacherMatches = rowTeacher.toLowerCase() === teacher.trim().toLowerCase();
+          const classMatches = !classe || classe === 'all' || classe === 'Toutes' || rowClass.toLowerCase() === classe.trim().toLowerCase();
+          const subjectMatches = !matiere || matiere === 'all' || matiere === 'Toutes' || rowSubject.toLowerCase() === matiere.trim().toLowerCase();
+          return teacherMatches && classMatches && subjectMatches;
+        });
+      }
 
-        if (!lessonTitle && !classwork && !support && !homework) return;
+      if (teacherRows.length > 0) {
+        weeksWithData.add(wNum);
+        const leconK = findKey(planDoc.data[0] || {}, 'Leçon') || 'Leçon';
+        const taskK = findKey(planDoc.data[0] || {}, 'Travaux de classe') || 'Travaux de classe';
+        const supportK = findKey(planDoc.data[0] || {}, 'Support') || 'Support';
+        const devoirsK = findKey(planDoc.data[0] || {}, 'Devoirs') || 'Devoirs';
+        const jourK = findKey(planDoc.data[0] || {}, 'Jour') || 'Jour';
+        const periodeK = findKey(planDoc.data[0] || {}, 'Période') || 'Période';
 
-        let existingSession = distDoc.sessions.find(s => 
-          parseInt(s.week, 10) === wNum && 
-          String(s.day || '').trim().toLowerCase() === rowDay.toLowerCase() &&
-          parseInt(s.period, 10) === rowPeriod
+        teacherRows.forEach((row, rIdx) => {
+          const lessonTitle = (row[leconK] || '').trim();
+          const classwork = (row[taskK] || '').trim();
+          const support = (row[supportK] || '').trim();
+          const homework = (row[devoirsK] || '').trim();
+          const rowDay = (row[jourK] || '').trim() || schoolDaysList[rIdx % schoolDaysList.length];
+          const rowPeriod = parseInt(String(row[periodeK] || '').replace(/\D/g, ''), 10) || (rIdx + 1);
+          const hasContent = Boolean(lessonTitle || classwork || support || homework);
+
+          let existingSession = distDoc.sessions.find(s => 
+            parseInt(s.week, 10) === wNum && 
+            String(s.day || '').trim().toLowerCase() === rowDay.toLowerCase() &&
+            parseInt(s.period, 10) === rowPeriod
+          );
+
+          if (!existingSession) {
+            existingSession = distDoc.sessions.find(s => 
+              parseInt(s.week, 10) === wNum && 
+              parseInt(s.period, 10) === (rIdx + 1)
+            );
+          }
+
+          if (existingSession) {
+            existingSession.day = rowDay;
+            existingSession.period = rowPeriod;
+            if (hasContent) {
+              existingSession.lessonTitle = lessonTitle || existingSession.lessonTitle;
+              existingSession.classwork = classwork || existingSession.classwork;
+              existingSession.support = support || existingSession.support;
+              existingSession.homework = homework || existingSession.homework;
+              existingSession.completed = true;
+              existingSession.completedInWeek = wNum;
+              existingSession.completedDate = planDoc.updatedAt || new Date().toISOString();
+              syncedCount++;
+            }
+          } else {
+            const termNum = wNum <= 17 ? 'Semestre 1' : 'Semestre 2';
+            distDoc.sessions.push({
+              sessionNumber: distDoc.sessions.length + 1,
+              week: wNum,
+              day: rowDay,
+              period: rowPeriod,
+              term: termNum,
+              unit: '',
+              lessonTitle: lessonTitle || '',
+              classwork: classwork || '',
+              support: support || '',
+              homework: homework || '',
+              completed: hasContent,
+              completedInWeek: hasContent ? wNum : null,
+              completedDate: hasContent ? (planDoc.updatedAt || new Date().toISOString()) : null
+            });
+            if (hasContent) syncedCount++;
+          }
+        });
+      }
+
+      // S'assurer que chaque semaine passée dispose du quota de séances (séances vides laissées vides)
+      const currentWeekSessions = distDoc.sessions.filter(s => parseInt(s.week, 10) === wNum);
+      for (let sIdx = currentWeekSessions.length; sIdx < sessionsPerWeek; sIdx++) {
+        const fallbackDay = schoolDaysList[sIdx % schoolDaysList.length];
+        const fallbackPeriod = (sIdx % 4) + 1;
+        distDoc.sessions.push({
+          sessionNumber: distDoc.sessions.length + 1,
+          week: wNum,
+          day: fallbackDay,
+          period: fallbackPeriod,
+          term: wNum <= 17 ? 'Semestre 1' : 'Semestre 2',
+          unit: '',
+          lessonTitle: '',
+          classwork: '',
+          support: '',
+          homework: '',
+          completed: false
+        });
+      }
+    }
+
+    // 2. Laisser le reste des semaines jusqu'à la fin de l'année (34 semaines) disponibles pour la saisie manuelle
+    for (let w = endWeek + 1; w <= totalSchoolWeeks; w++) {
+      for (let sIdx = 0; sIdx < sessionsPerWeek; sIdx++) {
+        const dayName = schoolDaysList[sIdx % schoolDaysList.length];
+        const periodNum = (sIdx % 4) + 1;
+        const exists = distDoc.sessions.find(s => 
+          parseInt(s.week, 10) === w && 
+          String(s.day || '').trim().toLowerCase() === dayName.toLowerCase() &&
+          parseInt(s.period, 10) === periodNum
         );
 
-        if (!existingSession) {
-          existingSession = distDoc.sessions.find(s => 
-            parseInt(s.week, 10) === wNum && 
-            (parseInt(s.period, 10) === (rIdx + 1) || !s.completed)
-          );
-        }
-
-        if (existingSession) {
-          existingSession.day = rowDay;
-          existingSession.period = rowPeriod;
-          existingSession.lessonTitle = lessonTitle || existingSession.lessonTitle;
-          existingSession.classwork = classwork || existingSession.classwork;
-          existingSession.support = support || existingSession.support;
-          existingSession.homework = homework || existingSession.homework;
-          existingSession.completed = true;
-          existingSession.completedInWeek = wNum;
-          existingSession.completedDate = planDoc.updatedAt || new Date().toISOString();
-          syncedCount++;
-        } else {
-          const termNum = wNum <= 10 ? 'Trimestre 1' : (wNum <= 20 ? 'Trimestre 2' : 'Trimestre 3');
+        if (!exists) {
+          const termNum = w <= 17 ? 'Semestre 1' : 'Semestre 2';
           distDoc.sessions.push({
             sessionNumber: distDoc.sessions.length + 1,
-            week: wNum,
-            day: rowDay,
-            period: rowPeriod,
+            week: w,
+            day: dayName,
+            period: periodNum,
             term: termNum,
             unit: '',
-            lessonTitle,
-            classwork,
-            support,
-            homework,
-            completed: true,
-            completedInWeek: wNum,
-            completedDate: planDoc.updatedAt || new Date().toISOString()
+            lessonTitle: '',
+            classwork: '',
+            support: '',
+            homework: '',
+            completed: false
           });
-          syncedCount++;
         }
-      });
+      }
     }
 
     // Réorganiser et numéroter les séances par Semaine puis par Jour
