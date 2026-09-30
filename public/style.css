@@ -4201,7 +4201,7 @@ tr.row-plan-error {
         margin: 8mm 8mm 8mm 8mm;
     }
 
-    body {
+    body.printing-annual-landscape {
         background: #FFFFFF !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -4209,12 +4209,12 @@ tr.row-plan-error {
         print-color-adjust: exact !important;
     }
 
-    /* Masquer tous les éléments de l'application hors de la feuille d'impression */
-    body > *:not(#annualPrintPreviewModal) {
+    /* Masquer tous les éléments de l'application hors de la feuille d'impression lors de l'impression paysage */
+    body.printing-annual-landscape > *:not(#annualPrintPreviewModal) {
         display: none !important;
     }
 
-    #annualPrintPreviewModal {
+    body.printing-annual-landscape #annualPrintPreviewModal {
         position: static !important;
         background: transparent !important;
         display: block !important;
@@ -4224,7 +4224,7 @@ tr.row-plan-error {
         overflow: visible !important;
     }
 
-    #annualPrintPreviewModal .annual-dist-content {
+    body.printing-annual-landscape #annualPrintPreviewModal .annual-dist-content {
         max-width: none !important;
         width: 100% !important;
         height: auto !important;
@@ -4234,19 +4234,19 @@ tr.row-plan-error {
         overflow: visible !important;
     }
 
-    #annualPrintPreviewModal .annual-dist-header,
-    #annualPrintPreviewModal .annual-actions-bar,
-    #annualPrintPreviewModal .annual-dist-close-btn {
+    body.printing-annual-landscape #annualPrintPreviewModal .annual-dist-header,
+    body.printing-annual-landscape #annualPrintPreviewModal .annual-actions-bar,
+    body.printing-annual-landscape #annualPrintPreviewModal .annual-dist-close-btn {
         display: none !important;
     }
 
-    #annualPrintPreviewModal .annual-dist-body {
+    body.printing-annual-landscape #annualPrintPreviewModal .annual-dist-body {
         background: #FFFFFF !important;
         padding: 0 !important;
         overflow: visible !important;
     }
 
-    .annual-landscape-sheet {
+    body.printing-annual-landscape .annual-landscape-sheet {
         max-width: none !important;
         width: 100% !important;
         box-shadow: none !important;
@@ -4254,13 +4254,13 @@ tr.row-plan-error {
         padding: 0 !important;
     }
 
-    .annual-print-week-block {
+    body.printing-annual-landscape .annual-print-week-block {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
         margin-bottom: 12px !important;
     }
 
-    .annual-print-footer {
+    body.printing-annual-landscape .annual-print-footer {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
     }

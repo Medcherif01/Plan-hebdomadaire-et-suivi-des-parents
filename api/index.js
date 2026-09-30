@@ -5869,116 +5869,182 @@ app.post('/api/annual-distribution/fill-weekly-plan', async (req, res) => {
 
 app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
   try {
-    const { teacher, classe, matiere, section = 'garcons', week } = req.body;
-    const weekNum = parseInt(week, 10);
-    if (!teacher || !weekNum) {
-      return res.status(400).json({ error: 'Enseignant et Semaine sont requis.' });
+    const { teacher, classe, matiere, section = 'garcons', week, fromWeek = 1, upToWeek } = req.body;
+    if (!teacher) {
+      return res.status(400).json({ error: 'Enseignant requis.' });
     }
+
+    const startWeek = Math.max(1, parseInt(fromWeek, 10) || 1);
+    const endWeek = parseInt(upToWeek, 10) || parseInt(week, 10) || 38;
 
     const db = await connectToDatabase();
     
-    // Récupérer le plan hebdomadaire
-    const planDoc = await db.collection('plans').findOne({
-      $or: [
-        { _id: `${section}_${weekNum}` },
-        { _id: `${section}_${String(weekNum)}` },
-        { week: weekNum, section: section },
-        { week: String(weekNum), section: section }
-      ]
-    });
+    // Récupérer tous les plans enregistrés pour cette section
+    const allPlanDocs = await db.collection('plans').find().toArray();
 
-    if (!planDoc || !planDoc.data || planDoc.data.length === 0) {
-      return res.status(404).json({ error: `Aucun plan hebdomadaire trouvé pour la semaine ${weekNum}.` });
+    if (!allPlanDocs || allPlanDocs.length === 0) {
+      return res.status(404).json({ error: `Aucun plan hebdomadaire enregistré.` });
     }
 
-    const ensK = findKey(planDoc.data[0] || {}, 'Enseignant') || 'Enseignant';
-    const clsK = findKey(planDoc.data[0] || {}, 'Classe') || 'Classe';
-    const matK = findKey(planDoc.data[0] || {}, 'Matière') || 'Matière';
-    const leconK = findKey(planDoc.data[0] || {}, 'Leçon') || 'Leçon';
-    const taskK = findKey(planDoc.data[0] || {}, 'Travaux de classe') || 'Travaux de classe';
-    const supportK = findKey(planDoc.data[0] || {}, 'Support') || 'Support';
-    const devoirsK = findKey(planDoc.data[0] || {}, 'Devoirs') || 'Devoirs';
+    // Filtrer par section et par intervalle de semaines [startWeek, endWeek]
+    const relevantPlans = allPlanDocs.filter(p => {
+      const pSec = (p.section || 'garcons').trim().toLowerCase();
+      const targetSec = (section || 'garcons').trim().toLowerCase();
+      const secMatch = pSec === targetSec || !p.section;
+      const w = parseInt(p.week, 10);
+      return secMatch && !isNaN(w) && w >= startWeek && w <= endWeek && Array.isArray(p.data) && p.data.length > 0;
+    }).sort((a, b) => parseInt(a.week, 10) - parseInt(b.week, 10));
 
-    // Filtrer les cours de l'enseignant pour cette semaine
-    const teacherRows = planDoc.data.filter(row => {
-      const rowTeacher = (row[ensK] || '').trim();
-      const rowClass = (row[clsK] || '').trim();
-      const rowSubject = (row[matK] || '').trim();
-      const teacherMatches = rowTeacher.toLowerCase() === teacher.trim().toLowerCase();
-      const classMatches = !classe || rowClass.toLowerCase() === classe.trim().toLowerCase();
-      const subjectMatches = !matiere || rowSubject.toLowerCase() === matiere.trim().toLowerCase();
-      return teacherMatches && classMatches && subjectMatches;
-    });
-
-    if (teacherRows.length === 0) {
-      return res.status(404).json({ error: 'Aucun cours trouvé pour cet enseignant dans cette semaine.' });
+    if (relevantPlans.length === 0) {
+      return res.status(404).json({ 
+        error: `Aucun plan hebdomadaire trouvé entre la Semaine ${startWeek} et la Semaine ${endWeek} pour la section ${section}.` 
+      });
     }
 
-    const targetClass = classe || (teacherRows[0] ? teacherRows[0][clsK] : '');
-    const targetSubject = matiere || (teacherRows[0] ? teacherRows[0][matK] : '');
-    const distId = `${teacher.trim()}_${targetClass.trim()}_${targetSubject.trim()}_${section}_2025-2026`.replace(/\s+/g, '_');
+    let targetClass = classe && classe !== 'all' && classe !== 'Toutes' ? classe.trim() : '';
+    let targetSubject = matiere && matiere !== 'all' && matiere !== 'Toutes' ? matiere.trim() : '';
 
+    if (!targetClass || !targetSubject) {
+      for (const p of relevantPlans) {
+        const ensK = findKey(p.data[0] || {}, 'Enseignant') || 'Enseignant';
+        const clsK = findKey(p.data[0] || {}, 'Classe') || 'Classe';
+        const matK = findKey(p.data[0] || {}, 'Matière') || 'Matière';
+        const mRow = p.data.find(r => (r[ensK] || '').trim().toLowerCase() === teacher.trim().toLowerCase());
+        if (mRow) {
+          if (!targetClass && mRow[clsK]) targetClass = mRow[clsK].trim();
+          if (!targetSubject && mRow[matK]) targetSubject = mRow[matK].trim();
+          break;
+        }
+      }
+    }
+
+    if (!targetClass) targetClass = 'Toutes';
+    if (!targetSubject) targetSubject = 'Toutes';
+
+    const distId = `${teacher.trim()}_${targetClass}_${targetSubject}_${section}_2025-2026`.replace(/\s+/g, '_');
     let distDoc = await db.collection('annual_distributions').findOne({ _id: distId });
+
     if (!distDoc) {
       distDoc = {
         _id: distId,
         teacher: teacher.trim(),
-        classe: targetClass.trim(),
-        matiere: targetSubject.trim(),
+        classe: targetClass,
+        matiere: targetSubject,
         section: section,
         schoolYear: '2025-2026',
         totalSessionsPerYear: 120,
-        sessionsPerWeek: teacherRows.length || 4,
+        sessionsPerWeek: 4,
         weeksCount: 30,
         sessions: [],
         updatedAt: new Date().toISOString()
       };
     }
 
+    if (!Array.isArray(distDoc.sessions)) {
+      distDoc.sessions = [];
+    }
+
     let syncedCount = 0;
-    teacherRows.forEach((row, idx) => {
-      const lessonTitle = (row[leconK] || '').trim();
-      const classwork = (row[taskK] || '').trim();
-      const support = (row[supportK] || '').trim();
-      const homework = (row[devoirsK] || '').trim();
+    const weeksWithData = new Set();
+    const schoolDaysList = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
 
-      if (!lessonTitle && !classwork) return;
+    // Parcourir chaque semaine de la Semaine 1 jusqu'à la semaine actuelle
+    for (const planDoc of relevantPlans) {
+      const wNum = parseInt(planDoc.week, 10);
+      const ensK = findKey(planDoc.data[0] || {}, 'Enseignant') || 'Enseignant';
+      const clsK = findKey(planDoc.data[0] || {}, 'Classe') || 'Classe';
+      const matK = findKey(planDoc.data[0] || {}, 'Matière') || 'Matière';
+      const leconK = findKey(planDoc.data[0] || {}, 'Leçon') || 'Leçon';
+      const taskK = findKey(planDoc.data[0] || {}, 'Travaux de classe') || 'Travaux de classe';
+      const supportK = findKey(planDoc.data[0] || {}, 'Support') || 'Support';
+      const devoirsK = findKey(planDoc.data[0] || {}, 'Devoirs') || 'Devoirs';
+      const jourK = findKey(planDoc.data[0] || {}, 'Jour') || 'Jour';
+      const periodeK = findKey(planDoc.data[0] || {}, 'Période') || 'Période';
 
-      let session = distDoc.sessions.find(s => parseInt(s.week, 10) === weekNum && s.period === (idx + 1));
-      if (!session) {
-        session = distDoc.sessions.find(s => parseInt(s.week, 10) === weekNum && !s.completed);
-      }
+      const teacherRows = planDoc.data.filter(row => {
+        const rowTeacher = (row[ensK] || '').trim();
+        const rowClass = (row[clsK] || '').trim();
+        const rowSubject = (row[matK] || '').trim();
 
-      if (session) {
-        if (!session.lessonTitle && lessonTitle) session.lessonTitle = lessonTitle;
-        if (!session.classwork && classwork) session.classwork = classwork;
-        if (!session.support && support) session.support = support;
-        if (!session.homework && homework) session.homework = homework;
-        session.completed = true;
-        session.completedInWeek = weekNum;
-        session.completedDate = new Date().toISOString();
-        syncedCount++;
-      } else {
-        const rowDay = (row[findKey(row, 'Jour')] || '').trim();
-        const rowPeriode = parseInt((row[findKey(row, 'Période')] || '').replace(/\D/g, ''), 10) || (idx + 1);
+        const teacherMatches = rowTeacher.toLowerCase() === teacher.trim().toLowerCase();
+        const classMatches = !classe || classe === 'all' || classe === 'Toutes' || rowClass.toLowerCase() === classe.trim().toLowerCase();
+        const subjectMatches = !matiere || matiere === 'all' || matiere === 'Toutes' || rowSubject.toLowerCase() === matiere.trim().toLowerCase();
+        return teacherMatches && classMatches && subjectMatches;
+      });
 
-        distDoc.sessions.push({
-          sessionNumber: distDoc.sessions.length + 1,
-          week: weekNum,
-          day: rowDay || (['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'][idx % 5]),
-          period: rowPeriode,
-          term: weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3'),
-          unit: '',
-          lessonTitle,
-          classwork,
-          support,
-          homework,
-          completed: true,
-          completedInWeek: weekNum,
-          completedDate: new Date().toISOString()
-        });
-        syncedCount++;
-      }
+      if (teacherRows.length === 0) continue;
+      weeksWithData.add(wNum);
+
+      teacherRows.forEach((row, rIdx) => {
+        const lessonTitle = (row[leconK] || '').trim();
+        const classwork = (row[taskK] || '').trim();
+        const support = (row[supportK] || '').trim();
+        const homework = (row[devoirsK] || '').trim();
+        const rowDay = (row[jourK] || '').trim() || schoolDaysList[rIdx % 5];
+        const rowPeriod = parseInt(String(row[periodeK] || '').replace(/\D/g, ''), 10) || (rIdx + 1);
+
+        if (!lessonTitle && !classwork && !support && !homework) return;
+
+        let existingSession = distDoc.sessions.find(s => 
+          parseInt(s.week, 10) === wNum && 
+          String(s.day || '').trim().toLowerCase() === rowDay.toLowerCase() &&
+          parseInt(s.period, 10) === rowPeriod
+        );
+
+        if (!existingSession) {
+          existingSession = distDoc.sessions.find(s => 
+            parseInt(s.week, 10) === wNum && 
+            (parseInt(s.period, 10) === (rIdx + 1) || !s.completed)
+          );
+        }
+
+        if (existingSession) {
+          existingSession.day = rowDay;
+          existingSession.period = rowPeriod;
+          existingSession.lessonTitle = lessonTitle || existingSession.lessonTitle;
+          existingSession.classwork = classwork || existingSession.classwork;
+          existingSession.support = support || existingSession.support;
+          existingSession.homework = homework || existingSession.homework;
+          existingSession.completed = true;
+          existingSession.completedInWeek = wNum;
+          existingSession.completedDate = planDoc.updatedAt || new Date().toISOString();
+          syncedCount++;
+        } else {
+          const termNum = wNum <= 10 ? 'Trimestre 1' : (wNum <= 20 ? 'Trimestre 2' : 'Trimestre 3');
+          distDoc.sessions.push({
+            sessionNumber: distDoc.sessions.length + 1,
+            week: wNum,
+            day: rowDay,
+            period: rowPeriod,
+            term: termNum,
+            unit: '',
+            lessonTitle,
+            classwork,
+            support,
+            homework,
+            completed: true,
+            completedInWeek: wNum,
+            completedDate: planDoc.updatedAt || new Date().toISOString()
+          });
+          syncedCount++;
+        }
+      });
+    }
+
+    // Réorganiser et numéroter les séances par Semaine puis par Jour
+    const dayOrder = { 'dimanche': 1, 'lundi': 2, 'mardi': 3, 'mercredi': 4, 'jeudi': 5, 'vendredi': 6, 'samedi': 7 };
+    distDoc.sessions.sort((a, b) => {
+      const wA = parseInt(a.week, 10) || 0;
+      const wB = parseInt(b.week, 10) || 0;
+      if (wA !== wB) return wA - wB;
+      const dA = dayOrder[String(a.day || '').trim().toLowerCase()] || 99;
+      const dB = dayOrder[String(b.day || '').trim().toLowerCase()] || 99;
+      if (dA !== dB) return dA - dB;
+      return (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0);
+    });
+
+    distDoc.sessions.forEach((s, i) => {
+      s.sessionNumber = i + 1;
     });
 
     distDoc.updatedAt = new Date().toISOString();
@@ -5988,11 +6054,18 @@ app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
       { upsert: true }
     );
 
+    const weeksArray = Array.from(weeksWithData).sort((a, b) => a - b);
+    const weeksLabel = weeksArray.length > 0 
+      ? `de la Semaine ${weeksArray[0]} à la Semaine ${weeksArray[weeksArray.length - 1]}`
+      : `jusqu'à la Semaine ${endWeek}`;
+
     res.status(200).json({
       success: true,
       syncedCount,
+      weeksScannedCount: weeksArray.length,
+      weeksLabel,
       distribution: distDoc,
-      message: `${syncedCount} séance(s) synchronisée(s) vers la distribution annuelle.`
+      message: `${syncedCount} séance(s) synchronisée(s) avec succès ${weeksLabel} ! Vous pouvez maintenant continuer la saisie pour les semaines suivantes, supprimer ou modifier.`
     });
   } catch (error) {
     console.error('Erreur sync-from-weekly-plan:', error);

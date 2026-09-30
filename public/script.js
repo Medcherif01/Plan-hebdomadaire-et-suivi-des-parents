@@ -14976,29 +14976,47 @@ async function autoFillWeeklyPlanFromAnnualDistribution(targetWeek = null) {
 }
 
 async function syncWeeklyPlanToAnnualDistribution(targetWeek = null) {
-    const weekNum = targetWeek || currentWeek;
-    if (!weekNum) {
-        alert('Veuillez d\'abord sélectionner une semaine dans le plan hebdomadaire.');
-        return;
+    const modal = document.getElementById('annualDistributionModal');
+    const isModalOpen = modal && modal.style.display !== 'none';
+
+    let teacher = '';
+    let classe = '';
+    let matiere = '';
+
+    if (isModalOpen) {
+        const tSel = document.getElementById('annualDistTeacherSelect');
+        const cSel = document.getElementById('annualDistClassSelect');
+        const mSel = document.getElementById('annualDistSubjectSelect');
+        teacher = tSel ? tSel.value.trim() : '';
+        classe = cSel ? cSel.value.trim() : '';
+        matiere = mSel ? mSel.value.trim() : '';
     }
-
-    const ensFilter = document.getElementById('filterEnseignant');
-    const clsFilter = document.getElementById('filterClasse');
-    const matFilter = document.getElementById('filterMatiere');
-
-    const teacher = (ensFilter && ensFilter.value) ? ensFilter.value : loggedInUser;
-    const classe = (clsFilter && clsFilter.value) ? clsFilter.value : '';
-    const matiere = (matFilter && matFilter.value) ? matFilter.value : '';
 
     if (!teacher) {
-        alert('Veuillez sélectionner un enseignant pour synchroniser sa distribution.');
+        const ensFilter = document.getElementById('filterEnseignant');
+        teacher = (ensFilter && ensFilter.value) ? ensFilter.value.trim() : (loggedInUser || '');
+    }
+    if (!classe) {
+        const clsFilter = document.getElementById('filterClasse');
+        classe = (clsFilter && clsFilter.value) ? clsFilter.value.trim() : '';
+    }
+    if (!matiere) {
+        const matFilter = document.getElementById('filterMatiere');
+        matiere = (matFilter && matFilter.value) ? matFilter.value.trim() : '';
+    }
+
+    if (!teacher) {
+        alert("Veuillez sélectionner un enseignant pour synchroniser sa distribution.");
         return;
     }
 
-    const confirmMsg = `Confirmez-vous la mise à jour de la distribution annuelle de "${teacher}" en validant les cours réalisés de la Semaine ${weekNum} ?`;
+    const weekNum = targetWeek || currentWeek || 38;
+    const confirmMsg = `Synchronisation depuis le Plan Hebdomadaire :\n\nVoulez-vous importer toutes les séances saisies et enregistrées de la Semaine 1 jusqu'à la Semaine ${weekNum} (actuelle) pour l'enseignant "${teacher}" ?\n\nCette action récupère tout l'historique enregistré jusqu'au présent. Vous pourrez ensuite continuer la saisie des semaines suivantes, modifier ou supprimer des séances selon vos besoins.`;
+    
     if (!confirm(confirmMsg)) return;
 
     try {
+        showToastNotification(`Synchronisation en cours depuis la Semaine 1 jusqu'à la Semaine ${weekNum}...`, 'info');
         const res = await fetch('/api/annual-distribution/sync-from-weekly-plan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -15007,6 +15025,8 @@ async function syncWeeklyPlanToAnnualDistribution(targetWeek = null) {
                 classe,
                 matiere,
                 section: currentSection,
+                fromWeek: 1,
+                upToWeek: weekNum,
                 week: weekNum
             })
         });
@@ -15019,8 +15039,12 @@ async function syncWeeklyPlanToAnnualDistribution(targetWeek = null) {
         const data = await res.json();
         showToastNotification(`Synchronisation réussie : ${data.message}`, 'success');
 
-        if (document.getElementById('annualDistributionModal')?.style.display !== 'none') {
-            await handleAnnualDistFilterChange();
+        if (data.distribution) {
+            currentAnnualDistribution = data.distribution;
+            if (isModalOpen) {
+                renderAnnualDistributionTable(data.distribution.sessions);
+                recalculateAnnualStats(data.distribution.sessions);
+            }
         }
     } catch (e) {
         console.error('Erreur synchronisation vers distribution:', e);
@@ -15274,15 +15298,31 @@ function printAnnualDistributionLandscape() {
     const previewModal = document.getElementById('annualPrintPreviewModal');
     if (previewModal) previewModal.style.display = 'flex';
 
-    // 3. Déclencher l'impression avec @page { size: A4 landscape; }
+    // 3. Activer le mode d'impression A4 paysage
+    document.body.classList.add('printing-annual-landscape');
+
+    // 4. Déclencher l'impression avec @page { size: A4 landscape; }
     setTimeout(() => {
         window.print();
+        setTimeout(() => {
+            document.body.classList.remove('printing-annual-landscape');
+        }, 1500);
     }, 250);
 }
 
 function triggerDirectPrintLandscape() {
-    window.print();
+    document.body.classList.add('printing-annual-landscape');
+    setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+            document.body.classList.remove('printing-annual-landscape');
+        }, 1500);
+    }, 150);
 }
+
+window.addEventListener('afterprint', () => {
+    document.body.classList.remove('printing-annual-landscape');
+});
 
 function downloadAnnualPrintHTML() {
     const fullHTML = buildAnnualDistributionLandscapeHTML();

@@ -1735,8 +1735,8 @@
                 <button id="btnAutoFillFromAnnualDist" onclick="autoFillWeeklyPlanFromAnnualDistribution()" class="action-button pro-button" style="background: linear-gradient(135deg, #0284C7, #0369A1); color: white;" title="Remplir automatiquement le plan hebdomadaire depuis la distribution annuelle">
                     <i class="fas fa-bolt"></i> <span class="btn-text">⚡ Remplir auto via Distribution</span>
                 </button>
-                <button id="btnSyncToAnnualDist" onclick="syncWeeklyPlanToAnnualDistribution()" class="action-button pro-button" style="background: linear-gradient(135deg, #059669, #047857); color: white;" title="Mettre à jour la distribution annuelle depuis le plan hebdomadaire">
-                    <i class="fas fa-sync-alt"></i> <span class="btn-text">🔁 Sync vers Distribution</span>
+                <button id="btnSyncToAnnualDist" onclick="syncWeeklyPlanToAnnualDistribution()" class="action-button pro-button" style="background: linear-gradient(135deg, #059669, #047857); color: white;" title="Prendre tout ce qui est saisi et enregistré de la Semaine 1 jusqu'au présent et le synchroniser dans la distribution annuelle">
+                    <i class="fas fa-sync-alt"></i> <span class="btn-text">🔁 Sync depuis Plan Hebdo (Sem 1 ➔ Actuelle)</span>
                 </button>
                 <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans()" class="action-button pro-button" disabled style="background: #7C3AED;" title="Générer les plans de leçon de toutes les séances affichées">
                     <i class="fas fa-file-word"></i> <span class="btn-text">Générer Plans de Leçon (Affichés)</span>
@@ -3002,8 +3002,8 @@
                         <button type="button" class="btn-annual btn-annual-purple" onclick="triggerAutoFillWeeklyFromModal()" title="Remplir automatiquement les cases du plan hebdomadaire de la semaine sélectionnée à partir de cette distribution">
                             <i class="fas fa-bolt"></i> <span>⚡ Remplir le Plan Hebdo</span>
                         </button>
-                        <button type="button" class="btn-annual btn-annual-secondary" onclick="triggerSyncFromWeeklyFromModal()" title="Mettre à jour cette distribution annuelle en validant les séances réalisées dans le plan hebdomadaire">
-                            <i class="fas fa-sync-alt" style="color:#059669;"></i> <span>🔁 Sync depuis Plan Hebdo</span>
+                        <button type="button" class="btn-annual btn-annual-secondary" onclick="triggerSyncFromWeeklyFromModal()" title="Importer tout ce qui est saisi et enregistré de la Semaine 1 jusqu'au présent dans la distribution annuelle, puis continuer ou modifier">
+                            <i class="fas fa-sync-alt" style="color:#059669;"></i> <span>🔁 Sync depuis Plan Hebdo (Sem 1 ➔ Présent)</span>
                         </button>
                         <button type="button" class="btn-annual btn-annual-success" onclick="saveAnnualDistributionToServer()" title="Enregistrer toutes les modifications dans la base de données">
                             <i class="fas fa-save"></i> <span>Enregistrer la distribution</span>
