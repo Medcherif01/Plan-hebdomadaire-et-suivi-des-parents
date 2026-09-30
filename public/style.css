@@ -423,22 +423,52 @@ body::before {
     vertical-align: top;
 }
 
-/* Colonnes fixes - largeur réduite avec maximum */
-#planTable th:not(.editable),
-#planTable td:not(.editable) {
-    white-space: nowrap;
-    width: 1%;
-    max-width: 80px; /* Réduit de 100px à 80px */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 0.9rem; /* Texte légèrement plus petit */
+/* Colonnes d'en-tête et métadonnées */
+#planTable th {
+    box-sizing: border-box;
 }
 
-/* Colonnes éditables - largeur flexible MAXIMALE */
+/* Colonnes fixes métadonnées (Enseignant, Classe, Matière, Période, Jour) : ultra-étroites, largeur calée sur l'en-tête */
+#planTable th.col-meta-compact,
+#planTable td.col-meta-compact {
+    white-space: nowrap !important;
+    width: 1% !important;
+    width: -moz-min-content !important;
+    width: min-content !important;
+    max-width: none !important;
+    padding: 6px 5px !important;
+    font-size: 0.82rem !important;
+    text-align: center !important;
+    letter-spacing: normal !important;
+}
+
+#planTable th.col-meta-compact span {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+}
+
+#planTable td.col-meta-compact {
+    max-width: 110px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-weight: 600;
+    color: #334155;
+}
+
+/* Colonnes de saisie éditables (Leçon, Travaux de classe, Support, Devoirs) - largeur flexible MAXIMALE */
+#planTable th.col-editable-header,
+#planTable td.col-editable-content,
 #planTable td.editable {
-    width: auto;
-    min-width: 250px; /* Augmenté de 200px à 250px */
-    max-width: none;
+    width: auto !important;
+    min-width: 230px !important;
+    max-width: none !important;
+    padding: 10px 14px !important;
+    font-size: 0.92rem !important;
+    line-height: 1.55 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
 }
 
 #planTable thead {
@@ -3564,3 +3594,430 @@ tr.row-plan-error {
     width: 1% !important;
     white-space: nowrap !important;
 }
+
+/* ==========================================================================
+   DISTRIBUTION ANNUELLE (RÉPARTITION ANNUELLE)
+   ========================================================================== */
+.annual-dist-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(4px);
+    z-index: 99999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.annual-dist-content {
+    background: #FFFFFF;
+    width: 98vw;
+    max-width: 1400px;
+    height: 94vh;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    animation: modalScaleIn 0.25s ease-out;
+}
+
+@keyframes modalScaleIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.annual-dist-header {
+    background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+    color: #FFFFFF;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+}
+
+.annual-dist-title-box h3 {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.annual-dist-title-box p {
+    margin: 4px 0 0 0;
+    font-size: 0.85rem;
+    color: #E0F2FE;
+}
+
+.annual-dist-close-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: #FFFFFF;
+    font-size: 1.2rem;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.annual-dist-close-btn:hover {
+    background: rgba(255, 255, 255, 0.35);
+    transform: rotate(90deg);
+}
+
+.annual-dist-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    background: #F8FAFC;
+}
+
+/* Barre de filtres et sélection */
+.annual-dist-controls-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 14px 18px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.annual-control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 140px;
+}
+
+.annual-control-group label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.annual-control-group select,
+.annual-control-group input {
+    padding: 8px 12px;
+    font-size: 0.88rem;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #1E293B;
+    font-weight: 600;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.annual-control-group select:focus,
+.annual-control-group input:focus {
+    border-color: #0284C7;
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+/* Carte de statistiques et de progression */
+.annual-stats-banner {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.annual-stat-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.annual-stat-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+}
+
+.annual-stat-info .stat-val {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #0F172A;
+    line-height: 1.2;
+}
+
+.annual-stat-info .stat-lbl {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #64748B;
+}
+
+.annual-progress-container {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    padding: 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.annual-progress-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #334155;
+}
+
+.annual-progress-bar-bg {
+    width: 100%;
+    height: 12px;
+    background: #E2E8F0;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.annual-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0284C7 0%, #10B981 100%);
+    border-radius: 999px;
+    transition: width 0.4s ease;
+    width: 0%;
+}
+
+/* Actions rapides */
+.annual-actions-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+}
+
+.annual-actions-left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.annual-actions-right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-annual {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px;
+    font-size: 0.86rem;
+    font-weight: 700;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.btn-annual-primary {
+    background: #0284C7;
+    color: #FFFFFF;
+}
+.btn-annual-primary:hover {
+    background: #0369A1;
+}
+
+.btn-annual-success {
+    background: #059669;
+    color: #FFFFFF;
+}
+.btn-annual-success:hover {
+    background: #047857;
+}
+
+.btn-annual-purple {
+    background: #7C3AED;
+    color: #FFFFFF;
+}
+.btn-annual-purple:hover {
+    background: #6D28D9;
+}
+
+.btn-annual-secondary {
+    background: #FFFFFF;
+    color: #334155;
+    border: 1.5px solid #CBD5E1;
+}
+.btn-annual-secondary:hover {
+    background: #F1F5F9;
+    border-color: #94A3B8;
+}
+
+/* Grille de distribution */
+.annual-table-wrapper {
+    background: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 12px;
+    overflow: auto;
+    max-height: 480px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.annual-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    min-width: 1000px;
+}
+
+.annual-table thead th {
+    position: sticky;
+    top: 0;
+    background: #0F172A;
+    color: #FFFFFF;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 10;
+    border-bottom: 2px solid #334155;
+}
+
+.annual-table tbody td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #E2E8F0;
+    border-right: 1px solid #F1F5F9;
+    vertical-align: top;
+}
+
+.annual-table tbody tr:hover {
+    background: #F0FDF4;
+}
+
+.annual-table tbody tr.session-completed {
+    background: #F0FDF4;
+}
+
+.annual-table td.col-editable-annual {
+    background: #FFFFFF;
+    cursor: text;
+    transition: background 0.15s;
+    outline: none;
+    line-height: 1.45;
+}
+
+.annual-table td.col-editable-annual:focus {
+    background: #FEF3C7;
+    box-shadow: inset 0 0 0 2px #F59E0B;
+}
+
+.annual-table td.col-narrow-annual {
+    white-space: nowrap;
+    text-align: center;
+    width: 1%;
+    font-weight: 700;
+    color: #475569;
+}
+
+.annual-badge-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s;
+}
+
+.annual-badge-status.planned {
+    background: #E0F2FE;
+    color: #0369A1;
+    border: 1px solid #BAE6FD;
+}
+
+.annual-badge-status.completed {
+    background: #DCFCE7;
+    color: #15803D;
+    border: 1px solid #BBF7D0;
+}
+
+.annual-badge-status:hover {
+    transform: scale(1.05);
+}
+
+.btn-del-row-annual {
+    background: transparent;
+    border: none;
+    color: #94A3B8;
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.btn-del-row-annual:hover {
+    color: #EF4444;
+    background: #FEE2E2;
+}
+
+/* Toast animations */
+.annual-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #0F172A;
+    color: #FFFFFF;
+    padding: 12px 20px;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
+    font-weight: 700;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 100000;
+    animation: toastSlideUp 0.3s ease-out;
+}
+
+@keyframes toastSlideUp {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+

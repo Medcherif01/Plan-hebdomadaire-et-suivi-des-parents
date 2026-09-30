@@ -3247,10 +3247,15 @@ function handleCellTablePaste(e, targetTd) {
 
     // 2. Si pas de grille HTML multi-colonnes, analyser le texte brut avec séparateurs tabulations (\t) et retours ligne
     if (!grid || grid.length === 0 || (grid.length === 1 && grid[0].length === 1)) {
-        if (plainText.includes('\t') || plainText.includes('\n') || plainText.includes('\r')) {
+        if (plainText.includes('\t') || plainText.includes('\n') || plainText.includes('\r') || plainText.includes(';') || plainText.includes('|')) {
             const lines = plainText.split(/\r?\n/).filter(line => line.trim().length > 0);
             grid = lines.map(line => {
-                return line.split('\t').map(cell => {
+                let sep = '\t';
+                if (!line.includes('\t')) {
+                    if (line.includes(';') && line.split(';').length >= 2) sep = ';';
+                    else if (line.includes('|') && line.split('|').length >= 2) sep = '|';
+                }
+                return line.split(sep).map(cell => {
                     let c = cell.trim();
                     if (c.startsWith('"') && c.endsWith('"') && c.length >= 2) {
                         c = c.slice(1, -1).replace(/""/g, '"').trim();
@@ -3279,8 +3284,12 @@ function handleCellTablePaste(e, targetTd) {
     if (startRowIdx === -1) return false;
 
     const startRowEditables = Array.from(startTr.querySelectorAll('td.editable'));
-    const startColIdx = startRowEditables.indexOf(targetTd);
-    if (startColIdx === -1) return false;
+    let startColIdx = startRowEditables.indexOf(targetTd);
+    if (startColIdx === -1) {
+        // Si l'utilisateur clique sur n'importe quel endroit de la ligne ou sur Jour/Classe/Matière,
+        // commencer automatiquement le collage à partir de la première cellule éditable (Leçon)
+        startColIdx = 0;
+    }
 
     let modifiedRowsCount = 0;
     let cellsFilledCount = 0;
@@ -3335,6 +3344,11 @@ function handleCellTablePaste(e, targetTd) {
 
     if (modifiedRowsCount > 0) {
         updateTeacherCounters();
+        if (typeof updateActionButtonsState === 'function') {
+            updateActionButtonsState(true);
+        }
+        const saveAllBtn = document.getElementById('saveAllDisplayedBtn');
+        if (saveAllBtn) saveAllBtn.disabled = false;
         const msg = (currentUserLanguage === 'en')
             ? `Pasted into ${cellsFilledCount} cell(s) across ${modifiedRowsCount} row(s). Press Save to keep changes.`
             : ((currentUserLanguage === 'ar')
@@ -4777,6 +4791,12 @@ function displayPlanTable(data) {
             const mainTitle = document.getElementById('main-title'); if(mainTitle) mainTitle.textContent = t('main_page_title'); const logoutBtnText = document.querySelector('#logout-button .btn-text'); if(logoutBtnText) logoutBtnText.textContent = t('logout_button'); const toggleBtn = document.getElementById('toggleIncompleteBtn'); if (toggleBtn) { const btnTextSpan = toggleBtn.querySelector('.btn-text'); const listDiv=document.getElementById('incompleteTeachersDisplay'); if (btnTextSpan) { btnTextSpan.textContent = (listDiv && listDiv.style.display !== 'none') ? t('hide_incomplete') : t('display_incomplete'); } } const incompleteH4 = document.querySelector('#incompleteTeachersDisplay h4'); if(incompleteH4) incompleteH4.textContent = t('incomplete_teachers_title'); const incompleteLi = document.querySelector('#incompleteList li'); if(incompleteLi && incompleteLi.textContent.match(/(Chargement|Loading|جاري التحميل)/)) incompleteLi.textContent = t('loading'); const weekLabel = document.querySelector('label[for="weekSelector"]'); if(weekLabel) weekLabel.innerHTML = `<i class="fas fa-calendar-week"></i> ${t('week_label')}`; const adminTitle = document.getElementById('admin-title'); if(adminTitle) adminTitle.textContent = t('admin_actions_title'); const adminExcelLabel = document.getElementById('admin-excel-label'); if(adminExcelLabel) adminExcelLabel.innerHTML = `<i class="fas fa-file-excel"></i> ${t('admin_excel_label')}`; const saveUploadedDataBtnText = document.querySelector('#saveUploadedDataBtn .btn-text'); if(saveUploadedDataBtnText) saveUploadedDataBtnText.textContent = t('admin_save_button'); const genWordBtnText = document.querySelector('#generateWordBtn .btn-text'); if(genWordBtnText) genWordBtnText.textContent = t('generate_word_button');
             const btnDesignPlan = document.querySelector('#btnOpenDesignPlanModal .btn-text');
             if (btnDesignPlan) btnDesignPlan.textContent = (currentUserLanguage === 'en') ? '📄 Weekly Plan (Design & PDF)' : ((currentUserLanguage === 'ar') ? '📄 الخطة الأسبوعية (تصميم و PDF)' : '📄 Plan Hebdomadaire (Design & PDF)');
+            const btnAnnualDist = document.querySelector('#btnOpenAnnualDistribution .btn-text');
+            if (btnAnnualDist) btnAnnualDist.textContent = (currentUserLanguage === 'en') ? '📅 Annual Distribution' : ((currentUserLanguage === 'ar') ? '📅 التوزيع السنوي' : '📅 Distribution Annuelle');
+            const btnAutoFillDist = document.querySelector('#btnAutoFillFromAnnualDist .btn-text');
+            if (btnAutoFillDist) btnAutoFillDist.textContent = (currentUserLanguage === 'en') ? '⚡ Auto-fill from Distribution' : ((currentUserLanguage === 'ar') ? '⚡ ملء تلقائي من التوزيع السنوي' : '⚡ Remplir auto via Distribution');
+            const btnSyncDist = document.querySelector('#btnSyncToAnnualDist .btn-text');
+            if (btnSyncDist) btnSyncDist.textContent = (currentUserLanguage === 'en') ? '🔁 Sync to Distribution' : ((currentUserLanguage === 'ar') ? '🔁 مزامنة نحو التوزيع السنوي' : '🔁 Sync vers Distribution');
             const btnFullWord = document.querySelector('#generateFullClassWordBtn .btn-text');
             if (btnFullWord) btnFullWord.textContent = (currentUserLanguage === 'en') ? '📄 Download Full Class Weekly Plan (All Subjects & Teachers)' : ((currentUserLanguage === 'ar') ? '📄 تحميل الخطة الأسبوعية الكاملة للفصل (جميع المواد والمعلمين)' : '📄 Télécharger le Plan Hebdo Complet par Classe (Toutes les matières & Tous les enseignants)');
             const btnBulkZip = document.querySelector('#openTeachersBulkDownloadBtn .btn-text');
@@ -14157,3 +14177,867 @@ async function saveAndReorganizeSchedule() {
         }
     }
 }
+
+
+// ============================================================================
+// MODULE DISTRIBUTION ANNUELLE (RÉPARTITION ANNUELLE DES ENSEIGNANTS)
+// Liaison étroite avec les plans hebdomadaires (Import Excel, Saisie, Sync 2-sens)
+// ============================================================================
+let currentAnnualDistribution = null;
+
+async function openAnnualDistributionModal() {
+    const modal = document.getElementById('annualDistributionModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    // 1. Peupler les sélecteurs Enseignant, Classe, Matière
+    populateAnnualDistSelectors();
+
+    // 2. Charger les données pour l'enseignant et filtres sélectionnés
+    await handleAnnualDistFilterChange();
+}
+
+function closeAnnualDistributionModal() {
+    const modal = document.getElementById('annualDistributionModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function populateAnnualDistSelectors() {
+    const teacherSel = document.getElementById('annualDistTeacherSelect');
+    const classSel = document.getElementById('annualDistClassSelect');
+    const subjectSel = document.getElementById('annualDistSubjectSelect');
+    if (!teacherSel || !classSel || !subjectSel) return;
+
+    const curT = teacherSel.value;
+    const curC = classSel.value;
+    const curS = subjectSel.value;
+
+    // Récupérer la liste des enseignants
+    let teachers = [];
+    const ensFilter = document.getElementById('filterEnseignant');
+    if (ensFilter) {
+        teachers = Array.from(ensFilter.querySelectorAll('option'))
+            .map(opt => opt.value)
+            .filter(v => v && v.trim() !== '');
+    }
+    if (teachers.length === 0 && planData) {
+        const ensK = findHKey('Enseignant');
+        if (ensK) {
+            const set = new Set();
+            planData.forEach(r => { if (r[ensK]) set.add(r[ensK]); });
+            teachers = Array.from(set).sort();
+        }
+    }
+
+    teacherSel.innerHTML = '<option value="">-- Choisir un enseignant --</option>';
+    teachers.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        teacherSel.appendChild(opt);
+    });
+
+    const isTeacher = !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
+    if (loggedInUser && (isTeacher || teachers.includes(loggedInUser))) {
+        teacherSel.value = loggedInUser;
+    } else if (curT && teachers.includes(curT)) {
+        teacherSel.value = curT;
+    } else if (teachers.length > 0) {
+        teacherSel.value = teachers[0];
+    }
+
+    // Récupérer les classes
+    let classes = [];
+    const clsFilter = document.getElementById('filterClasse');
+    if (clsFilter) {
+        classes = Array.from(clsFilter.querySelectorAll('option'))
+            .map(opt => opt.value)
+            .filter(v => v && v.trim() !== '');
+    }
+    if (classes.length === 0 && planData) {
+        const clsK = findHKey('Classe');
+        if (clsK) {
+            const set = new Set();
+            planData.forEach(r => { if (r[clsK]) set.add(r[clsK]); });
+            classes = Array.from(set).sort();
+        }
+    }
+
+    classSel.innerHTML = '<option value="">Toutes</option>';
+    classes.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        classSel.appendChild(opt);
+    });
+    if (curC && classes.includes(curC)) classSel.value = curC;
+
+    // Récupérer les matières
+    let subjects = [];
+    const matFilter = document.getElementById('filterMatiere');
+    if (matFilter) {
+        subjects = Array.from(matFilter.querySelectorAll('option'))
+            .map(opt => opt.value)
+            .filter(v => v && v.trim() !== '');
+    }
+    if (subjects.length === 0 && planData) {
+        const matK = findHKey('Matière');
+        if (matK) {
+            const set = new Set();
+            planData.forEach(r => { if (r[matK]) set.add(r[matK]); });
+            subjects = Array.from(set).sort();
+        }
+    }
+
+    subjectSel.innerHTML = '<option value="">Toutes</option>';
+    subjects.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        subjectSel.appendChild(opt);
+    });
+    if (curS && subjects.includes(curS)) subjectSel.value = curS;
+}
+
+async function handleAnnualDistFilterChange() {
+    const teacherSel = document.getElementById('annualDistTeacherSelect');
+    const classSel = document.getElementById('annualDistClassSelect');
+    const subjectSel = document.getElementById('annualDistSubjectSelect');
+    const yearSel = document.getElementById('annualDistYearSelect');
+
+    const teacher = teacherSel ? teacherSel.value.trim() : '';
+    const classe = classSel ? classSel.value.trim() : '';
+    const matiere = subjectSel ? subjectSel.value.trim() : '';
+    const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
+
+    const tbody = document.getElementById('annualDistTableBody');
+    if (!teacher) {
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:35px 20px; color:#64748B;">
+                <i class="fas fa-calendar-alt" style="font-size:2.2rem; color:#CBD5E1; margin-bottom:10px; display:block;"></i>
+                Veuillez sélectionner un enseignant pour afficher sa distribution annuelle.
+            </td></tr>`;
+        }
+        recalculateAnnualStats([]);
+        return;
+    }
+
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:35px 20px; color:#0284C7;">
+            <i class="fas fa-spinner fa-spin" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
+            Chargement de la distribution annuelle...
+        </td></tr>`;
+    }
+
+    try {
+        let url = `/api/annual-distribution?teacher=${encodeURIComponent(teacher)}&section=${encodeURIComponent(currentSection)}&schoolYear=${encodeURIComponent(schoolYear)}`;
+        if (classe) url += `&classe=${encodeURIComponent(classe)}`;
+        if (matiere) url += `&matiere=${encodeURIComponent(matiere)}`;
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Erreur HTTP ' + res.status);
+        const data = await res.json();
+
+        let dist = null;
+        if (Array.isArray(data)) {
+            dist = data.length > 0 ? data[0] : null;
+        } else {
+            dist = data;
+        }
+
+        if (dist && dist.sessions && dist.sessions.length > 0) {
+            currentAnnualDistribution = dist;
+            if (dist.totalSessionsPerYear) {
+                const totalInput = document.getElementById('annualDistTotalSessionsInput');
+                if (totalInput) totalInput.value = dist.totalSessionsPerYear;
+            }
+            if (dist.sessionsPerWeek) {
+                const perWeekInput = document.getElementById('annualDistPerWeekInput');
+                if (perWeekInput) perWeekInput.value = dist.sessionsPerWeek;
+            }
+            renderAnnualDistributionTable(dist.sessions);
+        } else {
+            currentAnnualDistribution = {
+                teacher,
+                classe: classe || 'Toutes',
+                matiere: matiere || 'Toutes',
+                section: currentSection,
+                schoolYear,
+                totalSessionsPerYear: 120,
+                sessionsPerWeek: 4,
+                weeksCount: 30,
+                sessions: []
+            };
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:35px 20px; color:#64748B;">
+                    <i class="fas fa-folder-open" style="font-size:2.2rem; color:#CBD5E1; margin-bottom:10px; display:block;"></i>
+                    Aucune distribution enregistrée pour ce choix.<br>
+                    <div style="margin-top:12px; display:flex; justify-content:center; gap:10px;">
+                        <button type="button" class="btn-annual btn-annual-primary" onclick="generateAnnualDistributionCanvas()">
+                            <i class="fas fa-magic"></i> Générer le canevas annuel (30 semaines)
+                        </button>
+                        <button type="button" class="btn-annual btn-annual-secondary" onclick="document.getElementById('annualDistExcelFileInput').click()">
+                            <i class="fas fa-file-excel"></i> Importer depuis Excel
+                        </button>
+                    </div>
+                </td></tr>`;
+            }
+            recalculateAnnualStats([]);
+        }
+    } catch (e) {
+        console.error('Erreur chargement distribution:', e);
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:35px 20px; color:#EF4444;">
+                <i class="fas fa-exclamation-triangle" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
+                Erreur lors du chargement de la distribution : ${escapeHtml(e.message)}
+            </td></tr>`;
+        }
+    }
+}
+
+function renderAnnualDistributionTable(sessions) {
+    const tbody = document.getElementById('annualDistTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!sessions || sessions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:30px; color:#64748B;">
+            Aucune séance dans cette distribution. Cliquez sur "Ajouter une séance" ou "Générer canevas".
+        </td></tr>`;
+        recalculateAnnualStats([]);
+        return;
+    }
+
+    sessions.forEach((s, idx) => {
+        const tr = document.createElement('tr');
+        tr.dataset.index = idx;
+        if (s.completed) tr.classList.add('session-completed');
+
+        tr.innerHTML = `
+            <td class="col-narrow-annual" style="font-weight:800; color:#1E293B;">${s.sessionNumber || (idx + 1)}</td>
+            <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="week">${s.week || Math.floor(idx / 4) + 1}</td>
+            <td class="col-narrow-annual col-editable-annual" contenteditable="true" data-field="period">${s.period || (idx % 4) + 1}</td>
+            <td class="col-editable-annual" contenteditable="true" data-field="unit">${escapeHtml(s.unit || s.term || '')}</td>
+            <td class="col-editable-annual" contenteditable="true" data-field="lessonTitle" style="font-weight:600; color:#0F172A;">${escapeHtml(s.lessonTitle || '')}</td>
+            <td class="col-editable-annual" contenteditable="true" data-field="classwork">${escapeHtml(s.classwork || '')}</td>
+            <td class="col-editable-annual" contenteditable="true" data-field="support">${escapeHtml(s.support || '')}</td>
+            <td class="col-editable-annual" contenteditable="true" data-field="homework">${escapeHtml(s.homework || '')}</td>
+            <td style="text-align:center; white-space:nowrap;">
+                <span class="annual-badge-status ${s.completed ? 'completed' : 'planned'}" onclick="toggleAnnualSessionStatus(${idx})" title="Cliquer pour basculer le statut">
+                    <i class="fas ${s.completed ? 'fa-check' : 'fa-hourglass-half'}"></i>
+                    <span>${s.completed ? 'Réalisé' : 'Prévu'}</span>
+                </span>
+            </td>
+            <td style="text-align:center;">
+                <button type="button" class="btn-del-row-annual" onclick="deleteAnnualSessionRow(${idx})" title="Supprimer cette séance">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </td>
+        `;
+
+        tr.querySelectorAll('td.col-editable-annual').forEach(td => {
+            td.addEventListener('paste', (e) => {
+                handleAnnualTablePaste(e, td);
+            });
+            td.addEventListener('input', () => {
+                recalculateAnnualStats();
+            });
+        });
+
+        tbody.appendChild(tr);
+    });
+
+    recalculateAnnualStats(sessions);
+}
+
+function toggleAnnualSessionStatus(idx) {
+    if (!currentAnnualDistribution || !currentAnnualDistribution.sessions) return;
+    const session = currentAnnualDistribution.sessions[idx];
+    if (session) {
+        session.completed = !session.completed;
+        if (session.completed) {
+            session.completedDate = new Date().toISOString();
+        } else {
+            session.completedDate = null;
+            session.completedInWeek = null;
+        }
+        renderAnnualDistributionTable(currentAnnualDistribution.sessions);
+    }
+}
+
+function deleteAnnualSessionRow(idx) {
+    if (!currentAnnualDistribution || !currentAnnualDistribution.sessions) return;
+    if (confirm('Voulez-vous supprimer cette séance de la distribution annuelle ?')) {
+        currentAnnualDistribution.sessions.splice(idx, 1);
+        currentAnnualDistribution.sessions.forEach((s, i) => {
+            s.sessionNumber = i + 1;
+        });
+        renderAnnualDistributionTable(currentAnnualDistribution.sessions);
+    }
+}
+
+function addNewAnnualSessionRow(data = {}) {
+    if (!currentAnnualDistribution) {
+        currentAnnualDistribution = { sessions: [] };
+    }
+    if (!currentAnnualDistribution.sessions) currentAnnualDistribution.sessions = [];
+
+    const idx = currentAnnualDistribution.sessions.length;
+    const newSession = {
+        sessionNumber: idx + 1,
+        week: data.week || Math.floor(idx / 4) + 1,
+        period: data.period || (idx % 4) + 1,
+        term: data.term || (idx < 40 ? 'Trimestre 1' : (idx < 80 ? 'Trimestre 2' : 'Trimestre 3')),
+        unit: data.unit || '',
+        lessonTitle: data.lessonTitle || '',
+        classwork: data.classwork || '',
+        support: data.support || '',
+        homework: data.homework || '',
+        completed: Boolean(data.completed)
+    };
+
+    currentAnnualDistribution.sessions.push(newSession);
+    renderAnnualDistributionTable(currentAnnualDistribution.sessions);
+
+    const wrapper = document.getElementById('annualDistTableWrapper');
+    if (wrapper) wrapper.scrollTop = wrapper.scrollHeight;
+}
+
+function generateAnnualDistributionCanvas() {
+    const totalSessions = parseInt(document.getElementById('annualDistTotalSessionsInput')?.value, 10) || 120;
+    const perWeek = parseInt(document.getElementById('annualDistPerWeekInput')?.value, 10) || 4;
+    const weeksCount = Math.ceil(totalSessions / perWeek) || 30;
+
+    if (!confirm(`Voulez-vous générer un canevas de ${totalSessions} séances réparties sur ${weeksCount} semaines (${perWeek} séances/semaine) ?`)) {
+        return;
+    }
+
+    const sessions = [];
+    for (let i = 1; i <= totalSessions; i++) {
+        const weekNum = Math.floor((i - 1) / perWeek) + 1;
+        const periodNum = ((i - 1) % perWeek) + 1;
+        const termNum = weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3');
+
+        sessions.push({
+            sessionNumber: i,
+            week: weekNum,
+            period: periodNum,
+            term: termNum,
+            unit: `Unité ${Math.floor((weekNum - 1) / 3) + 1}`,
+            lessonTitle: '',
+            classwork: '',
+            support: '',
+            homework: '',
+            completed: false
+        });
+    }
+
+    if (!currentAnnualDistribution) currentAnnualDistribution = {};
+    currentAnnualDistribution.sessions = sessions;
+    currentAnnualDistribution.totalSessionsPerYear = totalSessions;
+    currentAnnualDistribution.sessionsPerWeek = perWeek;
+    currentAnnualDistribution.weeksCount = weeksCount;
+
+    renderAnnualDistributionTable(sessions);
+    showToastNotification(`Canevas de ${totalSessions} séances généré avec succès ! Vous pouvez maintenant saisir ou coller vos cours.`, 'success');
+}
+
+function recalculateAnnualStats(sessionsList) {
+    const sessions = sessionsList || (currentAnnualDistribution ? currentAnnualDistribution.sessions : []);
+    const totalPlanned = sessions ? sessions.length : 0;
+    const totalCompleted = sessions ? sessions.filter(s => s.completed || (s.lessonTitle && s.completedInWeek)).length : 0;
+    const remaining = Math.max(0, totalPlanned - totalCompleted);
+    const rate = totalPlanned > 0 ? Math.round((totalCompleted / totalPlanned) * 100) : 0;
+
+    const elPlanned = document.getElementById('annualStatTotalPlanned');
+    const elCompleted = document.getElementById('annualStatTotalCompleted');
+    const elRemaining = document.getElementById('annualStatRemaining');
+    const elRate = document.getElementById('annualStatRate');
+    const elBar = document.getElementById('annualProgressBarFill');
+    const elPercentTxt = document.getElementById('annualProgressPercentTxt');
+
+    if (elPlanned) elPlanned.textContent = totalPlanned;
+    if (elCompleted) elCompleted.textContent = totalCompleted;
+    if (elRemaining) elRemaining.textContent = remaining;
+    if (elRate) elRate.textContent = rate + '%';
+    if (elBar) elBar.style.width = rate + '%';
+    if (elPercentTxt) elPercentTxt.textContent = `${rate}% complété (${totalCompleted}/${totalPlanned} séances)`;
+}
+
+function handleAnnualTablePaste(e, targetTd) {
+    const clipboardData = e.clipboardData || window.clipboardData;
+    if (!clipboardData) return;
+
+    const plainText = clipboardData.getData('text/plain') || '';
+    if (!plainText.includes('\t') && !plainText.includes('\n') && !plainText.includes(';') && !plainText.includes('|')) return;
+
+    e.preventDefault();
+
+    const startTr = targetTd.closest('tr');
+    if (!startTr) return;
+
+    const tbody = startTr.closest('tbody');
+    if (!tbody) return;
+
+    const allTrs = Array.from(tbody.querySelectorAll('tr'));
+    const startRowIdx = allTrs.indexOf(startTr);
+    if (startRowIdx === -1) return;
+
+    const startRowEditables = Array.from(startTr.querySelectorAll('td.col-editable-annual'));
+    let startColIdx = startRowEditables.indexOf(targetTd);
+    if (startColIdx === -1) startColIdx = 0;
+
+    const lines = plainText.split(/\r?\n/).filter(line => line.trim().length > 0);
+    let cellsFilled = 0;
+    let rowsFilled = 0;
+
+    lines.forEach((line, rOffset) => {
+        let curTr = allTrs[startRowIdx + rOffset];
+        if (!curTr) {
+            addNewAnnualSessionRow();
+            const updatedTrs = Array.from(tbody.querySelectorAll('tr'));
+            curTr = updatedTrs[updatedTrs.length - 1];
+        }
+        if (!curTr) return;
+
+        const curEditables = Array.from(curTr.querySelectorAll('td.col-editable-annual'));
+        let sep = '\t';
+        if (!line.includes('\t')) {
+            if (line.includes(';') && line.split(';').length >= 2) sep = ';';
+            else if (line.includes('|') && line.split('|').length >= 2) sep = '|';
+        }
+
+        const values = line.split(sep);
+        values.forEach((val, cOffset) => {
+            const cell = curEditables[startColIdx + cOffset];
+            if (cell) {
+                let cleanVal = val.trim();
+                if (cleanVal.startsWith('"') && cleanVal.endsWith('"') && cleanVal.length >= 2) {
+                    cleanVal = cleanVal.slice(1, -1).replace(/""/g, '"').trim();
+                }
+                cell.textContent = cleanVal;
+                cellsFilled++;
+            }
+        });
+        rowsFilled++;
+    });
+
+    collectAnnualDistributionFromDOM();
+    recalculateAnnualStats();
+    showToastNotification(`Collage réussi : ${cellsFilled} cases renseignées sur ${rowsFilled} séance(s) !`, 'success');
+}
+
+function collectAnnualDistributionFromDOM() {
+    const tbody = document.getElementById('annualDistTableBody');
+    if (!tbody) return [];
+
+    const trs = Array.from(tbody.querySelectorAll('tr'));
+    const sessions = [];
+
+    trs.forEach((tr, idx) => {
+        const numText = tr.querySelector('td:nth-child(1)')?.textContent.trim();
+        const week = parseInt(tr.querySelector('[data-field="week"]')?.textContent.trim(), 10) || (Math.floor(idx / 4) + 1);
+        const period = parseInt(tr.querySelector('[data-field="period"]')?.textContent.trim(), 10) || ((idx % 4) + 1);
+        const unit = tr.querySelector('[data-field="unit"]')?.textContent.trim() || '';
+        const lessonTitle = tr.querySelector('[data-field="lessonTitle"]')?.textContent.trim() || '';
+        const classwork = tr.querySelector('[data-field="classwork"]')?.textContent.trim() || '';
+        const support = tr.querySelector('[data-field="support"]')?.textContent.trim() || '';
+        const homework = tr.querySelector('[data-field="homework"]')?.textContent.trim() || '';
+        const isCompleted = tr.classList.contains('session-completed') || tr.querySelector('.annual-badge-status.completed') !== null;
+
+        sessions.push({
+            sessionNumber: parseInt(numText, 10) || (idx + 1),
+            week,
+            period,
+            term: week <= 10 ? 'Trimestre 1' : (week <= 20 ? 'Trimestre 2' : 'Trimestre 3'),
+            unit,
+            lessonTitle,
+            classwork,
+            support,
+            homework,
+            completed: isCompleted
+        });
+    });
+
+    if (currentAnnualDistribution) {
+        currentAnnualDistribution.sessions = sessions;
+    }
+    return sessions;
+}
+
+async function saveAnnualDistributionToServer() {
+    const teacherSel = document.getElementById('annualDistTeacherSelect');
+    const classSel = document.getElementById('annualDistClassSelect');
+    const subjectSel = document.getElementById('annualDistSubjectSelect');
+    const yearSel = document.getElementById('annualDistYearSelect');
+
+    const teacher = teacherSel ? teacherSel.value.trim() : '';
+    const classe = classSel ? classSel.value.trim() : '';
+    const matiere = subjectSel ? subjectSel.value.trim() : '';
+    const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
+
+    if (!teacher) {
+        alert("Veuillez sélectionner un enseignant avant d'enregistrer.");
+        return;
+    }
+    if (!classe) {
+        alert('Veuillez sélectionner une classe.');
+        return;
+    }
+    if (!matiere) {
+        alert('Veuillez sélectionner une matière.');
+        return;
+    }
+
+    const sessions = collectAnnualDistributionFromDOM();
+    const totalSessions = parseInt(document.getElementById('annualDistTotalSessionsInput')?.value, 10) || sessions.length || 120;
+    const perWeek = parseInt(document.getElementById('annualDistPerWeekInput')?.value, 10) || 4;
+    const weeksCount = Math.ceil(totalSessions / perWeek) || 30;
+
+    const payload = {
+        teacher,
+        classe,
+        matiere,
+        section: currentSection,
+        schoolYear,
+        totalSessionsPerYear: totalSessions,
+        sessionsPerWeek: perWeek,
+        weeksCount,
+        sessions
+    };
+
+    try {
+        const res = await fetch('/api/annual-distribution', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Erreur HTTP ' + res.status);
+        }
+
+        const result = await res.json();
+        showToastNotification(`Distribution annuelle de ${teacher} (${matiere} - ${classe}) enregistrée avec succès (${sessions.length} séances) !`, 'success');
+        currentAnnualDistribution = result.distribution || payload;
+        recalculateAnnualStats(sessions);
+    } catch (e) {
+        console.error('Erreur sauvegarde distribution annuelle:', e);
+        alert('Erreur lors de la sauvegarde : ' + e.message);
+    }
+}
+
+function handleAnnualExcelFileSelected(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            if (typeof XLSX === 'undefined') {
+                alert("La bibliothèque Excel n'est pas encore chargée.");
+                return;
+            }
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+            if (!rawRows || rawRows.length === 0) {
+                alert('Le fichier Excel ne contient aucune ligne lisible.');
+                return;
+            }
+
+            const findCol = (row, candidates) => {
+                const keys = Object.keys(row);
+                for (const cand of candidates) {
+                    const match = keys.find(k => k.trim().toLowerCase() === cand.toLowerCase());
+                    if (match && row[match] !== undefined) return row[match];
+                }
+                for (const cand of candidates) {
+                    const match = keys.find(k => k.trim().toLowerCase().includes(cand.toLowerCase()));
+                    if (match && row[match] !== undefined) return row[match];
+                }
+                return '';
+            };
+
+            const parsedSessions = [];
+            let sessionCounter = 0;
+
+            rawRows.forEach((r, idx) => {
+                const sessionNumRaw = findCol(r, ['seance', 'séance', 'session', 'n°', 'no', 'num', 'numero', 'الحصة', 'رقم']);
+                const weekRaw = findCol(r, ['semaine', 'week', 'الأسبوع', 'اسبوع', 'sem']);
+                const termRaw = findCol(r, ['trimestre', 'semestre', 'periode', 'période', 'term', 'الفصل', 'الفترة']);
+                const unitRaw = findCol(r, ['unite', 'unité', 'chapitre', 'module', 'axe', 'unit', 'chapter', 'المحور', 'الوحدة']);
+                const lessonRaw = findCol(r, ['lecon', 'leçon', 'titre', 'lesson', 'title', 'intitule', 'intitulé', 'الدرس', 'عنوان الدرس']);
+                const classworkRaw = findCol(r, ['travaux', 'travaux de classe', 'activites', 'activités', 'classwork', 'activite', 'العمل الصفي', 'أنشطة التعلم']);
+                const supportRaw = findCol(r, ['support', 'ressources', 'outils', 'manuel', 'resources', 'الوسائل', 'المعينات']);
+                const homeworkRaw = findCol(r, ['devoirs', 'devoir', 'homework', 'evaluation', 'évaluation', 'الواجبات', 'العمل المنزلي']);
+
+                if (!lessonRaw && !classworkRaw && !unitRaw && !homeworkRaw && !sessionNumRaw) return;
+
+                sessionCounter++;
+                const weekNum = parseInt(weekRaw, 10) || (Math.floor((sessionCounter - 1) / 4) + 1);
+                const sessionNum = parseInt(sessionNumRaw, 10) || sessionCounter;
+
+                parsedSessions.push({
+                    sessionNumber: sessionNum,
+                    week: weekNum,
+                    period: ((sessionCounter - 1) % 4) + 1,
+                    term: String(termRaw || (weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3'))).trim(),
+                    unit: String(unitRaw || '').trim(),
+                    lessonTitle: String(lessonRaw || '').trim(),
+                    classwork: String(classworkRaw || '').trim(),
+                    support: String(supportRaw || '').trim(),
+                    homework: String(homeworkRaw || '').trim(),
+                    completed: false
+                });
+            });
+
+            if (parsedSessions.length === 0) {
+                alert('Aucune séance reconnue. Vérifiez que votre fichier contient bien des colonnes Semaine, Leçon, Travaux, etc.');
+                return;
+            }
+
+            if (!currentAnnualDistribution) currentAnnualDistribution = {};
+            currentAnnualDistribution.sessions = parsedSessions;
+            currentAnnualDistribution.totalSessionsPerYear = parsedSessions.length;
+
+            renderAnnualDistributionTable(parsedSessions);
+            showToastNotification(`Importation réussie : ${parsedSessions.length} séances chargées depuis ${file.name} ! N'oubliez pas d'enregistrer.`, 'success');
+        } catch (err) {
+            console.error('Erreur lecture Excel:', err);
+            alert('Erreur lors de la lecture du fichier Excel : ' + err.message);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+    event.target.value = '';
+}
+
+function downloadAnnualExcelTemplate() {
+    if (typeof XLSX === 'undefined') {
+        window.open('/api/annual-distribution/download-template', '_blank');
+        return;
+    }
+
+    const headers = [
+        'Semaine',
+        'Séance N°',
+        'Trimestre',
+        'Unité / Chapitre',
+        'Titre de la Leçon',
+        'Activités / Travaux de classe',
+        'Support / Ressources',
+        'Devoirs / Évaluation'
+    ];
+    const sampleRows = [
+        [1, 1, 'Trimestre 1', 'Unité 1', 'Prise de contact et révisions', 'Évaluation diagnostique', 'Manuel p.6-7', 'Exercice 1 p.8'],
+        [1, 2, 'Trimestre 1', 'Unité 1', 'Leçon 1 : Les notions de base', 'Lecture et analyse de texte', 'Cahier d activités', 'Fiche n°1'],
+        [1, 3, 'Trimestre 1', 'Unité 1', 'Leçon 2 : Applications pratiques', 'Exercices d entraînement en groupe', 'Tableau interactif', 'Exercice 3 p.9'],
+        [1, 4, 'Trimestre 1', 'Unité 1', 'Bilan et remédiation', 'Correction collective et synthèse', 'Fiches de remédiation', 'Auto-évaluation'],
+        [2, 5, 'Trimestre 1', 'Unité 2', 'Leçon 3 : Approfondissement', 'Découverte de la nouvelle règle', 'Manuel p.12', 'Exercice 1 p.13']
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+    ws['!cols'] = [
+        { wch: 10 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 32 },
+        { wch: 35 },
+        { wch: 22 },
+        { wch: 25 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Distribution_Annuelle');
+    XLSX.writeFile(wb, 'Modele_Distribution_Annuelle.xlsx');
+}
+
+function exportAnnualDistributionToExcel() {
+    const sessions = collectAnnualDistributionFromDOM();
+    if (!sessions || sessions.length === 0) {
+        alert('Aucune séance à exporter.');
+        return;
+    }
+
+    const teacherSel = document.getElementById('annualDistTeacherSelect');
+    const classSel = document.getElementById('annualDistClassSelect');
+    const subjectSel = document.getElementById('annualDistSubjectSelect');
+    const teacher = teacherSel ? teacherSel.value.trim() : 'Enseignant';
+    const classe = classSel ? classSel.value.trim() : 'Classe';
+    const matiere = subjectSel ? subjectSel.value.trim() : 'Matiere';
+
+    const headers = [
+        'Séance N°',
+        'Semaine',
+        'Période',
+        'Trimestre / Unité',
+        'Titre de la Leçon',
+        'Activités / Travaux de classe',
+        'Support / Ressources',
+        'Devoirs / Évaluation',
+        'Statut'
+    ];
+
+    const rows = sessions.map(s => [
+        s.sessionNumber,
+        s.week,
+        s.period,
+        s.unit || s.term || '',
+        s.lessonTitle,
+        s.classwork,
+        s.support,
+        s.homework,
+        s.completed ? 'Réalisé' : 'Prévu'
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Distribution');
+    const fileName = `Distribution_Annuelle_${teacher}_${classe}_${matiere}.xlsx`.replace(/\s+/g, '_');
+    XLSX.writeFile(wb, fileName);
+}
+
+// ----------------------------------------------------------------------------
+// LIAISON BIDIRECTIONNELLE : DISTRIBUTION ANNUELLE <-> PLAN HEBDOMADAIRE
+// ----------------------------------------------------------------------------
+
+async function autoFillWeeklyPlanFromAnnualDistribution(targetWeek = null) {
+    const weekNum = targetWeek || currentWeek;
+    if (!weekNum) {
+        alert('Veuillez d\'abord sélectionner une semaine dans le plan hebdomadaire.');
+        return;
+    }
+
+    const ensFilter = document.getElementById('filterEnseignant');
+    const clsFilter = document.getElementById('filterClasse');
+    const matFilter = document.getElementById('filterMatiere');
+
+    const teacher = (ensFilter && ensFilter.value) ? ensFilter.value : loggedInUser;
+    const classe = (clsFilter && clsFilter.value) ? clsFilter.value : '';
+    const matiere = (matFilter && matFilter.value) ? matFilter.value : '';
+
+    if (!teacher) {
+        alert('Veuillez filtrer ou choisir un enseignant pour remplir son plan depuis sa distribution.');
+        return;
+    }
+
+    const confirmMsg = `Voulez-vous remplir automatiquement les séances de la Semaine ${weekNum} pour l'enseignant "${teacher}" à partir de sa distribution annuelle ?`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const res = await fetch('/api/annual-distribution/fill-weekly-plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                teacher,
+                classe,
+                matiere,
+                section: currentSection,
+                week: weekNum,
+                mode: 'by_week'
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Erreur HTTP ' + res.status);
+        }
+
+        const data = await res.json();
+        showToastNotification(`Succès : ${data.message}`, 'success');
+
+        if (typeof fetchPlanData === 'function') {
+            await fetchPlanData(weekNum);
+        }
+
+        if (currentAnnualDistribution) {
+            await handleAnnualDistFilterChange();
+        }
+    } catch (e) {
+        console.error('Erreur auto-remplissage plan hebdo:', e);
+        alert('Erreur lors du remplissage : ' + e.message);
+    }
+}
+
+async function syncWeeklyPlanToAnnualDistribution(targetWeek = null) {
+    const weekNum = targetWeek || currentWeek;
+    if (!weekNum) {
+        alert('Veuillez d\'abord sélectionner une semaine dans le plan hebdomadaire.');
+        return;
+    }
+
+    const ensFilter = document.getElementById('filterEnseignant');
+    const clsFilter = document.getElementById('filterClasse');
+    const matFilter = document.getElementById('filterMatiere');
+
+    const teacher = (ensFilter && ensFilter.value) ? ensFilter.value : loggedInUser;
+    const classe = (clsFilter && clsFilter.value) ? clsFilter.value : '';
+    const matiere = (matFilter && matFilter.value) ? matFilter.value : '';
+
+    if (!teacher) {
+        alert('Veuillez sélectionner un enseignant pour synchroniser sa distribution.');
+        return;
+    }
+
+    const confirmMsg = `Confirmez-vous la mise à jour de la distribution annuelle de "${teacher}" en validant les cours réalisés de la Semaine ${weekNum} ?`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const res = await fetch('/api/annual-distribution/sync-from-weekly-plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                teacher,
+                classe,
+                matiere,
+                section: currentSection,
+                week: weekNum
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Erreur HTTP ' + res.status);
+        }
+
+        const data = await res.json();
+        showToastNotification(`Synchronisation réussie : ${data.message}`, 'success');
+
+        if (document.getElementById('annualDistributionModal')?.style.display !== 'none') {
+            await handleAnnualDistFilterChange();
+        }
+    } catch (e) {
+        console.error('Erreur synchronisation vers distribution:', e);
+        alert('Erreur lors de la synchronisation : ' + e.message);
+    }
+}
+
+function triggerAutoFillWeeklyFromModal() {
+    const targetW = currentWeek || 1;
+    autoFillWeeklyPlanFromAnnualDistribution(targetW);
+}
+
+function triggerSyncFromWeeklyFromModal() {
+    const targetW = currentWeek || 1;
+    syncWeeklyPlanToAnnualDistribution(targetW);
+}
+
+window.openAnnualDistributionModal = openAnnualDistributionModal;
+window.closeAnnualDistributionModal = closeAnnualDistributionModal;
+window.handleAnnualDistFilterChange = handleAnnualDistFilterChange;
+window.toggleAnnualSessionStatus = toggleAnnualSessionStatus;
+window.deleteAnnualSessionRow = deleteAnnualSessionRow;
+window.addNewAnnualSessionRow = addNewAnnualSessionRow;
+window.generateAnnualDistributionCanvas = generateAnnualDistributionCanvas;
+window.saveAnnualDistributionToServer = saveAnnualDistributionToServer;
+window.handleAnnualExcelFileSelected = handleAnnualExcelFileSelected;
+window.downloadAnnualExcelTemplate = downloadAnnualExcelTemplate;
+window.exportAnnualDistributionToExcel = exportAnnualDistributionToExcel;
+window.autoFillWeeklyPlanFromAnnualDistribution = autoFillWeeklyPlanFromAnnualDistribution;
+window.syncWeeklyPlanToAnnualDistribution = syncWeeklyPlanToAnnualDistribution;
+window.triggerAutoFillWeeklyFromModal = triggerAutoFillWeeklyFromModal;
+window.triggerSyncFromWeeklyFromModal = triggerSyncFromWeeklyFromModal;

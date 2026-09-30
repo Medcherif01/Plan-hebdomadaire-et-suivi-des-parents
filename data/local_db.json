@@ -341,5 +341,8 @@
   "teachers_photos": [],
   "published_plans": [],
   "special_days": [],
-  "school_weeks_config": []
+  "school_weeks_config": [],
+  "lessonPlans": [],
+  "weeklyLessonPlans": [],
+  "annual_distributions": []
 }

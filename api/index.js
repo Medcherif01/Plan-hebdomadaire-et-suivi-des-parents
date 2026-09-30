@@ -5525,6 +5525,469 @@ app.get('/api/special-days', async (req, res) => {
   }
 });
 
+// ============================================================================
+// ROUTES DISTRIBUTION ANNUELLE (RÉPARTITION ANNUELLE DES ENSEIGNANTS)
+// ============================================================================
+
+app.get('/api/annual-distribution', async (req, res) => {
+  try {
+    const { teacher, classe, matiere, section, schoolYear } = req.query;
+    const db = await connectToDatabase();
+    
+    // Si enseignant + classe + matière spécifiés -> récupérer la distribution spécifique
+    if (teacher && classe && matiere) {
+      const query = {
+        teacher: String(teacher).trim(),
+        classe: String(classe).trim(),
+        matiere: String(matiere).trim()
+      };
+      if (section && section !== 'all') query.section = section;
+      if (schoolYear) query.schoolYear = schoolYear;
+      
+      const doc = await db.collection('annual_distributions').findOne(query);
+      return res.status(200).json(doc || null);
+    }
+    
+    const query = {};
+    if (section && section !== 'all') query.section = section;
+    if (teacher) query.teacher = String(teacher).trim();
+    if (classe) query.classe = String(classe).trim();
+    if (matiere) query.matiere = String(matiere).trim();
+    if (schoolYear) query.schoolYear = schoolYear;
+    
+    const list = await db.collection('annual_distributions').find(query).toArray();
+    res.status(200).json(list || []);
+  } catch (error) {
+    console.error('Erreur GET /api/annual-distribution:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/annual-distribution', async (req, res) => {
+  try {
+    const {
+      teacher,
+      classe,
+      matiere,
+      section = 'garcons',
+      schoolYear = '2025-2026',
+      totalSessionsPerYear,
+      sessionsPerWeek,
+      weeksCount,
+      sessions = [],
+      notes = ''
+    } = req.body;
+
+    if (!teacher || !classe || !matiere) {
+      return res.status(400).json({ error: 'Enseignant, Classe et Matière sont requis.' });
+    }
+
+    const tTrim = String(teacher).trim();
+    const cTrim = String(classe).trim();
+    const mTrim = String(matiere).trim();
+    const sTrim = String(section || 'garcons').trim();
+    const yTrim = String(schoolYear || '2025-2026').trim();
+
+    const distId = `${tTrim}_${cTrim}_${mTrim}_${sTrim}_${yTrim}`.replace(/\s+/g, '_');
+    const db = await connectToDatabase();
+
+    const totalSessions = parseInt(totalSessionsPerYear, 10) || (Array.isArray(sessions) ? sessions.length : 120);
+    const perWeek = parseInt(sessionsPerWeek, 10) || 4;
+    const weeks = parseInt(weeksCount, 10) || 30;
+
+    const doc = {
+      _id: distId,
+      teacher: tTrim,
+      classe: cTrim,
+      matiere: mTrim,
+      section: sTrim,
+      schoolYear: yTrim,
+      totalSessionsPerYear: totalSessions,
+      sessionsPerWeek: perWeek,
+      weeksCount: weeks,
+      sessions: Array.isArray(sessions) ? sessions : [],
+      notes: String(notes || ''),
+      updatedAt: new Date().toISOString()
+    };
+
+    await db.collection('annual_distributions').updateOne(
+      { _id: distId },
+      { $set: doc },
+      { upsert: true }
+    );
+
+    res.status(200).json({ success: true, distribution: doc, message: 'Distribution annuelle enregistrée avec succès.' });
+  } catch (error) {
+    console.error('Erreur POST /api/annual-distribution:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/annual-distribution/upload-excel', async (req, res) => {
+  try {
+    let buffer = null;
+
+    if (req.files && req.files.file) {
+      buffer = req.files.file.data;
+    } else if (req.body && req.body.fileBase64) {
+      buffer = Buffer.from(req.body.fileBase64.replace(/^data:.*?;base64,/, ''), 'base64');
+    }
+
+    if (!buffer) {
+      return res.status(400).json({ error: 'Aucun fichier Excel fourni.' });
+    }
+
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      return res.status(400).json({ error: 'Fichier Excel vide ou illisible.' });
+    }
+
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    if (!rawRows || rawRows.length === 0) {
+      return res.status(400).json({ error: 'Aucune ligne détectée dans la feuille Excel.' });
+    }
+
+    const findCol = (row, candidates) => {
+      const keys = Object.keys(row);
+      for (const cand of candidates) {
+        const match = keys.find(k => k.trim().toLowerCase() === cand.toLowerCase());
+        if (match && row[match] !== undefined) return row[match];
+      }
+      for (const cand of candidates) {
+        const match = keys.find(k => k.trim().toLowerCase().includes(cand.toLowerCase()));
+        if (match && row[match] !== undefined) return row[match];
+      }
+      return '';
+    };
+
+    const sessions = [];
+    let sessionCount = 0;
+
+    rawRows.forEach((r, idx) => {
+      const sessionNumRaw = findCol(r, ['seance', 'séance', 'session', 'n°', 'no', 'num', 'numero', 'الحصة', 'رقم']);
+      const weekRaw = findCol(r, ['semaine', 'week', 'الأسبوع', 'اسبوع', 'sem']);
+      const termRaw = findCol(r, ['trimestre', 'semestre', 'periode', 'période', 'term', 'الفصل', 'الفترة']);
+      const unitRaw = findCol(r, ['unite', 'unité', 'chapitre', 'module', 'axe', 'unit', 'chapter', 'المحور', 'الوحدة']);
+      const lessonRaw = findCol(r, ['lecon', 'leçon', 'titre', 'lesson', 'title', 'intitule', 'intitulé', 'الدرس', 'عنوان الدرس']);
+      const classworkRaw = findCol(r, ['travaux', 'travaux de classe', 'activites', 'activités', 'classwork', 'activite', 'العمل الصفي', 'أنشطة التعلم']);
+      const supportRaw = findCol(r, ['support', 'ressources', 'outils', 'manuel', 'resources', 'الوسائل', 'المعينات']);
+      const homeworkRaw = findCol(r, ['devoirs', 'devoir', 'homework', 'evaluation', 'évaluation', 'الواجبات', 'العمل المنزلي']);
+
+      if (!lessonRaw && !classworkRaw && !unitRaw && !homeworkRaw && !sessionNumRaw) {
+        return;
+      }
+
+      sessionCount++;
+      const weekNum = parseInt(weekRaw, 10) || (Math.floor((sessionCount - 1) / 4) + 1);
+      const sessionNum = parseInt(sessionNumRaw, 10) || sessionCount;
+
+      sessions.push({
+        sessionNumber: sessionNum,
+        week: weekNum,
+        period: ((sessionCount - 1) % 4) + 1,
+        term: String(termRaw || (weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3'))).trim(),
+        unit: String(unitRaw || '').trim(),
+        lessonTitle: String(lessonRaw || '').trim(),
+        classwork: String(classworkRaw || '').trim(),
+        support: String(supportRaw || '').trim(),
+        homework: String(homeworkRaw || '').trim(),
+        completed: false
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      count: sessions.length,
+      sessions: sessions,
+      message: `${sessions.length} séances extraites avec succès depuis le fichier Excel.`
+    });
+  } catch (error) {
+    console.error('Erreur /api/annual-distribution/upload-excel:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/annual-distribution/download-template', (req, res) => {
+  try {
+    const wb = XLSX.utils.book_new();
+    const headers = [
+      'Semaine',
+      'Séance N°',
+      'Trimestre',
+      'Unité / Chapitre',
+      'Titre de la Leçon',
+      'Activités / Travaux de classe',
+      'Support / Ressources',
+      'Devoirs / Évaluation'
+    ];
+    const sampleRows = [
+      [1, 1, 'Trimestre 1', 'Unité 1', 'Prise de contact et révisions', 'Évaluation diagnostique', 'Manuel p.6-7', 'Exercice 1 p.8'],
+      [1, 2, 'Trimestre 1', 'Unité 1', 'Leçon 1 : Les notions de base', 'Lecture et analyse de texte', 'Cahier d activités', 'Fiche n°1'],
+      [1, 3, 'Trimestre 1', 'Unité 1', 'Leçon 2 : Applications pratiques', 'Exercices d entraînement en groupe', 'Tableau interactif', 'Exercice 3 p.9'],
+      [1, 4, 'Trimestre 1', 'Unité 1', 'Bilan et remédiation', 'Correction collective et synthèse', 'Fiches de remédiation', 'Auto-évaluation'],
+      [2, 5, 'Trimestre 1', 'Unité 2', 'Leçon 3 : Approfondissement', 'Découverte de la nouvelle règle', 'Manuel p.12', 'Exercice 1 p.13']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+    ws['!cols'] = [
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 32 },
+      { wch: 35 },
+      { wch: 22 },
+      { wch: 25 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Distribution_Annuelle');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="Modele_Distribution_Annuelle.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (error) {
+    console.error('Erreur download-template:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/annual-distribution/fill-weekly-plan', async (req, res) => {
+  try {
+    const { teacher, classe, matiere, section = 'garcons', week, mode = 'by_week' } = req.body;
+    const weekNum = parseInt(week, 10);
+    if (!teacher || !weekNum) {
+      return res.status(400).json({ error: 'Enseignant et Semaine sont requis.' });
+    }
+
+    const db = await connectToDatabase();
+    
+    // Récupérer le plan de la semaine
+    const planDoc = await db.collection('plans').findOne({
+      $or: [
+        { _id: `${section}_${weekNum}` },
+        { _id: `${section}_${String(weekNum)}` },
+        { week: weekNum, section: section },
+        { week: String(weekNum), section: section }
+      ]
+    });
+
+    if (!planDoc || !planDoc.data || planDoc.data.length === 0) {
+      return res.status(404).json({ error: `Aucun plan hebdomadaire trouvé pour la semaine ${weekNum} (${section}).` });
+    }
+
+    // Récupérer la distribution annuelle
+    const distQuery = { teacher: String(teacher).trim(), section: section };
+    if (classe) distQuery.classe = String(classe).trim();
+    if (matiere) distQuery.matiere = String(matiere).trim();
+
+    const distDoc = await db.collection('annual_distributions').findOne(distQuery);
+    if (!distDoc || !distDoc.sessions || distDoc.sessions.length === 0) {
+      return res.status(404).json({ error: 'Aucune distribution annuelle trouvée pour cet enseignant/classe/matière.' });
+    }
+
+    const leconK = findKey(planDoc.data[0] || {}, 'Leçon') || 'Leçon';
+    const taskK = findKey(planDoc.data[0] || {}, 'Travaux de classe') || 'Travaux de classe';
+    const supportK = findKey(planDoc.data[0] || {}, 'Support') || 'Support';
+    const devoirsK = findKey(planDoc.data[0] || {}, 'Devoirs') || 'Devoirs';
+    const ensK = findKey(planDoc.data[0] || {}, 'Enseignant') || 'Enseignant';
+    const clsK = findKey(planDoc.data[0] || {}, 'Classe') || 'Classe';
+    const matK = findKey(planDoc.data[0] || {}, 'Matière') || 'Matière';
+
+    // Trouver les sessions correspondantes
+    let matchingSessions = [];
+    if (mode === 'by_week') {
+      matchingSessions = distDoc.sessions.filter(s => parseInt(s.week, 10) === weekNum);
+    }
+    if (matchingSessions.length === 0) {
+      matchingSessions = distDoc.sessions.filter(s => !s.completed);
+    }
+
+    if (matchingSessions.length === 0) {
+      return res.status(400).json({ error: 'Toutes les séances de la distribution sont déjà marquées comme réalisées ou aucune séance trouvée pour cette semaine.' });
+    }
+
+    let updatedCount = 0;
+    let sessionIdx = 0;
+
+    planDoc.data.forEach(row => {
+      const rowTeacher = (row[ensK] || '').trim();
+      const rowClass = (row[clsK] || '').trim();
+      const rowSubject = (row[matK] || '').trim();
+
+      const teacherMatches = rowTeacher.toLowerCase() === teacher.trim().toLowerCase();
+      const classMatches = !classe || rowClass.toLowerCase() === classe.trim().toLowerCase();
+      const subjectMatches = !matiere || rowSubject.toLowerCase() === matiere.trim().toLowerCase();
+
+      if (teacherMatches && classMatches && subjectMatches && sessionIdx < matchingSessions.length) {
+        const s = matchingSessions[sessionIdx];
+        if (s.lessonTitle) row[leconK] = s.lessonTitle;
+        if (s.classwork) row[taskK] = s.classwork;
+        if (s.support) row[supportK] = s.support;
+        if (s.homework) row[devoirsK] = s.homework;
+        row.updatedAt = new Date().toISOString();
+        
+        s.completed = true;
+        s.completedInWeek = weekNum;
+        s.completedDate = new Date().toISOString();
+        
+        updatedCount++;
+        sessionIdx++;
+      }
+    });
+
+    if (updatedCount > 0) {
+      await db.collection('plans').updateOne(
+        { _id: planDoc._id },
+        { $set: { data: planDoc.data, updatedAt: new Date().toISOString() } }
+      );
+      await db.collection('annual_distributions').updateOne(
+        { _id: distDoc._id },
+        { $set: { sessions: distDoc.sessions, updatedAt: new Date().toISOString() } }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      updatedCount,
+      message: `${updatedCount} séance(s) remplie(s) dans le plan hebdomadaire depuis la distribution annuelle.`,
+      planData: planDoc.data
+    });
+  } catch (error) {
+    console.error('Erreur fill-weekly-plan:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
+  try {
+    const { teacher, classe, matiere, section = 'garcons', week } = req.body;
+    const weekNum = parseInt(week, 10);
+    if (!teacher || !weekNum) {
+      return res.status(400).json({ error: 'Enseignant et Semaine sont requis.' });
+    }
+
+    const db = await connectToDatabase();
+    
+    // Récupérer le plan hebdomadaire
+    const planDoc = await db.collection('plans').findOne({
+      $or: [
+        { _id: `${section}_${weekNum}` },
+        { _id: `${section}_${String(weekNum)}` },
+        { week: weekNum, section: section },
+        { week: String(weekNum), section: section }
+      ]
+    });
+
+    if (!planDoc || !planDoc.data || planDoc.data.length === 0) {
+      return res.status(404).json({ error: `Aucun plan hebdomadaire trouvé pour la semaine ${weekNum}.` });
+    }
+
+    const ensK = findKey(planDoc.data[0] || {}, 'Enseignant') || 'Enseignant';
+    const clsK = findKey(planDoc.data[0] || {}, 'Classe') || 'Classe';
+    const matK = findKey(planDoc.data[0] || {}, 'Matière') || 'Matière';
+    const leconK = findKey(planDoc.data[0] || {}, 'Leçon') || 'Leçon';
+    const taskK = findKey(planDoc.data[0] || {}, 'Travaux de classe') || 'Travaux de classe';
+    const supportK = findKey(planDoc.data[0] || {}, 'Support') || 'Support';
+    const devoirsK = findKey(planDoc.data[0] || {}, 'Devoirs') || 'Devoirs';
+
+    // Filtrer les cours de l'enseignant pour cette semaine
+    const teacherRows = planDoc.data.filter(row => {
+      const rowTeacher = (row[ensK] || '').trim();
+      const rowClass = (row[clsK] || '').trim();
+      const rowSubject = (row[matK] || '').trim();
+      const teacherMatches = rowTeacher.toLowerCase() === teacher.trim().toLowerCase();
+      const classMatches = !classe || rowClass.toLowerCase() === classe.trim().toLowerCase();
+      const subjectMatches = !matiere || rowSubject.toLowerCase() === matiere.trim().toLowerCase();
+      return teacherMatches && classMatches && subjectMatches;
+    });
+
+    if (teacherRows.length === 0) {
+      return res.status(404).json({ error: 'Aucun cours trouvé pour cet enseignant dans cette semaine.' });
+    }
+
+    const targetClass = classe || (teacherRows[0] ? teacherRows[0][clsK] : '');
+    const targetSubject = matiere || (teacherRows[0] ? teacherRows[0][matK] : '');
+    const distId = `${teacher.trim()}_${targetClass.trim()}_${targetSubject.trim()}_${section}_2025-2026`.replace(/\s+/g, '_');
+
+    let distDoc = await db.collection('annual_distributions').findOne({ _id: distId });
+    if (!distDoc) {
+      distDoc = {
+        _id: distId,
+        teacher: teacher.trim(),
+        classe: targetClass.trim(),
+        matiere: targetSubject.trim(),
+        section: section,
+        schoolYear: '2025-2026',
+        totalSessionsPerYear: 120,
+        sessionsPerWeek: teacherRows.length || 4,
+        weeksCount: 30,
+        sessions: [],
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    let syncedCount = 0;
+    teacherRows.forEach((row, idx) => {
+      const lessonTitle = (row[leconK] || '').trim();
+      const classwork = (row[taskK] || '').trim();
+      const support = (row[supportK] || '').trim();
+      const homework = (row[devoirsK] || '').trim();
+
+      if (!lessonTitle && !classwork) return;
+
+      let session = distDoc.sessions.find(s => parseInt(s.week, 10) === weekNum && s.period === (idx + 1));
+      if (!session) {
+        session = distDoc.sessions.find(s => parseInt(s.week, 10) === weekNum && !s.completed);
+      }
+
+      if (session) {
+        if (!session.lessonTitle && lessonTitle) session.lessonTitle = lessonTitle;
+        if (!session.classwork && classwork) session.classwork = classwork;
+        if (!session.support && support) session.support = support;
+        if (!session.homework && homework) session.homework = homework;
+        session.completed = true;
+        session.completedInWeek = weekNum;
+        session.completedDate = new Date().toISOString();
+        syncedCount++;
+      } else {
+        distDoc.sessions.push({
+          sessionNumber: distDoc.sessions.length + 1,
+          week: weekNum,
+          period: idx + 1,
+          term: weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3'),
+          unit: '',
+          lessonTitle,
+          classwork,
+          support,
+          homework,
+          completed: true,
+          completedInWeek: weekNum,
+          completedDate: new Date().toISOString()
+        });
+        syncedCount++;
+      }
+    });
+
+    distDoc.updatedAt = new Date().toISOString();
+    await db.collection('annual_distributions').updateOne(
+      { _id: distDoc._id },
+      { $set: distDoc },
+      { upsert: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      syncedCount,
+      distribution: distDoc,
+      message: `${syncedCount} séance(s) synchronisée(s) vers la distribution annuelle.`
+    });
+  } catch (error) {
+    console.error('Erreur sync-from-weekly-plan:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 app.post('/api/special-days', async (req, res) => {
   try {
     const { section = 'garcons', week, day, classe = 'all', type = 'no_courses', title, description, message, isNoSchool = true, photos = [] } = req.body;
