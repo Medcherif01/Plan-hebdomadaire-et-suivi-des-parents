@@ -2903,7 +2903,7 @@
 
                     <div class="annual-control-group" style="width: 130px;">
                         <label for="annualDistTotalSessionsInput"><i class="fas fa-hourglass-half" style="color:#D97706;"></i> Séances / an :</label>
-                        <input type="number" id="annualDistTotalSessionsInput" min="1" max="300" value="136" onchange="recalculateAnnualStats()" title="Volume annuel de séances">
+                        <input type="number" id="annualDistTotalSessionsInput" min="1" max="300" value="120" onchange="recalculateAnnualStats()" title="Volume annuel de séances">
                     </div>
 
                     <div class="annual-control-group" style="width: 120px;">
@@ -2912,8 +2912,8 @@
                     </div>
 
                     <div style="margin-left: auto; display: flex; align-items: flex-end; gap: 8px;">
-                        <button type="button" class="btn-annual btn-annual-secondary" onclick="generateAnnualDistributionCanvas()" title="Créer automatiquement la liste des séances pour l'année complète (34 semaines, 2 semestres)">
-                            <i class="fas fa-magic" style="color:#0284C7;"></i> <span>Générer canevas (34 sem. / 2 Semestres)</span>
+                        <button type="button" class="btn-annual btn-annual-secondary" onclick="generateAnnualDistributionCanvas()" title="Créer automatiquement la liste des séances pour 30 semaines">
+                            <i class="fas fa-magic" style="color:#0284C7;"></i> <span>Générer canevas (30 sem.)</span>
                         </button>
                     </div>
                 </div>
@@ -3054,28 +3054,14 @@
     <!-- ===================================================================== -->
     <div id="annualPrintPreviewModal" class="annual-dist-modal" onclick="if(event.target===this)closeAnnualPrintPreviewModal()">
         <div class="annual-dist-content" style="max-width: 1320px; height: 96vh;" onclick="event.stopPropagation()">
-            <div class="annual-dist-header" style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); flex-wrap: wrap; gap: 12px;">
+            <div class="annual-dist-header" style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);">
                 <div class="annual-dist-title-box">
                     <h3>
                         <i class="fas fa-print" style="color:#38BDF8;"></i>
-                        <span>Aperçu Impression A4 Paysage - Répartition Annuelle par Semestre</span>
+                        <span>Aperçu Impression A4 Paysage - Répartition Annuelle par Semaine</span>
                     </h3>
-                    <p>Format officiel partagé sur 2 semestres avec grille par semaine (conforme à la maquette pédagogique)</p>
+                    <p>Mise en page A4 Paysage professionnelle avec regroupement automatique des jours de la même semaine</p>
                 </div>
-
-                <!-- SELECTEUR DE SEMESTRE (SEMESTRE 1 / SEMESTRE 2 / ANNÉE COMPLÈTE) -->
-                <div class="annual-sem-tabs-toolbar">
-                    <button type="button" id="tabPrintSem1" class="btn-sem-tab active" onclick="switchAnnualPrintSemester('semestre1')" title="Imprimer ou afficher le Semestre 1 (Semaines 1 à 17)">
-                        <i class="fas fa-calendar-alt"></i> <span>📘 Semestre 1 (Sem. 1-17)</span>
-                    </button>
-                    <button type="button" id="tabPrintSem2" class="btn-sem-tab" onclick="switchAnnualPrintSemester('semestre2')" title="Imprimer ou afficher le Semestre 2 (Semaines 18 à 34)">
-                        <i class="fas fa-calendar-alt"></i> <span>📙 Semestre 2 (Sem. 18-34)</span>
-                    </button>
-                    <button type="button" id="tabPrintSemAll" class="btn-sem-tab" onclick="switchAnnualPrintSemester('all')" title="Imprimer l'Année Complète (Semestre 1 et 2)">
-                        <i class="fas fa-book-open"></i> <span>📚 Année Complète</span>
-                    </button>
-                </div>
-
                 <div style="display:flex; align-items:center; gap:10px;">
                     <button type="button" class="btn-annual" style="background:#0284C7; color:#FFFFFF; padding:9px 18px; font-size:0.92rem;" onclick="triggerDirectPrintLandscape()">
                         <i class="fas fa-print"></i> <span>🖨️ Imprimer A4 Paysage</span>

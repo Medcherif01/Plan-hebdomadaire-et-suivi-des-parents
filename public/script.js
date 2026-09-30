@@ -14510,11 +14510,11 @@ function addNewAnnualSessionRow(data = {}) {
 }
 
 function generateAnnualDistributionCanvas() {
-    const totalSessions = parseInt(document.getElementById('annualDistTotalSessionsInput')?.value, 10) || 136;
+    const totalSessions = parseInt(document.getElementById('annualDistTotalSessionsInput')?.value, 10) || 120;
     const perWeek = parseInt(document.getElementById('annualDistPerWeekInput')?.value, 10) || 4;
-    const weeksCount = Math.ceil(totalSessions / perWeek) || 34;
+    const weeksCount = Math.ceil(totalSessions / perWeek) || 30;
 
-    if (!confirm(`Voulez-vous générer un canevas annuel complet de ${totalSessions} séances réparties sur ${weeksCount} semaines (${perWeek} séances/semaine, partagé sur 2 semestres) ?`)) {
+    if (!confirm(`Voulez-vous générer un canevas de ${totalSessions} séances réparties sur ${weeksCount} semaines (${perWeek} séances/semaine) ?`)) {
         return;
     }
 
@@ -14525,7 +14525,7 @@ function generateAnnualDistributionCanvas() {
         const dayIdx = (i - 1) % perWeek;
         const dayName = schoolDays[dayIdx % schoolDays.length];
         const periodNum = Math.floor(dayIdx / schoolDays.length) + 1;
-        const termNum = weekNum <= 17 ? 'Semestre 1' : 'Semestre 2';
+        const termNum = weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3');
 
         sessions.push({
             sessionNumber: i,
@@ -14549,7 +14549,7 @@ function generateAnnualDistributionCanvas() {
     currentAnnualDistribution.weeksCount = weeksCount;
 
     renderAnnualDistributionTable(sessions);
-    showToastNotification(`Canevas annuel complet de ${totalSessions} séances (34 semaines, 2 semestres) généré avec succès ! Vous pouvez maintenant saisir ou coller vos cours.`, 'success');
+    showToastNotification(`Canevas de ${totalSessions} séances généré avec succès ! Vous pouvez maintenant saisir ou coller vos cours.`, 'success');
 }
 
 function recalculateAnnualStats(sessionsList) {
@@ -15083,66 +15083,7 @@ window.triggerSyncFromWeeklyFromModal = triggerSyncFromWeeklyFromModal;
 // MOTEUR D'IMPRESSION A4 PAYSAGE - DISTRIBUTION ANNUELLE REGROUPÉE PAR SEMAINE
 // ============================================================================
 
-let currentAnnualPrintSemester = 'semestre1';
-
-function switchAnnualPrintSemester(sem) {
-    currentAnnualPrintSemester = sem;
-    const btn1 = document.getElementById('tabPrintSem1');
-    const btn2 = document.getElementById('tabPrintSem2');
-    const btnAll = document.getElementById('tabPrintSemAll');
-    if (btn1) btn1.classList.toggle('active', sem === 'semestre1');
-    if (btn2) btn2.classList.toggle('active', sem === 'semestre2');
-    if (btnAll) btnAll.classList.toggle('active', sem === 'all');
-
-    const sheetContainer = document.getElementById('annualLandscapePrintSheet');
-    if (sheetContainer) {
-        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(sem);
-    }
-}
-
-function formatWeekDateRange(startStr, endStr) {
-    if (!startStr || !endStr) return '';
-    const monthsFr = ['Jan.', 'Fév.', 'Mar.', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Aout', 'Sep.', 'Oct.', 'Nov.', 'Déc.'];
-    const sParts = String(startStr).trim().split('-');
-    const eParts = String(endStr).trim().split('-');
-    if (sParts.length < 3 || eParts.length < 3) return `Du ${startStr} au ${endStr}`;
-    const sMonth = monthsFr[parseInt(sParts[1], 10) - 1] || sParts[1];
-    const eMonth = monthsFr[parseInt(eParts[1], 10) - 1] || eParts[1];
-    const sDay = sParts[2];
-    const eDay = eParts[2];
-    if (sMonth === eMonth) {
-        return `${sMonth} ${sDay} – ${eDay}`;
-    }
-    return `${sMonth} ${sDay} – ${eMonth} ${eDay}`;
-}
-
-function get4WeeksMonthBanner(weekNumbers, weeksCfg, yearLabel = '2025-2026') {
-    const fullMonthsFr = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-    const monthsSeen = [];
-    const yearsSeen = new Set();
-    
-    weekNumbers.forEach(w => {
-        const wData = weeksCfg ? weeksCfg[w] : null;
-        if (wData && wData.start) {
-            const parts = wData.start.split('-');
-            if (parts.length >= 3) {
-                const mIdx = parseInt(parts[1], 10) - 1;
-                const mName = fullMonthsFr[mIdx];
-                if (mName && !monthsSeen.includes(mName)) monthsSeen.push(mName);
-                yearsSeen.add(parts[0]);
-            }
-        }
-    });
-
-    const yr = Array.from(yearsSeen)[0] || (yearLabel.split('-')[0] || '2025');
-    if (monthsSeen.length === 0) {
-        return `Semaines ${weekNumbers[0]} à ${weekNumbers[weekNumbers.length - 1]} (${yearLabel})`;
-    }
-    return `${monthsSeen.join(' - ')} ${yr}`;
-}
-
-function buildAnnualDistributionLandscapeHTML(targetSemester = null) {
-    const sem = targetSemester || currentAnnualPrintSemester || 'semestre1';
+function buildAnnualDistributionLandscapeHTML() {
     const teacherSel = document.getElementById('annualDistTeacherSelect');
     const classSel = document.getElementById('annualDistClassSelect');
     const subjectSel = document.getElementById('annualDistSubjectSelect');
@@ -15154,216 +15095,190 @@ function buildAnnualDistributionLandscapeHTML(targetSemester = null) {
     const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
 
     const sessions = collectAnnualDistributionFromDOM();
-    const secCfg = (typeof getActiveSectionWeeksConfig === 'function') 
-        ? getActiveSectionWeeksConfig(currentSection) 
-        : (typeof defaultSchoolWeeksConfig !== 'undefined' ? defaultSchoolWeeksConfig : {});
+    const totalPlanned = sessions.length;
+    const completedCount = sessions.filter(s => s.completed).length;
+    const remainingCount = Math.max(0, totalPlanned - completedCount);
+    const progressRate = totalPlanned > 0 ? Math.round((completedCount / totalPlanned) * 100) : 0;
 
-    // Définir les intervalles de semaines pour les semestres
-    // Semestre 1: Semaines 1 à 17
-    // Semestre 2: Semaines 18 à 34
-    let semesterList = [];
-    if (sem === 'semestre1') {
-        semesterList.push({ name: 'Semestre 1', startWeek: 1, endWeek: 17 });
-    } else if (sem === 'semestre2') {
-        semesterList.push({ name: 'Semestre 2', startWeek: 18, endWeek: 34 });
-    } else {
-        semesterList.push({ name: 'Semestre 1', startWeek: 1, endWeek: 17 });
-        semesterList.push({ name: 'Semestre 2', startWeek: 18, endWeek: 34 });
-    }
+    let sectionLabel = 'Section Garçons';
+    if (currentSection === 'filles') sectionLabel = 'Section Filles';
+    else if (currentSection === 'primaire') sectionLabel = 'Section Primaire';
+    else if (currentSection === 'maternelle') sectionLabel = 'Section Maternelle';
 
-    // Regrouper les sessions par semaine
-    const sessionsByWeek = new Map();
+    // Regrouper les jours de la même semaine ensemble
+    const weeksMap = new Map();
     sessions.forEach(s => {
-        const w = parseInt(s.week, 10);
-        if (!isNaN(w)) {
-            if (!sessionsByWeek.has(w)) sessionsByWeek.set(w, []);
-            sessionsByWeek.get(w).push(s);
-        }
+        const w = parseInt(s.week, 10) || 1;
+        if (!weeksMap.has(w)) weeksMap.set(w, []);
+        weeksMap.get(w).push(s);
     });
 
-    // Construire la liste de tous les blocs de 4 semaines (pages)
-    const allPageBlocks = [];
+    const sortedWeeks = Array.from(weeksMap.keys()).sort((a, b) => a - b);
+    const dayOrder = { 'dimanche': 1, 'lundi': 2, 'mardi': 3, 'mercredi': 4, 'jeudi': 5, 'vendredi': 6, 'samedi': 7 };
 
-    semesterList.forEach(semObj => {
-        const semWeeks = [];
-        for (let w = semObj.startWeek; w <= semObj.endWeek; w++) {
-            semWeeks.push(w);
+    let weeksBlocksHTML = '';
+
+    sortedWeeks.forEach(weekNum => {
+        const weekSessions = weeksMap.get(weekNum) || [];
+        // Trier les séances de cette semaine par ordre des jours de cours scolaires
+        weekSessions.sort((a, b) => {
+            const dayA = dayOrder[String(a.day || '').trim().toLowerCase()] || 99;
+            const dayB = dayOrder[String(b.day || '').trim().toLowerCase()] || 99;
+            if (dayA !== dayB) return dayA - dayB;
+            return (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0);
+        });
+
+        // Trouver le trimestre et l'unité de cette semaine
+        const firstSession = weekSessions[0] || {};
+        const termName = firstSession.term || (weekNum <= 10 ? 'Trimestre 1' : (weekNum <= 20 ? 'Trimestre 2' : 'Trimestre 3'));
+        const unitName = firstSession.unit || '';
+
+        // Récupérer les dates de cette semaine si configurées
+        const secCfg = (typeof getActiveSectionWeeksConfig === 'function') ? getActiveSectionWeeksConfig(currentSection) : null;
+        const wDates = (secCfg && secCfg[weekNum]) || (typeof weeksConfig !== 'undefined' && weeksConfig ? weeksConfig[weekNum] : null);
+        let dateRangeText = '';
+        if (wDates && wDates.start && wDates.end) {
+            dateRangeText = `(Du ${wDates.start} au ${wDates.end})`;
         }
 
-        // Découper en paquets de 4 semaines
-        for (let i = 0; i < semWeeks.length; i += 4) {
-            const chunk = semWeeks.slice(i, i + 4);
-            allPageBlocks.push({
-                semesterName: semObj.name,
-                weeks: chunk,
-                isFirstPageOfSemester: (i === 0)
-            });
-        }
-    });
+        let rowsHTML = '';
+        weekSessions.forEach((s, sIdx) => {
+            const isCompleted = s.completed;
+            const statusBadge = isCompleted 
+                ? '<span style="color:#15803D; font-weight:800;">✓ Réalisé</span>' 
+                : '<span style="color:#0284C7; font-weight:600;">⏳ Prévu</span>';
 
-    const totalPages = allPageBlocks.length;
-    let fullHTML = '';
-
-    allPageBlocks.forEach((pageBlock, pageIdx) => {
-        const pageNum = pageIdx + 1;
-        const weekNums = pageBlock.weeks;
-        const monthBanner = get4WeeksMonthBanner(weekNums, secCfg, schoolYear);
-
-        // En-tête pédagogique officiel sur la première page de chaque semestre
-        let semHeaderHTML = '';
-        if (pageBlock.isFirstPageOfSemester) {
-            semHeaderHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #000000; padding-bottom: 6px; margin-bottom: 8px; font-family: inherit;">
-                    <div>
-                        <div style="font-weight: 800; font-size: 11pt; color: #1E3A8A; text-transform: uppercase; letter-spacing: 0.5px;">
-                            DISTRIBUTION ANNUELLE DES ENSEIGNEMENTS — ${escapeHtml(pageBlock.semesterName.toUpperCase())}
-                        </div>
-                        <div style="font-size: 8.5pt; color: #475569; font-weight: 600;">
-                            Année Scolaire : ${escapeHtml(schoolYear)} • ${escapeHtml((currentSection || 'garçons').toUpperCase())}
-                        </div>
-                    </div>
-                    <div style="display: flex; gap: 16px; font-size: 9pt; font-weight: 700; color: #0F172A;">
-                        <div>Enseignant(e) : <span style="color:#0284C7;">${escapeHtml(teacher)}</span></div>
-                        <div>Classe : <span style="color:#0284C7;">${escapeHtml(classe)}</span></div>
-                        <div>Matière : <span style="color:#0284C7;">${escapeHtml(matiere)}</span></div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Construire les colonnes pour les 4 semaines
-        let thColsHTML = '';
-        let tdColsHTML = '';
-
-        for (let colIdx = 0; colIdx < 4; colIdx++) {
-            const wNum = weekNums[colIdx];
-            if (wNum !== undefined) {
-                const wCfg = secCfg ? secCfg[wNum] : null;
-                const dateStr = wCfg ? formatWeekDateRange(wCfg.start, wCfg.end) : '';
-                
-                thColsHTML += `
-                    <th style="width: 25%;">
-                        <div class="annual-sem-week-title">Semaine ${wNum}:</div>
-                        <div class="annual-sem-week-dates">${escapeHtml(dateStr || `Semaine ${wNum}`)}</div>
-                    </th>
-                `;
-
-                // Séances de la semaine
-                const wSessions = sessionsByWeek.get(wNum) || [];
-                // Trier par période
-                wSessions.sort((a, b) => (parseInt(a.period, 10) || 0) - (parseInt(b.period, 10) || 0));
-
-                let sessionsCellsHTML = '';
-                const sessionsCountToRender = Math.max(wSessions.length, 4);
-
-                // Vérifier si la semaine 1 entière est dédiée à l'Orientation
-                const firstSessTitle = (wSessions[0]?.lessonTitle || '').trim().toLowerCase();
-                const isAllOrientation = wNum === 1 && (firstSessTitle.includes('orientation') || wSessions.every(s => (s.lessonTitle || '').toLowerCase().includes('orientation')));
-
-                if (isAllOrientation && wSessions.length > 0 && wSessions.every(s => !s.classwork && !s.homework)) {
-                    // Semaine 1 d'orientation complète comme dans l'exemple
-                    sessionsCellsHTML = `
-                        <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height: 100%; min-height: 400px;">
-                            <span style="font-size: 13pt; font-weight: 800; color: #000000; letter-spacing: 0.5px;">Orientation</span>
-                        </div>
-                    `;
-                } else {
-                    for (let sIdx = 0; sIdx < sessionsCountToRender; sIdx++) {
-                        const s = wSessions[sIdx] || {};
-                        const sNum = s.period || (sIdx + 1);
-                        const lessonText = s.lessonTitle ? s.lessonTitle.trim() : '';
-                        const homeworkText = s.homework ? s.homework.trim() : '-';
-
-                        // Détecter un événement spécial (ex: Saudi National day, fête, etc.)
-                        const isSpecialDay = lessonText.toLowerCase().includes('national day') || 
-                                             lessonText.toLowerCase().includes('fête') || 
-                                             lessonText.toLowerCase().includes('fondation') ||
-                                             (wNum === 4 && sIdx === 0 && (!lessonText || lessonText.toLowerCase().includes('national day')));
-
-                        let specialBadgeHTML = '';
-                        if (isSpecialDay) {
-                            specialBadgeHTML = `
-                                <div class="annual-session-special-day" style="display:flex; justify-content:space-between; margin-bottom: 6px;">
-                                    <span>Saudi</span>
-                                    <span>National</span>
-                                    <span>day</span>
-                                </div>
-                            `;
-                        }
-
-                        sessionsCellsHTML += `
-                            <div style="margin-bottom: 14px;">
-                                ${specialBadgeHTML}
-                                <div style="margin-bottom: 3px;">
-                                    <span class="annual-session-pill-yellow">Séance ${sNum}:</span>
-                                </div>
-                                <div class="annual-session-lesson-title">
-                                    ${escapeHtml(lessonText || 'Cours')}
-                                </div>
-                                <div class="annual-session-homework">
-                                    Devoirs : <span style="text-decoration: underline;">${escapeHtml(homeworkText)}</span>
-                                </div>
-                            </div>
-                        `;
-                    }
-                }
-
-                tdColsHTML += `
-                    <td style="width: 25%; ${isAllOrientation ? 'background: #E2E8F0;' : ''}">
-                        ${sessionsCellsHTML}
+            rowsHTML += `
+                <tr style="${isCompleted ? 'background:#F0FDF4;' : ''}">
+                    <td style="font-weight:800; color:#1E293B; white-space:nowrap;">
+                        <span class="annual-print-day-badge">${escapeHtml(s.day || 'Dimanche')}</span>
                     </td>
-                `;
-            } else {
-                // Colonne vide pour maintenir la grille de 4 colonnes
-                thColsHTML += `<th style="width: 25%; background:#FED7AA !important; border:1.5px solid #000000;"></th>`;
-                tdColsHTML += `<td style="width: 25%; background:#FAFAFA;"></td>`;
-            }
-        }
+                    <td style="text-align:center; font-weight:700; color:#475569;">P${s.period || (sIdx + 1)}</td>
+                    <td style="font-weight:700; color:#0F172A;">${escapeHtml(s.lessonTitle || '-')}</td>
+                    <td style="color:#334155;">${escapeHtml(s.classwork || '-')}</td>
+                    <td style="color:#475569;">${escapeHtml(s.support || '-')}</td>
+                    <td style="color:#475569;">${escapeHtml(s.homework || '-')}</td>
+                    <td style="text-align:center; white-space:nowrap;">${statusBadge}</td>
+                </tr>
+            `;
+        });
 
-        fullHTML += `
-            <div class="annual-sem-page-block">
-                ${semHeaderHTML}
-                <div class="annual-sem-month-bar">
-                    ${escapeHtml(monthBanner)}
+        weeksBlocksHTML += `
+            <div class="annual-print-week-block">
+                <div class="annual-print-week-header">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span style="font-size:0.98rem; letter-spacing:0.5px; text-transform:uppercase;">
+                            📅 SEMAINE ${weekNum}
+                        </span>
+                        <span style="background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:4px; font-size:0.8rem; font-weight:600;">
+                            ${escapeHtml(termName)}
+                        </span>
+                        ${unitName ? `<span style="font-size:0.85rem; font-weight:600; opacity:0.9;">• ${escapeHtml(unitName)}</span>` : ''}
+                        ${dateRangeText ? `<span style="font-size:0.78rem; opacity:0.85;">${escapeHtml(dateRangeText)}</span>` : ''}
+                    </div>
+                    <div style="font-size:0.8rem; opacity:0.9; font-weight:600;">
+                        ${weekSessions.length} séance(s) / jour(s)
+                    </div>
                 </div>
-                <table class="annual-sem-table">
+
+                <table class="annual-print-week-table">
                     <thead>
                         <tr>
-                            ${thColsHTML}
+                            <th style="width: 12%;">Jour</th>
+                            <th style="width: 6%; text-align:center;">Période</th>
+                            <th style="width: 24%;">Titre de la Leçon</th>
+                            <th style="width: 28%;">Activités & Travaux de classe</th>
+                            <th style="width: 13%;">Support & Outils</th>
+                            <th style="width: 11%;">Devoirs & Évaluation</th>
+                            <th style="width: 6%; text-align:center;">Statut</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            ${tdColsHTML}
-                        </tr>
+                        ${rowsHTML}
                     </tbody>
                 </table>
-                <div class="annual-sem-page-footer">
-                    <span>${escapeHtml(teacher)} • ${escapeHtml(pageBlock.semesterName)} • ${escapeHtml(classe)} - ${escapeHtml(matiere)}</span>
-                    <span style="font-weight: 700; color: #475569;">Page ${pageNum} of ${totalPages}</span>
-                </div>
             </div>
         `;
     });
 
+    const currentDateStr = new Date().toLocaleDateString('fr-FR', {
+        day: '2-digit', month: 'long', year: 'numeric'
+    });
+
+    const fullHTML = `
+        <div class="annual-print-header">
+            <div class="annual-print-header-top">
+                <div style="font-weight:800; font-size:0.9rem; color:#1E3A8A; text-transform:uppercase;">
+                    Établissement Scolaire • ${escapeHtml(sectionLabel)}
+                </div>
+                <div style="font-weight:700; font-size:0.85rem; color:#475569;">
+                    Année Scolaire : ${escapeHtml(schoolYear)}
+                </div>
+            </div>
+
+            <h1 class="annual-print-title">
+                RÉPARTITION ANNUELLE DES ENSEIGNEMENTS
+            </h1>
+            <p class="annual-print-subtitle">
+                التوزيع السنوي للمنهاج الدراسي والتعلمات • Format A4 Paysage avec regroupement hebdomadaire
+            </p>
+
+            <div class="annual-print-meta-grid">
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Enseignant(e)</span>
+                    <span class="meta-value">${escapeHtml(teacher)}</span>
+                </div>
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Classe / Niveau</span>
+                    <span class="meta-value">${escapeHtml(classe)}</span>
+                </div>
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Matière</span>
+                    <span class="meta-value">${escapeHtml(matiere)}</span>
+                </div>
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Volume Annuel</span>
+                    <span class="meta-value">${totalPlanned} séances (${sortedWeeks.length} semaines)</span>
+                </div>
+                <div class="annual-print-meta-item">
+                    <span class="meta-label">Avancement</span>
+                    <span class="meta-value" style="color:#059669;">${completedCount} / ${totalPlanned} (${progressRate}%)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="annual-print-weeks-container">
+            ${weeksBlocksHTML}
+        </div>
+
+        <div class="annual-print-footer">
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; color:#64748B;">
+                <span>Document officiel pédagogique • Généré le ${currentDateStr}</span>
+                <span>Taux de réalisation global : <strong>${progressRate}%</strong></span>
+            </div>
+
+            <div class="annual-print-signatures">
+                <div class="annual-signature-box">
+                    <span>Visa et Signature de l'Enseignant(e) :</span>
+                    <span style="font-size:0.75rem; color:#94A3B8; text-align:right;">Date : ______________</span>
+                </div>
+                <div class="annual-signature-box">
+                    <span>Visa de la Direction des Études / Inspection :</span>
+                    <span style="font-size:0.75rem; color:#94A3B8; text-align:right;">Cachet et Date : ______________</span>
+                </div>
+            </div>
+        </div>
+    `;
+
     return fullHTML;
 }
 
-function openAnnualPrintPreviewModal(sem = null) {
-    if (sem) currentAnnualPrintSemester = sem;
+function openAnnualPrintPreviewModal() {
     const previewModal = document.getElementById('annualPrintPreviewModal');
     const sheetContainer = document.getElementById('annualLandscapePrintSheet');
     if (!previewModal || !sheetContainer) return;
 
-    // Mettre à jour l'onglet actif
-    const btn1 = document.getElementById('tabPrintSem1');
-    const btn2 = document.getElementById('tabPrintSem2');
-    const btnAll = document.getElementById('tabPrintSemAll');
-    if (btn1) btn1.classList.toggle('active', currentAnnualPrintSemester === 'semestre1');
-    if (btn2) btn2.classList.toggle('active', currentAnnualPrintSemester === 'semestre2');
-    if (btnAll) btnAll.classList.toggle('active', currentAnnualPrintSemester === 'all');
-
-    sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentAnnualPrintSemester);
+    sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML();
     previewModal.style.display = 'flex';
 }
 
@@ -15372,16 +15287,21 @@ function closeAnnualPrintPreviewModal() {
     if (previewModal) previewModal.style.display = 'none';
 }
 
-function printAnnualDistributionLandscape(sem = null) {
-    if (sem) currentAnnualPrintSemester = sem;
+function printAnnualDistributionLandscape() {
+    // 1. Remplir le conteneur d'impression paysage
     const sheetContainer = document.getElementById('annualLandscapePrintSheet');
     if (sheetContainer) {
-        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML(currentAnnualPrintSemester);
+        sheetContainer.innerHTML = buildAnnualDistributionLandscapeHTML();
     }
+
+    // 2. Ouvrir le modal d'aperçu pour que la feuille soit dans le DOM
     const previewModal = document.getElementById('annualPrintPreviewModal');
     if (previewModal) previewModal.style.display = 'flex';
 
+    // 3. Activer le mode d'impression A4 paysage
     document.body.classList.add('printing-annual-landscape');
+
+    // 4. Déclencher l'impression avec @page { size: A4 landscape; }
     setTimeout(() => {
         window.print();
         setTimeout(() => {
@@ -15405,34 +15325,37 @@ window.addEventListener('afterprint', () => {
 });
 
 function downloadAnnualPrintHTML() {
-    const fullHTML = buildAnnualDistributionLandscapeHTML(currentAnnualPrintSemester);
+    const fullHTML = buildAnnualDistributionLandscapeHTML();
     const teacherSel = document.getElementById('annualDistTeacherSelect');
     const classSel = document.getElementById('annualDistClassSelect');
     const teacher = teacherSel ? teacherSel.value.trim() : 'Enseignant';
     const classe = classSel ? classSel.value.trim() : 'Classe';
-    const semName = currentAnnualPrintSemester === 'semestre1' ? 'Semestre1' : (currentAnnualPrintSemester === 'semestre2' ? 'Semestre2' : 'AnneeComplete');
 
     const standaloneDocument = `<!DOCTYPE html>
 <html lang="fr" dir="ltr">
 <head>
     <meta charset="UTF-8">
-    <title>Repartition_Annuelle_${semName}_${teacher}_${classe}</title>
+    <title>Repartition_Annuelle_${teacher}_${classe}</title>
     <style>
         @page { size: A4 landscape; margin: 8mm 8mm 8mm 8mm; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 12px; color: #0F172A; background: #FFF; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .annual-sem-page-block { background: #FFFFFF; border: 1.5px solid #000000; margin-bottom: 25px; page-break-after: always; break-after: page; box-sizing: border-box; }
-        .annual-sem-page-block:last-child { page-break-after: auto; break-after: auto; }
-        .annual-sem-month-bar { background: #4E81EC !important; color: #FFFFFF !important; font-size: 13.5pt; font-weight: 800; text-align: center; padding: 8px 12px; border-bottom: 1.5px solid #000000; letter-spacing: 0.5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .annual-sem-table { width: 100%; border-collapse: collapse; table-layout: fixed; background: #FFFFFF; }
-        .annual-sem-table th { background: #F6A97A !important; border: 1.5px solid #000000; padding: 8px 6px; text-align: center; vertical-align: middle; width: 25%; color: #000000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .annual-sem-week-title { font-weight: 800; font-size: 11pt; text-decoration: underline; text-decoration-thickness: 1.5px; color: #1E293B; }
-        .annual-sem-week-dates { font-weight: 700; font-size: 9.5pt; color: #0F172A; margin-top: 3px; }
-        .annual-sem-table td { border: 1.5px solid #000000; padding: 14px 14px; vertical-align: top; width: 25%; background: #FFFFFF; font-size: 9.5pt; min-height: 480px; word-break: break-word; }
-        .annual-session-pill-yellow { background-color: #FFFF00 !important; color: #000000 !important; font-weight: 800; font-size: 10pt; text-decoration: underline; text-decoration-thickness: 1.5px; padding: 1px 6px; display: inline-block; margin-bottom: 4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .annual-session-lesson-title { color: #DC2626 !important; font-weight: 800; font-size: 10pt; line-height: 1.35; margin-bottom: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .annual-session-homework { color: #0284C7 !important; font-weight: 800; font-size: 9.5pt; margin-bottom: 16px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .annual-session-special-day { color: #15803D !important; font-weight: 800; font-size: 10pt; margin-bottom: 6px; text-decoration: underline; text-decoration-style: wavy; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .annual-sem-page-footer { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; font-size: 8.5pt; color: #64748B; font-weight: 600; background: #FFFFFF; }
+        .annual-print-header { border-bottom: 2.5px solid #0284C7; padding-bottom: 12px; margin-bottom: 16px; }
+        .annual-print-header-top { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .annual-print-title { font-size: 1.3rem; font-weight: 800; color: #0F172A; text-align: center; margin: 0; }
+        .annual-print-subtitle { font-size: 0.85rem; color: #475569; text-align: center; margin: 2px 0 0 0; }
+        .annual-print-meta-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 12px; margin-top: 10px; }
+        .annual-print-meta-item { display: flex; flex-direction: column; }
+        .meta-label { font-size: 0.7rem; font-weight: 700; color: #64748B; text-transform: uppercase; }
+        .meta-value { font-size: 0.85rem; font-weight: 800; color: #0F172A; }
+        .annual-print-week-block { break-inside: avoid; page-break-inside: avoid; margin-bottom: 14px; border: 1.5px solid #94A3B8; border-radius: 6px; overflow: hidden; background: #FFF; }
+        .annual-print-week-header { background: #1E293B; color: #FFF; padding: 6px 12px; font-size: 0.88rem; font-weight: 800; display: flex; justify-content: space-between; }
+        .annual-print-week-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; table-layout: fixed; }
+        .annual-print-week-table th { background: #F1F5F9; color: #1E293B; font-weight: 800; padding: 5px 6px; border: 1px solid #CBD5E1; text-align: left; }
+        .annual-print-week-table td { padding: 5px 6px; border: 1px solid #CBD5E1; vertical-align: top; word-break: break-word; }
+        .annual-print-week-table tr:nth-child(even) td { background: #F8FAFC; }
+        .annual-print-footer { break-inside: avoid; page-break-inside: avoid; margin-top: 20px; border-top: 1.5px solid #94A3B8; padding-top: 12px; }
+        .annual-print-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 14px; }
+        .annual-signature-box { border: 1px dashed #94A3B8; border-radius: 6px; padding: 10px 14px; height: 80px; display: flex; flex-direction: column; justify-content: space-between; font-size: 0.8rem; font-weight: 700; color: #475569; }
     </style>
 </head>
 <body>
@@ -15444,7 +15367,7 @@ function downloadAnnualPrintHTML() {
 </html>`;
 
     const blob = new Blob([standaloneDocument], { type: 'text/html;charset=utf-8' });
-    const filename = `Distribution_Annuelle_A4_Paysage_${semName}_${teacher}_${classe}.html`.replace(/\s+/g, '_');
+    const filename = `Repartition_Annuelle_A4_Paysage_${teacher}_${classe}.html`.replace(/\s+/g, '_');
     if (typeof saveAs === 'function') {
         saveAs(blob, filename);
     } else {
@@ -15465,4 +15388,3 @@ window.closeAnnualPrintPreviewModal = closeAnnualPrintPreviewModal;
 window.printAnnualDistributionLandscape = printAnnualDistributionLandscape;
 window.triggerDirectPrintLandscape = triggerDirectPrintLandscape;
 window.downloadAnnualPrintHTML = downloadAnnualPrintHTML;
-window.switchAnnualPrintSemester = switchAnnualPrintSemester;

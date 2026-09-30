@@ -4194,181 +4194,6 @@ tr.row-plan-error {
     color: #475569;
 }
 
-/* ==========================================================================
-   STYLE IMPRESSION A4 PAYSAGE - DISTRIBUTION ANNUELLE PAR SEMESTRE (GRILLE SEMAINE)
-   Conforme à l'exemple officiel : Barre Mois Bleue, En-têtes Semaine Orange/Pêche,
-   Séance Jaune, Cours Rouge, Devoirs Bleu, Découpage par Semestre
-   ========================================================================== */
-.annual-sem-tabs-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255, 255, 255, 0.12);
-    padding: 4px;
-    border-radius: 8px;
-}
-
-.btn-sem-tab {
-    background: transparent;
-    color: #CBD5E1;
-    border: none;
-    padding: 7px 15px;
-    border-radius: 6px;
-    font-weight: 700;
-    font-size: 0.88rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.btn-sem-tab:hover {
-    background: rgba(255, 255, 255, 0.18);
-    color: #FFFFFF;
-}
-
-.btn-sem-tab.active {
-    background: #0284C7;
-    color: #FFFFFF;
-    box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);
-}
-
-.annual-sem-page-block {
-    background: #FFFFFF;
-    border: 1.5px solid #000000;
-    margin-bottom: 28px;
-    page-break-after: always;
-    break-after: page;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    box-sizing: border-box;
-}
-
-.annual-sem-page-block:last-child {
-    page-break-after: auto;
-    break-after: auto;
-    margin-bottom: 0;
-}
-
-.annual-sem-month-bar {
-    background: #4E81EC;
-    color: #FFFFFF;
-    font-size: 13.5pt;
-    font-weight: 800;
-    text-align: center;
-    padding: 8px 12px;
-    border-bottom: 1.5px solid #000000;
-    letter-spacing: 0.5px;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-}
-
-.annual-sem-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-    background: #FFFFFF;
-}
-
-.annual-sem-table th {
-    background: #F6A97A !important;
-    border: 1.5px solid #000000;
-    padding: 8px 6px;
-    text-align: center;
-    vertical-align: middle;
-    width: 25%;
-    color: #000000;
-    box-sizing: border-box;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-}
-
-.annual-sem-week-title {
-    font-weight: 800;
-    font-size: 11pt;
-    text-decoration: underline;
-    text-decoration-thickness: 1.5px;
-    color: #1E293B;
-}
-
-.annual-sem-week-dates {
-    font-weight: 700;
-    font-size: 9.5pt;
-    color: #0F172A;
-    margin-top: 3px;
-}
-
-.annual-sem-table td {
-    border: 1.5px solid #000000;
-    padding: 14px 14px;
-    vertical-align: top;
-    width: 25%;
-    background: #FFFFFF;
-    font-size: 9.5pt;
-    min-height: 480px;
-    word-break: break-word;
-    box-sizing: border-box;
-}
-
-.annual-sem-table td.col-orientation-week {
-    background: #F8FAFC;
-}
-
-.annual-session-pill-yellow {
-    background-color: #FFFF00 !important;
-    color: #000000 !important;
-    font-weight: 800;
-    font-size: 10pt;
-    text-decoration: underline;
-    text-decoration-thickness: 1.5px;
-    padding: 1px 6px;
-    display: inline-block;
-    margin-bottom: 4px;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-}
-
-.annual-session-lesson-title {
-    color: #DC2626 !important;
-    font-weight: 800;
-    font-size: 10pt;
-    line-height: 1.35;
-    margin-bottom: 6px;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-}
-
-.annual-session-homework {
-    color: #0284C7 !important;
-    font-weight: 800;
-    font-size: 9.5pt;
-    margin-bottom: 16px;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-}
-
-.annual-session-special-day {
-    color: #15803D !important;
-    font-weight: 800;
-    font-size: 10pt;
-    margin-bottom: 6px;
-    text-decoration: underline;
-    text-decoration-style: wavy;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-}
-
-.annual-sem-page-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 12px;
-    font-size: 8.5pt;
-    color: #64748B;
-    font-weight: 600;
-    background: #FFFFFF;
-}
-
 /* RÈGLES SPÉCIFIQUES D'IMPRESSION A4 PAYSAGE */
 @media print {
     @page {
@@ -4411,8 +4236,7 @@ tr.row-plan-error {
 
     body.printing-annual-landscape #annualPrintPreviewModal .annual-dist-header,
     body.printing-annual-landscape #annualPrintPreviewModal .annual-actions-bar,
-    body.printing-annual-landscape #annualPrintPreviewModal .annual-dist-close-btn,
-    body.printing-annual-landscape .annual-sem-tabs-toolbar {
+    body.printing-annual-landscape #annualPrintPreviewModal .annual-dist-close-btn {
         display: none !important;
     }
 
@@ -4430,18 +4254,10 @@ tr.row-plan-error {
         padding: 0 !important;
     }
 
-    body.printing-annual-landscape .annual-sem-page-block {
+    body.printing-annual-landscape .annual-print-week-block {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
-        page-break-after: always !important;
-        margin-bottom: 0 !important;
-        border: 1.5px solid #000000 !important;
-        box-shadow: none !important;
-        width: 100% !important;
-    }
-
-    body.printing-annual-landscape .annual-sem-page-block:last-child {
-        page-break-after: auto !important;
+        margin-bottom: 12px !important;
     }
 
     body.printing-annual-landscape .annual-print-footer {
