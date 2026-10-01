@@ -5564,6 +5564,115 @@ app.post('/api/save-rows-batch', async (req, res) => {
   }
 });
 
+// Suppression sécurisée et définitive d'une ligne de tableau par l'administrateur
+app.post('/api/admin/delete-plan-row', async (req, res) => {
+  const weekNumber = parseInt(req.body.week, 10);
+  const rowData = req.body.row;
+  const rawSection = String(req.body.section || 'garcons').toLowerCase().trim();
+  const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSection) ? rawSection : 'garcons';
+
+  if (isNaN(weekNumber) || !rowData || typeof rowData !== 'object') {
+    return res.status(400).json({ message: 'Données ou ligne invalide.' });
+  }
+
+  try {
+    const db = await connectToDatabase();
+    const docId = `${section}_${weekNumber}`;
+    const now = new Date();
+
+    const result = await withPlanLock(docId, async () => {
+      let planDoc = await db.collection('plans').findOne({
+        $or: [
+          { _id: docId },
+          { week: weekNumber, section: section },
+          { week: String(weekNumber), section: section }
+        ]
+      });
+
+      if (!planDoc || !Array.isArray(planDoc.data)) {
+        return { deleted: false, remainingCount: 0 };
+      }
+
+      let deletedIndex = -1;
+
+      // 1. Chercher par identifiant explicite
+      if (rowData._id || rowData._rowId || rowData.rowId) {
+        deletedIndex = planDoc.data.findIndex(elem => {
+          if (!elem || typeof elem !== 'object') return false;
+          if (rowData._id && elem._id && String(elem._id) === String(rowData._id)) return true;
+          if (rowData._rowId && elem._rowId && String(elem._rowId) === String(rowData._rowId)) return true;
+          if (rowData.rowId && elem.rowId && String(elem.rowId) === String(rowData.rowId)) return true;
+          return false;
+        });
+      }
+
+      // 2. Chercher avec matchPlanRow
+      if (deletedIndex === -1) {
+        deletedIndex = planDoc.data.findIndex(elem => elem && typeof elem === 'object' && matchPlanRow(elem, rowData));
+      }
+
+      // 3. Chercher par égalité sémantique des colonnes clés
+      if (deletedIndex === -1) {
+        const getVal = (obj, key) => {
+          const k = findKey(obj, key);
+          return k ? String(obj[k] || '').trim().toLowerCase() : '';
+        };
+        const ensC = getVal(rowData, 'Enseignant');
+        const clsC = getVal(rowData, 'Classe');
+        const jourC = getVal(rowData, 'Jour');
+        const perC = getVal(rowData, 'Période');
+        const matC = getVal(rowData, 'Matière');
+
+        deletedIndex = planDoc.data.findIndex(elem => {
+          if (!elem || typeof elem !== 'object') return false;
+          const ensE = getVal(elem, 'Enseignant');
+          const clsE = getVal(elem, 'Classe');
+          const jourE = getVal(elem, 'Jour');
+          const perE = getVal(elem, 'Période');
+          const matE = getVal(elem, 'Matière');
+          return (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC && matE === matC);
+        });
+      }
+
+      // 4. Si la ligne avait été complètement vidée (l'utilisateur avait effacé ses données)
+      if (deletedIndex === -1) {
+        const isBlank = (obj) => {
+          if (!obj || typeof obj !== 'object') return true;
+          return Object.entries(obj).every(([k, v]) => {
+            if (k.startsWith('_') || k === 'updatedAt' || k === '__v') return true;
+            return !v || String(v).trim() === '';
+          });
+        };
+        if (isBlank(rowData)) {
+          deletedIndex = planDoc.data.findIndex(elem => isBlank(elem));
+        }
+      }
+
+      if (deletedIndex !== -1) {
+        planDoc.data.splice(deletedIndex, 1);
+        await db.collection('plans').updateOne(
+          { _id: planDoc._id },
+          { $set: { data: planDoc.data, updatedAt: now } }
+        );
+        console.log(`🗑️ [Delete Row] S${weekNumber} (${section}): 1 ligne supprimée. Restantes: ${planDoc.data.length}`);
+        return { deleted: true, remainingCount: planDoc.data.length };
+      }
+
+      return { deleted: false, remainingCount: planDoc.data.length };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: result.deleted ? 'Ligne supprimée avec succès du tableau.' : 'Ligne introuvable ou déjà supprimée.',
+      deleted: result.deleted,
+      remainingRows: result.remainingCount
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/delete-plan-row:', error);
+    res.status(500).json({ message: 'Erreur serveur lors de la suppression de la ligne.' });
+  }
+});
+
 // --------------------- Gestion des Journées Spéciales / Fusion des Jours & Photos ---------------------
 
 app.get('/api/special-days', async (req, res) => {

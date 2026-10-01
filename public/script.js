@@ -3459,6 +3459,8 @@ function displayPlanTable(data) {
             const jK = findHKey('Jour');
             const clsK = findHKey('Classe');
             const ensK = findHKey('Enseignant');
+            const matK = findHKey('Matière');
+            const perK = findHKey('Période');
             const updK = findHKey('updatedAt');
             
             const isAdmin = isUserAdminOrSupervisor(loggedInUser, currentUserRole);
@@ -3549,7 +3551,7 @@ function displayPlanTable(data) {
                     }
 
                     if (header === ensK && (!content || !content.trim()) && !isCrossReadOnly) {
-                        const curMat = rowObj ? rowObj[matK] : '';
+                        const curMat = (rowObj && matK && rowObj[matK]) ? String(rowObj[matK]).trim() : '';
                         if (curMat && typeof findLinkedTeacherForSubject === 'function') {
                             const autoTeacher = findLinkedTeacherForSubject(curMat);
                             if (autoTeacher) {
@@ -3614,9 +3616,9 @@ function displayPlanTable(data) {
                                 applyRTLToElement(e.target, e.target.textContent);
 
                                 // Si la matière est modifiée, attribuer automatiquement l'enseignant lié si vide
-                                if (header === matK && ensK && typeof findLinkedTeacherForSubject === 'function') {
+                                if (matK && header === matK && ensK && typeof findLinkedTeacherForSubject === 'function') {
                                     const newSubject = (e.target.textContent || '').trim();
-                                    const curEns = rowObj[ensK] ? rowObj[ensK].trim() : '';
+                                    const curEns = (rowObj && rowObj[ensK]) ? rowObj[ensK].trim() : '';
                                     if ((!curEns || curEns === '') && newSubject) {
                                         const autoEns = findLinkedTeacherForSubject(newSubject);
                                         if (autoEns) {
@@ -3663,6 +3665,16 @@ function displayPlanTable(data) {
                     saveBtn.classList.add('save-row-button');
                     saveBtn.onclick = () => saveRow(rowObj, tr);
                     actTd.appendChild(saveBtn);
+
+                    // Bouton Admin pour supprimer définitivement la ligne du tableau
+                    if (isAdmin) {
+                        const delRowBtn = document.createElement('button');
+                        delRowBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+                        delRowBtn.title = (currentUserLanguage === 'ar') ? 'حذف هذا السطر نهائياً من الجدول' : 'Supprimer définitivement cette ligne du tableau';
+                        delRowBtn.classList.add('delete-plan-row-btn');
+                        delRowBtn.onclick = () => deletePlanRow(rowObj, tr);
+                        actTd.appendChild(delRowBtn);
+                    }
 
                     const indicatorSpan = document.createElement('span');
                     indicatorSpan.className = 'save-indicator';
@@ -4477,6 +4489,85 @@ function displayPlanTable(data) {
                 checkAndDisplayIncompleteTeachers();
             } 
         }
+
+        async function deletePlanRow(rowData, tableRowElement) {
+            if (!rowData || typeof rowData !== 'object') {
+                displayAlert('invalid_row', true);
+                return;
+            }
+            if (rowData.isReadOnlyCrossSection) {
+                displayAlert(currentUserLanguage === 'ar' ? 'لا يمكن حذف أسطر القسم الآخر (للاطلاع فقط)' : 'Impossible de supprimer une ligne appartenant à l\'autre section.', true);
+                return;
+            }
+
+            const isAr = (currentUserLanguage === 'ar');
+            const isEn = (currentUserLanguage === 'en');
+            const confirmMsg = isAr
+                ? 'هل أنت متأكد من رغبتك في حذف هذا السطر نهائياً من جدول هذه الأسبوع؟'
+                : (isEn
+                    ? 'Are you sure you want to permanently delete this row from this week\'s schedule?'
+                    : 'Voulez-vous vraiment supprimer définitivement cette ligne du tableau de cette semaine ?');
+
+            if (!confirm(confirmMsg)) return;
+
+            if (!tableRowElement) {
+                tableRowElement = findTableRowElement(rowData);
+            }
+
+            const delBtn = tableRowElement?.querySelector('.delete-plan-row-btn');
+            if (delBtn) {
+                delBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                delBtn.disabled = true;
+            }
+
+            try {
+                if (!currentWeek) throw new Error(t('please_select_week'));
+
+                const section = rowData._section || currentSection || 'garcons';
+                const response = await fetch('/api/admin/delete-plan-row', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        week: currentWeek,
+                        section: section,
+                        row: rowData
+                    })
+                });
+
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || `Erreur ${response.status}`);
+
+                // Retirer proprement la ligne des différentes structures en mémoire
+                if (Array.isArray(planData)) {
+                    planData = planData.filter(r => r !== rowData && (!rowData._id || r._id !== rowData._id));
+                }
+                if (Array.isArray(window.rawPlanData)) {
+                    window.rawPlanData = window.rawPlanData.filter(r => r !== rowData && (!rowData._id || r._id !== rowData._id));
+                }
+                if (Array.isArray(filteredAndSortedData)) {
+                    filteredAndSortedData = filteredAndSortedData.filter(r => r !== rowData && (!rowData._id || r._id !== rowData._id));
+                }
+
+                // Réactualiser l'affichage complet du tableau et des filtres
+                sortAndDisplay();
+                updateTeacherCounters();
+                checkAndDisplayIncompleteTeachers();
+
+                const successMsg = isAr
+                    ? 'تم حذف السطر بنجاح من الجدول.'
+                    : (isEn ? 'Row deleted successfully from schedule.' : 'Ligne supprimée avec succès du tableau.');
+                showToastNotification(successMsg, 'success');
+                displayAlert(successMsg, false);
+            } catch (err) {
+                console.error('Erreur deletePlanRow:', err);
+                displayAlert('Erreur lors de la suppression de la ligne : ' + err.message, true);
+                if (delBtn) {
+                    delBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+                    delBtn.disabled = false;
+                }
+            }
+        }
+        window.deletePlanRow = deletePlanRow;
 
         async function saveAllDisplayedRows() { 
             const rowsToSave = (filteredAndSortedData || []).filter(r => r && !r.isReadOnlyCrossSection);
@@ -15385,62 +15476,111 @@ function handleAnnualTablePaste(e, targetTd) {
     if (!clipboardData) return;
 
     const plainText = clipboardData.getData('text/plain') || '';
-    if (!plainText.includes('\t') && !plainText.includes('\n') && !plainText.includes(';') && !plainText.includes('|')) return;
+    const htmlText = clipboardData.getData('text/html') || '';
+    if (!plainText && !htmlText) return;
 
     e.preventDefault();
 
     const startTr = targetTd.closest('tr');
     if (!startTr) return;
 
-    const tbody = startTr.closest('tbody');
-    if (!tbody) return;
-
-    const allTrs = Array.from(tbody.querySelectorAll('tr'));
-    const startRowIdx = allTrs.indexOf(startTr);
-    if (startRowIdx === -1) return;
-
     const startRowEditables = Array.from(startTr.querySelectorAll('td.col-editable-annual'));
     let startColIdx = startRowEditables.indexOf(targetTd);
     if (startColIdx === -1) startColIdx = 0;
 
-    const lines = plainText.split(/\r?\n/).filter(line => line.trim().length > 0);
-    let cellsFilled = 0;
-    let rowsFilled = 0;
+    let parsedColumns = [];
 
-    lines.forEach((line, rOffset) => {
-        let curTr = allTrs[startRowIdx + rOffset];
-        if (!curTr) {
-            addNewAnnualSessionRow();
-            const updatedTrs = Array.from(tbody.querySelectorAll('tr'));
-            curTr = updatedTrs[updatedTrs.length - 1];
-        }
-        if (!curTr) return;
+    // 1. Analyse si présence d'un tableau HTML (ex: Excel / Word / Google Sheets)
+    if (htmlText && (htmlText.includes('<tr') || htmlText.includes('<table') || htmlText.includes('<td'))) {
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html');
+            const trs = doc.querySelectorAll('tr');
+            if (trs.length > 0) {
+                const tableMatrix = [];
+                trs.forEach(tr => {
+                    const cells = tr.querySelectorAll('td, th');
+                    if (cells.length > 0) {
+                        const rowVals = Array.from(cells).map(cell => {
+                            const clone = cell.cloneNode(true);
+                            clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+                            clone.querySelectorAll('p, div, li').forEach(b => b.prepend('\n'));
+                            let txt = (clone.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+                            return txt.replace(/\n{3,}/g, '\n\n');
+                        });
+                        tableMatrix.push(rowVals);
+                    }
+                });
 
-        const curEditables = Array.from(curTr.querySelectorAll('td.col-editable-annual'));
-        let sep = '\t';
-        if (!line.includes('\t')) {
-            if (line.includes(';') && line.split(';').length >= 2) sep = ';';
-            else if (line.includes('|') && line.split('|').length >= 2) sep = '|';
-        }
-
-        const values = line.split(sep);
-        values.forEach((val, cOffset) => {
-            const cell = curEditables[startColIdx + cOffset];
-            if (cell) {
-                let cleanVal = val.trim();
-                if (cleanVal.startsWith('"') && cleanVal.endsWith('"') && cleanVal.length >= 2) {
-                    cleanVal = cleanVal.slice(1, -1).replace(/""/g, '"').trim();
+                if (tableMatrix.length > 0) {
+                    // Joindre les lignes colonne par colonne avec saut de ligne \n dans la même case
+                    // Ne JAMAIS déborder sur les lignes/cases du dessous
+                    const maxCols = Math.max(...tableMatrix.map(r => r.length));
+                    for (let c = 0; c < maxCols; c++) {
+                        const colParts = [];
+                        for (let r = 0; r < tableMatrix.length; r++) {
+                            const val = (tableMatrix[r][c] || '').trim();
+                            if (val) colParts.push(val);
+                        }
+                        parsedColumns.push(colParts.join('\n'));
+                    }
                 }
-                cell.textContent = cleanVal;
-                cellsFilled++;
             }
-        });
-        rowsFilled++;
+        } catch (err) {
+            console.warn('Annual paste parse HTML error:', err);
+        }
+    }
+
+    // 2. Si pas de structure HTML multi-colonnes, analyser le texte brut (TSV / CSV / texte multi-lignes)
+    if (parsedColumns.length === 0 && plainText) {
+        const clean = plainText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const hasTabs = clean.includes('\t');
+        const firstLine = clean.split('\n')[0];
+        const hasSemiCols = !hasTabs && clean.includes(';') && firstLine.includes(';') && firstLine.split(';').length >= 2;
+        const hasPipes = !hasTabs && !hasSemiCols && clean.includes('|') && firstLine.includes('|') && firstLine.split('|').length >= 2;
+
+        if (!hasTabs && !hasSemiCols && !hasPipes) {
+            // Aucun séparateur de colonnes : Tout le texte (avec TOUS ses sauts de ligne \n) reste dans la MÊME CASE
+            let val = clean.trim();
+            if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) {
+                val = val.slice(1, -1).replace(/""/g, '"').trim();
+            }
+            parsedColumns = [val];
+        } else {
+            const sep = hasTabs ? '\t' : (hasSemiCols ? ';' : '|');
+            const lines = clean.split('\n');
+            const matrix = lines.map(line => line.split(sep));
+            const maxCols = Math.max(...matrix.map(r => r.length));
+            for (let c = 0; c < maxCols; c++) {
+                const colParts = [];
+                for (let r = 0; r < matrix.length; r++) {
+                    let val = (matrix[r][c] || '').trim();
+                    if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) {
+                        val = val.slice(1, -1).replace(/""/g, '"').trim();
+                    }
+                    if (val) colParts.push(val);
+                }
+                parsedColumns.push(colParts.join('\n'));
+            }
+        }
+    }
+
+    if (parsedColumns.length === 0) return;
+
+    let cellsFilled = 0;
+    // Remplir UNIQUEMENT sur la ligne courante, case par case horizontalement, sans déborder dessous
+    parsedColumns.forEach((val, cOffset) => {
+        const cell = startRowEditables[startColIdx + cOffset];
+        if (cell) {
+            cell.textContent = val;
+            cell.style.whiteSpace = 'pre-wrap';
+            cellsFilled++;
+        }
     });
 
     collectAnnualDistributionFromDOM();
     recalculateAnnualStats();
-    showToastNotification(`Collage réussi : ${cellsFilled} cases renseignées sur ${rowsFilled} séance(s) !`, 'success');
+    showToastNotification(`Collage réussi : ${cellsFilled} case(s) renseignée(s). Saut(s) de ligne conservé(s) dans la même case.`, 'success');
 }
 
 function collectAnnualDistributionFromDOM() {
