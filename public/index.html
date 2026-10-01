@@ -519,6 +519,9 @@
                      </div>
                  </div>
                  <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                     <button type="button" id="btnAdminManageClasses" class="pro-button" onclick="openClassManagementModal()" style="background: #6366F1; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(99,102,241,0.3);" title="Gérer, masquer ou supprimer des classes et fusionner les doublons">
+                         <i class="fas fa-chalkboard"></i> <span>Gérer Classes &amp; Doublons</span>
+                     </button>
                      <button type="button" id="btnAdminExportDb" class="pro-button" onclick="exportDatabaseExcel()" style="background: #10B981; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(16,185,129,0.3);">
                          <i class="fas fa-file-excel"></i> <span>Exporter la Base (Excel)</span>
                      </button>
@@ -1287,12 +1290,22 @@
                               </div>
 
                               <div>
-                                  <label style="font-weight:700; color:#334155; font-size:0.88rem; display:block; margin-bottom:5px;">
-                                      <i class="fas fa-chalkboard-user" style="color:#0284C7;"></i> 2. Classe à Modifier :
-                                  </label>
-                                  <select id="adminScheduleClassSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;" onchange="loadAdminScheduleForClass()">
-                                      <option value="">-- Sélectionnez une classe --</option>
-                                  </select>
+                                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                                      <label style="font-weight:700; color:#334155; font-size:0.88rem; margin:0;">
+                                          <i class="fas fa-chalkboard-user" style="color:#0284C7;"></i> 2. Classe à Modifier :
+                                      </label>
+                                      <button type="button" onclick="openClassManagementModal()" class="pro-button" style="padding:2px 8px; font-size:0.75rem; font-weight:700; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; border-radius:6px; cursor:pointer;" title="Gérer, masquer ou supprimer des classes">
+                                          <i class="fas fa-tasks"></i> Gérer
+                                      </button>
+                                  </div>
+                                  <div style="display:flex; gap:6px;">
+                                      <select id="adminScheduleClassSelect" style="flex:1; padding:10px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;" onchange="loadAdminScheduleForClass()">
+                                          <option value="">-- Sélectionnez une classe --</option>
+                                      </select>
+                                      <button type="button" onclick="quickDeleteSelectedScheduleClass()" class="pro-button danger-button" style="padding:10px 12px; border-radius:8px; font-size:0.85rem;" title="Supprimer la classe sélectionnée">
+                                          <i class="fas fa-trash-alt"></i>
+                                      </button>
+                                  </div>
                               </div>
 
                               <div>
@@ -1544,7 +1557,12 @@
              <select id="filterEnseignant" onchange="sortAndDisplay()"> <option value="">Tous</option> </select>
              
              <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
-             <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
+             <div style="display:inline-flex; align-items:center; gap:4px;">
+                 <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
+                 <button type="button" onclick="openClassManagementModal()" class="pro-button" style="background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; padding:5px 9px; font-size:0.78rem; font-weight:700; border-radius:8px; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:5px;" title="Choisir les classes à afficher sur le tableau ou supprimer des classes">
+                     <i class="fas fa-sliders-h"></i> <span>Gérer Classes</span>
+                 </button>
+             </div>
 
              <label for="filterMatiere" id="filter-matiere-label"><i class="fas fa-book"></i> Matière:</label>
              <select id="filterMatiere" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
@@ -3555,6 +3573,108 @@
                     <button type="button" class="pro-button secondary-button" onclick="closeStudentOfWeekAdminModal()" style="padding:9px 16px;">Annuler</button>
                     <button type="button" class="pro-button primary-button" onclick="saveStudentOfWeekFromModal()" style="padding:9px 20px; font-weight:700; background:linear-gradient(135deg, #D97706, #B45309); color:white; border:none; border-radius:8px; cursor:pointer;">
                         <i class="fas fa-save"></i> Enregistrer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE GESTION DES CLASSES & VISIBILITÉ DU TABLEAU -->
+    <div id="classManagementModal" class="hw-modal" style="display:none; z-index:99999;">
+        <div class="hw-modal-content" style="max-width:850px; max-height:90vh; overflow-y:auto; border-radius:16px;">
+            <div class="hw-modal-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #E2E8F0; padding-bottom:14px; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:38px; height:38px; border-radius:10px; background:#EEF2FF; border:1px solid #C7D2FE; display:flex; align-items:center; justify-content:center; color:#4F46E5; font-size:1.15rem;">
+                        <i class="fas fa-chalkboard"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:1.15rem; color:#1E293B; font-weight:800;">Gestion des Classes &amp; Visibilité sur le Tableau</h3>
+                        <p style="margin:0; font-size:0.8rem; color:#64748B;">Supprimez les classes obsolètes, fusionnez les doublons et choisissez quelles classes afficher sur le tableau.</p>
+                    </div>
+                </div>
+                <button type="button" class="close-modal-btn" onclick="closeClassManagementModal()" style="background:none; border:none; font-size:1.4rem; cursor:pointer; color:#94A3B8;">&times;</button>
+            </div>
+
+            <!-- COMMUTATEUR DE SECTION DANS LA MODAL -->
+            <div style="display:flex; gap:8px; margin-bottom:16px; background:#F8FAFC; padding:6px; border-radius:10px; border:1px solid #CBD5E1; flex-wrap:wrap;">
+                <button type="button" class="class-mgmt-sec-btn active" id="classMgmtSec_garcons" onclick="switchClassMgmtSection('garcons')" style="flex:1; padding:8px 12px; border-radius:8px; border:none; font-weight:700; font-size:0.86rem; cursor:pointer; background:#2563EB; color:white;">
+                    👦 Section Garçons
+                </button>
+                <button type="button" class="class-mgmt-sec-btn" id="classMgmtSec_filles" onclick="switchClassMgmtSection('filles')" style="flex:1; padding:8px 12px; border-radius:8px; border:none; font-weight:700; font-size:0.86rem; cursor:pointer; background:#F1F5F9; color:#475569;">
+                    👧 Section Filles
+                </button>
+                <button type="button" class="class-mgmt-sec-btn" id="classMgmtSec_primaire" onclick="switchClassMgmtSection('primaire')" style="flex:1; padding:8px 12px; border-radius:8px; border:none; font-weight:700; font-size:0.86rem; cursor:pointer; background:#F1F5F9; color:#475569;">
+                    🎒 Section Primaire
+                </button>
+                <button type="button" class="class-mgmt-sec-btn" id="classMgmtSec_maternelle" onclick="switchClassMgmtSection('maternelle')" style="flex:1; padding:8px 12px; border-radius:8px; border:none; font-weight:700; font-size:0.86rem; cursor:pointer; background:#F1F5F9; color:#475569;">
+                    🧸 Section Maternelle
+                </button>
+            </div>
+
+            <!-- BANDEAU DOUBLONS INTELLIGENT -->
+            <div id="classMgmtDuplicatesBanner" style="display:none; background:#FFFBEB; border:1.5px solid #F59E0B; border-radius:12px; padding:12px 16px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <i class="fas fa-exclamation-triangle fa-2x" style="color:#D97706; flex-shrink:0;"></i>
+                        <div>
+                            <div style="font-weight:800; color:#92400E; font-size:0.95rem;">Doublons de classes détectés dans cette section !</div>
+                            <div id="classMgmtDuplicatesText" style="font-size:0.82rem; color:#B45309; line-height:1.4;">
+                                Des classes redondantes sont présentes.
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" onclick="executeAutoCleanDuplicates()" class="pro-button" style="background:#D97706; color:white; font-weight:700; padding:8px 14px; font-size:0.85rem; border-radius:8px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(217,119,6,0.3);">
+                        <i class="fas fa-magic"></i> <span>Nettoyer &amp; Fusionner les doublons en 1 clic</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- CONTRÔLE RAPIDE DE VISIBILITÉ -->
+            <div style="background:#F0FDF4; border:1.5px solid #86EFAC; border-radius:12px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <div style="font-weight:800; color:#166534; font-size:0.92rem;"><i class="fas fa-eye"></i> Classes à afficher sur le tableau principal :</div>
+                    <div style="font-size:0.8rem; color:#15803D;">Cochez les classes que vous voulez afficher sur le tableau. Les classes décochées seront masquées.</div>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button type="button" onclick="setAllClassVisibility(true)" class="pro-button" style="padding:4px 10px; font-size:0.78rem; font-weight:700; background:white; color:#166534; border:1px solid #86EFAC; border-radius:6px; cursor:pointer;">
+                        <i class="fas fa-check-square"></i> Tout cocher
+                    </button>
+                    <button type="button" onclick="setAllClassVisibility(false)" class="pro-button" style="padding:4px 10px; font-size:0.78rem; font-weight:700; background:white; color:#991B1B; border:1px solid #FCA5A5; border-radius:6px; cursor:pointer;">
+                        <i class="fas fa-square"></i> Tout décocher
+                    </button>
+                    <button type="button" onclick="resetDefaultClassVisibility()" class="pro-button" style="padding:4px 10px; font-size:0.78rem; font-weight:700; background:#DCFCE7; color:#166534; border:1px solid #86EFAC; border-radius:6px; cursor:pointer;">
+                        <i class="fas fa-undo"></i> Classes officielles
+                    </button>
+                </div>
+            </div>
+
+            <!-- LISTE DES CLASSES AVEC CASES À COCHER & BOUTON SUPPRIMER -->
+            <div id="classMgmtLoading" style="text-align:center; padding:20px; color:#64748B; font-weight:600;">
+                <i class="fas fa-spinner fa-spin"></i> Chargement des classes...
+            </div>
+            <div id="classMgmtListContainer" style="display:none; max-height:360px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:10px; padding:10px; background:white; margin-bottom:16px;">
+                <!-- Rempli dynamiquement -->
+            </div>
+
+            <!-- AJOUT D'UNE NOUVELLE CLASSE -->
+            <div style="background:#F8FAFC; border:1px dashed #CBD5E1; border-radius:10px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:240px;">
+                    <i class="fas fa-plus-circle" style="color:#2563EB;"></i>
+                    <span style="font-size:0.85rem; font-weight:700; color:#334155;">Ajouter une classe :</span>
+                    <input type="text" id="classMgmtNewClassName" placeholder="Ex: PEI6..." style="flex:1; padding:7px 10px; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;" />
+                </div>
+                <button type="button" onclick="addNewClassToSection()" class="pro-button" style="background:#2563EB; color:white; font-weight:700; padding:7px 14px; font-size:0.82rem; border-radius:6px; border:none; cursor:pointer;">
+                    <i class="fas fa-plus"></i> Ajouter
+                </button>
+            </div>
+
+            <!-- PIED DE MODALE AVEC ACTIONS -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1.5px solid #E2E8F0; padding-top:14px;">
+                <div id="classMgmtStatusText" style="font-size:0.85rem; font-weight:700; color:#059669;"></div>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" class="pro-button secondary-button" onclick="closeClassManagementModal()" style="padding:9px 16px; font-size:0.88rem;">Fermer</button>
+                    <button type="button" class="pro-button primary-button" onclick="saveClassVisibilitySettings()" style="padding:9px 20px; font-weight:700; font-size:0.88rem; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:8px; cursor:pointer; box-shadow:0 3px 10px rgba(16,185,129,0.3);">
+                        <i class="fas fa-save"></i> Enregistrer l'affichage sur le tableau
                     </button>
                 </div>
             </div>

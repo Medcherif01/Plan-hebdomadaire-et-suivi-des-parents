@@ -6247,30 +6247,473 @@ app.delete('/api/special-days', async (req, res) => {
   }
 });
 
+const escapeRegex = (s) => String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function detectClassDuplicateTarget(className, allExistingClasses) {
+  if (!className) return null;
+  const str = String(className).trim();
+  // Regex pour détecter les suffixes de section redondants : PEI1 Garçons -> PEI1, DP2 Garçons -> DP2, etc.
+  const suffixMatch = str.match(/^(.+?)\s*(?:Garçons|Garcons|Filles|Fille|Section\s*Garçons|Section\s*Filles)$/i);
+  if (suffixMatch) {
+    const candidate = suffixMatch[1].trim();
+    if (allExistingClasses.some(c => c.toLowerCase() === candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+  // Détection par code canonique
+  const canonMatch = str.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/i);
+  if (canonMatch) {
+    const canonCode = canonMatch[1].toUpperCase();
+    if (canonCode.toLowerCase() !== str.toLowerCase() && allExistingClasses.some(c => c.toLowerCase() === canonCode.toLowerCase())) {
+      return canonCode;
+    }
+  }
+  return null;
+}
+
 app.get('/api/all-classes', async (req, res) => {
   try {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
+
+    // Vérifier les paramètres de visibilité enregistrés
+    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
+    const hiddenSet = new Set((visDoc && Array.isArray(visDoc.hiddenClasses)) ? visDoc.hiddenClasses.map(c => String(c).trim().toLowerCase()) : []);
+    const explicitVisible = (visDoc && Array.isArray(visDoc.visibleClasses) && visDoc.visibleClasses.length > 0)
+      ? visDoc.visibleClasses.filter(c => c && !hiddenSet.has(String(c).trim().toLowerCase()))
+      : null;
+
+    if (explicitVisible && explicitVisible.length > 0) {
+      return res.status(200).json(explicitVisible);
+    }
+
     let classes = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
+    classes = (classes || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
     
+    let baseList = [];
     if (section === 'maternelle') {
       const defMat = ['PS', 'MS', 'GS'];
-      const set = new Set([...defMat, ...(classes || []).filter(c => isMaternelleClassServer(c))]);
-      return res.status(200).json(Array.from(set));
+      baseList = [...defMat, ...classes.filter(c => isMaternelleClassServer(c))];
     } else if (section === 'primaire') {
       const defPrim = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-      const set = new Set([...defPrim, ...(classes || []).filter(c => !isMaternelleClassServer(c))]);
-      return res.status(200).json(Array.from(set));
+      baseList = [...defPrim, ...classes.filter(c => !isMaternelleClassServer(c))];
     } else if (section === 'garcons' || section === 'filles') {
       const defSec = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
-      const set = new Set([...defSec, ...(classes || []).filter(c => !isMaternelleClassServer(c) && !['PP1','PP2','PP3','PP4','PP5'].includes(c.toUpperCase()))]);
-      return res.status(200).json(Array.from(set));
+      baseList = [...defSec, ...classes.filter(c => !isMaternelleClassServer(c) && !['PP1','PP2','PP3','PP4','PP5'].includes(c.toUpperCase()))];
+    } else {
+      baseList = [...classes];
     }
-    
-    res.status(200).json((classes || []).sort());
+
+    const set = new Set();
+    baseList.forEach(c => {
+      const trimmed = String(c).trim();
+      if (trimmed && !hiddenSet.has(trimmed.toLowerCase())) {
+        set.add(trimmed);
+      }
+    });
+
+    res.status(200).json(Array.from(set).sort());
   } catch (error) {
     console.error('Erreur MongoDB /api/all-classes:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
+  }
+});
+
+// --------------------- ROUTES DE GESTION & SUPPRESSION DES CLASSES ---------------------
+
+app.get('/api/admin/classes', async (req, res) => {
+  try {
+    const section = req.query.section || 'garcons';
+    const db = await connectToDatabase();
+
+    // 1. Récupérer toutes les classes distinctes de la base
+    const rawClasses = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
+    const distinctInDb = (rawClasses || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
+
+    // Classes par défaut selon la section
+    let defaultList = [];
+    if (section === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
+    else if (section === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+    else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+
+    // 2. Compter le nombre de cours/séances pour chaque classe dans les plans
+    const allPlans = await db.collection('plans').find({ section }).toArray();
+    const countMap = {};
+    allPlans.forEach(p => {
+      if (Array.isArray(p.data)) {
+        p.data.forEach(r => {
+          const c = String(r.Classe || r.classe || '').trim();
+          if (c) countMap[c] = (countMap[c] || 0) + 1;
+        });
+      }
+    });
+
+    // 3. Lire les paramètres de visibilité enregistrés
+    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
+    const hiddenSet = new Set((visDoc && Array.isArray(visDoc.hiddenClasses)) ? visDoc.hiddenClasses.map(c => String(c).trim().toLowerCase()) : []);
+    const explicitVisibleSet = (visDoc && Array.isArray(visDoc.visibleClasses) && visDoc.visibleClasses.length > 0)
+      ? new Set(visDoc.visibleClasses.map(c => String(c).trim().toLowerCase()))
+      : null;
+
+    // Fusion de toutes les classes connues
+    const allSet = new Set([...defaultList, ...distinctInDb]);
+    const allList = Array.from(allSet);
+
+    // Détecter les doublons potentiels
+    const duplicates = [];
+    const classItems = allList.map(name => {
+      const lower = name.toLowerCase();
+      const count = countMap[name] || 0;
+      const suggestedMerge = detectClassDuplicateTarget(name, allList);
+      const isDuplicate = !!suggestedMerge;
+      
+      let isVisible = true;
+      if (hiddenSet.has(lower)) {
+        isVisible = false;
+      } else if (explicitVisibleSet) {
+        isVisible = explicitVisibleSet.has(lower);
+      }
+
+      if (isDuplicate) {
+        duplicates.push({
+          duplicate: name,
+          target: suggestedMerge,
+          count: count
+        });
+      }
+
+      return {
+        name,
+        count,
+        visible: isVisible,
+        isDuplicate,
+        suggestedMerge
+      };
+    });
+
+    res.status(200).json({
+      section,
+      classes: classItems,
+      duplicatesFound: duplicates,
+      visibleClasses: classItems.filter(c => c.visible).map(c => c.name),
+      hiddenClasses: classItems.filter(c => !c.visible).map(c => c.name)
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/classes:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Supprimer définitivement une classe
+app.post('/api/admin/delete-class', async (req, res) => {
+  try {
+    const { section = 'garcons', classe } = req.body;
+    if (!classe || !String(classe).trim()) {
+      return res.status(400).json({ error: 'Nom de classe manquant.' });
+    }
+    const targetClass = String(classe).trim();
+    const db = await connectToDatabase();
+
+    // 1. Supprimer toutes les lignes de cette classe dans les plans de la section
+    const plans = await db.collection('plans').find({ section }).toArray();
+    let totalDeletedRows = 0;
+
+    for (const p of plans) {
+      if (Array.isArray(p.data)) {
+        const initialLen = p.data.length;
+        p.data = p.data.filter(r => {
+          const c = String(r.Classe || r.classe || '').trim();
+          return c.toLowerCase() !== targetClass.toLowerCase();
+        });
+        if (p.data.length !== initialLen) {
+          totalDeletedRows += (initialLen - p.data.length);
+          if (p.classNotes && p.classNotes[targetClass]) delete p.classNotes[targetClass];
+          if (p.classNotesPhotos && p.classNotesPhotos[targetClass]) delete p.classNotesPhotos[targetClass];
+          await db.collection('plans').updateOne(
+            { _id: p._id },
+            { $set: { data: p.data, classNotes: p.classNotes || {}, classNotesPhotos: p.classNotesPhotos || {}, updatedAt: new Date() } }
+          );
+        }
+      }
+    }
+
+    // 2. Nettoyer les liaisons de matières
+    await db.collection('class_subject_teachers').deleteMany({
+      section,
+      classe: { $regex: new RegExp(`^${escapeRegex(targetClass)}$`, 'i') }
+    });
+
+    // 3. Enregistrer dans les classes masquées pour empêcher sa réapparition
+    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
+    const currentHidden = new Set(visDoc && Array.isArray(visDoc.hiddenClasses) ? visDoc.hiddenClasses : []);
+    currentHidden.add(targetClass);
+    const currentVisible = (visDoc && Array.isArray(visDoc.visibleClasses) ? visDoc.visibleClasses : [])
+      .filter(c => c.toLowerCase() !== targetClass.toLowerCase());
+
+    await db.collection('settings').updateOne(
+      { _id: `classes_visibility_${section}` },
+      {
+        $set: {
+          section,
+          hiddenClasses: Array.from(currentHidden),
+          visibleClasses: currentVisible,
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    console.log(`🗑️ [Admin] Classe "${targetClass}" supprimée de la section ${section} (${totalDeletedRows} lignes supprimées).`);
+    res.status(200).json({
+      success: true,
+      message: `Classe "${targetClass}" supprimée avec succès (${totalDeletedRows} cours effacés).`,
+      deletedCount: totalDeletedRows
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/delete-class:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fusionner une classe (ex: "PEI1 Garçons" -> "PEI1")
+app.post('/api/admin/merge-class', async (req, res) => {
+  try {
+    const { section = 'garcons', sourceClass, targetClass } = req.body;
+    if (!sourceClass || !targetClass || !String(sourceClass).trim() || !String(targetClass).trim()) {
+      return res.status(400).json({ error: 'Classes source et cible requises.' });
+    }
+    const src = String(sourceClass).trim();
+    const dst = String(targetClass).trim();
+    if (src.toLowerCase() === dst.toLowerCase()) {
+      return res.status(400).json({ error: 'La classe source et cible sont identiques.' });
+    }
+
+    const db = await connectToDatabase();
+    const plans = await db.collection('plans').find({ section }).toArray();
+    let totalMergedRows = 0;
+
+    for (const p of plans) {
+      if (Array.isArray(p.data)) {
+        let modified = false;
+        p.data.forEach(r => {
+          const cKey = r.Classe !== undefined ? 'Classe' : (r.classe !== undefined ? 'classe' : null);
+          if (cKey && String(r[cKey]).trim().toLowerCase() === src.toLowerCase()) {
+            r[cKey] = dst;
+            modified = true;
+            totalMergedRows++;
+          }
+        });
+        if (modified) {
+          if (p.classNotes && p.classNotes[src]) {
+            p.classNotes[dst] = (p.classNotes[dst] ? p.classNotes[dst] + '\n' : '') + p.classNotes[src];
+            delete p.classNotes[src];
+          }
+          if (p.classNotesPhotos && p.classNotesPhotos[src] && !p.classNotesPhotos[dst]) {
+            p.classNotesPhotos[dst] = p.classNotesPhotos[src];
+            delete p.classNotesPhotos[src];
+          }
+          await db.collection('plans').updateOne(
+            { _id: p._id },
+            { $set: { data: p.data, classNotes: p.classNotes || {}, classNotesPhotos: p.classNotesPhotos || {}, updatedAt: new Date() } }
+          );
+        }
+      }
+    }
+
+    // Mettre à jour aussi dans élèves, devoirs et liaisons de professeurs
+    await db.collection('students').updateMany(
+      { section, classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } },
+      { $set: { classe: dst } }
+    );
+    await db.collection('homework').updateMany(
+      { section, classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } },
+      { $set: { classe: dst } }
+    );
+    await db.collection('class_subject_teachers').updateMany(
+      { section, classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } },
+      { $set: { classe: dst } }
+    );
+
+    // Mettre la source dans hiddenClasses pour éviter qu'elle ne réapparaisse
+    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
+    const currentHidden = new Set(visDoc && Array.isArray(visDoc.hiddenClasses) ? visDoc.hiddenClasses : []);
+    currentHidden.add(src);
+    const currentVisible = new Set(visDoc && Array.isArray(visDoc.visibleClasses) ? visDoc.visibleClasses : []);
+    currentVisible.delete(src);
+    currentVisible.add(dst);
+
+    await db.collection('settings').updateOne(
+      { _id: `classes_visibility_${section}` },
+      {
+        $set: {
+          section,
+          hiddenClasses: Array.from(currentHidden),
+          visibleClasses: Array.from(currentVisible),
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    console.log(`🔀 [Admin] Classe "${src}" fusionnée dans "${dst}" (${totalMergedRows} cours mis à jour).`);
+    res.status(200).json({
+      success: true,
+      message: `La classe "${src}" a été fusionnée dans "${dst}" avec succès (${totalMergedRows} cours mis à jour).`,
+      mergedCount: totalMergedRows
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/merge-class:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Nettoyer automatiquement tous les doublons de la section
+app.post('/api/admin/auto-clean-duplicates', async (req, res) => {
+  try {
+    const { section = 'garcons' } = req.body;
+    const db = await connectToDatabase();
+
+    const rawClasses = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
+    const distinctInDb = (rawClasses || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
+
+    let defaultList = [];
+    if (section === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
+    else if (section === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+    else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+
+    const allList = Array.from(new Set([...defaultList, ...distinctInDb]));
+    const duplicatesToMerge = [];
+
+    allList.forEach(name => {
+      const target = detectClassDuplicateTarget(name, allList);
+      if (target && target.toLowerCase() !== name.toLowerCase()) {
+        duplicatesToMerge.push({ source: name, target });
+      }
+    });
+
+    if (duplicatesToMerge.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Aucun doublon détecté pour cette section.',
+        mergedCount: 0,
+        mergedPairs: []
+      });
+    }
+
+    const plans = await db.collection('plans').find({ section }).toArray();
+    let totalMergedRows = 0;
+    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
+    const currentHidden = new Set(visDoc && Array.isArray(visDoc.hiddenClasses) ? visDoc.hiddenClasses : []);
+    const currentVisible = new Set(visDoc && Array.isArray(visDoc.visibleClasses) ? visDoc.visibleClasses : defaultList);
+
+    for (const pair of duplicatesToMerge) {
+      const src = pair.source;
+      const dst = pair.target;
+
+      for (const p of plans) {
+        if (Array.isArray(p.data)) {
+          let modified = false;
+          p.data.forEach(r => {
+            const cKey = r.Classe !== undefined ? 'Classe' : (r.classe !== undefined ? 'classe' : null);
+            if (cKey && String(r[cKey]).trim().toLowerCase() === src.toLowerCase()) {
+              r[cKey] = dst;
+              modified = true;
+              totalMergedRows++;
+            }
+          });
+          if (modified) {
+            if (p.classNotes && p.classNotes[src]) {
+              p.classNotes[dst] = (p.classNotes[dst] ? p.classNotes[dst] + '\n' : '') + p.classNotes[src];
+              delete p.classNotes[src];
+            }
+            await db.collection('plans').updateOne(
+              { _id: p._id },
+              { $set: { data: p.data, classNotes: p.classNotes || {}, updatedAt: new Date() } }
+            );
+          }
+        }
+      }
+
+      await db.collection('students').updateMany(
+        { section, classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } },
+        { $set: { classe: dst } }
+      );
+      await db.collection('homework').updateMany(
+        { section, classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } },
+        { $set: { classe: dst } }
+      );
+
+      currentHidden.add(src);
+      currentVisible.delete(src);
+      currentVisible.add(dst);
+    }
+
+    await db.collection('settings').updateOne(
+      { _id: `classes_visibility_${section}` },
+      {
+        $set: {
+          section,
+          hiddenClasses: Array.from(currentHidden),
+          visibleClasses: Array.from(currentVisible),
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    console.log(`✨ [Admin] ${duplicatesToMerge.length} doublons nettoyés et fusionnés (${totalMergedRows} cours).`);
+    res.status(200).json({
+      success: true,
+      message: `${duplicatesToMerge.length} doublon(s) nettoyé(s) et fusionné(s) avec succès (${totalMergedRows} cours mis à jour).`,
+      mergedCount: totalMergedRows,
+      mergedPairs: duplicatesToMerge
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/auto-clean-duplicates:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Enregistrer la visibilité des classes pour l'affichage sur le tableau
+app.post('/api/admin/set-class-visibility', async (req, res) => {
+  try {
+    const { section = 'garcons', visibleClasses = [], hiddenClasses = [] } = req.body;
+    const db = await connectToDatabase();
+
+    const cleanVisible = Array.isArray(visibleClasses) ? visibleClasses.map(c => String(c).trim()).filter(Boolean) : [];
+    const cleanHidden = Array.isArray(hiddenClasses) ? hiddenClasses.map(c => String(c).trim()).filter(Boolean) : [];
+
+    await db.collection('settings').updateOne(
+      { _id: `classes_visibility_${section}` },
+      {
+        $set: {
+          section,
+          visibleClasses: cleanVisible,
+          hiddenClasses: cleanHidden,
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    console.log(`👁️ [Admin] Visibilité des classes mise à jour pour section ${section}: ${cleanVisible.length} visibles, ${cleanHidden.length} masquées.`);
+    res.status(200).json({
+      success: true,
+      message: 'Paramètres d\'affichage des classes enregistrés avec succès.',
+      visibleClasses: cleanVisible,
+      hiddenClasses: cleanHidden
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/set-class-visibility:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -9463,7 +9906,7 @@ app.use((err, req, res, next) => {
 });
 
 // Configuration Port et Host — Port 3000 requis pour l'environnement AI Studio
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const HOST = '0.0.0.0';
 
 // Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel

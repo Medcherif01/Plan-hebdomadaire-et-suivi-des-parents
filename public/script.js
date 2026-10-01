@@ -422,7 +422,11 @@
         };
 
         function getSectionClasses(sec) {
-            return sectionClassesMap[sec || currentSection] || sectionClassesMap.garcons;
+            const s = sec || currentSection || 'garcons';
+            if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[s]) && window.sectionVisibleClassesMap[s].length > 0) {
+                return window.sectionVisibleClassesMap[s];
+            }
+            return sectionClassesMap[s] || sectionClassesMap.garcons;
         }
 
         // --- Fonctions de Gestion de Section et Accueil ---
@@ -2256,7 +2260,7 @@
                     return isRowForLoggedInTeacher(i[ensK], loggedInUser, loggedInTeacherTable);
                 });
             }
-            const uniqueCls = [...new Set(teacherData.map(i => i[clsK]).filter(Boolean))].sort(compareClasses);
+            const uniqueCls = [...new Set(teacherData.map(i => i[clsK]).filter(Boolean))].filter(c => (typeof isClassVisibleOnTable === 'function' ? isClassVisibleOnTable(c, currentSection) : true)).sort(compareClasses);
             uniqueCls.forEach(cls => {
                 const opt = document.createElement('option');
                 opt.value = cls;
@@ -2989,7 +2993,7 @@
                     ens = [loggedInTeacherTable || loggedInUser];
                 }
             }
-            const cls = clsK ? getUniq(clsK) : []; 
+            const cls = clsK ? getUniq(clsK).filter(c => (typeof isClassVisibleOnTable === 'function' ? isClassVisibleOnTable(c, currentSection) : true)) : []; 
             const per = perK ? getUniq(perK) : []; 
             const mat = matK ? getUniq(matK) : []; 
             
@@ -3094,6 +3098,11 @@
                 const iM = matK && i.hasOwnProperty(matK) ? String(i[matK]).trim() : ''; 
                 const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]).trim() : ''; 
                 const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]).trim() : ''; 
+                
+                // Filtre de visibilité des classes (masquer les doublons ou classes non souhaitées)
+                if (iC && typeof isClassVisibleOnTable === 'function' && !isClassVisibleOnTable(iC, currentSection)) {
+                    return false;
+                } 
                 
                 // Si enseignant connecté (non admin)
                 if (isTeacherOnly) {
@@ -16231,3 +16240,502 @@ window.onSlotModalMatiereChange = onSlotModalMatiereChange;
 window.renderSubjectTeacherLinkingList = renderSubjectTeacherLinkingList;
 window.onClassSubjectTeacherChange = onClassSubjectTeacherChange;
 window.saveSubjectTeacherAssignmentsForCurrentClass = saveSubjectTeacherAssignmentsForCurrentClass;
+
+// ============================================================================
+// GESTION & SUPPRESSION DES CLASSES, NETTOYAGE DES DOUBLONS & VISIBILITÉ DU TABLEAU
+// ============================================================================
+
+window.sectionVisibleClassesMap = window.sectionVisibleClassesMap || {};
+window.sectionHiddenClassesMap = window.sectionHiddenClassesMap || {};
+window.currentClassMgmtSection = 'garcons';
+window.currentClassMgmtData = null;
+
+function initClassVisibilityFromStorage() {
+    const sections = ['garcons', 'filles', 'primaire', 'maternelle'];
+    sections.forEach(sec => {
+        try {
+            const rawVis = localStorage.getItem('visibleClasses_' + sec);
+            if (rawVis) {
+                const parsed = JSON.parse(rawVis);
+                if (Array.isArray(parsed)) window.sectionVisibleClassesMap[sec] = parsed;
+            }
+            const rawHid = localStorage.getItem('hiddenClasses_' + sec);
+            if (rawHid) {
+                const parsed = JSON.parse(rawHid);
+                if (Array.isArray(parsed)) window.sectionHiddenClassesMap[sec] = parsed;
+            }
+        } catch (e) {}
+    });
+}
+initClassVisibilityFromStorage();
+
+async function syncClassVisibilityFromServer(sec) {
+    const targetSection = sec || currentSection || 'garcons';
+    try {
+        const res = await fetch('/api/admin/classes?section=' + encodeURIComponent(targetSection));
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data.visibleClasses)) {
+                window.sectionVisibleClassesMap[targetSection] = data.visibleClasses;
+                localStorage.setItem('visibleClasses_' + targetSection, JSON.stringify(data.visibleClasses));
+            }
+            if (Array.isArray(data.hiddenClasses)) {
+                window.sectionHiddenClassesMap[targetSection] = data.hiddenClasses;
+                localStorage.setItem('hiddenClasses_' + targetSection, JSON.stringify(data.hiddenClasses));
+            }
+        }
+    } catch (e) {
+        console.warn('Note syncClassVisibilityFromServer:', e.message);
+    }
+}
+syncClassVisibilityFromServer(currentSection || 'garcons');
+
+function isClassVisibleOnTable(classe, section) {
+    if (!classe) return true;
+    const sec = section || currentSection || 'garcons';
+    const rawClass = String(classe).trim();
+    const lowerClass = rawClass.toLowerCase();
+
+    // 1. Vérifier si explicitement masquée
+    if (window.sectionHiddenClassesMap && Array.isArray(window.sectionHiddenClassesMap[sec])) {
+        if (window.sectionHiddenClassesMap[sec].some(h => String(h).trim().toLowerCase() === lowerClass)) {
+            return false;
+        }
+    }
+
+    // 2. Vérifier si un ensemble restreint de classes visibles est défini
+    if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[sec]) && window.sectionVisibleClassesMap[sec].length > 0) {
+        return window.sectionVisibleClassesMap[sec].some(v => 
+            String(v).trim().toLowerCase() === lowerClass || (typeof isClassMatch === 'function' && isClassMatch(v, rawClass))
+        );
+    }
+
+    return true;
+}
+
+async function openClassManagementModal(sec) {
+    const modal = document.getElementById('classManagementModal');
+    if (!modal) return;
+
+    window.currentClassMgmtSection = sec || currentSection || 'garcons';
+    updateClassMgmtSectionTabs();
+    modal.style.display = 'block';
+    await loadClassManagementData(window.currentClassMgmtSection);
+}
+
+function closeClassManagementModal() {
+    const modal = document.getElementById('classManagementModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function switchClassMgmtSection(sec) {
+    window.currentClassMgmtSection = sec;
+    updateClassMgmtSectionTabs();
+    loadClassManagementData(sec);
+}
+
+function updateClassMgmtSectionTabs() {
+    const sections = ['garcons', 'filles', 'primaire', 'maternelle'];
+    sections.forEach(s => {
+        const btn = document.getElementById('classMgmtSec_' + s);
+        if (btn) {
+            if (s === window.currentClassMgmtSection) {
+                btn.style.background = '#2563EB';
+                btn.style.color = '#FFFFFF';
+                btn.classList.add('active');
+            } else {
+                btn.style.background = '#F1F5F9';
+                btn.style.color = '#475569';
+                btn.classList.remove('active');
+            }
+        }
+    });
+}
+
+async function loadClassManagementData(section) {
+    const loadingEl = document.getElementById('classMgmtLoading');
+    const containerEl = document.getElementById('classMgmtListContainer');
+    const duplicatesBanner = document.getElementById('classMgmtDuplicatesBanner');
+    const duplicatesText = document.getElementById('classMgmtDuplicatesText');
+    const statusText = document.getElementById('classMgmtStatusText');
+    if (statusText) statusText.textContent = '';
+
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (containerEl) containerEl.style.display = 'none';
+    if (duplicatesBanner) duplicatesBanner.style.display = 'none';
+
+    try {
+        const res = await fetch('/api/admin/classes?section=' + encodeURIComponent(section));
+        if (!res.ok) throw new Error('Erreur HTTP ' + res.status);
+        const data = await res.json();
+        window.currentClassMgmtData = data;
+
+        // Synchroniser dans la mémoire locale
+        if (Array.isArray(data.visibleClasses)) {
+            window.sectionVisibleClassesMap[section] = data.visibleClasses;
+            localStorage.setItem('visibleClasses_' + section, JSON.stringify(data.visibleClasses));
+        }
+        if (Array.isArray(data.hiddenClasses)) {
+            window.sectionHiddenClassesMap[section] = data.hiddenClasses;
+            localStorage.setItem('hiddenClasses_' + section, JSON.stringify(data.hiddenClasses));
+        }
+
+        // Afficher la bannière de doublons si des doublons ont été trouvés
+        if (data.duplicatesFound && data.duplicatesFound.length > 0) {
+            if (duplicatesBanner) duplicatesBanner.style.display = 'block';
+            if (duplicatesText) {
+                const listStr = data.duplicatesFound.map(d => `<strong>"${escapeHtml(d.duplicate)}"</strong> ➔ ${escapeHtml(d.target)} (${d.count} cours)`).join(', ');
+                duplicatesText.innerHTML = `Doublons identifiés : ${listStr}. Vous pouvez les fusionner automatiquement sans perdre les saisies.`;
+            }
+        }
+
+        renderClassManagementList(data);
+    } catch (err) {
+        console.error('Erreur loadClassManagementData:', err);
+        if (loadingEl) loadingEl.innerHTML = `<span style="color:#DC2626;"><i class="fas fa-exclamation-triangle"></i> Erreur lors du chargement des classes: ${escapeHtml(err.message)}</span>`;
+    } finally {
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
+function renderClassManagementList(data) {
+    const containerEl = document.getElementById('classMgmtListContainer');
+    if (!containerEl) return;
+    containerEl.innerHTML = '';
+    containerEl.style.display = 'block';
+
+    const classes = data.classes || [];
+    if (classes.length === 0) {
+        containerEl.innerHTML = '<div style="text-align:center; padding:15px; color:#94A3B8;">Aucune classe trouvée pour cette section.</div>';
+        return;
+    }
+
+    // Trier les classes par nom
+    classes.sort((a, b) => {
+        if (typeof compareClasses === 'function') return compareClasses(a.name, b.name);
+        return String(a.name).localeCompare(String(b.name));
+    });
+
+    const table = document.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.style.fontSize = '0.9rem';
+
+    table.innerHTML = `
+        <thead>
+            <tr style="background:#F8FAFC; border-bottom:2px solid #CBD5E1; text-align:left; color:#475569;">
+                <th style="padding:10px 8px; width:45px; text-align:center;" title="Cocher pour afficher sur le tableau">Visible</th>
+                <th style="padding:10px 10px;">Classe</th>
+                <th style="padding:10px 10px; width:130px; text-align:center;">Cours en base</th>
+                <th style="padding:10px 10px; width:160px; text-align:center;">État / Doublon</th>
+                <th style="padding:10px 10px; width:220px; text-align:right;">Actions</th>
+            </tr>
+        </thead>
+        <tbody id="classMgmtTableBody"></tbody>
+    `;
+
+    const tbody = table.querySelector('#classMgmtTableBody');
+
+    classes.forEach(c => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #E2E8F0';
+        tr.style.transition = 'background 0.15s ease';
+        if (c.isDuplicate) {
+            tr.style.background = '#FFFBEB';
+        }
+
+        const isChecked = c.visible !== false;
+
+        let badgeColor = '#3B82F6';
+        let badgeBg = '#EFF6FF';
+        if (c.name.startsWith('PP')) { badgeColor = '#059669'; badgeBg = '#ECFDF5'; }
+        else if (['PS', 'MS', 'GS'].includes(c.name)) { badgeColor = '#D97706'; badgeBg = '#FEF3C7'; }
+
+        tr.innerHTML = `
+            <td style="padding:10px 8px; text-align:center; vertical-align:middle;">
+                <input type="checkbox" class="class-visibility-checkbox" data-class="${escapeHtml(c.name)}" ${isChecked ? 'checked' : ''} style="width:17px; height:17px; cursor:pointer; accent-color:#10B981;" />
+            </td>
+            <td style="padding:10px 10px; vertical-align:middle; font-weight:700;">
+                <span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:8px; font-weight:800; font-size:0.92rem; background:${badgeBg}; color:${badgeColor}; border:1px solid ${badgeColor}40;">
+                    <i class="fas fa-chalkboard"></i> ${escapeHtml(c.name)}
+                </span>
+            </td>
+            <td style="padding:10px 10px; text-align:center; vertical-align:middle;">
+                <span style="display:inline-block; padding:3px 8px; border-radius:12px; font-size:0.8rem; font-weight:700; background:#F1F5F9; color:#334155;">
+                    ${c.count} séance(s)
+                </span>
+            </td>
+            <td style="padding:10px 10px; text-align:center; vertical-align:middle;">
+                ${c.isDuplicate ? `
+                    <span style="display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:8px; font-size:0.75rem; font-weight:700; background:#FEF3C7; color:#B45309; border:1px solid #FCD34D;" title="Doublon identifié de la classe principale ${escapeHtml(c.suggestedMerge)}">
+                        <i class="fas fa-exclamation-triangle"></i> Doublon (${escapeHtml(c.suggestedMerge)})
+                    </span>
+                ` : `
+                    <span style="display:inline-flex; align-items:center; gap:4px; font-size:0.75rem; font-weight:600; color:#10B981;">
+                        <i class="fas fa-check-circle"></i> Conforme
+                    </span>
+                `}
+            </td>
+            <td style="padding:10px 10px; text-align:right; vertical-align:middle;">
+                <div style="display:inline-flex; gap:6px; align-items:center;">
+                    ${c.suggestedMerge ? `
+                        <button type="button" class="pro-button" onclick="mergeClassInDb('${escapeJsString(c.name)}', '${escapeJsString(c.suggestedMerge)}')" style="padding:5px 9px; font-size:0.78rem; font-weight:700; background:#EEF2FF; color:#3730A3; border:1px solid #C7D2FE; border-radius:6px; cursor:pointer;" title="Fusionner les données de cette classe dans ${escapeHtml(c.suggestedMerge)}">
+                            <i class="fas fa-code-merge"></i> <span>Fusionner ➔ ${escapeHtml(c.suggestedMerge)}</span>
+                        </button>
+                    ` : `
+                        <button type="button" class="pro-button" onclick="mergeClassInDb('${escapeJsString(c.name)}', '')" style="padding:5px 9px; font-size:0.78rem; font-weight:600; background:#F8FAFC; color:#475569; border:1px solid #CBD5E1; border-radius:6px; cursor:pointer;" title="Fusionner cette classe dans une autre">
+                            <i class="fas fa-code-merge"></i> <span>Fusionner</span>
+                        </button>
+                    `}
+                    <button type="button" class="pro-button danger-button" onclick="deleteClassFromDb('${escapeJsString(c.name)}')" style="padding:5px 10px; font-size:0.78rem; font-weight:700; border-radius:6px; cursor:pointer;" title="Supprimer définitivement la classe et ses cours">
+                        <i class="fas fa-trash-alt"></i> <span>Supprimer</span>
+                    </button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    containerEl.appendChild(table);
+}
+
+function escapeJsString(str) {
+    if (!str) return '';
+    return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+function setAllClassVisibility(state) {
+    const checkboxes = document.querySelectorAll('.class-visibility-checkbox');
+    checkboxes.forEach(cb => { cb.checked = Boolean(state); });
+}
+
+function resetDefaultClassVisibility() {
+    const sec = window.currentClassMgmtSection || 'garcons';
+    let defaultList = [];
+    if (sec === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
+    else if (sec === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+    else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+
+    const checkboxes = document.querySelectorAll('.class-visibility-checkbox');
+    checkboxes.forEach(cb => {
+        const clsName = cb.getAttribute('data-class');
+        cb.checked = defaultList.includes(clsName);
+    });
+}
+
+async function saveClassVisibilitySettings() {
+    const sec = window.currentClassMgmtSection || 'garcons';
+    const checkboxes = document.querySelectorAll('.class-visibility-checkbox');
+    const visibleClasses = [];
+    const hiddenClasses = [];
+
+    checkboxes.forEach(cb => {
+        const cls = cb.getAttribute('data-class');
+        if (cb.checked) {
+            visibleClasses.push(cls);
+        } else {
+            hiddenClasses.push(cls);
+        }
+    });
+
+    const statusText = document.getElementById('classMgmtStatusText');
+    if (statusText) statusText.textContent = "Enregistrement en cours...";
+
+    try {
+        const res = await fetch('/api/admin/set-class-visibility', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: sec, visibleClasses, hiddenClasses })
+        });
+        if (!res.ok) throw new Error('Erreur HTTP ' + res.status);
+        const result = await res.json();
+
+        // Mettre à jour l'état local
+        window.sectionVisibleClassesMap[sec] = visibleClasses;
+        window.sectionHiddenClassesMap[sec] = hiddenClasses;
+        localStorage.setItem('visibleClasses_' + sec, JSON.stringify(visibleClasses));
+        localStorage.setItem('hiddenClasses_' + sec, JSON.stringify(hiddenClasses));
+
+        if (statusText) {
+            statusText.textContent = `✅ ${result.message || 'Affichage enregistré.'}`;
+            setTimeout(() => { if (statusText) statusText.textContent = ''; }, 3000);
+        }
+
+        if (typeof showToastNotification === 'function') {
+            showToastNotification(`Affichage mis à jour : ${visibleClasses.length} classe(s) affichée(s) sur le tableau.`, 'success');
+        }
+
+        // Rafraîchir les filtres et le tableau principal
+        if (typeof updateFilters === 'function') updateFilters();
+        if (typeof sortAndDisplay === 'function') sortAndDisplay();
+        if (typeof populateAdminScheduleClasses === 'function') populateAdminScheduleClasses();
+
+        closeClassManagementModal();
+    } catch (err) {
+        console.error('Erreur saveClassVisibilitySettings:', err);
+        if (statusText) statusText.innerHTML = `<span style="color:#DC2626;">Erreur: ${escapeHtml(err.message)}</span>`;
+    }
+}
+
+async function deleteClassFromDb(className) {
+    if (!className) return;
+    const sec = window.currentClassMgmtSection || currentSection || 'garcons';
+
+    const confirmMsg = `Êtes-vous sûr de vouloir supprimer définitivement la classe "${className}" ?\n\n` +
+        `⚠️ Toutes les séances de cours et travaux de cette classe dans la section (${sec}) seront supprimés de la base de données.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const res = await fetch('/api/admin/delete-class', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: sec, classe: className })
+        });
+        if (!res.ok) throw new Error('Erreur ' + res.status);
+        const data = await res.json();
+
+        if (typeof showToastNotification === 'function') {
+            showToastNotification(data.message || `Classe "${className}" supprimée.`, 'success');
+        } else {
+            alert(data.message || `Classe "${className}" supprimée.`);
+        }
+
+        // Retirer de la mémoire locale
+        if (window.sectionVisibleClassesMap[sec]) {
+            window.sectionVisibleClassesMap[sec] = window.sectionVisibleClassesMap[sec].filter(c => c !== className);
+            localStorage.setItem('visibleClasses_' + sec, JSON.stringify(window.sectionVisibleClassesMap[sec]));
+        }
+
+        // Rafraîchir
+        await loadClassManagementData(sec);
+        if (typeof populateAdminScheduleClasses === 'function') populateAdminScheduleClasses();
+        if (currentWeek && typeof fetchPlanData === 'function') fetchPlanData(currentWeek);
+        if (typeof sortAndDisplay === 'function') sortAndDisplay();
+    } catch (err) {
+        console.error('Erreur deleteClassFromDb:', err);
+        alert('Erreur lors de la suppression de la classe : ' + err.message);
+    }
+}
+
+async function mergeClassInDb(sourceClass, suggestedTarget) {
+    if (!sourceClass) return;
+    const sec = window.currentClassMgmtSection || currentSection || 'garcons';
+
+    let target = suggestedTarget;
+    if (!target) {
+        target = prompt(`Vers quelle classe cible souhaitez-vous fusionner "${sourceClass}" ?\nExemples : PEI1, PEI2, DP1...`, '');
+        if (!target) return;
+    }
+
+    const confirmMsg = `Voulez-vous fusionner la classe "${sourceClass}" dans "${target}" ?\n\n` +
+        `✅ Toutes les séances, devoirs et saisies des enseignants seront 100% conservés et transférés vers la classe "${target}".\n` +
+        `Le nom de doublon "${sourceClass}" sera ensuite supprimé.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const res = await fetch('/api/admin/merge-class', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: sec, sourceClass, targetClass: target })
+        });
+        if (!res.ok) throw new Error('Erreur ' + res.status);
+        const data = await res.json();
+
+        if (typeof showToastNotification === 'function') {
+            showToastNotification(data.message || `Classe fusionnée dans "${target}".`, 'success');
+        } else {
+            alert(data.message || `Classe fusionnée dans "${target}".`);
+        }
+
+        await loadClassManagementData(sec);
+        if (typeof populateAdminScheduleClasses === 'function') populateAdminScheduleClasses();
+        if (currentWeek && typeof fetchPlanData === 'function') fetchPlanData(currentWeek);
+        if (typeof sortAndDisplay === 'function') sortAndDisplay();
+    } catch (err) {
+        console.error('Erreur mergeClassInDb:', err);
+        alert('Erreur lors de la fusion : ' + err.message);
+    }
+}
+
+async function executeAutoCleanDuplicates() {
+    const sec = window.currentClassMgmtSection || currentSection || 'garcons';
+
+    if (!confirm(`Voulez-vous lancer le nettoyage automatique des doublons pour la section ${sec} ?\n\nTous les cours et travaux saisis sous des noms comme "PEI1 Garçons", "DP2 Garçons"... seront automatiquement fusionnés dans leurs classes officielles ("PEI1", "DP2"...).`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/admin/auto-clean-duplicates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: sec })
+        });
+        if (!res.ok) throw new Error('Erreur ' + res.status);
+        const data = await res.json();
+
+        if (typeof showToastNotification === 'function') {
+            showToastNotification(data.message, 'success');
+        } else {
+            alert(data.message);
+        }
+
+        await loadClassManagementData(sec);
+        if (typeof populateAdminScheduleClasses === 'function') populateAdminScheduleClasses();
+        if (currentWeek && typeof fetchPlanData === 'function') fetchPlanData(currentWeek);
+        if (typeof sortAndDisplay === 'function') sortAndDisplay();
+    } catch (err) {
+        console.error('Erreur executeAutoCleanDuplicates:', err);
+        alert('Erreur nettoyage doublons: ' + err.message);
+    }
+}
+
+async function addNewClassToSection() {
+    const input = document.getElementById('classMgmtNewClassName');
+    if (!input || !input.value.trim()) {
+        alert('Veuillez saisir un nom de classe.');
+        return;
+    }
+    const newClass = input.value.trim().toUpperCase();
+    const sec = window.currentClassMgmtSection || currentSection || 'garcons';
+
+    if (!window.sectionVisibleClassesMap[sec]) window.sectionVisibleClassesMap[sec] = [];
+    if (!window.sectionVisibleClassesMap[sec].includes(newClass)) {
+        window.sectionVisibleClassesMap[sec].push(newClass);
+    }
+    if (window.sectionHiddenClassesMap[sec]) {
+        window.sectionHiddenClassesMap[sec] = window.sectionHiddenClassesMap[sec].filter(c => c !== newClass);
+    }
+
+    input.value = '';
+    await saveClassVisibilitySettings();
+    await loadClassManagementData(sec);
+}
+
+function quickDeleteSelectedScheduleClass() {
+    const select = document.getElementById('adminScheduleClassSelect');
+    const selectedClass = select ? select.value : '';
+    if (!selectedClass) {
+        alert("Veuillez d'abord sélectionner une classe dans la liste déroulante.");
+        return;
+    }
+    window.currentClassMgmtSection = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
+    deleteClassFromDb(selectedClass);
+}
+
+// Exposer globalement
+window.isClassVisibleOnTable = isClassVisibleOnTable;
+window.openClassManagementModal = openClassManagementModal;
+window.closeClassManagementModal = closeClassManagementModal;
+window.switchClassMgmtSection = switchClassMgmtSection;
+window.setAllClassVisibility = setAllClassVisibility;
+window.resetDefaultClassVisibility = resetDefaultClassVisibility;
+window.saveClassVisibilitySettings = saveClassVisibilitySettings;
+window.deleteClassFromDb = deleteClassFromDb;
+window.mergeClassInDb = mergeClassInDb;
+window.executeAutoCleanDuplicates = executeAutoCleanDuplicates;
+window.addNewClassToSection = addNewClassToSection;
+window.quickDeleteSelectedScheduleClass = quickDeleteSelectedScheduleClass;
+window.syncClassVisibilityFromServer = syncClassVisibilityFromServer;
+
