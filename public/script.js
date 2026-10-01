@@ -13929,7 +13929,9 @@ function findLinkedTeacherForSubject(matiere) {
             return window.currentClassSubjectTeachersMap[matiere.trim()];
         }
         for (const [m, t] of Object.entries(window.currentClassSubjectTeachersMap)) {
-            if (m.trim().toLowerCase() === norm && t) return t;
+            if (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(m, matiere) : m.trim().toLowerCase() === norm) {
+                if (t) return t;
+            }
         }
     }
 
@@ -14056,7 +14058,9 @@ function renderSubjectTeacherLinkingList() {
         if (currentTeacher && !teachersList.some(t => t.toLowerCase() === currentTeacher.toLowerCase())) {
             optionsHtml += `<option value="${escapeHtml(currentTeacher)}" selected>${escapeHtml(currentTeacher)}</option>`;
         }
+        optionsHtml += `<option value="__custom_new__">➕ Saisir / Renommer l'enseignant...</option>`;
 
+        const safeMatId = escapeHtml(matiere).replace(/[^a-zA-Z0-9]/g, '_');
         itemDiv.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-weight:800; font-size:0.86rem; color:${colors.text}; display:inline-flex; align-items:center; gap:6px;">
@@ -14065,10 +14069,13 @@ function renderSubjectTeacherLinkingList() {
                 </span>
                 ${currentTeacher ? `<span style="font-size:0.75rem; background:#DCFCE7; color:#15803D; font-weight:700; padding:2px 6px; border-radius:4px;"><i class="fas fa-check"></i> Lié</span>` : `<span style="font-size:0.75rem; background:#F1F5F9; color:#64748B; padding:2px 6px; border-radius:4px;">Non assigné</span>`}
             </div>
-            <div>
-                <select onchange="onClassSubjectTeacherChange('${escapeHtml(matiere).replace(/'/g, "\\'")}', this.value)" style="width:100%; padding:6px 8px; border-radius:6px; border:1.5px solid #CBD5E1; font-weight:600; font-size:0.84rem; background:#FAFAFA;">
+            <div style="display:flex; gap:6px; align-items:center;">
+                <select id="linking_select_${safeMatId}" onchange="handleClassSubjectTeacherSelectChange('${escapeHtml(matiere).replace(/'/g, "\\'")}', this.value)" style="flex:1; min-width:0; padding:6px 8px; border-radius:6px; border:1.5px solid #CBD5E1; font-weight:600; font-size:0.84rem; background:#FAFAFA;">
                     ${optionsHtml}
                 </select>
+                <button type="button" title="Saisir ou renommer manuellement le nom de l'enseignant" onclick="promptCustomTeacherForSubject('${escapeHtml(matiere).replace(/'/g, "\\'")}')" style="background:#EFF6FF; border:1.5px solid #93C5FD; color:#1D4ED8; border-radius:6px; padding:6px 9px; cursor:pointer; font-size:0.82rem; font-weight:700; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
+                    <i class="fas fa-edit"></i>
+                </button>
             </div>
         `;
 
@@ -14076,27 +14083,138 @@ function renderSubjectTeacherLinkingList() {
     });
 }
 
-function onClassSubjectTeacherChange(matiere, newTeacher) {
+function promptCustomTeacherForSubject(matiere) {
     if (!matiere) return;
-    if (!window.currentClassSubjectTeachersMap) window.currentClassSubjectTeachersMap = {};
-    window.currentClassSubjectTeachersMap[matiere] = newTeacher ? newTeacher.trim() : '';
+    const current = (window.currentClassSubjectTeachersMap && window.currentClassSubjectTeachersMap[matiere]) || '';
+    const entered = prompt(`Nom de l'enseignant pour la matière "${matiere}" :`, current);
+    if (entered !== null) {
+        const clean = entered.trim();
+        if (clean && window.adminScheduleTeachersCache && !window.adminScheduleTeachersCache.some(t => t.toLowerCase() === clean.toLowerCase())) {
+            window.adminScheduleTeachersCache.push(clean);
+            window.adminScheduleTeachersCache.sort();
+        }
+        onClassSubjectTeacherChange(matiere, clean);
+    }
+}
 
-    // Mettre à jour immédiatement tous les créneaux de cette matière dans la grille de cette classe
+function handleClassSubjectTeacherSelectChange(matiere, value) {
+    if (value === '__custom_new__') {
+        promptCustomTeacherForSubject(matiere);
+    } else {
+        onClassSubjectTeacherChange(matiere, value);
+    }
+}
+
+async function onClassSubjectTeacherChange(matiere, newTeacher) {
+    if (!matiere) return;
+    if (newTeacher === '__custom_new__') {
+        promptCustomTeacherForSubject(matiere);
+        return;
+    }
+
+    const cleanTeacher = (newTeacher || '').trim();
+    const selectedClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
+    const targetSection = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
+
+    if (!window.currentClassSubjectTeachersMap) window.currentClassSubjectTeachersMap = {};
+    window.currentClassSubjectTeachersMap[matiere] = cleanTeacher;
+
+    // Ajouter l'enseignant dans le cache si nouveau
+    if (cleanTeacher && window.adminScheduleTeachersCache && !window.adminScheduleTeachersCache.some(t => t.toLowerCase() === cleanTeacher.toLowerCase())) {
+        window.adminScheduleTeachersCache.push(cleanTeacher);
+        window.adminScheduleTeachersCache.sort();
+    }
+
+    // 1. Mettre à jour immédiatement TOUS les créneaux de cette matière dans la grille d'emploi du temps
     let updatedSlots = 0;
     if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
         window.currentAdminScheduleSlots.forEach(s => {
-            if (s.matiere && s.matiere.trim().toLowerCase() === matiere.trim().toLowerCase()) {
-                s.enseignant = newTeacher ? newTeacher.trim() : '';
+            const matchMat = s.matiere && (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(s.matiere, matiere) : s.matiere.trim().toLowerCase() === matiere.trim().toLowerCase());
+            if (matchMat) {
+                s.enseignant = cleanTeacher;
                 updatedSlots++;
             }
         });
     }
 
     renderSubjectTeacherLinkingList();
-    renderAdminScheduleGrid();
+    if (typeof renderAdminScheduleGrid === 'function') {
+        renderAdminScheduleGrid();
+    }
 
-    if (newTeacher) {
-        showToastNotification(`L'enseignant "${newTeacher}" a été attribué à tous les créneaux de ${matiere} (${updatedSlots} créneau(x)).`, 'success');
+    // 2. Mettre à jour immédiatement le TABLEAU DE SAISIE DE PLAN HEBDO (colonne nom de l'enseignant)
+    let updatedPlanRows = 0;
+    const clsK = findHKey('Classe');
+    const matK = findHKey('Matière');
+    const ensK = findHKey('Enseignant');
+
+    if (clsK && matK && ensK) {
+        if (window.planData && Array.isArray(window.planData)) {
+            window.planData.forEach(r => {
+                if (r && !r.isReadOnlyCrossSection) {
+                    const rCls = r[clsK] ? String(r[clsK]).trim() : '';
+                    const rMat = r[matK] ? String(r[matK]).trim() : '';
+                    const matchCls = !selectedClass || (typeof isClassMatch === 'function' ? isClassMatch(rCls, selectedClass) : rCls.toLowerCase() === selectedClass.toLowerCase());
+                    const matchMat = typeof isEquivalentSubject === 'function' ? isEquivalentSubject(rMat, matiere) : (rMat.toLowerCase() === matiere.toLowerCase());
+                    if (matchCls && matchMat) {
+                        r[ensK] = cleanTeacher;
+                        updatedPlanRows++;
+                    }
+                }
+            });
+        }
+        if (window.rawPlanData && Array.isArray(window.rawPlanData)) {
+            window.rawPlanData.forEach(r => {
+                if (r && !r.isReadOnlyCrossSection) {
+                    const rCls = r[clsK] ? String(r[clsK]).trim() : '';
+                    const rMat = r[matK] ? String(r[matK]).trim() : '';
+                    const matchCls = !selectedClass || (typeof isClassMatch === 'function' ? isClassMatch(rCls, selectedClass) : rCls.toLowerCase() === selectedClass.toLowerCase());
+                    const matchMat = typeof isEquivalentSubject === 'function' ? isEquivalentSubject(rMat, matiere) : (rMat.toLowerCase() === matiere.toLowerCase());
+                    if (matchCls && matchMat) {
+                        r[ensK] = cleanTeacher;
+                    }
+                }
+            });
+        }
+    }
+
+    // Ré-afficher immédiatement le tableau du plan hebdo et rafraîchir les filtres
+    if (typeof sortAndDisplay === 'function') {
+        sortAndDisplay();
+    } else if (typeof renderTable === 'function') {
+        renderTable();
+    }
+    if (typeof updateFilters === 'function') {
+        updateFilters();
+    }
+
+    // 3. SAUVEGARDE ET SYNCHRONISATION AUTOMATIQUE SUR LE SERVEUR
+    // Enregistre la liaison et propage le nouveau nom d'enseignant à toutes les semaines du plan hebdo dans MongoDB
+    if (selectedClass) {
+        try {
+            fetch('/api/admin/class-subject-teachers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    section: targetSection,
+                    classe: selectedClass,
+                    assignments: window.currentClassSubjectTeachersMap,
+                    singleUpdate: { matiere, enseignant: cleanTeacher }
+                })
+            }).then(r => r.json()).then(res => {
+                console.log(`✅ [Auto-sync] Liaison ${matiere} ➔ "${cleanTeacher}" enregistrée et appliquée.`);
+            }).catch(e => {
+                console.warn('Note auto-sync class_subject_teachers:', e.message);
+            });
+        } catch (syncErr) {
+            console.warn('Erreur envoi auto-sync:', syncErr);
+        }
+    }
+
+    if (cleanTeacher) {
+        showToastNotification(`Enseignant "${cleanTeacher}" appliqué automatiquement dans l'emploi (${updatedSlots} créneau(x)) et sur le tableau de saisie (${updatedPlanRows} ligne(s)) pour ${matiere} !`, 'success');
+    } else {
+        showToastNotification(`Liaison d'enseignant retirée pour ${matiere}.`, 'info');
     }
 }
 
@@ -14126,32 +14244,69 @@ async function saveSubjectTeacherAssignmentsForCurrentClass() {
             throw new Error(err.error || 'Erreur HTTP ' + res.status);
         }
 
+        // Mettre à jour les créneaux dans l'emploi du temps
+        let updatedSlots = 0;
+        if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
+            window.currentAdminScheduleSlots.forEach(s => {
+                if (s.matiere) {
+                    for (const [mKey, tVal] of Object.entries(assignments)) {
+                        if (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(s.matiere, mKey) : s.matiere.trim().toLowerCase() === mKey.trim().toLowerCase()) {
+                            s.enseignant = (tVal || '').trim();
+                            updatedSlots++;
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+
         renderSubjectTeacherLinkingList();
-        renderAdminScheduleGrid();
+        if (typeof renderAdminScheduleGrid === 'function') {
+            renderAdminScheduleGrid();
+        }
 
         // Répercuter immédiatement les enseignants liés sur le tableau principal si affiché
-        if (window.planData && Array.isArray(window.planData)) {
-            const clsK = findHKey('Classe');
-            const matK = findHKey('Matière');
-            const ensK = findHKey('Enseignant');
-            if (clsK && matK && ensK) {
-                let updatedTableRows = 0;
+        let updatedTableRows = 0;
+        const clsK = findHKey('Classe');
+        const matK = findHKey('Matière');
+        const ensK = findHKey('Enseignant');
+        if (clsK && matK && ensK) {
+            if (window.planData && Array.isArray(window.planData)) {
                 window.planData.forEach(r => {
                     if (!r.isReadOnlyCrossSection && isClassMatch(r[clsK], selectedClass) && r[matK]) {
-                        const newT = assignments[r[matK].trim()];
-                        if (newT) {
-                            r[ensK] = newT;
-                            updatedTableRows++;
+                        for (const [mKey, tVal] of Object.entries(assignments)) {
+                            if (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(r[matK], mKey) : r[matK].trim().toLowerCase() === mKey.trim().toLowerCase()) {
+                                r[ensK] = (tVal || '').trim();
+                                updatedTableRows++;
+                                break;
+                            }
                         }
                     }
                 });
-                if (updatedTableRows > 0 && typeof renderTable === 'function') {
-                    renderTable();
-                }
+            }
+            if (window.rawPlanData && Array.isArray(window.rawPlanData)) {
+                window.rawPlanData.forEach(r => {
+                    if (!r.isReadOnlyCrossSection && isClassMatch(r[clsK], selectedClass) && r[matK]) {
+                        for (const [mKey, tVal] of Object.entries(assignments)) {
+                            if (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(r[matK], mKey) : r[matK].trim().toLowerCase() === mKey.trim().toLowerCase()) {
+                                r[ensK] = (tVal || '').trim();
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+            if (typeof sortAndDisplay === 'function') {
+                sortAndDisplay();
+            } else if (typeof renderTable === 'function') {
+                renderTable();
+            }
+            if (typeof updateFilters === 'function') {
+                updateFilters();
             }
         }
 
-        showToastNotification("Liaisons Matières ➔ Enseignants enregistrées et appliquées avec succès dans l'emploi et le tableau !", 'success');
+        showToastNotification(`Liaisons Matières ➔ Enseignants enregistrées et appliquées avec succès dans l'emploi et le tableau (${updatedTableRows} lignes) !`, 'success');
     } catch (e) {
         console.error("Erreur saveSubjectTeacherAssignmentsForCurrentClass:", e);
         alert("Erreur lors de l'enregistrement des liaisons : " + e.message);
@@ -16238,6 +16393,8 @@ window.triggerDirectPrintLandscape = triggerDirectPrintLandscape;
 window.downloadAnnualPrintHTML = downloadAnnualPrintHTML;
 window.onSlotModalMatiereChange = onSlotModalMatiereChange;
 window.renderSubjectTeacherLinkingList = renderSubjectTeacherLinkingList;
+window.promptCustomTeacherForSubject = promptCustomTeacherForSubject;
+window.handleClassSubjectTeacherSelectChange = handleClassSubjectTeacherSelectChange;
 window.onClassSubjectTeacherChange = onClassSubjectTeacherChange;
 window.saveSubjectTeacherAssignmentsForCurrentClass = saveSubjectTeacherAssignmentsForCurrentClass;
 

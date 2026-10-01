@@ -1074,6 +1074,47 @@ function isClassMatchServer(classA, classB) {
   return false;
 }
 
+function isEquivalentSubjectServer(sub1, sub2) {
+  if (!sub1 || !sub2) return false;
+  const a = String(sub1).trim();
+  const b = String(sub2).trim();
+  if (a.toLowerCase() === b.toLowerCase()) return true;
+
+  const normalizeSubjectStrServer = (s) => {
+    if (!s) return '';
+    return String(s)
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\u064B-\u065F\u0670]/g, '')
+      .replace(/[أإآ]/g, 'ا')
+      .replace(/ة/g, 'ه')
+      .replace(/ى/g, 'ي')
+      .replace(/[\s\-_()[\]{}:/.,+&]/g, '');
+  };
+
+  const normA = normalizeSubjectStrServer(a);
+  const normB = normalizeSubjectStrServer(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+
+  const isPhys = (str) => ['physique', 'chimie', 'physics', 'chemistry', 'فيزياء', 'فيزيائ', 'كيمياء', 'كيميائ', 'spc'].some(k => str.includes(normalizeSubjectStrServer(k)));
+  const isBio = (str) => ['svt', 'biologie', 'biology', 'احياء', 'حياه', 'طبيعيه', 'طبيعه', 'ايقاظ', 'life'].some(k => str.includes(normalizeSubjectStrServer(k))) || (str === 'sciences' || str === 'science' || str === 'علوم');
+
+  const aIsPhys = isPhys(normA);
+  const bIsPhys = isPhys(normB);
+  if (aIsPhys !== bIsPhys) return false;
+  if (aIsPhys && bIsPhys) return true;
+
+  const aIsBio = isBio(normA);
+  const bIsBio = isBio(normB);
+  if (aIsBio !== bIsBio) return false;
+  if (aIsBio && bIsBio) return true;
+
+  return (normA.length > 3 && normB.includes(normA)) || (normB.length > 3 && normA.includes(normB));
+}
+
 // ======================= Sélection dynamique du modèle ==================
 
 /**
@@ -5044,8 +5085,18 @@ app.get('/api/plans/:week', async (req, res) => {
         const periode = row[findKey(row, 'Période')] || '';
         const jour = row[findKey(row, 'Jour')] || '';
 
-        // Si l'enseignant n'est pas renseigné, attribuer automatiquement l'enseignant lié à cette matière
-        if ((!enseignant || !enseignant.trim()) && classe && matiere) {
+        // Synchroniser automatiquement l'enseignant avec la liaison configurée dans Liaison Automatique Matières ➔ Enseignants
+        if (classe && matiere && subTeacherDocs.length > 0) {
+          const linkedDoc = subTeacherDocs.find(d => 
+            d.enseignant && d.enseignant.trim() &&
+            (isClassMatchServer(d.classe, classe) || d.classe === 'all' || !d.classe) && 
+            isEquivalentSubjectServer(d.matiere, matiere)
+          );
+          if (linkedDoc && linkedDoc.enseignant && linkedDoc.enseignant.trim()) {
+            enseignant = linkedDoc.enseignant.trim();
+            row[ensKey] = enseignant;
+          }
+        } else if ((!enseignant || !enseignant.trim()) && classe && matiere) {
           const k = `${classe.trim().toLowerCase()}_${matiere.trim().toLowerCase()}`;
           if (subTeacherMap.has(k)) {
             enseignant = subTeacherMap.get(k);
@@ -6815,10 +6866,21 @@ app.get('/api/admin/schedule-class', async (req, res) => {
       }
     });
 
-    // Si certains créneaux n'ont pas d'enseignant mais que la matière est liée, leur attribuer automatiquement
+    // Attribuer l'enseignant lié de façon prioritaire et automatique à tous les créneaux de la matière
     slots.forEach(s => {
-      if ((!s.enseignant || !s.enseignant.trim()) && s.matiere && subjectTeachersMap[s.matiere]) {
-        s.enseignant = subjectTeachersMap[s.matiere];
+      if (s.matiere) {
+        let linkedTeacher = subjectTeachersMap[s.matiere.trim()];
+        if (!linkedTeacher) {
+          for (const [mKey, eVal] of Object.entries(subjectTeachersMap)) {
+            if (isEquivalentSubjectServer(s.matiere, mKey)) {
+              linkedTeacher = eVal;
+              break;
+            }
+          }
+        }
+        if (linkedTeacher && linkedTeacher.trim()) {
+          s.enseignant = linkedTeacher.trim();
+        }
       }
     });
 
@@ -6883,8 +6945,14 @@ app.get('/api/admin/class-subject-teachers', async (req, res) => {
 
 app.post('/api/admin/class-subject-teachers', async (req, res) => {
   try {
-    const { section = 'garcons', classe = '', assignments = {} } = req.body;
+    const { section = 'garcons', classe = '', assignments = {}, singleUpdate = null } = req.body;
     if (!classe) return res.status(400).json({ error: 'Classe requise.' });
+
+    // Fusionner singleUpdate si fourni
+    if (singleUpdate && singleUpdate.matiere) {
+      assignments[singleUpdate.matiere] = singleUpdate.enseignant || '';
+    }
+
     const db = await connectToDatabase();
     const now = new Date();
     for (const [matiere, enseignant] of Object.entries(assignments)) {
@@ -6900,7 +6968,14 @@ app.post('/api/admin/class-subject-teachers', async (req, res) => {
 
     // Répercuter immédiatement les enseignants liés sur toutes les semaines de cette classe dans le tableau
     try {
-      const planDocs = await db.collection('plans').find({ section }).toArray();
+      const planDocs = await db.collection('plans').find({
+        $or: [
+          { section: section },
+          { _id: { $regex: new RegExp(`^${section}_`, 'i') } },
+          { 'data.Classe': { $exists: true } }
+        ]
+      }).toArray();
+
       for (const pDoc of planDocs) {
         if (Array.isArray(pDoc.data) && pDoc.data.length > 0) {
           let modified = false;
@@ -6908,11 +6983,22 @@ app.post('/api/admin/class-subject-teachers', async (req, res) => {
             const rowCls = row[findKey(row, 'Classe')];
             const rowMat = row[findKey(row, 'Matière')];
             if (rowCls && isClassMatchServer(rowCls, classe) && rowMat) {
-              const matchedEns = assignments[rowMat.trim()];
-              if (matchedEns && matchedEns.trim()) {
+              let matchedEns = assignments[rowMat.trim()];
+              if (matchedEns === undefined) {
+                for (const [mKey, eVal] of Object.entries(assignments)) {
+                  if (isEquivalentSubjectServer(rowMat, mKey)) {
+                    matchedEns = eVal;
+                    break;
+                  }
+                }
+              }
+              if (matchedEns !== undefined) {
+                const cleanEns = (matchedEns || '').trim();
                 const ensKey = findKey(row, 'Enseignant') || 'Enseignant';
-                row[ensKey] = matchedEns.trim();
-                modified = true;
+                if (row[ensKey] !== cleanEns) {
+                  row[ensKey] = cleanEns;
+                  modified = true;
+                }
               }
             }
           });

@@ -344,5 +344,6 @@
   "school_weeks_config": [],
   "lessonPlans": [],
   "weeklyLessonPlans": [],
-  "annual_distributions": []
+  "annual_distributions": [],
+  "class_subject_teachers": []
 }
