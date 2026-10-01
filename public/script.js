@@ -3223,8 +3223,10 @@
         
         
 // ==========================================
-// COLLAGE MULTI-CELLULES DEPUIS EXCEL / WORD / TABLEAUX
-// Permet de coller une ligne ou plusieurs cases en même temps (ex: 4 colonnes)
+// COLLAGE DANS LE TABLEAU SANS DÉBORDEMENT VERTICAL
+// Préserve strictement les sauts de ligne (\n) DANS LA MÊME CASE
+// et ne colle JAMAIS verticalement sur la ligne ou la case du dessous.
+// Supporte le collage horizontal multi-colonnes sur la même ligne (ex: Leçon, Travaux, Support, Devoirs).
 // ==========================================
 function handleCellTablePaste(e, targetTd) {
     const clipboardData = e.clipboardData || window.clipboardData;
@@ -3233,136 +3235,207 @@ function handleCellTablePaste(e, targetTd) {
     const plainText = clipboardData.getData('text/plain') || '';
     const htmlText = clipboardData.getData('text/html') || '';
 
-    let grid = [];
+    if (!plainText && !htmlText) return false;
+
+    const startTr = targetTd.closest('tr');
+    if (!startTr) return false;
+
+    const startRowEditables = Array.from(startTr.querySelectorAll('td.editable'));
+    let startColIdx = startRowEditables.indexOf(targetTd);
+    if (startColIdx === -1) {
+        startColIdx = 0;
+    }
+
+    let parsedColumns = [];
 
     // 1. Tenter l'analyse d'un tableau HTML (copié depuis Excel, Word, Google Sheets ou page web)
-    if (htmlText && (htmlText.includes('<tr') || htmlText.includes('<table'))) {
+    if (htmlText && (htmlText.includes('<tr') || htmlText.includes('<table') || htmlText.includes('<td'))) {
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(htmlText, 'text/html');
             const trs = doc.querySelectorAll('tr');
             if (trs.length > 0) {
+                const tableMatrix = [];
                 trs.forEach(tr => {
                     const cells = tr.querySelectorAll('td, th');
                     if (cells.length > 0) {
-                        grid.push(Array.from(cells).map(c => c.textContent.replace(/[\r\n]+/g, ' ').trim()));
+                        const rowVals = Array.from(cells).map(cell => {
+                            const clone = cell.cloneNode(true);
+                            // Préserver les sauts de ligne HTML (<br>, <p>, <div>, <li>) sous forme de \n
+                            clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+                            clone.querySelectorAll('p, div, li').forEach(b => {
+                                b.prepend('\n');
+                            });
+                            let txt = (clone.textContent || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+                            return txt.replace(/\n{3,}/g, '\n\n');
+                        });
+                        tableMatrix.push(rowVals);
                     }
                 });
+
+                if (tableMatrix.length > 0) {
+                    // Aplatir strictement en UNE SEULE ligne de colonnes (sans jamais déborder verticalement sur la ligne du dessous)
+                    const maxCols = Math.max(...tableMatrix.map(r => r.length));
+                    for (let c = 0; c < maxCols; c++) {
+                        const colParts = [];
+                        for (let r = 0; r < tableMatrix.length; r++) {
+                            const val = (tableMatrix[r][c] || '').trim();
+                            if (val) colParts.push(val);
+                        }
+                        parsedColumns.push(colParts.join('\n'));
+                    }
+                }
             }
         } catch (err) {
             console.warn('HTML table paste parse error:', err);
         }
     }
 
-    // 2. Si pas de grille HTML multi-colonnes, analyser le texte brut avec séparateurs tabulations (\t) et retours ligne
-    if (!grid || grid.length === 0 || (grid.length === 1 && grid[0].length === 1)) {
-        if (plainText.includes('\t') || plainText.includes('\n') || plainText.includes('\r') || plainText.includes(';') || plainText.includes('|')) {
-            const lines = plainText.split(/\r?\n/).filter(line => line.trim().length > 0);
-            grid = lines.map(line => {
-                let sep = '\t';
-                if (!line.includes('\t')) {
-                    if (line.includes(';') && line.split(';').length >= 2) sep = ';';
-                    else if (line.includes('|') && line.split('|').length >= 2) sep = '|';
-                }
-                return line.split(sep).map(cell => {
-                    let c = cell.trim();
-                    if (c.startsWith('"') && c.endsWith('"') && c.length >= 2) {
-                        c = c.slice(1, -1).replace(/""/g, '"').trim();
+    // 2. Si pas de structure HTML multi-colonnes, analyser le texte brut (TSV / CSV / texte multi-lignes)
+    if (parsedColumns.length === 0 && plainText) {
+        const clean = plainText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+        // Vérifier si le texte contient des tabulations (\t) délimitant des colonnes
+        const hasTabs = clean.includes('\t');
+        const firstLine = clean.split('\n')[0];
+        const hasSemiCols = !hasTabs && clean.includes(';') && firstLine.includes(';') && firstLine.split(';').length >= 2;
+        const hasPipes = !hasTabs && !hasSemiCols && clean.includes('|') && firstLine.includes('|') && firstLine.split('|').length >= 2;
+
+        if (!hasTabs && !hasSemiCols && !hasPipes) {
+            // AUCUN séparateur de colonne : Tout le texte (avec TOUS ses sauts de ligne \n) reste dans LA MÊME CASE !
+            let val = clean.trim();
+            if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) {
+                val = val.slice(1, -1).replace(/""/g, '"').trim();
+            }
+            parsedColumns = [val];
+        } else {
+            // Présence de séparateurs de colonnes (ex: copie depuis Excel de plusieurs colonnes)
+            const sep = hasTabs ? '\t' : (hasSemiCols ? ';' : '|');
+            const matrix = [];
+            let currentRow = [];
+            let currentCell = '';
+            let insideQuotes = false;
+
+            for (let i = 0; i < clean.length; i++) {
+                const char = clean[i];
+                const nextChar = clean[i + 1];
+
+                if (char === '"') {
+                    if (insideQuotes && nextChar === '"') {
+                        currentCell += '"';
+                        i++;
+                    } else {
+                        insideQuotes = !insideQuotes;
                     }
-                    return c;
-                });
-            });
+                } else if (char === sep && !insideQuotes) {
+                    let cVal = currentCell.trim();
+                    if (cVal.startsWith('"') && cVal.endsWith('"') && cVal.length >= 2) {
+                        cVal = cVal.slice(1, -1).replace(/""/g, '"').trim();
+                    }
+                    currentRow.push(cVal);
+                    currentCell = '';
+                } else if (char === '\n' && !insideQuotes) {
+                    let cVal = currentCell.trim();
+                    if (cVal.startsWith('"') && cVal.endsWith('"') && cVal.length >= 2) {
+                        cVal = cVal.slice(1, -1).replace(/""/g, '"').trim();
+                    }
+                    currentRow.push(cVal);
+                    matrix.push(currentRow);
+                    currentRow = [];
+                    currentCell = '';
+                } else {
+                    currentCell += char;
+                }
+            }
+            if (currentCell.length > 0 || currentRow.length > 0) {
+                let cVal = currentCell.trim();
+                if (cVal.startsWith('"') && cVal.endsWith('"') && cVal.length >= 2) {
+                    cVal = cVal.slice(1, -1).replace(/""/g, '"').trim();
+                }
+                currentRow.push(cVal);
+                matrix.push(currentRow);
+            }
+
+            const validRows = matrix.filter(r => r.some(c => c.length > 0));
+            if (validRows.length > 0) {
+                // Joindre les lignes éventuelles colonne par colonne avec saut de ligne \n dans la même case
+                const maxCols = Math.max(...validRows.map(r => r.length));
+                for (let c = 0; c < maxCols; c++) {
+                    const colParts = [];
+                    for (let r = 0; r < validRows.length; r++) {
+                        const val = (validRows[r][c] || '').trim();
+                        if (val) colParts.push(val);
+                    }
+                    parsedColumns.push(colParts.join('\n'));
+                }
+            } else {
+                parsedColumns = [clean.trim()];
+            }
         }
     }
 
-    // Si une seule valeur isolée sans tabulation ni saut de ligne, laisser le collage standard
-    if (!grid || grid.length === 0 || (grid.length === 1 && grid[0].length <= 1)) {
+    if (!parsedColumns || parsedColumns.length === 0) {
         return false;
     }
 
     e.preventDefault();
 
-    const startTr = targetTd.closest('tr');
-    if (!startTr) return false;
-
-    const tbody = startTr.closest('tbody');
-    if (!tbody) return false;
-
-    const allTrs = Array.from(tbody.querySelectorAll('tr:not(#initial-table-row)'));
-    const startRowIdx = allTrs.indexOf(startTr);
-    if (startRowIdx === -1) return false;
-
-    const startRowEditables = Array.from(startTr.querySelectorAll('td.editable'));
-    let startColIdx = startRowEditables.indexOf(targetTd);
-    if (startColIdx === -1) {
-        // Si l'utilisateur clique sur n'importe quel endroit de la ligne ou sur Jour/Classe/Matière,
-        // commencer automatiquement le collage à partir de la première cellule éditable (Leçon)
-        startColIdx = 0;
+    const rIdxAttr = startTr.dataset.rowIndex;
+    let rowObj = (filteredAndSortedData && rIdxAttr !== undefined) ? filteredAndSortedData[parseInt(rIdxAttr, 10)] : null;
+    if (!rowObj && startTr.dataset.id && filteredAndSortedData) {
+        rowObj = filteredAndSortedData.find(r => String(r._id) === String(startTr.dataset.id));
+    }
+    if (!rowObj && startTr.dataset.id && planData) {
+        rowObj = planData.find(r => String(r._id) === String(startTr.dataset.id));
     }
 
-    let modifiedRowsCount = 0;
     let cellsFilledCount = 0;
+    let rowChanged = false;
 
-    grid.forEach((rowValues, rOffset) => {
-        const curTr = allTrs[startRowIdx + rOffset];
-        if (!curTr) return;
+    // Remplir UNIQUEMENT sur la ligne courante (horizontalement pour chaque colonne)
+    // Ne JAMAIS toucher ni déborder sur la ligne ou case du dessous !
+    parsedColumns.forEach((val, cOffset) => {
+        const targetCell = startRowEditables[startColIdx + cOffset];
+        if (!targetCell) return;
 
-        const curEditables = Array.from(curTr.querySelectorAll('td.editable'));
-        if (curEditables.length === 0) return;
+        const cleanVal = String(val ?? '').trim();
+        targetCell.textContent = cleanVal;
+        applyRTLToElement(targetCell, cleanVal);
 
-        const rIdxAttr = curTr.dataset.rowIndex;
-        let rowObj = (filteredAndSortedData && rIdxAttr !== undefined) ? filteredAndSortedData[parseInt(rIdxAttr, 10)] : null;
-        if (!rowObj && curTr.dataset.id && filteredAndSortedData) {
-            rowObj = filteredAndSortedData.find(r => String(r._id) === String(curTr.dataset.id));
-        }
-        if (!rowObj && curTr.dataset.id && planData) {
-            rowObj = planData.find(r => String(r._id) === String(curTr.dataset.id));
-        }
-
-        let rowChanged = false;
-
-        rowValues.forEach((val, cOffset) => {
-            const targetCell = curEditables[startColIdx + cOffset];
-            if (!targetCell) return;
-
-            const cleanVal = String(val ?? '').trim();
-            targetCell.textContent = cleanVal;
-            applyRTLToElement(targetCell, cleanVal);
-
-            const colHeader = targetCell.dataset.header;
-            if (rowObj && colHeader) {
-                rowObj[colHeader] = cleanVal;
-                if (curTr.dataset.id && planData) {
-                    const pdMatch = planData.find(r => String(r._id) === String(curTr.dataset.id));
-                    if (pdMatch && pdMatch !== rowObj) {
-                        pdMatch[colHeader] = cleanVal;
-                    }
+        const colHeader = targetCell.dataset.header;
+        if (rowObj && colHeader) {
+            rowObj[colHeader] = cleanVal;
+            if (startTr.dataset.id && planData) {
+                const pdMatch = planData.find(r => String(r._id) === String(startTr.dataset.id));
+                if (pdMatch && pdMatch !== rowObj) {
+                    pdMatch[colHeader] = cleanVal;
                 }
-                rowChanged = true;
-                cellsFilledCount++;
             }
-        });
-
-        if (rowChanged) {
-            curTr.classList.add('modified');
-            const indicator = curTr.querySelector('.save-indicator');
-            if (indicator) indicator.style.display = 'none';
-            modifiedRowsCount++;
+            if (startTr.dataset.id && window.rawPlanData) {
+                const rawMatch = window.rawPlanData.find(r => String(r._id) === String(startTr.dataset.id));
+                if (rawMatch) {
+                    rawMatch[colHeader] = cleanVal;
+                }
+            }
+            rowChanged = true;
+            cellsFilledCount++;
         }
     });
 
-    if (modifiedRowsCount > 0) {
+    if (rowChanged) {
+        startTr.classList.add('modified');
+        const indicator = startTr.querySelector('.save-indicator');
+        if (indicator) indicator.style.display = 'none';
         updateTeacherCounters();
         if (typeof updateActionButtonsState === 'function') {
             updateActionButtonsState(true);
         }
         const saveAllBtn = document.getElementById('saveAllDisplayedBtn');
         if (saveAllBtn) saveAllBtn.disabled = false;
-        const msg = (currentUserLanguage === 'en')
-            ? `Pasted into ${cellsFilledCount} cell(s) across ${modifiedRowsCount} row(s). Press Save to keep changes.`
-            : ((currentUserLanguage === 'ar')
-                ? `تم لصق البيانات في ${cellsFilledCount} خانة (${modifiedRowsCount} سطر). اضغط حفظ لتأكيد التغييرات.`
-                : `Collage réussi dans ${cellsFilledCount} case(s) (${modifiedRowsCount} ligne(s)). N'oubliez pas d'enregistrer.`);
+
+        const msg = (cellsFilledCount > 1)
+            ? `Collage réussi sur la ligne (${cellsFilledCount} colonnes). Saut(s) de ligne conservé(s) dans la même case.`
+            : `Collage réussi. Saut(s) de ligne conservé(s) dans la même case.`;
         showToastNotification(msg, 'success');
     }
 
@@ -3518,8 +3591,9 @@ function displayPlanTable(data) {
                             if (!handled) {
                                 e.preventDefault();
                                 const text = (e.clipboardData || window.clipboardData).getData('text') || '';
-                                const cleanedText = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-                                document.execCommand('insertText', false, cleanedText);
+                                // Conserver impérativement les sauts de ligne (\n) dans la même case
+                                const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                                document.execCommand('insertText', false, normalizedText);
                                 if (rowObj) {
                                     rowObj[header] = td.textContent;
                                     applyRTLToElement(td, td.textContent);
