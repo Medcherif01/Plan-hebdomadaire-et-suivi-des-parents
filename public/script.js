@@ -3666,16 +3666,6 @@ function displayPlanTable(data) {
                     saveBtn.onclick = () => saveRow(rowObj, tr);
                     actTd.appendChild(saveBtn);
 
-                    // Bouton Admin pour supprimer définitivement la ligne du tableau
-                    if (isAdmin) {
-                        const delRowBtn = document.createElement('button');
-                        delRowBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
-                        delRowBtn.title = (currentUserLanguage === 'ar') ? 'حذف هذا السطر نهائياً من الجدول' : 'Supprimer définitivement cette ligne du tableau';
-                        delRowBtn.classList.add('delete-plan-row-btn');
-                        delRowBtn.onclick = () => deletePlanRow(rowObj, tr);
-                        actTd.appendChild(delRowBtn);
-                    }
-
                     const indicatorSpan = document.createElement('span');
                     indicatorSpan.className = 'save-indicator';
                     indicatorSpan.innerHTML = '<i class="fas fa-check-circle"></i>';
@@ -4419,6 +4409,11 @@ function displayPlanTable(data) {
             if (openLessonPlanModalBtn) {
                 openLessonPlanModalBtn.disabled = !isEnabled || !planData || planData.length === 0;
             }
+            const adminDelBtn = document.getElementById('adminDeleteRowModalBtn');
+            if (adminDelBtn) {
+                const isAdmin = isUserAdminOrSupervisor(loggedInUser, currentUserRole);
+                adminDelBtn.style.display = (isAdmin && isEnabled && planData && planData.length > 0) ? 'inline-flex' : 'none';
+            }
         }
         async function saveRow(rowData, tableRowElement) { 
             if(!rowData||typeof rowData!=='object'){displayAlert('invalid_row',true); return;} 
@@ -4568,6 +4563,204 @@ function displayPlanTable(data) {
             }
         }
         window.deletePlanRow = deletePlanRow;
+
+        let adminDeleteRowSelectedData = null;
+
+        function openAdminDeleteRowModal() {
+            const modal = document.getElementById('adminDeleteRowModal');
+            const select = document.getElementById('adminDeleteRowSelect');
+            const previewBox = document.getElementById('adminDeleteRowPreviewBox');
+            const confirmBtn = document.getElementById('confirmAdminDeleteRowBtn');
+            if (!modal || !select) return;
+
+            adminDeleteRowSelectedData = null;
+            if (previewBox) previewBox.style.display = 'none';
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+                confirmBtn.style.opacity = '0.6';
+            }
+
+            const titleEl = document.getElementById('adminDeleteRowModalTitle');
+            if (titleEl) {
+                titleEl.textContent = (currentUserLanguage === 'ar')
+                    ? `حذف سطر من الجدول (الأسبوع ${currentWeek || ''})`
+                    : `Supprimer une ligne du tableau (Semaine ${currentWeek || ''})`;
+            }
+
+            select.innerHTML = '<option value="">-- ' + ((currentUserLanguage === 'ar') ? 'اختر السطر المراد حذفه' : 'Sélectionner la ligne à supprimer') + ' --</option>';
+
+            const currentRows = (filteredAndSortedData && filteredAndSortedData.length > 0)
+                ? filteredAndSortedData.filter(r => r && !r.isReadOnlyCrossSection)
+                : (planData || []).filter(r => r && !r.isReadOnlyCrossSection);
+
+            if (!currentRows || currentRows.length === 0) {
+                select.innerHTML = '<option value="">' + ((currentUserLanguage === 'ar') ? 'لا توجد أسطر في هذا الأسبوع' : 'Aucune ligne disponible dans cette semaine') + '</option>';
+                modal.style.display = 'flex';
+                return;
+            }
+
+            const ensK = findHKey('Enseignant');
+            const clsK = findHKey('Classe');
+            const matK = findHKey('Matière');
+            const jK = findHKey('Jour');
+            const perK = findHKey('Période');
+            const lecK = findHKey('Leçon');
+
+            currentRows.forEach((r, idx) => {
+                const cls = (clsK && r[clsK]) ? String(r[clsK]).trim() : '';
+                const mat = (matK && r[matK]) ? String(r[matK]).trim() : '';
+                const jour = (jK && r[jK]) ? String(r[jK]).trim() : '';
+                const per = (perK && r[perK]) ? String(r[perK]).trim() : '';
+                const ens = (ensK && r[ensK]) ? String(r[ensK]).trim() : '';
+                const lec = (lecK && r[lecK]) ? String(r[lecK]).trim() : '';
+
+                const opt = document.createElement('option');
+                opt.value = String(idx);
+
+                const isBlank = !cls && !mat && !ens && !lec;
+                if (isBlank) {
+                    opt.textContent = `⚠️ Ligne #${idx + 1} : [Ligne vide sans données]`;
+                    opt.style.color = '#DC2626';
+                    opt.style.fontWeight = 'bold';
+                } else {
+                    const dayName = jour ? extractDayName(jour) : '';
+                    opt.textContent = `Ligne #${idx + 1} : [${cls || '?'}] ${mat || '?'} • ${dayName || jour} P${per || '?'} (${ens || 'Sans enseignant'})`;
+                }
+                select.appendChild(opt);
+            });
+
+            modal.style.display = 'flex';
+        }
+        window.openAdminDeleteRowModal = openAdminDeleteRowModal;
+
+        function closeAdminDeleteRowModal() {
+            const modal = document.getElementById('adminDeleteRowModal');
+            if (modal) modal.style.display = 'none';
+            adminDeleteRowSelectedData = null;
+        }
+        window.closeAdminDeleteRowModal = closeAdminDeleteRowModal;
+
+        function onAdminDeleteRowSelectChanged() {
+            const select = document.getElementById('adminDeleteRowSelect');
+            const previewBox = document.getElementById('adminDeleteRowPreviewBox');
+            const previewContent = document.getElementById('adminDeleteRowPreviewContent');
+            const confirmBtn = document.getElementById('confirmAdminDeleteRowBtn');
+            if (!select) return;
+
+            const val = select.value;
+            if (val === '' || val === null) {
+                adminDeleteRowSelectedData = null;
+                if (previewBox) previewBox.style.display = 'none';
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.style.opacity = '0.6';
+                }
+                return;
+            }
+
+            const currentRows = (filteredAndSortedData && filteredAndSortedData.length > 0)
+                ? filteredAndSortedData.filter(r => r && !r.isReadOnlyCrossSection)
+                : (planData || []).filter(r => r && !r.isReadOnlyCrossSection);
+
+            const idx = parseInt(val, 10);
+            const rowObj = currentRows[idx];
+            if (!rowObj) return;
+
+            adminDeleteRowSelectedData = rowObj;
+
+            const ensK = findHKey('Enseignant');
+            const clsK = findHKey('Classe');
+            const matK = findHKey('Matière');
+            const jK = findHKey('Jour');
+            const perK = findHKey('Période');
+            const lecK = findHKey('Leçon');
+            const taskK = findHKey('Travaux de classe');
+
+            if (previewBox && previewContent) {
+                previewContent.innerHTML = `
+                    <div style="margin-bottom:3px;"><strong>Classe :</strong> ${escapeHtml(rowObj[clsK] || '(vide)')}</div>
+                    <div style="margin-bottom:3px;"><strong>Matière :</strong> ${escapeHtml(rowObj[matK] || '(vide)')}</div>
+                    <div style="margin-bottom:3px;"><strong>Enseignant :</strong> ${escapeHtml(rowObj[ensK] || '(vide)')}</div>
+                    <div style="margin-bottom:3px;"><strong>Jour & Période :</strong> ${escapeHtml(rowObj[jK] || '')} - Période ${escapeHtml(String(rowObj[perK] || ''))}</div>
+                    ${rowObj[lecK] ? `<div style="margin-bottom:3px;"><strong>Leçon :</strong> ${escapeHtml(rowObj[lecK])}</div>` : ''}
+                    ${rowObj[taskK] ? `<div style="margin-bottom:3px;"><strong>Travaux :</strong> ${escapeHtml(rowObj[taskK])}</div>` : ''}
+                `;
+                previewBox.style.display = 'block';
+            }
+
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.style.opacity = '1';
+            }
+        }
+        window.onAdminDeleteRowSelectChanged = onAdminDeleteRowSelectChanged;
+
+        async function confirmAdminDeleteSelectedRow() {
+            if (!adminDeleteRowSelectedData) return;
+            const rowData = adminDeleteRowSelectedData;
+
+            const isAr = (currentUserLanguage === 'ar');
+            const confirmMsg = isAr
+                ? 'تأكيد أخير: هل أنت متأكد من حذف هذا السطر بشكل نهائي من قاعدة البيانات؟'
+                : 'Confirmation définitive : voulez-vous vraiment supprimer cette ligne de la base de données ?';
+
+            if (!confirm(confirmMsg)) return;
+
+            const confirmBtn = document.getElementById('confirmAdminDeleteRowBtn');
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Suppression...';
+            }
+
+            try {
+                if (!currentWeek) throw new Error(t('please_select_week'));
+
+                const section = rowData._section || currentSection || 'garcons';
+                const response = await fetch('/api/admin/delete-plan-row', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        week: currentWeek,
+                        section: section,
+                        row: rowData
+                    })
+                });
+
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message || `Erreur ${response.status}`);
+
+                // Retirer proprement la ligne des différentes structures en mémoire
+                if (Array.isArray(planData)) {
+                    planData = planData.filter(r => r !== rowData && (!rowData._id || r._id !== rowData._id));
+                }
+                if (Array.isArray(window.rawPlanData)) {
+                    window.rawPlanData = window.rawPlanData.filter(r => r !== rowData && (!rowData._id || r._id !== rowData._id));
+                }
+                if (Array.isArray(filteredAndSortedData)) {
+                    filteredAndSortedData = filteredAndSortedData.filter(r => r !== rowData && (!rowData._id || r._id !== rowData._id));
+                }
+
+                closeAdminDeleteRowModal();
+                sortAndDisplay();
+                updateTeacherCounters();
+                checkAndDisplayIncompleteTeachers();
+
+                const successMsg = isAr
+                    ? 'تم حذف السطر بنجاح من الجدول.'
+                    : 'Ligne supprimée avec succès du tableau.';
+                showToastNotification(successMsg, 'success');
+                displayAlert(successMsg, false);
+            } catch (err) {
+                console.error('Erreur confirmAdminDeleteSelectedRow:', err);
+                displayAlert('Erreur lors de la suppression : ' + err.message, true);
+            } finally {
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerHTML = '<i class="fas fa-trash-alt"></i> Supprimer définitivement';
+                }
+            }
+        }
+        window.confirmAdminDeleteSelectedRow = confirmAdminDeleteSelectedRow;
 
         async function saveAllDisplayedRows() { 
             const rowsToSave = (filteredAndSortedData || []).filter(r => r && !r.isReadOnlyCrossSection);
