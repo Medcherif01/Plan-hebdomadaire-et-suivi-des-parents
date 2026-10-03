@@ -264,9 +264,13 @@ async function downloadSelectedTeachersLessonPlansZip() {
     showProgressBar(`Génération / Téléchargement des plans pour ${selectedTeachers.length} enseignant(s)...`, 10);
 
     try {
+        const effectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+            ? getEffectiveWeekNumberForPlan(currentWeek || 1, currentSection || 'garcons')
+            : (currentWeek || 1);
         const payload = {
             rows: matchedRows,
             week: currentWeek || 1,
+            displayWeek: effectiveWeek,
             section: currentSection || 'garcons',
             teachers: selectedTeachers
         };
@@ -285,7 +289,7 @@ async function downloadSelectedTeachersLessonPlansZip() {
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            const weekStr = currentWeek ? `S${currentWeek}` : 'Semaine';
+            const weekStr = effectiveWeek ? `S${effectiveWeek}` : 'Semaine';
             const teacherStr = selectedTeachers.length === 1 ? selectedTeachers[0].replace(/[^a-zA-Z0-9_-]/g, '_') : 'Ensemble_Enseignants';
             a.download = `Plans_Lecons_${weekStr}_${teacherStr}.zip`;
             document.body.appendChild(a);
@@ -613,11 +617,14 @@ async function startGenerateAllLessonPlans() {
     }
     
     // Confirmation
+    const effectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+        ? getEffectiveWeekNumberForPlan(currentWeek, currentSection)
+        : currentWeek;
     const confirmation = confirm(
         `Générer les PLANS DE LEÇON IA (Gemini) pour :\n\n` +
         `Classes: ${selectedClasses.join(', ')}\n` +
         `Matières: ${selectedSubjects.join(', ')}\n` +
-        `Semaine: ${currentWeek}\n\n` +
+        `Semaine: ${effectiveWeek}\n\n` +
         `Cela générera automatiquement des plans de leçon avec IA.\n\n` +
         `Continuer ?`
     );
@@ -676,11 +683,16 @@ async function generateAILessonPlansZip(selectedClasses, selectedSubjects) {
     });
     
     try {
+        const effectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+            ? getEffectiveWeekNumberForPlan(currentWeek, currentSection, selectedClasses[0])
+            : currentWeek;
         const response = await fetch('/api/generate-multiple-ai-lesson-plans', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 week: currentWeek,
+                displayWeek: effectiveWeek,
+                section: currentSection || 'garcons',
                 rowsData: lessonPlansData
             })
         });
@@ -688,7 +700,7 @@ async function generateAILessonPlansZip(selectedClasses, selectedSubjects) {
         if (response.ok) {
             const blob = await response.blob();
             const contentDisposition = response.headers.get('content-disposition');
-            let filename = `Plans_Lecon_IA_S${currentWeek}_${lessonPlansData.length}_fichiers.zip`;
+            let filename = `Plans_Lecon_IA_S${effectiveWeek}_${lessonPlansData.length}_fichiers.zip`;
             
             if (contentDisposition) {
                 const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i);

@@ -498,6 +498,26 @@ function getSectionWeekDates(section, weekNumber) {
   return specificWeekDateRangesNode[weekNumber] || { start: '', end: '', title: `Semaine ${weekNumber}`, titleAr: `الأسبوع ${weekNumber}` };
 }
 
+function getEffectiveDisplayWeekServer(section, weekNumber, explicitDisplayWeek, className) {
+  if (explicitDisplayWeek !== undefined && explicitDisplayWeek !== null && String(explicitDisplayWeek).trim() !== '') {
+    const parsed = Number(explicitDisplayWeek);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  const effectiveSec = (className && typeof isMaternelleClassServer === 'function' && isMaternelleClassServer(className))
+    ? 'maternelle'
+    : String(section || 'garcons').toLowerCase().trim();
+  const datesObj = getSectionWeekDates(effectiveSec, weekNumber);
+  if (datesObj && datesObj.title) {
+    const m = String(datesObj.title).match(/(?:Semaine|Week|S)\s*0*(\d+)/i);
+    if (m && m[1]) return parseInt(m[1], 10);
+  }
+  if (datesObj && datesObj.titleAr) {
+    const mAr = String(datesObj.titleAr).match(/(?:الأسبوع|اسبوع)\s*0*(\d+)/);
+    if (mAr && mAr[1]) return parseInt(mAr[1], 10);
+  }
+  return Number(weekNumber) || 1;
+}
+
 const validUsers = {
   // Garçons
   "Mohamed": "Mohamed", "Abas": "Abas", "Jaber": "Jaber", "Imad": "Imad", "Kamel": "Kamel",
@@ -1135,14 +1155,11 @@ async function resolveGeminiModel(apiKey) {
 
   // Préférence (ordre décroissant) – ajuste si besoin selon tes coûts/perf
   const preferredNames = [
-    // Généraux actuels
+    "gemini-3.8-flash",
+    "gemini-flash-latest",
     "gemini-2.5-flash",
     "gemini-2.5-pro",
-    "gemini-2.5-flash-lite",
-    // Anciennes séries (si encore exposées pour ta clé)
-    "gemini-1.5-flash-001",
-    "gemini-1.5-pro-002",
-    "gemini-1.5-flash"
+    "gemini-2.5-flash-lite"
   ];
 
   const nameSet = new Map(models.map(m => [m.name, m]));
@@ -7472,7 +7489,8 @@ app.post('/api/generate-word', async (req, res) => {
       return { jourDateComplete: formattedDate, matieres: matieres };
     }).filter(Boolean);
 
-    let plageSemaineText = `Semaine ${weekNumber}`;
+    const displayWeekNumber = getEffectiveDisplayWeekServer(section, weekNumber, req.body.displayWeek, classe);
+    let plageSemaineText = `Semaine ${displayWeekNumber}`;
     if (datesNode?.start && datesNode?.end) {
       const startD = new Date(datesNode.start + 'T00:00:00Z');
       const endD = new Date(datesNode.end + 'T00:00:00Z');
@@ -7482,7 +7500,8 @@ app.post('/api/generate-word', async (req, res) => {
     }
 
     const templateData = {
-      semaine: weekNumber,
+      semaine: displayWeekNumber,
+      Semaine: displayWeekNumber,
       classe: classe,
       jours: joursData,
       notes: formatTextForWord(notes),
@@ -7492,7 +7511,7 @@ app.post('/api/generate-word', async (req, res) => {
     doc.render(templateData);
 
     const buf = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-    const filename = `Plan_hebdomadaire_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.docx`;
+    const filename = `Plan_hebdomadaire_S${displayWeekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.docx`;
 
     // 1. Enregistrement du plan de leçon dans MongoDB
     try {
@@ -7545,7 +7564,8 @@ app.post('/api/generate-word', async (req, res) => {
 
 	    // Configuration du ZIP
 	    const archive = archiver('zip', { zlib: { level: 9 } });
-	    const filename = `Plans_Hebdomadaires_S${weekNumber}_${classes.length}_Classes.zip`;
+	    const zipDisplayWeek = getEffectiveDisplayWeekServer(section, weekNumber, req.body.displayWeek, classes[0]);
+	    const filename = `Plans_Hebdomadaires_S${zipDisplayWeek}_${classes.length}_Classes.zip`;
 
 	    res.setHeader('Content-Type', 'application/zip');
 	    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -7628,8 +7648,10 @@ app.post('/api/generate-word', async (req, res) => {
 	        return { jourDateComplete: formattedDate, matieres: matieres };
 	      }).filter(Boolean);
 
+	      const clsDisplayWeek = getEffectiveDisplayWeekServer(section, weekNumber, req.body.displayWeek, classe);
 	      const templateData = {
-	        semaine: weekNumber,
+	        semaine: clsDisplayWeek,
+	        Semaine: clsDisplayWeek,
 	        classe: classe,
 	        jours: joursData,
 	        notes: formatTextForWord(classNotes),
@@ -7646,7 +7668,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      doc.render(templateData);
 
 	      const buf = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-	      const docxFilename = `Plan_hebdomadaire_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.docx`;
+	      const docxFilename = `Plan_hebdomadaire_S${clsDisplayWeek}_${classe.replace(/[^a-z0-9]/gi, '_')}.docx`;
 
 	      // Enregistrement du plan de leçon dans MongoDB (comme dans /api/generate-word)
 	      try {
@@ -7876,8 +7898,9 @@ app.post('/api/generate-word', async (req, res) => {
 	      }
 	    }
 
+	    const displayWeekNumber = getEffectiveDisplayWeekServer(section, weekNumber, req.body.displayWeek, classe);
 	    const html = generateDesignPlanHtml({
-	      week: weekNumber,
+	      week: displayWeekNumber,
 	      classe,
 	      data: planData,
 	      notes: classNotes,
@@ -7894,7 +7917,7 @@ app.post('/api/generate-word', async (req, res) => {
 	    });
 
 	    if (download) {
-	      const filename = `Plan_Hebdomadaire_S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.html`;
+	      const filename = `Plan_Hebdomadaire_S${displayWeekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.html`;
 	      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 	      res.setHeader('Content-Type', 'text/html; charset=utf-8');
 	      return res.send(html);
@@ -8265,10 +8288,9 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
 
       // Essayer les modèles standard les plus fiables sur Generative Language API
       const geminiConfigs = [
-        { model: 'gemini-2.5-flash', apiVersion: 'v1beta' },
-        { model: 'gemini-2.0-flash', apiVersion: 'v1beta' },
-        { model: 'gemini-1.5-flash', apiVersion: 'v1beta' },
-        { model: 'gemini-1.5-pro', apiVersion: 'v1beta' }
+        { model: 'gemini-3.8-flash', apiVersion: 'v1beta' },
+        { model: 'gemini-flash-latest', apiVersion: 'v1beta' },
+        { model: 'gemini-2.5-flash', apiVersion: 'v1beta' }
       ];
 
       let keyHasQuotaError = false;
@@ -8278,7 +8300,14 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
           // Utiliser le SDK @google/genai si disponible
           if (GoogleGenAI) {
             try {
-              const ai = new GoogleGenAI({ apiKey: currentGeminiKey });
+              const ai = new GoogleGenAI({
+                apiKey: currentGeminiKey,
+                httpOptions: {
+                  headers: {
+                    'User-Agent': 'aistudio-build',
+                  }
+                }
+              });
               const aiResp = await ai.models.generateContent({
                 model: cfg.model,
                 contents: prompt,
@@ -8537,7 +8566,10 @@ app.post('/api/generate-ai-lesson-plan', async (req, res) => {
 
     // Date formatée
     let formattedDate = "";
-    const datesNode = getSectionWeekDates(req.body.section || rowData._section, weekNumber);
+    const rawSection = req.body.section || rowData._section || 'garcons';
+    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
+    const displayWeekNumber = getEffectiveDisplayWeekServer(section, weekNumber, req.body.displayWeek, classe);
+    const datesNode = getSectionWeekDates(section, weekNumber);
     if (jour && datesNode?.start) {
       const weekStartDateNode = new Date(datesNode.start + 'T00:00:00Z');
       if (!isNaN(weekStartDateNode.getTime())) {
@@ -8642,7 +8674,8 @@ ${jsonStructure}`;
 
     const templateData = {
       ...aiData,
-      Semaine: week,
+      Semaine: displayWeekNumber,
+      semaine: displayWeekNumber,
       Lecon: lecon,
       Matiere: matiere,
       Classe: classe,
@@ -8658,11 +8691,9 @@ ${jsonStructure}`;
     const buf = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 
     // Format: Matière_Classe_Semaine_Séance_Enseignant.docx
-    const filename = `${sanitizeForFilename(matiere || 'Cours')}_${sanitizeForFilename(classe || 'Classe')}_S${weekNumber}_P${sanitizeForFilename(seance || '1')}_${sanitizeForFilename(enseignant || 'Prof')}.docx`;
+    const filename = `${sanitizeForFilename(matiere || 'Cours')}_${sanitizeForFilename(classe || 'Classe')}_S${displayWeekNumber}_P${sanitizeForFilename(seance || '1')}_${sanitizeForFilename(enseignant || 'Prof')}.docx`;
     console.log(`📄 [AI Lesson Plan] Fichier produit: ${filename} (via ${providerUsed})`);
 
-    const rawSection = req.body.section || rowData._section || 'garcons';
-    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
     const lessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${seance}_${jour}`.replace(/\s+/g, '_');
 
     docxBufferToSend = buf;
@@ -8814,7 +8845,11 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
     }
 
     const weekNumber = Number(week);
-    console.log(`✅ [Multiple AI Lesson Plans] Génération de ${rowsData.length} plans pour semaine ${weekNumber}`);
+    const rawSection = req.body.section || 'garcons';
+    const batchSection = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSection).toLowerCase()) ? String(rawSection).toLowerCase() : 'garcons';
+    const sampleClass = (rowsData[0] && (rowsData[0][findKey(rowsData[0], 'Classe')] || rowsData[0].Classe)) || '';
+    const batchDisplayWeekNumber = getEffectiveDisplayWeekServer(batchSection, weekNumber, req.body.displayWeek, sampleClass);
+    console.log(`✅ [Multiple AI Lesson Plans] Génération de ${rowsData.length} plans pour semaine ${weekNumber} (affichage S${batchDisplayWeekNumber})`);
 
     const db = await connectToDatabase();
     const specialDays = await db.collection('special_days').find({
@@ -8875,9 +8910,9 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
     let zipFilename;
     if (distinctTeachers.length === 1) {
       const teacherClean = sanitizeForFilename(distinctTeachers[0]);
-      zipFilename = `Plan de lecon-${teacherClean}-semaine(${weekNumber}).zip`;
+      zipFilename = `Plan de lecon-${teacherClean}-semaine(${batchDisplayWeekNumber}).zip`;
     } else {
-      zipFilename = `Plans_Lecons_Semaine_${weekNumber}_${distinctTeachers.length || rowsData.length}_enseignants.zip`;
+      zipFilename = `Plans_Lecons_Semaine_${batchDisplayWeekNumber}_${distinctTeachers.length || rowsData.length}_enseignants.zip`;
     }
 
     // Configuration du ZIP avec gestion d'erreurs
@@ -8979,7 +9014,8 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
         lecon = matiere ? `Séance de ${matiere} - ${classe}` : `Séance pédagogique (${classe})`;
       }
 
-      const docFilename = `${sanitizeForFilename(matiere)}_${sanitizeForFilename(classe)}_S${weekNumber}_P${sanitizeForFilename(seance)}_${sanitizeForFilename(enseignant)}.docx`;
+      const rowDisplayWeek = getEffectiveDisplayWeekServer(rowData._section || batchSection, weekNumber, req.body.displayWeek, classe);
+      const docFilename = `${sanitizeForFilename(matiere)}_${sanitizeForFilename(classe)}_S${rowDisplayWeek}_P${sanitizeForFilename(seance)}_${sanitizeForFilename(enseignant)}.docx`;
       // Organiser en sous-dossiers par enseignant si plusieurs enseignants dans l'archive
       const rawZipEntryName = distinctTeachers.length > 1 
         ? `${sanitizeForFilename(enseignant)}/${docFilename}` 
@@ -9099,6 +9135,9 @@ app.post('/api/generate-multiple-ai-lesson-plans', async (req, res) => {
             DiffLents: jsonData.DiffLents || "",
             DiffTresPerf: jsonData.DiffTresPerf || "",
             DiffTous: jsonData.DiffTous || "",
+            Semaine: rowDisplayWeek,
+            semaine: rowDisplayWeek,
+            Jour: jour,
             Classe: classe,
             Matiere: matiere,
             Lecon: lecon,
@@ -9216,7 +9255,7 @@ Provider IA: ${USE_GROQ ? 'GROQ (llama-3.3-70b-versatile)' : 'GEMINI'}
 
 📅 Date de génération : ${new Date().toLocaleString('fr-FR')}
 📦 Semaine            : ${week}
-🔧 Provider IA        : ${USE_GROQ ? 'GROQ (llama-3.3-70b-versatile)' : 'GEMINI (' + (MODEL_NAME || 'N/A') + ')'}
+🔧 Provider IA        : ${USE_GROQ ? 'GROQ (llama-3.3-70b-versatile)' : 'GEMINI (gemini-3.8-flash)'}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

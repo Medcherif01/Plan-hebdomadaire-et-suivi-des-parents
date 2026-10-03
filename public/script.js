@@ -1310,6 +1310,28 @@
         }
         window.getWeekDisplayTitle = getWeekDisplayTitle;
 
+        function getEffectiveWeekNumberForPlan(weekNum, targetSection, className) {
+          const sec = targetSection || (className && typeof isMaternelleClass === 'function' && isMaternelleClass(className) ? 'maternelle' : (currentSection || 'garcons'));
+          const secCfg = (typeof sectionWeeksConfig !== 'undefined' && sectionWeeksConfig[sec]) || (typeof weeksConfig !== 'undefined' ? weeksConfig : null);
+          const w = secCfg && secCfg[weekNum];
+          if (w && w.title) {
+            const m = String(w.title).match(/(?:Semaine|Week|S)\s*0*(\d+)/i);
+            if (m && m[1]) return parseInt(m[1], 10);
+          }
+          if (w && w.titleAr) {
+            const mAr = String(w.titleAr).match(/(?:الأسبوع|اسبوع)\s*0*(\d+)/);
+            if (mAr && mAr[1]) return parseInt(mAr[1], 10);
+          }
+          const sel = document.getElementById('weekSelector');
+          if (sel && String(sel.value) === String(weekNum) && sel.selectedIndex >= 0) {
+            const optText = sel.options[sel.selectedIndex]?.textContent || '';
+            const mOpt = optText.match(/(?:Semaine|Week|الأسبوع)\s*0*(\d+)/i);
+            if (mOpt && mOpt[1]) return parseInt(mOpt[1], 10);
+          }
+          return Number(weekNum) || 1;
+        }
+        window.getEffectiveWeekNumberForPlan = getEffectiveWeekNumberForPlan;
+
         function syncActiveSectionWeeks(targetSec) {
           const sec = targetSec || currentSection || 'garcons';
           const activeCfg = getActiveSectionWeeksConfig(sec);
@@ -3888,20 +3910,26 @@ function displayPlanTable(data) {
             }
 
             try {
+                const targetSec = rowData._section || currentSection || 'garcons';
+                const targetCls = rowData[findHKey('Classe')] || rowData.Classe || rowData.classe || '';
+                const effectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+                    ? getEffectiveWeekNumberForPlan(currentWeek, targetSec, targetCls)
+                    : currentWeek;
                 const response = await fetch('/api/generate-ai-lesson-plan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         week: currentWeek, 
+                        displayWeek: effectiveWeek,
                         rowData: rowData,
-                        section: rowData._section || currentSection || 'garcons'
+                        section: targetSec
                     })
                 });
                 
                 if (response.ok) {
                     const blob = await response.blob();
                     const contentDisposition = response.headers.get('content-disposition');
-                    let filename = `plan_lecon_S${currentWeek}_AI_genere.docx`;
+                    let filename = `plan_lecon_S${effectiveWeek}_AI_genere.docx`;
                     
                     if (contentDisposition) {
                         const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i);
@@ -4016,7 +4044,10 @@ function displayPlanTable(data) {
                 return;
             }
 
-            const confirmation = confirm(`Générer les plans de leçon pour ${eligibleRows.length} ligne(s) affichée(s) ?\n\n- Semaine: S${currentWeek}\n- Mode: Génération ligne par ligne avec suivi en direct\n- Marquage visuel de chaque séance générée et téléchargée\n- Archive ZIP groupée téléchargée à la fin.`);
+            const batchEffectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+                ? getEffectiveWeekNumberForPlan(currentWeek, currentSection)
+                : currentWeek;
+            const confirmation = confirm(`Générer les plans de leçon pour ${eligibleRows.length} ligne(s) affichée(s) ?\n\n- Semaine: S${batchEffectiveWeek}\n- Mode: Génération ligne par ligne avec suivi en direct\n- Marquage visuel de chaque séance générée et téléchargée\n- Archive ZIP groupée téléchargée à la fin.`);
             if (!confirmation) {
                 return;
             }
@@ -4099,6 +4130,10 @@ function displayPlanTable(data) {
                     let docxFilename = '';
                     let isFromDb = false;
 
+                    const rowEffectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+                        ? getEffectiveWeekNumberForPlan(currentWeek, rowObj._section || currentSection || 'garcons', classVal)
+                        : currentWeek;
+
                     // 1. Tenter de récupérer depuis la base de données si déjà présent
                     // MAIS si la ligne a été modifiée dans le tableau, régénérer pour respecter la saisie
                     const isRowModified = tr && tr.classList.contains('modified');
@@ -4114,7 +4149,7 @@ function displayPlanTable(data) {
                                         if (match && match[1]) docxFilename = match[1];
                                     }
                                     if (!docxFilename) {
-                                        docxFilename = `${subjectVal}_${classVal}_S${currentWeek}_P${periodVal}_${teacherVal}.docx`.replace(/[\s/\\?%*:|"<>]/g, '_');
+                                        docxFilename = `${subjectVal}_${classVal}_S${rowEffectiveWeek}_P${periodVal}_${teacherVal}.docx`.replace(/[\s/\\?%*:|"<>]/g, '_');
                                     }
                                     isFromDb = true;
                                     existingCount++;
@@ -4137,6 +4172,7 @@ function displayPlanTable(data) {
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     week: currentWeek,
+                                    displayWeek: rowEffectiveWeek,
                                     rowData: rowObj,
                                     section: rowObj._section || currentSection || 'garcons'
                                 })
@@ -4150,7 +4186,7 @@ function displayPlanTable(data) {
                                     if (match && match[1]) docxFilename = match[1];
                                 }
                                 if (!docxFilename) {
-                                    docxFilename = `${subjectVal}_${classVal}_S${currentWeek}_P${periodVal}_${teacherVal}.docx`.replace(/[\s/\\?%*:|"<>]/g, '_');
+                                    docxFilename = `${subjectVal}_${classVal}_S${rowEffectiveWeek}_P${periodVal}_${teacherVal}.docx`.replace(/[\s/\\?%*:|"<>]/g, '_');
                                 }
                                 const returnedPlanId = genRes.headers.get('x-lesson-plan-id');
                                 if (returnedPlanId) {
@@ -4247,8 +4283,8 @@ function displayPlanTable(data) {
                             const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
                             const teachersInZip = [...new Set(processedFiles.map(f => getRowField(f.rowObj, 'Enseignant')).filter(Boolean))];
                             const zipFilename = teachersInZip.length === 1
-                                ? `Plan de lecon-${teachersInZip[0]}-semaine(${currentWeek}).zip`
-                                : `Plans_Lecon_S${currentWeek}_${processedFiles.length}_cours.zip`;
+                                ? `Plan de lecon-${teachersInZip[0]}-semaine(${batchEffectiveWeek}).zip`
+                                : `Plans_Lecon_S${batchEffectiveWeek}_${processedFiles.length}_cours.zip`;
                             if (typeof saveAs === 'function') {
                                 saveAs(zipBlob, zipFilename);
                             } else {
@@ -4328,7 +4364,10 @@ function displayPlanTable(data) {
         async function generateWeeklyLessonPlans() { 
             if (!currentWeek) { displayAlert("please_select_week", true); return; } 
             if (!filteredAndSortedData || filteredAndSortedData.length === 0) { displayAlert("no_data_to_display_filters", true); return; } 
-            const confirmation = confirm(t("Voulez-vous générer les plans de leçons pour toutes les données affichées de la semaine " + currentWeek + " ?")); 
+            const effectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+                ? getEffectiveWeekNumberForPlan(currentWeek, currentSection)
+                : currentWeek;
+            const confirmation = confirm(t("Voulez-vous générer les plans de leçons pour toutes les données affichées de la semaine " + effectiveWeek + " ?")); 
             if (!confirmation) return; 
 
             // Synchroniser fidèlement toutes les cellules modifiées affichées dans le tableau avant l'envoi
@@ -4350,7 +4389,7 @@ function displayPlanTable(data) {
                 });
             }
 
-            console.log("Generating Weekly Lesson Plans for week:", currentWeek); 
+            console.log("Generating Weekly Lesson Plans for week:", currentWeek, "displayWeek:", effectiveWeek); 
             displayAlert("generating_weekly_lessons", false); 
             setButtonLoading("generateWeeklyLessonsBtn", true, "fas fa-robot"); 
             showProgressBar(); 
@@ -4361,6 +4400,7 @@ function displayPlanTable(data) {
                     headers: { "Content-Type": "application/json" }, 
                     body: JSON.stringify({ 
                         week: currentWeek, 
+                        displayWeek: effectiveWeek,
                         data: filteredAndSortedData,
                         section: currentSection,
                         forceRegenerate: true
@@ -4370,7 +4410,7 @@ function displayPlanTable(data) {
                 if (response.ok) { 
                     const blob = await response.blob(); 
                     const contentDisposition = response.headers.get("content-disposition"); 
-                    let filename = `plans_lecons_semaine_${currentWeek}.zip`; 
+                    let filename = `plans_lecons_semaine_${effectiveWeek}.zip`; 
                     if (contentDisposition) { 
                         const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/i); 
                         if (filenameMatch && filenameMatch[1]) { 
@@ -4928,12 +4968,15 @@ function displayPlanTable(data) {
                 const clNote = weeklyClassNotes[cl] || ""; 
                 updateProgressBar(Math.round(((i + 1) / total) * 100)); 
                 try { 
-                    const payload = { week: currentWeek, classe: cl, data: clData, notes: clNote, section: currentSection }; 
+                    const effectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+                        ? getEffectiveWeekNumberForPlan(currentWeek, currentSection, cl)
+                        : currentWeek;
+                    const payload = { week: currentWeek, displayWeek: effectiveWeek, classe: cl, data: clData, notes: clNote, section: currentSection }; 
                     const r = await fetch('/api/generate-word', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); 
                     if (r.ok) { 
                         const blob = await r.blob(); 
                         const cd = r.headers.get('content-disposition'); 
-                        let filename = `plan_s${currentWeek}_${cl.replace(/[^a-z0-9]/gi, '_')}.docx`; 
+                        let filename = `plan_s${effectiveWeek}_${cl.replace(/[^a-z0-9]/gi, '_')}.docx`; 
                         if (cd) { 
                             const m = cd.match(/filename="?(.+?)"?(;|$)/i); 
                             if (m && m[1]) filename = m[1]; 
@@ -12882,9 +12925,6 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
     const classes = getSectionClasses(section);
 
     let baseWeek = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
-    if (isMaternelleClass(currentFilterClass) && !preselectedWeek) {
-        baseWeek = Math.max(1, baseWeek - 1);
-    }
     const curWeek = preselectedWeek || baseWeek;
 
     if (weekSel) {
@@ -12916,9 +12956,6 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
     function syncWeekForWordClass(cls) {
         if (!preselectedWeek && weekSel) {
             let w = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
-            if (isMaternelleClass(cls)) {
-                w = Math.max(1, w - 1);
-            }
             weekSel.value = w;
         }
     }
@@ -13187,13 +13224,18 @@ async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, secti
     }
 
     const notes = (weeklyClassNotes && (weeklyClassNotes[selectedClass] || (classRows[0] && weeklyClassNotes[classRows[0].Classe]))) || "";
+    const effectiveSec = section || currentSection || 'garcons';
+    const effectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+        ? getEffectiveWeekNumberForPlan(weekNum, effectiveSec, selectedClass)
+        : weekNum;
 
     const payload = {
         week: Number(weekNum),
+        displayWeek: Number(effectiveWeek),
         classe: selectedClass,
         data: classRows,
         notes: notes,
-        section: section || currentSection || 'garcons'
+        section: effectiveSec
     };
 
     const res = await fetch('/api/generate-word', {
@@ -13209,7 +13251,7 @@ async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, secti
 
     const blob = await res.blob();
     const cd = res.headers.get('content-disposition');
-    let filename = `plan_hebdo_S${weekNum}_${selectedClass.replace(/[^a-zA-Z0-9]/g, '_')}.docx`;
+    let filename = `plan_hebdo_S${effectiveWeek}_${selectedClass.replace(/[^a-zA-Z0-9]/g, '_')}.docx`;
     if (cd) {
         const m = cd.match(/filename="?(.+?)"?(;|$)/i);
         if (m && m[1]) filename = m[1];
@@ -13403,9 +13445,6 @@ function openDesignPlanModal(preselectedClass, preselectedWeek) {
     const classes = getSectionClasses(section);
 
     let baseWeek = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
-    if (isMaternelleClass(currentFilterClass) && !preselectedWeek) {
-        baseWeek = Math.max(1, baseWeek - 1);
-    }
     const curWeek = preselectedWeek || baseWeek;
 
     if (weekSel) {
@@ -13422,9 +13461,6 @@ function openDesignPlanModal(preselectedClass, preselectedWeek) {
     function syncWeekForDesignClass(cls) {
         if (!preselectedWeek && weekSel) {
             let w = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
-            if (isMaternelleClass(cls)) {
-                w = Math.max(1, w - 1);
-            }
             weekSel.value = w;
         }
     }
@@ -13565,8 +13601,13 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             activePhotoForClass = photoInInput.trim();
         }
 
+        const effectiveWeek = (typeof getEffectiveWeekNumberForPlan === 'function')
+            ? getEffectiveWeekNumberForPlan(weekNum, section, className)
+            : weekNum;
+
         const payload = {
             week: Number(weekNum),
+            displayWeek: Number(effectiveWeek),
             section: section,
             classe: className,
             theme: theme || 'indigo',
@@ -13594,7 +13635,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
         if (action === 'download') {
             // Téléchargement du fichier HTML autonome
             const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-            const filename = `Plan_Hebdomadaire_S${weekNum}_${section}_${className.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+            const filename = `Plan_Hebdomadaire_S${effectiveWeek}_${section}_${className.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
             if (typeof saveAs === 'function') {
                 saveAs(blob, filename);
             } else {
