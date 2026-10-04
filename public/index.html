@@ -2182,27 +2182,13 @@
                             </div>
                         </div>
 
-                        <!-- Grille des Listes Déroulantes en Cascade -->
-                        <div class="teacher-dropdowns-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:16px; margin-bottom:18px;">
+                        <!-- Grille des Listes Déroulantes en Cascade (Semaine -> Classe -> Jour -> Matière -> Statut) -->
+                        <div class="teacher-dropdowns-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:18px;">
                             
-                            <!-- Étape 0 : Établissement / Section (si admin ou visible) -->
-                            <div class="filter-field-card" id="fieldTeacherSchool">
-                                <label for="teacherSchoolSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#334155; margin-bottom:7px;">
-                                    <i class="fas fa-school" style="color:#2563EB;"></i> <span id="lblTeacherSchool">1. École / Section :</span>
-                                </label>
-                                <select id="teacherSchoolSelect" onchange="onTeacherSchoolSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600; color:#1E293B; background:#FFFFFF; cursor:pointer; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#2563EB'" onblur="this.style.borderColor='#CBD5E1'">
-                                    <option value="all">🌍 Toutes les Écoles / Sections</option>
-                                    <option value="garcons">👦 Section Garçons (بنين)</option>
-                                    <option value="filles">👧 Section Filles (بنات)</option>
-                                    <option value="primaire">🎒 Section Primaire (ابتدائي)</option>
-                                    <option value="maternelle">🧸 Section Maternelle (روضة)</option>
-                                </select>
-                            </div>
-
                             <!-- Étape 1 : Semaine (au tout début) -->
                             <div class="filter-field-card">
                                 <label for="teacherWeekSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#0369A1; margin-bottom:7px;">
-                                    <i class="fas fa-calendar-week" style="color:#0284C7;"></i> <span id="lblTeacherWeek">2. Semaine :</span>
+                                    <i class="fas fa-calendar-week" style="color:#0284C7;"></i> <span id="lblTeacherWeek">1. Semaine :</span>
                                 </label>
                                 <select id="teacherWeekSelect" onchange="onTeacherWeekSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:2px solid #0284C7; font-size:0.92rem; font-weight:700; color:#0369A1; background:#F0F9FF; cursor:pointer; outline:none; transition:all 0.2s;">
                                     <option value="all">📅 Toutes les Semaines</option>
@@ -2212,7 +2198,7 @@
                             <!-- Étape 2 : Classe (après la semaine) -->
                             <div class="filter-field-card">
                                 <label for="teacherClassSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#312E81; margin-bottom:7px;">
-                                    <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i> <span id="lblTeacherClass">3. Classe :</span>
+                                    <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i> <span id="lblTeacherClass">2. Classe :</span>
                                 </label>
                                 <select id="teacherClassSelect" onchange="onTeacherClassSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:2px solid #C7D2FE; font-size:0.92rem; font-weight:700; color:#312E81; background:#EEF2FF; cursor:pointer; outline:none; transition:all 0.2s;">
                                     <option value="all">🎓 Toutes les Classes</option>
@@ -2222,7 +2208,7 @@
                             <!-- Étape 3 : Jour (après la classe) -->
                             <div class="filter-field-card">
                                 <label for="teacherDaySelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#065F46; margin-bottom:7px;">
-                                    <i class="fas fa-calendar-day" style="color:#10B981;"></i> <span id="lblTeacherDay">4. Jour de Cours :</span>
+                                    <i class="fas fa-calendar-day" style="color:#10B981;"></i> <span id="lblTeacherDay">3. Jour de Cours :</span>
                                 </label>
                                 <select id="teacherDaySelect" onchange="onTeacherDaySelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:2px solid #A7F3D0; font-size:0.92rem; font-weight:700; color:#065F46; background:#ECFDF5; cursor:pointer; outline:none; transition:all 0.2s;">
                                     <option value="all">☀️ Tous les Jours</option>
@@ -2232,7 +2218,7 @@
                             <!-- Étape 4 : Matière -->
                             <div class="filter-field-card">
                                 <label for="teacherSubjectSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#5B21B6; margin-bottom:7px;">
-                                    <i class="fas fa-book" style="color:#8B5CF6;"></i> <span id="lblTeacherSubject">5. Matière :</span>
+                                    <i class="fas fa-book" style="color:#8B5CF6;"></i> <span id="lblTeacherSubject">4. Matière :</span>
                                 </label>
                                 <select id="teacherSubjectSelect" onchange="onTeacherSubjectSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600; color:#1E293B; background:#FFFFFF; cursor:pointer; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#8B5CF6'" onblur="this.style.borderColor='#CBD5E1'">
                                     <option value="all">📚 Toutes les Matières</option>
@@ -2242,7 +2228,7 @@
                             <!-- Étape 5 : Statut d'évaluation -->
                             <div class="filter-field-card">
                                 <label for="teacherStatusSelect" style="display:flex; align-items:center; gap:6px; font-size:0.84rem; font-weight:700; color:#92400E; margin-bottom:7px;">
-                                    <i class="fas fa-clipboard-check" style="color:#F59E0B;"></i> <span id="lblTeacherStatus">6. Statut d'Évaluation :</span>
+                                    <i class="fas fa-clipboard-check" style="color:#F59E0B;"></i> <span id="lblTeacherStatus">5. Statut d'Évaluation :</span>
                                 </label>
                                 <select id="teacherStatusSelect" onchange="onTeacherStatusSelectChange(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:700; color:#1E293B; background:#FFFFFF; cursor:pointer; outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='#F59E0B'" onblur="this.style.borderColor='#CBD5E1'">
                                     <option value="all">📋 Tous les Devoirs</option>
@@ -2257,7 +2243,7 @@
                                     <i class="fas fa-user-shield" style="color:#6366F1;"></i> <span>Enseignant Suivi :</span>
                                 </label>
                                 <select id="teacherAdminSelect" onchange="setTeacherHwTeacherFilter(this.value)" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600; color:#1E293B; background:#FFFFFF; cursor:pointer; outline:none;">
-                                    <option value="">Tous les Enseignants</option>
+                                    <option value="">Sélectionner un enseignant</option>
                                 </select>
                             </div>
 

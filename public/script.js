@@ -5173,18 +5173,16 @@ function displayPlanTable(data) {
             const tfSub = document.getElementById('teacherFilterSubtitle');
             if (tfSub) tfSub.innerHTML = isEn ? 'Select first <strong>Week</strong>, then <strong>Class</strong>, then <strong>Day</strong>' : (isAr ? 'اختر أولاً <strong>الأسبوع</strong>، ثم <strong>الفصل</strong>، ثم <strong>اليوم</strong>' : 'Sélectionnez d\'abord la <strong>Semaine</strong>, puis la <strong>Classe</strong>, puis le <strong>Jour</strong>');
             
-            const lSchool = document.getElementById('lblTeacherSchool');
-            if (lSchool) lSchool.textContent = isEn ? '1. School / Section :' : (isAr ? '1. المدرسة / القسم :' : '1. École / Section :');
             const lWeek = document.getElementById('lblTeacherWeek');
-            if (lWeek) lWeek.textContent = isEn ? '2. Week :' : (isAr ? '2. الأسبوع :' : '2. Semaine :');
+            if (lWeek) lWeek.textContent = isEn ? '1. Week :' : (isAr ? '1. الأسبوع :' : '1. Semaine :');
             const lClass = document.getElementById('lblTeacherClass');
-            if (lClass) lClass.textContent = isEn ? '3. Class :' : (isAr ? '3. الفصل :' : '3. Classe :');
+            if (lClass) lClass.textContent = isEn ? '2. Class :' : (isAr ? '2. الفصل :' : '2. Classe :');
             const lDay = document.getElementById('lblTeacherDay');
-            if (lDay) lDay.textContent = isEn ? '4. School Day :' : (isAr ? '4. يوم الحصة :' : '4. Jour de Cours :');
+            if (lDay) lDay.textContent = isEn ? '3. School Day :' : (isAr ? '3. يوم الحصة :' : '3. Jour de Cours :');
             const lSubj = document.getElementById('lblTeacherSubject');
-            if (lSubj) lSubj.textContent = isEn ? '5. Subject :' : (isAr ? '5. المادة :' : '5. Matière :');
+            if (lSubj) lSubj.textContent = isEn ? '4. Subject :' : (isAr ? '4. المادة :' : '4. Matière :');
             const lStatus = document.getElementById('lblTeacherStatus');
-            if (lStatus) lStatus.textContent = isEn ? '6. Evaluation Status :' : (isAr ? '6. حالة التقييم :' : '6. Statut d\'Évaluation :');
+            if (lStatus) lStatus.textContent = isEn ? '5. Evaluation Status :' : (isAr ? '5. حالة التقييم :' : '5. Statut d\'Évaluation :');
 
             const btnResetF = document.getElementById('btnTeacherResetFilters');
             if (btnResetF) btnResetF.textContent = isEn ? 'Reset filters' : (isAr ? 'إعادة ضبط الفلاتر' : 'Réinitialiser les filtres');
@@ -11119,27 +11117,7 @@ function populateTeacherDropdowns() {
     const isEn = (currentUserLanguage === 'en');
     const isAr = (currentUserLanguage === 'ar');
 
-    // 0. Sélecteur Établissement / Section
-    const schoolSel = document.getElementById('teacherSchoolSelect');
-    if (schoolSel) {
-        schoolSel.value = activeTeacherHwFilters.section || 'all';
-    }
-
-    // Filtrer les devoirs par école active
     let targetHws = allTeacherHomeworks || [];
-    if (activeTeacherHwFilters.section !== 'all') {
-        const secFilter = activeTeacherHwFilters.section.toLowerCase();
-        targetHws = targetHws.filter(h => {
-            const sec = (h.section || '').toLowerCase();
-            const cls = (h.class || h.classe || '').toUpperCase();
-            if (secFilter === 'maternelle') {
-                return sec === 'maternelle' || ['PS', 'MS', 'GS'].includes(cls);
-            } else if (secFilter === 'primaire') {
-                return (sec === 'primaire' || sec.includes('prim')) && !['PS', 'MS', 'GS'].includes(cls);
-            }
-            return sec.includes(secFilter);
-        });
-    }
 
     // 1. Liste déroulante : SEMAINES
     const weekSel = document.getElementById('teacherWeekSelect');
@@ -11304,7 +11282,7 @@ function populateTeacherDropdowns() {
         statusSel.value = activeTeacherHwFilters.status || 'all';
     }
 
-    // Sélecteur Enseignant (Admin / Superviseur)
+    // Sélecteur Enseignant (Admin / Superviseur uniquement, un enseignant à la fois pour un chargement rapide)
     const adminSel = document.getElementById('teacherAdminSelect');
     const adminField = document.getElementById('teacherAdminSwitcherField');
     const isAdmin = (typeof isUserAdminOrSupervisor === 'function') ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) : false;
@@ -11312,13 +11290,11 @@ function populateTeacherDropdowns() {
         adminField.style.display = isAdmin ? 'block' : 'none';
     }
     if (adminSel) {
-        const allTeachersLabel = isEn ? '👥 All Teachers' : (isAr ? '👥 جميع المعلمين' : '👥 Tous les Enseignants');
-        const isAllSel = (!activeTeacherHwFilters.teacher || activeTeacherHwFilters.teacher === 'all') ? 'selected' : '';
-        let optHtml = `<option value="all" ${isAllSel}>${allTeachersLabel}</option>`;
+        let optHtml = '';
         if (allSectionTeachersList && allSectionTeachersList.length > 0) {
             allSectionTeachersList.forEach(tItem => {
                 const tNameStr = (tItem && typeof tItem === 'object') ? (tItem.name || tItem.username || '') : String(tItem || '');
-                const tCount = (tItem && typeof tItem === 'object' && tItem.count !== undefined) ? ` (${tItem.count})` : '';
+                const tCount = (tItem && typeof tItem === 'object' && tItem.count !== undefined && tItem.count > 0) ? ` (${tItem.count})` : '';
                 if (!tNameStr) return;
                 const isSel = (activeTeacherHwFilters.teacher && String(activeTeacherHwFilters.teacher).toLowerCase() === tNameStr.toLowerCase()) ? 'selected' : '';
                 optHtml += `<option value="${escapeHtml(tNameStr)}" ${isSel}>${escapeHtml(tNameStr)}${tCount}</option>`;
@@ -11330,7 +11306,7 @@ function populateTeacherDropdowns() {
 window.populateTeacherDropdowns = populateTeacherDropdowns;
 
 function setTeacherHwTeacherFilter(teacherVal) {
-    activeTeacherHwFilters.teacher = teacherVal || 'all';
+    activeTeacherHwFilters.teacher = teacherVal || '';
     activeTeacherHwFilters.week = 'all';
     activeTeacherHwFilters.classe = 'all';
     activeTeacherHwFilters.jour = 'all';
@@ -11341,14 +11317,14 @@ window.setTeacherHwTeacherFilter = setTeacherHwTeacherFilter;
 
 // Gestionnaires des listes déroulantes
 function onTeacherSchoolSelectChange(school) {
-    activeTeacherHwFilters.section = school;
+    if (school && school !== 'all') {
+        currentSection = school;
+    }
+    activeTeacherHwFilters.section = currentSection || 'garcons';
     activeTeacherHwFilters.week = 'all';
     activeTeacherHwFilters.classe = 'all';
     activeTeacherHwFilters.jour = 'all';
     activeTeacherHwFilters.matiere = 'all';
-    if (school !== 'all') {
-        currentSection = school;
-    }
     loadTeacherHomeworksDashboard();
 }
 window.onTeacherSchoolSelectChange = onTeacherSchoolSelectChange;
@@ -11404,11 +11380,12 @@ async function loadTeacherHomeworksDashboard() {
             ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) 
             : false;
 
-        const section = activeTeacherHwFilters.section || 'all';
+        // Utiliser directement la section active pour un chargement rapide sans parcourir toutes les sections
+        const section = (typeof currentSection !== 'undefined' && currentSection && currentSection !== 'all') ? currentSection : 'garcons';
         activeTeacherHwFilters.section = section;
         const teacherParamFromLogin = loggedInTeacherTable || (typeof loggedInUser !== 'undefined' ? loggedInUser : '');
 
-        // Pour un enseignant régulier : STRICTEMENT VÉROUILLÉ SUR SON NOM
+        // Pour un enseignant régulier : STRICTEMENT VÉROUILLÉ SUR SON NOM UNIQUEMENT
         if (!isAdminOrSupervisor) {
             activeTeacherHwFilters.teacher = teacherParamFromLogin;
             const adminSwitcher = document.getElementById('teacherAdminSwitcherRow');
@@ -11416,47 +11393,35 @@ async function loadTeacherHomeworksDashboard() {
             const adminField = document.getElementById('teacherAdminSwitcherField');
             if (adminField) adminField.style.display = 'none';
         } else {
-            // Pour un admin ou superviseur : par défaut "all" pour voir tous les enseignants et séances
+            // Pour un admin ou superviseur : sélecteur d'enseignant disponible (charge 1 enseignant à la fois pour éviter toute lenteur)
             const adminSwitcher = document.getElementById('teacherAdminSwitcherRow');
             if (adminSwitcher) adminSwitcher.style.display = 'block';
             const adminField = document.getElementById('teacherAdminSwitcherField');
             if (adminField) adminField.style.display = 'block';
-            if (!activeTeacherHwFilters.teacher) {
-                activeTeacherHwFilters.teacher = 'all';
+            if (!activeTeacherHwFilters.teacher || activeTeacherHwFilters.teacher === 'all') {
+                activeTeacherHwFilters.teacher = '';
             }
         }
 
-        const tableTeacherParam = (!isAdminOrSupervisor || (activeTeacherHwFilters.teacher !== 'all' && activeTeacherHwFilters.teacher === teacherParamFromLogin))
+        const tableTeacherParam = (!isAdminOrSupervisor || activeTeacherHwFilters.teacher === teacherParamFromLogin)
             ? (loggedInTeacherTable || '')
             : '';
-        const loginUserParam = typeof loggedInUser !== 'undefined' ? (loggedInUser || '') : '';
-        const url = `/api/teacher-homeworks?teacher=${encodeURIComponent(activeTeacherHwFilters.teacher)}&tableTeacher=${encodeURIComponent(tableTeacherParam)}&loginUser=${encodeURIComponent(loginUserParam)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`;
+        const url = `/api/teacher-homeworks?teacher=${encodeURIComponent(activeTeacherHwFilters.teacher)}&tableTeacher=${encodeURIComponent(tableTeacherParam)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`;
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error(`Erreur ${res.status}`);
 
         const data = await res.json();
         allTeacherHomeworks = data.homeworks || [];
         allSectionTeachersList = data.sectionTeachers || [];
-
-        // Si administrateur avait filtré sur son nom personnel mais n'a aucun devoir, basculer sur Tous les Enseignants
-        if (isAdminOrSupervisor && allTeacherHomeworks.length === 0 && activeTeacherHwFilters.teacher !== 'all') {
-            activeTeacherHwFilters.teacher = 'all';
-            const retryRes = await fetch(`/api/teacher-homeworks?teacher=all&loginUser=${encodeURIComponent(loginUserParam)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`, { cache: 'no-store' });
-            if (retryRes.ok) {
-                const retryData = await retryRes.json();
-                allTeacherHomeworks = retryData.homeworks || [];
-                allSectionTeachersList = retryData.sectionTeachers || allSectionTeachersList;
-            }
+        if (data.currentTeacher && (!activeTeacherHwFilters.teacher || activeTeacherHwFilters.teacher === 'all')) {
+            activeTeacherHwFilters.teacher = data.currentTeacher;
         }
 
         // Mettre à jour l'en-tête de l'espace enseignant
         const nameEl = document.getElementById('teacherEvalActiveName');
         if (nameEl) {
             if (isAdminOrSupervisor) {
-                const dispTeacher = (!activeTeacherHwFilters.teacher || activeTeacherHwFilters.teacher === 'all')
-                    ? 'Tous les Enseignants'
-                    : activeTeacherHwFilters.teacher;
-                nameEl.textContent = `${dispTeacher} (Mode Superviseur)`;
+                nameEl.textContent = `${activeTeacherHwFilters.teacher || 'Enseignant'} (Mode Superviseur)`;
             } else {
                 nameEl.textContent = activeTeacherHwFilters.teacher || loggedInUser || 'Enseignant';
             }
@@ -11464,12 +11429,14 @@ async function loadTeacherHomeworksDashboard() {
 
         const secEl = document.getElementById('teacherEvalActiveSection');
         if (secEl) {
-            secEl.textContent = section === 'all'
-                ? 'Toutes les Écoles / Sections'
-                : (section === 'garcons' ? 'Section Garçons (بنين)' : (section === 'filles' ? 'Section Filles (بنات)' : (section === 'maternelle' ? 'Section Maternelle (روضة)' : 'Section Primaire (ابتدائي)')));
+            secEl.textContent = section === 'garcons'
+                ? 'Section Garçons (بنين)'
+                : (section === 'filles'
+                    ? 'Section Filles (بنات)'
+                    : (section === 'maternelle' ? 'Section Maternelle (روضة)' : 'Section Primaire (ابتدائي)'));
         }
 
-        // Rendu des listes déroulantes en cascade
+        // Rendu des listes déroulantes en cascade (Semaine -> Classe -> Jour -> Matière -> Statut)
         if (typeof populateTeacherDropdowns === 'function') {
             populateTeacherDropdowns();
         }
@@ -11932,27 +11899,15 @@ function setTeacherHwStatusFilter(status) {
 
 // Réinitialiser tous les filtres
 function resetAllTeacherHwFilters() {
-    const isAdmin = (typeof isUserAdminOrSupervisor === 'function') ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) : false;
-    const prevTeacher = activeTeacherHwFilters.teacher;
-    const prevSec = activeTeacherHwFilters.section;
-    activeTeacherHwFilters.section = 'all';
     activeTeacherHwFilters.week = 'all';
     activeTeacherHwFilters.classe = 'all';
     activeTeacherHwFilters.jour = 'all';
     activeTeacherHwFilters.matiere = 'all';
     activeTeacherHwFilters.status = 'all';
     activeTeacherHwFilters.search = '';
-    if (isAdmin) {
-        activeTeacherHwFilters.teacher = 'all';
-    }
 
     const searchInput = document.getElementById('teacherHwSearchInput');
     if (searchInput) searchInput.value = '';
-
-    if (prevSec !== 'all' || (isAdmin && prevTeacher !== 'all')) {
-        loadTeacherHomeworksDashboard();
-        return;
-    }
 
     if (typeof populateTeacherDropdowns === 'function') {
         populateTeacherDropdowns();
@@ -12003,29 +11958,25 @@ function renderTeacherHomeworksDashboard() {
     const bEval = document.getElementById('badgeStatusEvaluated');
     if (bEval) bEval.textContent = evaluatedCount;
 
-    // Badges des filtres actifs
+    // Badges des filtres actifs (Semaine, Classe, Jour, Matière, Statut)
     const tagsContainer = document.getElementById('teacherActiveFiltersTags');
     if (tagsContainer) {
         let tagsHtml = '';
-        if (activeTeacherHwFilters.section !== 'all') {
-            const secName = activeTeacherHwFilters.section === 'garcons' ? 'Garçons' : (activeTeacherHwFilters.section === 'filles' ? 'Filles' : (activeTeacherHwFilters.section === 'maternelle' ? 'Maternelle' : 'Primaire'));
-            tagsHtml += `<span style="background:#EFF6FF; color:#1D4ED8; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;"><i class="fas fa-school"></i> École: ${secName} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwSchoolFilter('all')"></i></span>`;
-        }
         if (activeTeacherHwFilters.week !== 'all') {
-            tagsHtml += `<span style="background:#F0F9FF; color:#0284C7; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Semaine ${escapeHtml(activeTeacherHwFilters.week)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwWeekFilter('all')"></i></span>`;
+            tagsHtml += `<span style="background:#F0F9FF; color:#0284C7; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Semaine ${escapeHtml(activeTeacherHwFilters.week)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherWeekSelectChange('all')"></i></span>`;
         }
         if (activeTeacherHwFilters.classe !== 'all') {
-            tagsHtml += `<span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Classe: ${escapeHtml(activeTeacherHwFilters.classe)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwClassFilter('all')"></i></span>`;
+            tagsHtml += `<span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Classe: ${escapeHtml(activeTeacherHwFilters.classe)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherClassSelectChange('all')"></i></span>`;
         }
         if (activeTeacherHwFilters.jour !== 'all') {
-            tagsHtml += `<span style="background:#ECFDF5; color:#059669; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Jour: ${escapeHtml(activeTeacherHwFilters.jour)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwDayFilter('all')"></i></span>`;
+            tagsHtml += `<span style="background:#ECFDF5; color:#059669; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Jour: ${escapeHtml(activeTeacherHwFilters.jour)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherDaySelectChange('all'); populateTeacherDropdowns();"></i></span>`;
         }
         if (activeTeacherHwFilters.matiere !== 'all') {
-            tagsHtml += `<span style="background:#F5F3FF; color:#7C3AED; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Matière: ${escapeHtml(activeTeacherHwFilters.matiere)} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwSubjectFilter('all')"></i></span>`;
+            tagsHtml += `<span style="background:#F5F3FF; color:#7C3AED; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Matière: ${escapeHtml(activeTeacherHwFilters.matiere)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherSubjectSelectChange('all'); populateTeacherDropdowns();"></i></span>`;
         }
         if (activeTeacherHwFilters.status !== 'all') {
             const stLabel = activeTeacherHwFilters.status === 'evaluated' ? 'Évalués (Vert)' : 'À Évaluer';
-            tagsHtml += `<span style="background:#FEF3C7; color:#B45309; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Statut: ${stLabel} <i class="fas fa-times" style="cursor:pointer;" onclick="setTeacherHwStatusFilter('all')"></i></span>`;
+            tagsHtml += `<span style="background:#FEF3C7; color:#B45309; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Statut: ${stLabel} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherStatusSelectChange('all'); populateTeacherDropdowns();"></i></span>`;
         }
         if (activeTeacherHwFilters.search) {
             tagsHtml += `<span style="background:#F1F5F9; color:#334155; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Recherche: "${escapeHtml(activeTeacherHwFilters.search)}" <i class="fas fa-times" style="cursor:pointer;" onclick="document.getElementById('teacherHwSearchInput').value=''; renderTeacherHomeworksDashboard();"></i></span>`;
@@ -12033,21 +11984,15 @@ function renderTeacherHomeworksDashboard() {
         tagsContainer.innerHTML = tagsHtml;
     }
 
-    // Filtrer la liste des devoirs
+    // Filtrer la liste des devoirs de l'enseignant (Semaine -> Classe -> Jour -> Matière -> Statut)
     const filtered = allTeacherHomeworks.filter(hw => {
-        if (activeTeacherHwFilters.section !== 'all') {
-            const hwSec = (hw.section || '').toLowerCase();
-            const filterSec = activeTeacherHwFilters.section.toLowerCase();
-            if (!hwSec.includes(filterSec) && hwSec !== filterSec) return false;
-        }
-
         if (activeTeacherHwFilters.week !== 'all' && String(hw.week) !== String(activeTeacherHwFilters.week)) return false;
         if (activeTeacherHwFilters.classe !== 'all' && hw.classe !== activeTeacherHwFilters.classe) return false;
         if (activeTeacherHwFilters.matiere !== 'all' && hw.matiere !== activeTeacherHwFilters.matiere) return false;
         
         if (activeTeacherHwFilters.jour !== 'all') {
             const dInfo = getDayIconAndDetails(hw.jour);
-            if (dInfo.key !== activeTeacherHwFilters.jour) return false;
+            if (dInfo.key !== activeTeacherHwFilters.jour && hw.jour !== activeTeacherHwFilters.jour) return false;
         }
 
         if (activeTeacherHwFilters.status === 'evaluated' && !hw.isEvaluated) return false;
@@ -12087,14 +12032,14 @@ function renderTeacherHomeworksDashboard() {
     const isEn = (currentUserLanguage === 'en');
     const isAr = (currentUserLanguage === 'ar');
 
-    // Fil d'Ariane (Parcours École -> Semaine -> Classe -> Jour) entièrement bilingue
+    // Fil d'Ariane (Parcours Semaine -> Classe -> Jour -> Matière)
     const pathTxt = isEn ? 'Path :' : (isAr ? 'المسار :' : 'Parcours :');
-    const allSchoolsTxt = isEn ? 'All Schools' : (isAr ? 'جميع الأقسام' : 'Toutes Écoles');
     const allWeeksTxt = isEn ? 'All Weeks' : (isAr ? 'جميع الأسابيع' : 'Toutes Semaines');
     const weekTxt = isEn ? 'Week ' : (isAr ? 'الأسبوع ' : 'Semaine ');
     const allClassesTxt = isEn ? 'All Classes' : (isAr ? 'جميع الفصول' : 'Toutes Classes');
     const classTxt = isEn ? 'Class ' : (isAr ? 'الفصل ' : 'Classe ');
     const allDaysTxt = isEn ? 'All Days' : (isAr ? 'جميع الأيام' : 'Tous Jours');
+    const allSubjTxt = isEn ? 'All Subjects' : (isAr ? 'جميع المواد' : 'Toutes Matières');
     const resetTxt = isEn ? 'Reset' : (isAr ? 'إعادة ضبط' : 'Réinitialiser');
     const hwCountTxt = isEn 
         ? `${filtered.length} homework${filtered.length > 1 ? 's' : ''} displayed` 
@@ -12106,12 +12051,6 @@ function renderTeacherHomeworksDashboard() {
                 <span style="font-weight:700; color:#64748B; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
                     <i class="fas fa-sitemap" style="color:#2563EB;"></i> ${pathTxt}
                 </span>
-
-                <button type="button" onclick="onTeacherSchoolSelectChange('all')" title="Filtrer toutes les écoles" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-school"></i> ${activeTeacherHwFilters.section === 'all' ? allSchoolsTxt : (activeTeacherHwFilters.section === 'garcons' ? (isEn ? 'Boys' : (isAr ? 'بنين' : 'Garçons')) : (activeTeacherHwFilters.section === 'filles' ? (isEn ? 'Girls' : (isAr ? 'بنات' : 'Filles')) : (activeTeacherHwFilters.section === 'maternelle' ? (isEn ? 'KG' : (isAr ? 'روضة' : 'Maternelle')) : (isEn ? 'Primary' : (isAr ? 'ابتدائي' : 'Primaire')))))}
-                </button>
-
-                <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
 
                 <button type="button" onclick="onTeacherWeekSelectChange('all')" title="Toutes les semaines" style="background:${activeTeacherHwFilters.week !== 'all' ? '#F0F9FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.week !== 'all' ? '#0284C7' : '#475569'}; border:1px solid ${activeTeacherHwFilters.week !== 'all' ? '#BAE6FD' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
                     <i class="fas fa-calendar-week"></i> ${activeTeacherHwFilters.week !== 'all' ? weekTxt + escapeHtml(activeTeacherHwFilters.week) : allWeeksTxt}
@@ -12125,8 +12064,14 @@ function renderTeacherHomeworksDashboard() {
 
                 <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
 
-                <button type="button" onclick="onTeacherDaySelectChange('all')" title="Tous les jours" style="background:${activeTeacherHwFilters.jour !== 'all' ? '#ECFDF5' : '#F8FAFC'}; color:${activeTeacherHwFilters.jour !== 'all' ? '#059669' : '#475569'}; border:1px solid ${activeTeacherHwFilters.jour !== 'all' ? '#A7F3D0' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                <button type="button" onclick="onTeacherDaySelectChange('all'); populateTeacherDropdowns();" title="Tous les jours" style="background:${activeTeacherHwFilters.jour !== 'all' ? '#ECFDF5' : '#F8FAFC'}; color:${activeTeacherHwFilters.jour !== 'all' ? '#059669' : '#475569'}; border:1px solid ${activeTeacherHwFilters.jour !== 'all' ? '#A7F3D0' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
                     <i class="fas fa-calendar-day"></i> ${activeTeacherHwFilters.jour !== 'all' ? escapeHtml(activeTeacherHwFilters.jour) : allDaysTxt}
+                </button>
+
+                <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
+
+                <button type="button" onclick="onTeacherSubjectSelectChange('all'); populateTeacherDropdowns();" title="Toutes les matières" style="background:${activeTeacherHwFilters.matiere !== 'all' ? '#F5F3FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.matiere !== 'all' ? '#7C3AED' : '#475569'}; border:1px solid ${activeTeacherHwFilters.matiere !== 'all' ? '#DDD6FE' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-book"></i> ${activeTeacherHwFilters.matiere !== 'all' ? escapeHtml(activeTeacherHwFilters.matiere) : allSubjTxt}
                 </button>
             </div>
 

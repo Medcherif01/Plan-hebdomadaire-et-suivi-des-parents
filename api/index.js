@@ -3343,11 +3343,12 @@ app.post('/api/admin/students/move', async (req, res) => {
 
 function isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher, extraAliases = []) {
   if (!rowEns || !String(rowEns).trim()) return false;
-  if (!targetTeacher) return true;
+  if (!targetTeacher) return false;
 
   const normEns = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const tNorm = normEns(targetTeacher);
-  if (!tNorm || ['all', 'tous', 'toutes', 'med01', 'racha', 'admin', 'supervisor', 'superviseur'].includes(tNorm)) {
+  if (!tNorm) return false;
+  if (['all', 'tous', 'toutes'].includes(tNorm)) {
     return true;
   }
 
@@ -3369,16 +3370,11 @@ function isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher, extraAli
   const isAmalSole = (n) => (n.includes('amal') || n.includes('أمل') || n.includes('امل')) && !isAmalArabe(n);
 
   for (const cand of candidates) {
-    // 1. Égalité stricte exacte ou via nom de table
     if (rNorm === cand) return true;
-
-    // 2. Gestion de l'enseignante de musique (Farah)
     if (isMusic(cand)) {
       if (isMusic(rNorm)) return true;
       continue;
     }
-
-    // 3. Gestion Amal Arabe vs Amal générale
     if (isAmalArabe(cand)) {
       if (isAmalArabe(rNorm)) return true;
       continue;
@@ -3387,8 +3383,6 @@ function isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher, extraAli
       if (isAmalSole(rNorm)) return true;
       continue;
     }
-
-    // 4. Sous-chaîne significative (au moins 3 caractères) pour les noms composés
     if (cand.length >= 3 && rNorm.length >= 3 && (rNorm.includes(cand) || cand.includes(rNorm))) {
       return true;
     }
@@ -3402,18 +3396,33 @@ app.get('/api/teacher-homeworks', async (req, res) => {
     const { teacher, tableTeacher, section = 'garcons', week } = req.query;
     const db = await connectToDatabase();
 
-    const cleanSectionReq = String(section || 'all').trim().toLowerCase();
+    const cleanSectionReq = String(section || 'garcons').trim().toLowerCase();
     const isAllSections = !cleanSectionReq || ['all', 'toutes', 'tous'].includes(cleanSectionReq);
     const weekFilterNum = (week && !isNaN(parseInt(week, 10))) ? parseInt(week, 10) : null;
 
-    // 1. Charger tous les plans et filtrer intelligemment par section et semaine
-    const allPlanDocs = await db.collection('plans').find({}).toArray();
+    // 1. Requête DB rapide et ciblée sur la section active uniquement (évite de charger toutes les sections)
+    const planQuery = isAllSections
+      ? {}
+      : (cleanSectionReq === 'maternelle'
+          ? { $or: [{ section: 'maternelle' }, { _id: /^maternelle_/ }, { section: 'primaire' }, { _id: /^primaire_/ }] }
+          : { $or: [{ section: cleanSectionReq }, { _id: new RegExp(`^${cleanSectionReq}_`) }, { _id: cleanSectionReq }] });
 
-    // Charger les liaisons Matière ➔ Enseignant pour enrichir les lignes où l'enseignant n'est pas renseigné ou mis à jour
-    const subTeacherDocs = await db.collection('class_subject_teachers').find({}).toArray();
+    const evalQuery = isAllSections
+      ? {}
+      : (cleanSectionReq === 'maternelle'
+          ? { section: { $in: ['maternelle', 'primaire'] } }
+          : { section: cleanSectionReq });
 
-    // Charger les semaines et dates officielles
-    const weeksConfigDoc = await db.collection('school_weeks_config').find({}).toArray();
+    // Exécuter toutes les requêtes en parallèle pour un chargement ultra-rapide
+    const [allPlanDocs, subTeacherDocs, weeksConfigDoc, photosDocs, allUsers, allEvaluations] = await Promise.all([
+      db.collection('plans').find(planQuery).toArray(),
+      db.collection('class_subject_teachers').find(isAllSections ? {} : { section: { $in: [cleanSectionReq, 'primaire'] } }).toArray(),
+      db.collection('school_weeks_config').find({}).toArray(),
+      db.collection('teachers_photos').find({}).toArray(),
+      db.collection('users').find({}).toArray().catch(() => []),
+      db.collection('evaluations').find(evalQuery).toArray()
+    ]);
+
     const weeksMap = {};
     if (weeksConfigDoc && weeksConfigDoc.length > 0) {
       weeksConfigDoc.forEach(w => {
@@ -3426,8 +3435,6 @@ app.get('/api/teacher-homeworks', async (req, res) => {
       });
     }
 
-    // Charger photos et alias des enseignants (users + teachers_photos)
-    const photosDocs = await db.collection('teachers_photos').find({}).toArray();
     const teachersPhotosMap = {};
     photosDocs.forEach(d => {
       if (d.teacherName && d.photoUrl) {
@@ -3437,36 +3444,45 @@ app.get('/api/teacher-homeworks', async (req, res) => {
 
     const extraTeacherAliases = [];
     const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const tNormReq = norm(teacher);
-    const tableNormReq = norm(tableTeacher);
 
-    try {
-      const allUsers = await db.collection('users').find({}).toArray();
-      allUsers.forEach(u => {
-        const uName = (u.username || '').trim();
-        const uTable = (u.tableTeacherName || '').trim();
-        if (u.photoUrl) {
-          if (uName && !teachersPhotosMap[uName]) teachersPhotosMap[uName] = u.photoUrl;
-          if (uTable && !teachersPhotosMap[uTable]) teachersPhotosMap[uTable] = u.photoUrl;
-        }
-        if (tNormReq || tableNormReq) {
-          const uNorm = norm(uName);
-          const utNorm = norm(uTable);
-          if ((tNormReq && (uNorm === tNormReq || utNorm === tNormReq)) ||
-              (tableNormReq && (uNorm === tableNormReq || utNorm === tableNormReq))) {
-            if (uName) extraTeacherAliases.push(uName);
-            if (uTable) extraTeacherAliases.push(uTable);
-          }
-        }
-      });
-    } catch (ue) {
-      console.warn('Note utilisateurs teacher-homeworks:', ue.message);
+    let targetTeacher = (teacher || '').trim();
+    const isSupervisorPlaceholder = !targetTeacher || ['all', 'tous', 'toutes', 'med01', 'racha', 'admin', 'supervisor', 'superviseur'].includes(norm(targetTeacher));
+
+    // Si l'admin ouvre sans enseignant précis, cibler le 1er enseignant de la section pour ne pas charger tous les devoirs de l'école d'un coup
+    const defaultTeachersForSec = cleanSectionReq === 'filles'
+      ? (typeof femaleTeachers !== 'undefined' ? femaleTeachers : [])
+      : (cleanSectionReq === 'maternelle'
+          ? (typeof maternelleTeachers !== 'undefined' ? maternelleTeachers : [])
+          : (cleanSectionReq === 'primaire'
+              ? (typeof primaireTeachers !== 'undefined' ? primaireTeachers : [])
+              : (typeof maleTeachers !== 'undefined' ? maleTeachers : [])));
+
+    if (isSupervisorPlaceholder && defaultTeachersForSec.length > 0) {
+      targetTeacher = defaultTeachersForSec[0];
     }
 
-    // Charger toutes les évaluations existantes pour vérifier le statut évalué/non évalué
-    const allEvaluations = await db.collection('evaluations').find({}).toArray();
-    const evalMap = new Set();
+    const tNormReq = norm(targetTeacher);
+    const tableNormReq = norm(tableTeacher);
 
+    (allUsers || []).forEach(u => {
+      const uName = (u.username || '').trim();
+      const uTable = (u.tableTeacherName || '').trim();
+      if (u.photoUrl) {
+        if (uName && !teachersPhotosMap[uName]) teachersPhotosMap[uName] = u.photoUrl;
+        if (uTable && !teachersPhotosMap[uTable]) teachersPhotosMap[uTable] = u.photoUrl;
+      }
+      if (tNormReq || tableNormReq) {
+        const uNorm = norm(uName);
+        const utNorm = norm(uTable);
+        if ((tNormReq && (uNorm === tNormReq || utNorm === tNormReq)) ||
+            (tableNormReq && (uNorm === tableNormReq || utNorm === tableNormReq))) {
+          if (uName) extraTeacherAliases.push(uName);
+          if (uTable) extraTeacherAliases.push(uTable);
+        }
+      }
+    });
+
+    const evalMap = new Set();
     allEvaluations.forEach(ev => {
       if (ev.class && ev.date && ev.subject) {
         const canonCls = typeof normalizeStudentClass === 'function' ? normalizeStudentClass(ev.class) : ev.class;
@@ -3482,10 +3498,20 @@ app.get('/api/teacher-homeworks', async (req, res) => {
 
     const teacherHws = [];
     const sectionTeachersMap = new Map();
-    const targetTeacher = (teacher || '').trim();
     const seenSlotKeys = new Set();
 
-    // Helper pour déterminer la section effective d'un document et d'une ligne
+    // Pré-remplir la liste des enseignants de la section pour le sélecteur superviseur
+    defaultTeachersForSec.forEach(tName => {
+      if (tName && !sectionTeachersMap.has(tName)) {
+        sectionTeachersMap.set(tName, {
+          name: tName,
+          photoUrl: teachersPhotosMap[tName] || '',
+          count: 0,
+          evaluatedCount: 0
+        });
+      }
+    });
+
     const resolveRowSection = (docSectionRaw, rowClasse, rowEns) => {
       const clsUpper = String(rowClasse || '').trim().toUpperCase();
       const canonCls = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(rowClasse) : clsUpper).toUpperCase();
@@ -3510,7 +3536,6 @@ app.get('/api/teacher-homeworks', async (req, res) => {
       return 'garcons';
     };
 
-    // Trier les documents plans par semaine croissante
     const sortedPlanDocs = [...allPlanDocs].sort((a, b) => {
       const wa = parseInt(a.week || (a._id && String(a._id).includes('_') ? String(a._id).split('_')[1] : a._id), 10) || 0;
       const wb = parseInt(b.week || (b._id && String(b._id).includes('_') ? String(b._id).split('_')[1] : b._id), 10) || 0;
@@ -3522,7 +3547,7 @@ app.get('/api/teacher-homeworks', async (req, res) => {
       if (!wNum || isNaN(wNum)) return;
       if (weekFilterNum && wNum !== weekFilterNum) return;
 
-      const rawDocSec = String(doc.section || (doc._id && String(doc._id).includes('_') ? String(doc._id).split('_')[0] : 'garcons')).trim().toLowerCase();
+      const rawDocSec = String(doc.section || (doc._id && String(doc._id).includes('_') ? String(doc._id).split('_')[0] : cleanSectionReq)).trim().toLowerCase();
       const rows = Array.isArray(doc.data) ? doc.data : (Array.isArray(doc.rowsData) ? doc.rowsData : []);
       if (rows.length === 0) return;
 
@@ -3532,40 +3557,56 @@ app.get('/api/teacher-homeworks', async (req, res) => {
         const rowDevoirs = String(row[findKey(row, 'Devoirs')] || '').trim();
         const rowClasse = String(row[findKey(row, 'Classe')] || '').trim();
         const rowMatiere = String(row[findKey(row, 'Matière')] || '').trim();
-        const rowJour = String(row[findKey(row, 'Jour')] || '').trim();
-        const rowPeriode = String(row[findKey(row, 'Période')] || '').trim();
-        const rowLecon = String(row[findKey(row, 'Leçon')] || '').trim();
-        const rowTravaux = String(row[findKey(row, 'Travaux de classe')] || '').trim();
-        const rowSupport = String(row[findKey(row, 'Support')] || '').trim();
 
         const effectiveSection = resolveRowSection(rawDocSec, rowClasse, rowEns);
         if (!isAllSections && effectiveSection !== cleanSectionReq) {
           return;
         }
 
-        // Enrichir l'enseignant via Liaison Automatique Matières ➔ Enseignants (class_subject_teachers)
-        if (rowClasse && rowMatiere && subTeacherDocs.length > 0) {
+        if (!rowEns && rowClasse && rowMatiere && subTeacherDocs.length > 0) {
           const linkedDoc = subTeacherDocs.find(d =>
             d.enseignant && d.enseignant.trim() &&
             (!d.section || d.section === effectiveSection || (effectiveSection === 'maternelle' && d.section === 'primaire')) &&
             ((typeof isClassMatchServer === 'function' && isClassMatchServer(d.classe, rowClasse)) || d.classe === 'all' || !d.classe) &&
             (typeof isEquivalentSubjectServer === 'function' ? isEquivalentSubjectServer(d.matiere, rowMatiere) : norm(d.matiere) === norm(rowMatiere))
           );
-          if (linkedDoc && linkedDoc.enseignant && linkedDoc.enseignant.trim()) {
+          if (linkedDoc && linkedDoc.enseignant) {
             rowEns = linkedDoc.enseignant.trim();
           }
         }
 
-        if (!rowClasse && !rowMatiere && !rowEns) return;
+        if (!rowEns) return;
 
-        // Inclure toutes les séances ayant un devoir, une leçon, des travaux, ou une séance planifiée valide pour l'enseignant
+        // Comptabiliser rapidement les enseignants de la section
+        if (!sectionTeachersMap.has(rowEns)) {
+          sectionTeachersMap.set(rowEns, {
+            name: rowEns,
+            photoUrl: teachersPhotosMap[rowEns] || '',
+            count: 0,
+            evaluatedCount: 0
+          });
+        }
+
+        const rowLecon = String(row[findKey(row, 'Leçon')] || '').trim();
+        const rowTravaux = String(row[findKey(row, 'Travaux de classe')] || '').trim();
+        const rowSupport = String(row[findKey(row, 'Support')] || '').trim();
+
         const hasPedagogicalContent = Boolean(
           (rowDevoirs && rowDevoirs !== '-') ||
           (rowLecon && rowLecon !== '-') ||
           (rowTravaux && rowTravaux !== '-') ||
           (rowSupport && rowSupport !== '-')
         );
-        if (!hasPedagogicalContent && (!rowClasse || !rowEns)) return;
+        if (!hasPedagogicalContent) return;
+
+        sectionTeachersMap.get(rowEns).count += 1;
+
+        // Filtrer immédiatement : ne construire les objets détaillés QUE pour l'enseignant demandé !
+        const isMatch = isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher, extraTeacherAliases);
+        if (!isMatch) return;
+
+        const rowJour = String(row[findKey(row, 'Jour')] || '').trim();
+        const rowPeriode = String(row[findKey(row, 'Période')] || '').trim();
 
         const effectiveDevoirText = (rowDevoirs && rowDevoirs !== '-')
           ? rowDevoirs
@@ -3605,51 +3646,37 @@ app.get('/api/teacher-homeworks', async (req, res) => {
         const evalKeyCanonDate = `${norm(canonRowCls)}_${exactDate}`;
         const isEvaluated = evalMap.has(evalKeyFull) || evalMap.has(evalKeyCanonFull) || evalMap.has(evalKeyClassDate) || evalMap.has(evalKeyCanonDate);
 
-        if (rowEns) {
-          if (!sectionTeachersMap.has(rowEns)) {
-            sectionTeachersMap.set(rowEns, {
-              name: rowEns,
-              photoUrl: teachersPhotosMap[rowEns] || '',
-              count: 0,
-              evaluatedCount: 0
-            });
-          }
-          const tStats = sectionTeachersMap.get(rowEns);
-          tStats.count += 1;
-          if (isEvaluated) tStats.evaluatedCount += 1;
+        if (isEvaluated) {
+          sectionTeachersMap.get(rowEns).evaluatedCount += 1;
         }
 
-        const isMatch = isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher, extraTeacherAliases);
-        if (isMatch) {
-          teacherHws.push({
-            week: wNum,
-            section: effectiveSection,
-            weekTitle: wDates.title || `Semaine ${wNum}`,
-            weekTitleAr: wDates.titleAr || `الأسبوع ${wNum}`,
-            weekStartDate: wDates.start || '',
-            weekEndDate: wDates.end || '',
-            weekRangeText: weekRangeText,
-            classe: canonRowCls || rowClasse,
-            rawClasse: rowClasse,
-            matiere: rowMatiere || 'Matière Générale',
-            jour: dayName || rowJour || 'Dimanche',
-            periode: rowPeriode,
-            lecon: rowLecon,
-            travaux: rowTravaux,
-            devoir: effectiveDevoirText,
-            enseignant: rowEns,
-            teacherPhotoUrl: teachersPhotosMap[rowEns] || '',
-            date: exactDate,
-            formattedDateFr: formattedDateFr || `${dayName || rowJour} (S${wNum})`,
-            isEvaluated: isEvaluated
-          });
-        }
+        teacherHws.push({
+          week: wNum,
+          section: effectiveSection,
+          weekTitle: wDates.title || `Semaine ${wNum}`,
+          weekTitleAr: wDates.titleAr || `الأسبوع ${wNum}`,
+          weekStartDate: wDates.start || '',
+          weekEndDate: wDates.end || '',
+          weekRangeText: weekRangeText,
+          classe: canonRowCls || rowClasse,
+          rawClasse: rowClasse,
+          matiere: rowMatiere || 'Matière Générale',
+          jour: dayName || rowJour || 'Dimanche',
+          periode: rowPeriode,
+          lecon: rowLecon,
+          travaux: rowTravaux,
+          devoir: effectiveDevoirText,
+          enseignant: rowEns,
+          teacherPhotoUrl: teachersPhotosMap[rowEns] || '',
+          date: exactDate,
+          formattedDateFr: formattedDateFr || `${dayName || rowJour} (S${wNum})`,
+          isEvaluated: isEvaluated
+        });
       });
     });
 
-    // 2. Fallback intelligent si aucun plan hebdomadaire n'est encore enregistré pour cette sélection :
-    // construire les séances d'évaluation depuis annual_distributions, class_subject_teachers ou la liste des enseignants de la section
-    if (teacherHws.length === 0) {
+    // 2. Fallback rapide si l'enseignant ciblé n'a pas encore de plan saisi dans la base
+    if (teacherHws.length === 0 && targetTeacher) {
       const fallbackSection = isAllSections ? 'garcons' : cleanSectionReq;
       const curWeek = weekFilterNum || (typeof getCurrentWeekNumber === 'function' ? (getCurrentWeekNumber(new Date(), fallbackSection) || 1) : 1);
       const secWeeksCfg = (typeof sectionSpecificWeekDateRangesNode !== 'undefined' && sectionSpecificWeekDateRangesNode[fallbackSection]) || specificWeekDateRangesNode || {};
@@ -3659,63 +3686,36 @@ app.get('/api/teacher-homeworks', async (req, res) => {
       const formattedDateFr = !isNaN(weekStartDate.getTime()) ? formatDateFrenchNode(weekStartDate) : `Dimanche (S${curWeek})`;
       const weekRangeText = (wDates.start && wDates.end) ? `${wDates.start} ➔ ${wDates.end}` : '';
 
-      // Ajouter tous les enseignants connus de la section dans sectionTeachersMap
-      const defaultTeachersForSec = fallbackSection === 'filles'
-        ? (typeof femaleTeachers !== 'undefined' ? femaleTeachers : [])
-        : (fallbackSection === 'maternelle'
-            ? (typeof maternelleTeachers !== 'undefined' ? maternelleTeachers : [])
-            : (fallbackSection === 'primaire'
-                ? (typeof primaireTeachers !== 'undefined' ? primaireTeachers : [])
-                : (typeof maleTeachers !== 'undefined' ? maleTeachers : [])));
-
-      defaultTeachersForSec.forEach(tName => {
-        if (tName && !sectionTeachersMap.has(tName)) {
-          sectionTeachersMap.set(tName, {
-            name: tName,
-            photoUrl: teachersPhotosMap[tName] || '',
-            count: 1,
-            evaluatedCount: 0
-          });
-        }
-      });
-
       const defaultClassesForSec = fallbackSection === 'maternelle'
         ? ['PS', 'MS', 'GS']
         : (fallbackSection === 'primaire'
             ? ['PP1', 'PP2', 'PP3', 'PP4', 'PP5']
             : ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2']);
 
-      const isAdminTarget = !targetTeacher || ['all', 'tous', 'toutes', 'med01', 'racha', 'admin', 'supervisor', 'superviseur'].includes(norm(targetTeacher));
-      const teachersToGenerate = isAdminTarget
-        ? (defaultTeachersForSec.length > 0 ? defaultTeachersForSec.slice(0, 5) : ['Enseignant'])
-        : [targetTeacher];
-
-      teachersToGenerate.forEach(tName => {
-        defaultClassesForSec.forEach((cls, idx) => {
-          const evalKeyClassDate = `${norm(cls)}_${exactDate}`;
-          const isEvaluated = evalMap.has(evalKeyClassDate);
-          teacherHws.push({
-            week: curWeek,
-            section: fallbackSection,
-            weekTitle: wDates.title || `Semaine ${curWeek}`,
-            weekTitleAr: wDates.titleAr || `الأسبوع ${curWeek}`,
-            weekStartDate: wDates.start || '',
-            weekEndDate: wDates.end || '',
-            weekRangeText: weekRangeText,
-            classe: cls,
-            rawClasse: cls,
-            matiere: 'Suivi Pédagogique & Devoirs',
-            jour: 'Dimanche',
-            periode: String((idx % 6) + 1),
-            lecon: 'Suivi hebdomadaire des acquis et devoirs',
-            travaux: 'Participation et activités en classe',
-            devoir: 'Évaluation du devoir, participation et comportement de la classe',
-            enseignant: tName,
-            teacherPhotoUrl: teachersPhotosMap[tName] || '',
-            date: exactDate,
-            formattedDateFr: formattedDateFr,
-            isEvaluated: isEvaluated
-          });
+      defaultClassesForSec.forEach((cls, idx) => {
+        const evalKeyClassDate = `${norm(cls)}_${exactDate}`;
+        const isEvaluated = evalMap.has(evalKeyClassDate);
+        teacherHws.push({
+          week: curWeek,
+          section: fallbackSection,
+          weekTitle: wDates.title || `Semaine ${curWeek}`,
+          weekTitleAr: wDates.titleAr || `الأسبوع ${curWeek}`,
+          weekStartDate: wDates.start || '',
+          weekEndDate: wDates.end || '',
+          weekRangeText: weekRangeText,
+          classe: cls,
+          rawClasse: cls,
+          matiere: 'Suivi Pédagogique & Devoirs',
+          jour: 'Dimanche',
+          periode: String((idx % 6) + 1),
+          lecon: 'Suivi hebdomadaire des acquis et devoirs',
+          travaux: 'Participation et activités en classe',
+          devoir: 'Évaluation du devoir, participation et comportement de la classe',
+          enseignant: targetTeacher,
+          teacherPhotoUrl: teachersPhotosMap[targetTeacher] || '',
+          date: exactDate,
+          formattedDateFr: formattedDateFr,
+          isEvaluated: isEvaluated
         });
       });
     }
