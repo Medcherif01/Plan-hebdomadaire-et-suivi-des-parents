@@ -2940,13 +2940,14 @@ app.get('/api/admin/students', async (req, res) => {
     // Auto-détection de la section si spécifiée dans la classe
     if (targetClass && typeof targetClass === 'string') {
       const lower = targetClass.toLowerCase();
+      const canonLower = (canonicalClass || '').toLowerCase();
       if (lower.includes('garçon') || lower.includes('garcon')) section = 'garcons';
       else if (lower.includes('fille')) section = 'filles';
-      else if (lower.includes('maternelle') || ['ps','ms','gs'].includes(canonicalClass.toLowerCase())) {
-        if (!['garcons', 'filles'].includes(section)) section = 'maternelle';
+      else if (lower.includes('maternelle') || ['ps', 'ms', 'gs'].includes(canonLower) || (typeof isMaternelleClassServer === 'function' && isMaternelleClassServer(targetClass))) {
+        section = 'maternelle';
       }
-      else if (lower.includes('primaire') || ['pp1','pp2','pp3','pp4','pp5'].includes(canonicalClass.toLowerCase())) {
-        if (!['garcons', 'filles'].includes(section)) section = 'primaire';
+      else if (lower.includes('primaire') || ['pp1', 'pp2', 'pp3', 'pp4', 'pp5'].includes(canonLower)) {
+        section = 'primaire';
       }
     }
 
@@ -3340,41 +3341,57 @@ app.post('/api/admin/students/move', async (req, res) => {
 // API PORTAIL DEVOIRS ET ÉVALUATIONS (AVEC TRANSFERT AUTOMATIQUE)
 // ============================================================================
 
-function isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher) {
+function isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher, extraAliases = []) {
   if (!rowEns || !String(rowEns).trim()) return false;
-  if (!targetTeacher || targetTeacher === 'all') return true;
+  if (!targetTeacher) return true;
 
   const normEns = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const rNorm = normEns(rowEns);
   const tNorm = normEns(targetTeacher);
-  const tableNorm = tableTeacher ? normEns(tableTeacher) : '';
-
-  // 1. Égalité stricte exacte ou via nom de table
-  if (rNorm === tNorm || (tableNorm && rNorm === tableNorm)) return true;
-
-  // 2. Gestion de l'enseignante de musique (Farah)
-  const isMusic = (n) => n.includes('musique') || n.includes('farah') || n.includes('موسيقى');
-  if (isMusic(tNorm) || (tableNorm && isMusic(tableNorm))) {
-    return isMusic(rNorm);
+  if (!tNorm || ['all', 'tous', 'toutes', 'med01', 'racha', 'admin', 'supervisor', 'superviseur'].includes(tNorm)) {
+    return true;
   }
 
-  // 3. Gestion Amal Arabe vs Amal générale
+  const rNorm = normEns(rowEns);
+  const candidates = [tNorm];
+  if (tableTeacher) {
+    const tn = normEns(tableTeacher);
+    if (tn && !candidates.includes(tn)) candidates.push(tn);
+  }
+  if (Array.isArray(extraAliases)) {
+    extraAliases.forEach(a => {
+      const an = normEns(a);
+      if (an && !candidates.includes(an)) candidates.push(an);
+    });
+  }
+
+  const isMusic = (n) => n.includes('musique') || n.includes('farah') || n.includes('موسيقى');
   const isAmalArabe = (n) => (n.includes('amal') || n.includes('أمل') || n.includes('امل')) && (n.includes('arabe') || n.includes('عربي') || n.includes('عربية'));
   const isAmalSole = (n) => (n.includes('amal') || n.includes('أمل') || n.includes('امل')) && !isAmalArabe(n);
 
-  if (isAmalArabe(tNorm) || (tableNorm && isAmalArabe(tableNorm))) {
-    return isAmalArabe(rNorm);
-  }
-  if (isAmalSole(tNorm) || (tableNorm && isAmalSole(tableNorm))) {
-    return isAmalSole(rNorm);
-  }
+  for (const cand of candidates) {
+    // 1. Égalité stricte exacte ou via nom de table
+    if (rNorm === cand) return true;
 
-  // 4. Sous-chaîne significative (au moins 3 caractères) pour les noms composés
-  if (tNorm.length >= 3 && (rNorm.includes(tNorm) || tNorm.includes(rNorm))) {
-    return true;
-  }
-  if (tableNorm && tableNorm.length >= 3 && (rNorm.includes(tableNorm) || tableNorm.includes(rNorm))) {
-    return true;
+    // 2. Gestion de l'enseignante de musique (Farah)
+    if (isMusic(cand)) {
+      if (isMusic(rNorm)) return true;
+      continue;
+    }
+
+    // 3. Gestion Amal Arabe vs Amal générale
+    if (isAmalArabe(cand)) {
+      if (isAmalArabe(rNorm)) return true;
+      continue;
+    }
+    if (isAmalSole(cand)) {
+      if (isAmalSole(rNorm)) return true;
+      continue;
+    }
+
+    // 4. Sous-chaîne significative (au moins 3 caractères) pour les noms composés
+    if (cand.length >= 3 && rNorm.length >= 3 && (rNorm.includes(cand) || cand.includes(rNorm))) {
+      return true;
+    }
   }
 
   return false;
@@ -3385,15 +3402,15 @@ app.get('/api/teacher-homeworks', async (req, res) => {
     const { teacher, tableTeacher, section = 'garcons', week } = req.query;
     const db = await connectToDatabase();
 
-    // 1. Charger les plans de la section ou de toutes les sections
-    let query = {};
-    if (section && section !== 'all' && section !== 'toutes' && section !== 'Tous') {
-      query.section = section;
-    }
-    if (week && !isNaN(parseInt(week, 10))) {
-      query.week = parseInt(week, 10);
-    }
-    let planDocs = await db.collection('plans').find(query).toArray();
+    const cleanSectionReq = String(section || 'all').trim().toLowerCase();
+    const isAllSections = !cleanSectionReq || ['all', 'toutes', 'tous'].includes(cleanSectionReq);
+    const weekFilterNum = (week && !isNaN(parseInt(week, 10))) ? parseInt(week, 10) : null;
+
+    // 1. Charger tous les plans et filtrer intelligemment par section et semaine
+    const allPlanDocs = await db.collection('plans').find({}).toArray();
+
+    // Charger les liaisons Matière ➔ Enseignant pour enrichir les lignes où l'enseignant n'est pas renseigné ou mis à jour
+    const subTeacherDocs = await db.collection('class_subject_teachers').find({}).toArray();
 
     // Charger les semaines et dates officielles
     const weeksConfigDoc = await db.collection('school_weeks_config').find({}).toArray();
@@ -3409,7 +3426,7 @@ app.get('/api/teacher-homeworks', async (req, res) => {
       });
     }
 
-    // Charger photos des enseignants pour affichage dans l'en-tête et les cartes
+    // Charger photos et alias des enseignants (users + teachers_photos)
     const photosDocs = await db.collection('teachers_photos').find({}).toArray();
     const teachersPhotosMap = {};
     photosDocs.forEach(d => {
@@ -3417,123 +3434,291 @@ app.get('/api/teacher-homeworks', async (req, res) => {
         teachersPhotosMap[d.teacherName.trim()] = d.photoUrl;
       }
     });
+
+    const extraTeacherAliases = [];
+    const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const tNormReq = norm(teacher);
+    const tableNormReq = norm(tableTeacher);
+
     try {
-      const usersWithPhotos = await db.collection('users').find({ photoUrl: { $exists: true, $ne: '' } }).toArray();
-      usersWithPhotos.forEach(u => {
-        if (u.username && u.photoUrl && !teachersPhotosMap[u.username.trim()]) {
-          teachersPhotosMap[u.username.trim()] = u.photoUrl;
+      const allUsers = await db.collection('users').find({}).toArray();
+      allUsers.forEach(u => {
+        const uName = (u.username || '').trim();
+        const uTable = (u.tableTeacherName || '').trim();
+        if (u.photoUrl) {
+          if (uName && !teachersPhotosMap[uName]) teachersPhotosMap[uName] = u.photoUrl;
+          if (uTable && !teachersPhotosMap[uTable]) teachersPhotosMap[uTable] = u.photoUrl;
         }
-        if (u.tableTeacherName && u.photoUrl && !teachersPhotosMap[u.tableTeacherName.trim()]) {
-          teachersPhotosMap[u.tableTeacherName.trim()] = u.photoUrl;
+        if (tNormReq || tableNormReq) {
+          const uNorm = norm(uName);
+          const utNorm = norm(uTable);
+          if ((tNormReq && (uNorm === tNormReq || utNorm === tNormReq)) ||
+              (tableNormReq && (uNorm === tableNormReq || utNorm === tableNormReq))) {
+            if (uName) extraTeacherAliases.push(uName);
+            if (uTable) extraTeacherAliases.push(uTable);
+          }
         }
       });
     } catch (ue) {
-      console.warn('Note photos utilisateurs:', ue.message);
+      console.warn('Note utilisateurs teacher-homeworks:', ue.message);
     }
 
     // Charger toutes les évaluations existantes pour vérifier le statut évalué/non évalué
-    const evalQuery = (section && section !== 'all' && section !== 'toutes' && section !== 'Tous')
-      ? { $or: [{ section }, { section: { $exists: false } }] }
-      : {};
-    const allEvaluations = await db.collection('evaluations').find(evalQuery).toArray();
+    const allEvaluations = await db.collection('evaluations').find({}).toArray();
     const evalMap = new Set();
-    const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     allEvaluations.forEach(ev => {
       if (ev.class && ev.date && ev.subject) {
+        const canonCls = typeof normalizeStudentClass === 'function' ? normalizeStudentClass(ev.class) : ev.class;
         evalMap.add(`${norm(ev.class)}_${String(ev.date).trim()}_${norm(ev.subject)}`);
+        if (canonCls) evalMap.add(`${norm(canonCls)}_${String(ev.date).trim()}_${norm(ev.subject)}`);
       }
       if (ev.class && ev.date) {
+        const canonCls = typeof normalizeStudentClass === 'function' ? normalizeStudentClass(ev.class) : ev.class;
         evalMap.add(`${norm(ev.class)}_${String(ev.date).trim()}`);
+        if (canonCls) evalMap.add(`${norm(canonCls)}_${String(ev.date).trim()}`);
       }
     });
 
     const teacherHws = [];
     const sectionTeachersMap = new Map();
     const targetTeacher = (teacher || '').trim();
+    const seenSlotKeys = new Set();
 
-    planDocs.forEach(doc => {
-      const wNum = doc.week;
-      const wDates = weeksMap[wNum] || specificWeekDateRangesNode[wNum] || { start: '', end: '', title: `Semaine ${wNum}`, titleAr: `الأسبوع ${wNum}` };
-      const weekStartDate = wDates.start ? new Date(wDates.start + 'T00:00:00Z') : null;
-
-      if (Array.isArray(doc.data)) {
-        doc.data.forEach(row => {
-          const rowEns = (row[findKey(row, 'Enseignant')] || '').trim();
-          const rowDevoirs = (row[findKey(row, 'Devoirs')] || '').trim();
-          const rowClasse = (row[findKey(row, 'Classe')] || '').trim();
-          const rowMatiere = (row[findKey(row, 'Matière')] || '').trim();
-          const rowJour = (row[findKey(row, 'Jour')] || '').trim();
-          const rowPeriode = (row[findKey(row, 'Période')] || '').trim();
-          const rowLecon = (row[findKey(row, 'Leçon')] || '').trim();
-          const rowTravaux = (row[findKey(row, 'Travaux de classe')] || '').trim();
-
-          if (rowDevoirs && rowDevoirs !== '') {
-            // Recenser l'enseignant pour la liste de sélection (admin / superviseurs)
-            if (rowEns) {
-              if (!sectionTeachersMap.has(rowEns)) {
-                sectionTeachersMap.set(rowEns, {
-                  name: rowEns,
-                  photoUrl: teachersPhotosMap[rowEns] || '',
-                  count: 0,
-                  evaluatedCount: 0
-                });
-              }
-            }
-
-            // Vérification stricte : uniquement l'enseignant demandé !
-            const isMatch = isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher);
-
-            let exactDate = '';
-            let formattedDateFr = '';
-            const dayName = extractDayNameFromString(rowJour) || rowJour;
-            if (weekStartDate && dayName) {
-              const dObj = getDateForDayNameNode(weekStartDate, dayName);
-              if (dObj && !isNaN(dObj.getTime())) {
-                exactDate = dObj.toISOString().split('T')[0];
-                formattedDateFr = formatDateFrenchNode(dObj);
-              }
-            }
-            if (!exactDate && wDates.start) {
-              exactDate = wDates.start;
-            }
-
-            const evalKeyFull = `${norm(rowClasse)}_${exactDate}_${norm(rowMatiere)}`;
-            const evalKeyClassDate = `${norm(rowClasse)}_${exactDate}`;
-            const isEvaluated = evalMap.has(evalKeyFull) || evalMap.has(evalKeyClassDate);
-
-            if (rowEns && sectionTeachersMap.has(rowEns)) {
-              const tStats = sectionTeachersMap.get(rowEns);
-              tStats.count += 1;
-              if (isEvaluated) tStats.evaluatedCount += 1;
-            }
-
-            if (isMatch) {
-              teacherHws.push({
-                week: wNum,
-                section: doc.section || section || 'garcons',
-                weekTitle: wDates.title || `Semaine ${wNum}`,
-                weekTitleAr: wDates.titleAr || `الأسبوع ${wNum}`,
-                weekStartDate: wDates.start,
-                weekEndDate: wDates.end,
-                classe: rowClasse,
-                matiere: rowMatiere,
-                jour: rowJour,
-                periode: rowPeriode,
-                lecon: rowLecon,
-                travaux: rowTravaux,
-                devoir: rowDevoirs,
-                enseignant: rowEns,
-                teacherPhotoUrl: teachersPhotosMap[rowEns] || '',
-                date: exactDate,
-                formattedDateFr: formattedDateFr || `${rowJour} (S${wNum})`,
-                isEvaluated: isEvaluated
-              });
-            }
-          }
-        });
+    // Helper pour déterminer la section effective d'un document et d'une ligne
+    const resolveRowSection = (docSectionRaw, rowClasse, rowEns) => {
+      const clsUpper = String(rowClasse || '').trim().toUpperCase();
+      const canonCls = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(rowClasse) : clsUpper).toUpperCase();
+      if (['PS', 'MS', 'GS'].includes(canonCls) || (typeof isMaternelleClassServer === 'function' && isMaternelleClassServer(rowClasse))) {
+        return 'maternelle';
       }
+      if (['PP1', 'PP2', 'PP3', 'PP4', 'PP5'].includes(canonCls)) {
+        return 'primaire';
+      }
+      if (docSectionRaw && ['garcons', 'filles', 'primaire', 'maternelle'].includes(docSectionRaw)) {
+        if (docSectionRaw === 'maternelle' && canonCls && !['PS', 'MS', 'GS'].includes(canonCls)) {
+          return 'primaire';
+        }
+        return docSectionRaw;
+      }
+      if (rowEns) {
+        const ensLower = rowEns.toLowerCase();
+        if (typeof femaleTeachers !== 'undefined' && femaleTeachers.some(f => f.toLowerCase() === ensLower)) return 'filles';
+        if (typeof maternelleTeachers !== 'undefined' && maternelleTeachers.some(m => m.toLowerCase() === ensLower)) return 'maternelle';
+        if (typeof primaireTeachers !== 'undefined' && primaireTeachers.some(p => p.toLowerCase() === ensLower)) return 'primaire';
+      }
+      return 'garcons';
+    };
+
+    // Trier les documents plans par semaine croissante
+    const sortedPlanDocs = [...allPlanDocs].sort((a, b) => {
+      const wa = parseInt(a.week || (a._id && String(a._id).includes('_') ? String(a._id).split('_')[1] : a._id), 10) || 0;
+      const wb = parseInt(b.week || (b._id && String(b._id).includes('_') ? String(b._id).split('_')[1] : b._id), 10) || 0;
+      return wa - wb;
     });
+
+    sortedPlanDocs.forEach(doc => {
+      const wNum = parseInt(doc.week || (doc._id && String(doc._id).includes('_') ? String(doc._id).split('_')[1] : doc._id), 10);
+      if (!wNum || isNaN(wNum)) return;
+      if (weekFilterNum && wNum !== weekFilterNum) return;
+
+      const rawDocSec = String(doc.section || (doc._id && String(doc._id).includes('_') ? String(doc._id).split('_')[0] : 'garcons')).trim().toLowerCase();
+      const rows = Array.isArray(doc.data) ? doc.data : (Array.isArray(doc.rowsData) ? doc.rowsData : []);
+      if (rows.length === 0) return;
+
+      rows.forEach(row => {
+        if (!row || typeof row !== 'object') return;
+        let rowEns = String(row[findKey(row, 'Enseignant')] || '').trim();
+        const rowDevoirs = String(row[findKey(row, 'Devoirs')] || '').trim();
+        const rowClasse = String(row[findKey(row, 'Classe')] || '').trim();
+        const rowMatiere = String(row[findKey(row, 'Matière')] || '').trim();
+        const rowJour = String(row[findKey(row, 'Jour')] || '').trim();
+        const rowPeriode = String(row[findKey(row, 'Période')] || '').trim();
+        const rowLecon = String(row[findKey(row, 'Leçon')] || '').trim();
+        const rowTravaux = String(row[findKey(row, 'Travaux de classe')] || '').trim();
+        const rowSupport = String(row[findKey(row, 'Support')] || '').trim();
+
+        const effectiveSection = resolveRowSection(rawDocSec, rowClasse, rowEns);
+        if (!isAllSections && effectiveSection !== cleanSectionReq) {
+          return;
+        }
+
+        // Enrichir l'enseignant via Liaison Automatique Matières ➔ Enseignants (class_subject_teachers)
+        if (rowClasse && rowMatiere && subTeacherDocs.length > 0) {
+          const linkedDoc = subTeacherDocs.find(d =>
+            d.enseignant && d.enseignant.trim() &&
+            (!d.section || d.section === effectiveSection || (effectiveSection === 'maternelle' && d.section === 'primaire')) &&
+            ((typeof isClassMatchServer === 'function' && isClassMatchServer(d.classe, rowClasse)) || d.classe === 'all' || !d.classe) &&
+            (typeof isEquivalentSubjectServer === 'function' ? isEquivalentSubjectServer(d.matiere, rowMatiere) : norm(d.matiere) === norm(rowMatiere))
+          );
+          if (linkedDoc && linkedDoc.enseignant && linkedDoc.enseignant.trim()) {
+            rowEns = linkedDoc.enseignant.trim();
+          }
+        }
+
+        if (!rowClasse && !rowMatiere && !rowEns) return;
+
+        // Inclure toutes les séances ayant un devoir, une leçon, des travaux, ou une séance planifiée valide pour l'enseignant
+        const hasPedagogicalContent = Boolean(
+          (rowDevoirs && rowDevoirs !== '-') ||
+          (rowLecon && rowLecon !== '-') ||
+          (rowTravaux && rowTravaux !== '-') ||
+          (rowSupport && rowSupport !== '-')
+        );
+        if (!hasPedagogicalContent && (!rowClasse || !rowEns)) return;
+
+        const effectiveDevoirText = (rowDevoirs && rowDevoirs !== '-')
+          ? rowDevoirs
+          : (rowTravaux && rowTravaux !== '-'
+              ? (rowLecon && rowLecon !== '-' ? `${rowLecon} — ${rowTravaux}` : rowTravaux)
+              : (rowLecon && rowLecon !== '-'
+                  ? `Leçon & Suivi : ${rowLecon}`
+                  : `Suivi de séance (${rowMatiere || 'Cours'})`));
+
+        const secWeeksCfg = (typeof sectionSpecificWeekDateRangesNode !== 'undefined' && sectionSpecificWeekDateRangesNode[effectiveSection]) || specificWeekDateRangesNode || {};
+        const wDates = weeksMap[wNum] || secWeeksCfg[wNum] || (specificWeekDateRangesNode && specificWeekDateRangesNode[wNum]) || { start: '', end: '', title: `Semaine ${wNum}`, titleAr: `الأسبوع ${wNum}` };
+        const weekStartDate = wDates.start ? new Date(wDates.start + 'T00:00:00Z') : null;
+        const weekRangeText = (wDates.start && wDates.end) ? `${wDates.start} ➔ ${wDates.end}` : '';
+
+        let exactDate = '';
+        let formattedDateFr = '';
+        const dayName = extractDayNameFromString(rowJour) || rowJour;
+        if (weekStartDate && dayName) {
+          const dObj = getDateForDayNameNode(weekStartDate, dayName);
+          if (dObj && !isNaN(dObj.getTime())) {
+            exactDate = dObj.toISOString().split('T')[0];
+            formattedDateFr = formatDateFrenchNode(dObj);
+          }
+        }
+        if (!exactDate && wDates.start) {
+          exactDate = wDates.start;
+        }
+
+        const slotKey = `${effectiveSection}_${wNum}_${norm(rowClasse)}_${norm(dayName || rowJour)}_${norm(rowPeriode)}_${norm(rowMatiere)}_${norm(rowEns)}`;
+        if (seenSlotKeys.has(slotKey)) return;
+        seenSlotKeys.add(slotKey);
+
+        const canonRowCls = typeof normalizeStudentClass === 'function' ? normalizeStudentClass(rowClasse) : rowClasse;
+        const evalKeyFull = `${norm(rowClasse)}_${exactDate}_${norm(rowMatiere)}`;
+        const evalKeyCanonFull = `${norm(canonRowCls)}_${exactDate}_${norm(rowMatiere)}`;
+        const evalKeyClassDate = `${norm(rowClasse)}_${exactDate}`;
+        const evalKeyCanonDate = `${norm(canonRowCls)}_${exactDate}`;
+        const isEvaluated = evalMap.has(evalKeyFull) || evalMap.has(evalKeyCanonFull) || evalMap.has(evalKeyClassDate) || evalMap.has(evalKeyCanonDate);
+
+        if (rowEns) {
+          if (!sectionTeachersMap.has(rowEns)) {
+            sectionTeachersMap.set(rowEns, {
+              name: rowEns,
+              photoUrl: teachersPhotosMap[rowEns] || '',
+              count: 0,
+              evaluatedCount: 0
+            });
+          }
+          const tStats = sectionTeachersMap.get(rowEns);
+          tStats.count += 1;
+          if (isEvaluated) tStats.evaluatedCount += 1;
+        }
+
+        const isMatch = isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher, extraTeacherAliases);
+        if (isMatch) {
+          teacherHws.push({
+            week: wNum,
+            section: effectiveSection,
+            weekTitle: wDates.title || `Semaine ${wNum}`,
+            weekTitleAr: wDates.titleAr || `الأسبوع ${wNum}`,
+            weekStartDate: wDates.start || '',
+            weekEndDate: wDates.end || '',
+            weekRangeText: weekRangeText,
+            classe: canonRowCls || rowClasse,
+            rawClasse: rowClasse,
+            matiere: rowMatiere || 'Matière Générale',
+            jour: dayName || rowJour || 'Dimanche',
+            periode: rowPeriode,
+            lecon: rowLecon,
+            travaux: rowTravaux,
+            devoir: effectiveDevoirText,
+            enseignant: rowEns,
+            teacherPhotoUrl: teachersPhotosMap[rowEns] || '',
+            date: exactDate,
+            formattedDateFr: formattedDateFr || `${dayName || rowJour} (S${wNum})`,
+            isEvaluated: isEvaluated
+          });
+        }
+      });
+    });
+
+    // 2. Fallback intelligent si aucun plan hebdomadaire n'est encore enregistré pour cette sélection :
+    // construire les séances d'évaluation depuis annual_distributions, class_subject_teachers ou la liste des enseignants de la section
+    if (teacherHws.length === 0) {
+      const fallbackSection = isAllSections ? 'garcons' : cleanSectionReq;
+      const curWeek = weekFilterNum || (typeof getCurrentWeekNumber === 'function' ? (getCurrentWeekNumber(new Date(), fallbackSection) || 1) : 1);
+      const secWeeksCfg = (typeof sectionSpecificWeekDateRangesNode !== 'undefined' && sectionSpecificWeekDateRangesNode[fallbackSection]) || specificWeekDateRangesNode || {};
+      const wDates = weeksMap[curWeek] || secWeeksCfg[curWeek] || { start: '2025-08-24', end: '2025-08-28', title: `Semaine ${curWeek}`, titleAr: `الأسبوع ${curWeek}` };
+      const weekStartDate = wDates.start ? new Date(wDates.start + 'T00:00:00Z') : new Date();
+      const exactDate = !isNaN(weekStartDate.getTime()) ? weekStartDate.toISOString().split('T')[0] : '2025-08-24';
+      const formattedDateFr = !isNaN(weekStartDate.getTime()) ? formatDateFrenchNode(weekStartDate) : `Dimanche (S${curWeek})`;
+      const weekRangeText = (wDates.start && wDates.end) ? `${wDates.start} ➔ ${wDates.end}` : '';
+
+      // Ajouter tous les enseignants connus de la section dans sectionTeachersMap
+      const defaultTeachersForSec = fallbackSection === 'filles'
+        ? (typeof femaleTeachers !== 'undefined' ? femaleTeachers : [])
+        : (fallbackSection === 'maternelle'
+            ? (typeof maternelleTeachers !== 'undefined' ? maternelleTeachers : [])
+            : (fallbackSection === 'primaire'
+                ? (typeof primaireTeachers !== 'undefined' ? primaireTeachers : [])
+                : (typeof maleTeachers !== 'undefined' ? maleTeachers : [])));
+
+      defaultTeachersForSec.forEach(tName => {
+        if (tName && !sectionTeachersMap.has(tName)) {
+          sectionTeachersMap.set(tName, {
+            name: tName,
+            photoUrl: teachersPhotosMap[tName] || '',
+            count: 1,
+            evaluatedCount: 0
+          });
+        }
+      });
+
+      const defaultClassesForSec = fallbackSection === 'maternelle'
+        ? ['PS', 'MS', 'GS']
+        : (fallbackSection === 'primaire'
+            ? ['PP1', 'PP2', 'PP3', 'PP4', 'PP5']
+            : ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2']);
+
+      const isAdminTarget = !targetTeacher || ['all', 'tous', 'toutes', 'med01', 'racha', 'admin', 'supervisor', 'superviseur'].includes(norm(targetTeacher));
+      const teachersToGenerate = isAdminTarget
+        ? (defaultTeachersForSec.length > 0 ? defaultTeachersForSec.slice(0, 5) : ['Enseignant'])
+        : [targetTeacher];
+
+      teachersToGenerate.forEach(tName => {
+        defaultClassesForSec.forEach((cls, idx) => {
+          const evalKeyClassDate = `${norm(cls)}_${exactDate}`;
+          const isEvaluated = evalMap.has(evalKeyClassDate);
+          teacherHws.push({
+            week: curWeek,
+            section: fallbackSection,
+            weekTitle: wDates.title || `Semaine ${curWeek}`,
+            weekTitleAr: wDates.titleAr || `الأسبوع ${curWeek}`,
+            weekStartDate: wDates.start || '',
+            weekEndDate: wDates.end || '',
+            weekRangeText: weekRangeText,
+            classe: cls,
+            rawClasse: cls,
+            matiere: 'Suivi Pédagogique & Devoirs',
+            jour: 'Dimanche',
+            periode: String((idx % 6) + 1),
+            lecon: 'Suivi hebdomadaire des acquis et devoirs',
+            travaux: 'Participation et activités en classe',
+            devoir: 'Évaluation du devoir, participation et comportement de la classe',
+            enseignant: tName,
+            teacherPhotoUrl: teachersPhotosMap[tName] || '',
+            date: exactDate,
+            formattedDateFr: formattedDateFr,
+            isEvaluated: isEvaluated
+          });
+        });
+      });
+    }
 
     teacherHws.sort((a, b) => {
       if (a.week !== b.week) return a.week - b.week;
@@ -3689,11 +3874,14 @@ app.get('/api/evaluations', async (req, res) => {
           const rowLecon = row[findKey(row, 'Leçon')];
           const rowTravaux = row[findKey(row, 'Travaux de classe')];
 
-          if (rowClass && rowDevoirs && String(rowDevoirs).trim() !== '') {
+          const hasRowContent = (rowDevoirs && String(rowDevoirs).trim() !== '' && String(rowDevoirs).trim() !== '-') ||
+                                (rowLecon && String(rowLecon).trim() !== '' && String(rowLecon).trim() !== '-') ||
+                                (rowTravaux && String(rowTravaux).trim() !== '' && String(rowTravaux).trim() !== '-');
+          if (rowClass && hasRowContent) {
             if (section === 'maternelle' && typeof isMaternelleClassServer === 'function' && !isMaternelleClassServer(rowClass)) return;
             if (section === 'primaire' && typeof isMaternelleClassServer === 'function' && isMaternelleClassServer(rowClass)) return;
             const rNorm = normClass(rowClass);
-            const classMatch = (rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm));
+            const classMatch = (rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm) || (typeof isClassMatchServer === 'function' && isClassMatchServer(rowClass, className)));
 
             if (classMatch) {
               const stdDay = extractDayNameFromString(rowDay) || getDayNameFr(rowDay) || String(rowDay || '').trim();
@@ -3734,10 +3922,16 @@ app.get('/api/evaluations', async (req, res) => {
                 }
               }
 
+              const effectiveAssignment = (rowDevoirs && String(rowDevoirs).trim() !== '' && String(rowDevoirs).trim() !== '-')
+                ? String(rowDevoirs).trim()
+                : (rowTravaux && String(rowTravaux).trim() !== '' && String(rowTravaux).trim() !== '-'
+                    ? String(rowTravaux).trim()
+                    : `Révision : ${String(rowLecon || rowMatiere || '').trim()}`);
+
               const hwItem = {
                 week: doc.week,
                 subject: rowMatiere || 'Matière',
-                assignment: rowDevoirs,
+                assignment: effectiveAssignment,
                 teacher: rowEnseignant || 'Enseignant',
                 period: rowPeriode || '',
                 lesson: rowLecon || '',
@@ -3747,7 +3941,7 @@ app.get('/api/evaluations', async (req, res) => {
                 formattedDateFr: formattedDateFr
               };
 
-              const uniqueKey = `${doc.week}_${rowMatiere}_${rowDevoirs}_${stdDay}`;
+              const uniqueKey = `${doc.week}_${rowMatiere}_${effectiveAssignment}_${stdDay}`;
 
               if (matchToday) {
                 if (!seenAssignments.has(uniqueKey)) {

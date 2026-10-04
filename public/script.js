@@ -6148,9 +6148,9 @@ function showHomeworkView(viewName) {
         displayAlert("Accès réservé uniquement aux enseignants.", true);
         viewName = 'parent-selection';
     }
-    if (!isParentMode && (viewName === 'parent-plan' || viewName === 'parent-selection' || viewName === 'student-dashboard' || viewName === 'parent-contacts')) {
-        // Un enseignant connecté ne navigue pas dans les vues réservées aux parents
-        viewName = 'homework-teacher';
+    const backToTeacherBtn = document.getElementById('btnBackToTeacherEvalFromStudents');
+    if (backToTeacherBtn) {
+        backToTeacherBtn.style.display = (!isParentMode && loggedInUser) ? 'inline-flex' : 'none';
     }
     const views = ['homework-home', 'parent-selection', 'student-dashboard', 'homework-teacher', 'parent-plan', 'parent-contacts'];
     views.forEach(v => {
@@ -11309,18 +11309,35 @@ function populateTeacherDropdowns() {
     const adminField = document.getElementById('teacherAdminSwitcherField');
     const isAdmin = (typeof isUserAdminOrSupervisor === 'function') ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) : false;
     if (adminField) {
-        adminField.style.display = (isAdmin && allSectionTeachersList && allSectionTeachersList.length > 0) ? 'block' : 'none';
+        adminField.style.display = isAdmin ? 'block' : 'none';
     }
-    if (adminSel && allSectionTeachersList && allSectionTeachersList.length > 0) {
-        let optHtml = `<option value="">${isEn ? 'All Teachers' : (isAr ? 'جميع المعلمين' : 'Tous les Enseignants')}</option>`;
-        allSectionTeachersList.forEach(tName => {
-            const isSel = (activeTeacherHwFilters.teacher === tName) ? 'selected' : '';
-            optHtml += `<option value="${escapeHtml(tName)}" ${isSel}>${escapeHtml(tName)}</option>`;
-        });
+    if (adminSel) {
+        const allTeachersLabel = isEn ? '👥 All Teachers' : (isAr ? '👥 جميع المعلمين' : '👥 Tous les Enseignants');
+        const isAllSel = (!activeTeacherHwFilters.teacher || activeTeacherHwFilters.teacher === 'all') ? 'selected' : '';
+        let optHtml = `<option value="all" ${isAllSel}>${allTeachersLabel}</option>`;
+        if (allSectionTeachersList && allSectionTeachersList.length > 0) {
+            allSectionTeachersList.forEach(tItem => {
+                const tNameStr = (tItem && typeof tItem === 'object') ? (tItem.name || tItem.username || '') : String(tItem || '');
+                const tCount = (tItem && typeof tItem === 'object' && tItem.count !== undefined) ? ` (${tItem.count})` : '';
+                if (!tNameStr) return;
+                const isSel = (activeTeacherHwFilters.teacher && String(activeTeacherHwFilters.teacher).toLowerCase() === tNameStr.toLowerCase()) ? 'selected' : '';
+                optHtml += `<option value="${escapeHtml(tNameStr)}" ${isSel}>${escapeHtml(tNameStr)}${tCount}</option>`;
+            });
+        }
         adminSel.innerHTML = optHtml;
     }
 }
 window.populateTeacherDropdowns = populateTeacherDropdowns;
+
+function setTeacherHwTeacherFilter(teacherVal) {
+    activeTeacherHwFilters.teacher = teacherVal || 'all';
+    activeTeacherHwFilters.week = 'all';
+    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.jour = 'all';
+    activeTeacherHwFilters.matiere = 'all';
+    loadTeacherHomeworksDashboard();
+}
+window.setTeacherHwTeacherFilter = setTeacherHwTeacherFilter;
 
 // Gestionnaires des listes déroulantes
 function onTeacherSchoolSelectChange(school) {
@@ -11387,7 +11404,7 @@ async function loadTeacherHomeworksDashboard() {
             ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) 
             : false;
 
-        const section = activeTeacherHwFilters.section || (typeof currentSection !== 'undefined' && currentSection) || 'all';
+        const section = activeTeacherHwFilters.section || 'all';
         activeTeacherHwFilters.section = section;
         const teacherParamFromLogin = loggedInTeacherTable || (typeof loggedInUser !== 'undefined' ? loggedInUser : '');
 
@@ -11396,31 +11413,39 @@ async function loadTeacherHomeworksDashboard() {
             activeTeacherHwFilters.teacher = teacherParamFromLogin;
             const adminSwitcher = document.getElementById('teacherAdminSwitcherRow');
             if (adminSwitcher) adminSwitcher.style.display = 'none';
+            const adminField = document.getElementById('teacherAdminSwitcherField');
+            if (adminField) adminField.style.display = 'none';
         } else {
-            // Pour un admin ou superviseur : sélecteur d'enseignant disponible
+            // Pour un admin ou superviseur : par défaut "all" pour voir tous les enseignants et séances
             const adminSwitcher = document.getElementById('teacherAdminSwitcherRow');
             if (adminSwitcher) adminSwitcher.style.display = 'block';
+            const adminField = document.getElementById('teacherAdminSwitcherField');
+            if (adminField) adminField.style.display = 'block';
             if (!activeTeacherHwFilters.teacher) {
-                activeTeacherHwFilters.teacher = teacherParamFromLogin;
+                activeTeacherHwFilters.teacher = 'all';
             }
         }
 
-        const tableTeacherParam = loggedInTeacherTable || '';
-        const url = `/api/teacher-homeworks?teacher=${encodeURIComponent(activeTeacherHwFilters.teacher)}&tableTeacher=${encodeURIComponent(tableTeacherParam)}&section=${encodeURIComponent(section)}`;
-        const res = await fetch(url);
+        const tableTeacherParam = (!isAdminOrSupervisor || (activeTeacherHwFilters.teacher !== 'all' && activeTeacherHwFilters.teacher === teacherParamFromLogin))
+            ? (loggedInTeacherTable || '')
+            : '';
+        const loginUserParam = typeof loggedInUser !== 'undefined' ? (loggedInUser || '') : '';
+        const url = `/api/teacher-homeworks?teacher=${encodeURIComponent(activeTeacherHwFilters.teacher)}&tableTeacher=${encodeURIComponent(tableTeacherParam)}&loginUser=${encodeURIComponent(loginUserParam)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`;
+        const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) throw new Error(`Erreur ${res.status}`);
 
         const data = await res.json();
         allTeacherHomeworks = data.homeworks || [];
         allSectionTeachersList = data.sectionTeachers || [];
 
-        // Si administrateur et aucun devoir trouvé pour son nom personnel, basculer sur le premier enseignant ayant des devoirs
-        if (isAdminOrSupervisor && allTeacherHomeworks.length === 0 && allSectionTeachersList.length > 0 && activeTeacherHwFilters.teacher === loggedInUser) {
-            activeTeacherHwFilters.teacher = allSectionTeachersList[0].name;
-            const retryRes = await fetch(`/api/teacher-homeworks?teacher=${encodeURIComponent(activeTeacherHwFilters.teacher)}&section=${encodeURIComponent(section)}`);
+        // Si administrateur avait filtré sur son nom personnel mais n'a aucun devoir, basculer sur Tous les Enseignants
+        if (isAdminOrSupervisor && allTeacherHomeworks.length === 0 && activeTeacherHwFilters.teacher !== 'all') {
+            activeTeacherHwFilters.teacher = 'all';
+            const retryRes = await fetch(`/api/teacher-homeworks?teacher=all&loginUser=${encodeURIComponent(loginUserParam)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`, { cache: 'no-store' });
             if (retryRes.ok) {
                 const retryData = await retryRes.json();
                 allTeacherHomeworks = retryData.homeworks || [];
+                allSectionTeachersList = retryData.sectionTeachers || allSectionTeachersList;
             }
         }
 
@@ -11428,7 +11453,10 @@ async function loadTeacherHomeworksDashboard() {
         const nameEl = document.getElementById('teacherEvalActiveName');
         if (nameEl) {
             if (isAdminOrSupervisor) {
-                nameEl.textContent = `${activeTeacherHwFilters.teacher || 'Sélectionner un enseignant'} (Mode Superviseur)`;
+                const dispTeacher = (!activeTeacherHwFilters.teacher || activeTeacherHwFilters.teacher === 'all')
+                    ? 'Tous les Enseignants'
+                    : activeTeacherHwFilters.teacher;
+                nameEl.textContent = `${dispTeacher} (Mode Superviseur)`;
             } else {
                 nameEl.textContent = activeTeacherHwFilters.teacher || loggedInUser || 'Enseignant';
             }
@@ -11444,6 +11472,9 @@ async function loadTeacherHomeworksDashboard() {
         // Rendu des listes déroulantes en cascade
         if (typeof populateTeacherDropdowns === 'function') {
             populateTeacherDropdowns();
+        }
+        if (typeof renderTeacherAdminSwitcher === 'function') {
+            renderTeacherAdminSwitcher(allSectionTeachersList);
         }
 
         // Rendu du tableau de bord avec les filtres actifs
@@ -11901,6 +11932,9 @@ function setTeacherHwStatusFilter(status) {
 
 // Réinitialiser tous les filtres
 function resetAllTeacherHwFilters() {
+    const isAdmin = (typeof isUserAdminOrSupervisor === 'function') ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) : false;
+    const prevTeacher = activeTeacherHwFilters.teacher;
+    const prevSec = activeTeacherHwFilters.section;
     activeTeacherHwFilters.section = 'all';
     activeTeacherHwFilters.week = 'all';
     activeTeacherHwFilters.classe = 'all';
@@ -11908,15 +11942,39 @@ function resetAllTeacherHwFilters() {
     activeTeacherHwFilters.matiere = 'all';
     activeTeacherHwFilters.status = 'all';
     activeTeacherHwFilters.search = '';
+    if (isAdmin) {
+        activeTeacherHwFilters.teacher = 'all';
+    }
 
     const searchInput = document.getElementById('teacherHwSearchInput');
     if (searchInput) searchInput.value = '';
+
+    if (prevSec !== 'all' || (isAdmin && prevTeacher !== 'all')) {
+        loadTeacherHomeworksDashboard();
+        return;
+    }
 
     if (typeof populateTeacherDropdowns === 'function') {
         populateTeacherDropdowns();
     }
     renderTeacherHomeworksDashboard();
 }
+
+function openClassStudentsTrackingFromTeacher(className, sectionName) {
+    if (sectionName && sectionName !== 'all') {
+        currentSection = sectionName;
+    }
+    showHomeworkView('parent-selection');
+    setTimeout(() => {
+        if (typeof renderParentClassButtons === 'function') {
+            renderParentClassButtons();
+        }
+        if (typeof loadClassStudents === 'function' && className) {
+            loadClassStudents(className, true);
+        }
+    }, 50);
+}
+window.openClassStudentsTrackingFromTeacher = openClassStudentsTrackingFromTeacher;
 
 // Rendu principal des devoirs
 function renderTeacherHomeworksDashboard() {
@@ -12152,6 +12210,7 @@ function renderTeacherHomeworksDashboard() {
         sortedClasses.forEach(([cKey, homeworksList]) => {
             const arCls = (typeof classTranslations !== 'undefined' && classTranslations[cKey]) ? classTranslations[cKey] : '';
             const classTitle = arCls ? `${arCls} (${cKey})` : cKey;
+            const firstHwSec = (homeworksList[0] && homeworksList[0].section) ? homeworksList[0].section : (activeTeacherHwFilters.section !== 'all' ? activeTeacherHwFilters.section : (currentSection || 'garcons'));
 
             html += `
                 <div style="margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid #F1F5F9;">
@@ -12160,7 +12219,10 @@ function renderTeacherHomeworksDashboard() {
                             <span style="display:inline-block; width:10px; height:10px; background:#4F46E5; border-radius:50%;"></span>
                             <i class="fas fa-users" style="color:#6366F1;"></i> ${isEn ? 'Class :' : (isAr ? 'الفصل :' : 'Classe :')} <strong>${classTitle}</strong>
                         </h4>
-                        <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <button type="button" class="pro-button" onclick="openClassStudentsTrackingFromTeacher('${escapeHtml(cKey)}', '${escapeHtml(firstHwSec)}')" style="font-size:0.78rem; font-weight:700; padding:5px 11px; background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
+                                <i class="fas fa-user-graduate"></i> ${isEn ? 'Student Tracking' : (isAr ? 'متابعة الطلاب' : 'Suivi des Élèves')}
+                            </button>
                             <span style="font-size:0.82rem; font-weight:700; color:#64748B; background:#F8FAFC; padding:4px 10px; border-radius:8px; border:1px solid #E2E8F0;">
                                 ${homeworksList.length} ${isEn ? 'Homework(s)' : (isAr ? 'واجب(ات)' : 'Devoir(s)')}
                             </span>
@@ -12327,7 +12389,9 @@ async function openTeacherEvalModal(hwIndex) {
     }
 
     try {
-        const section = currentSection || 'garcons';
+        const section = (hw.section && hw.section !== 'all')
+            ? hw.section
+            : ((activeTeacherHwFilters.section && activeTeacherHwFilters.section !== 'all') ? activeTeacherHwFilters.section : (currentSection || 'garcons'));
         const canonicalClass = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(hw.classe) : (hw.classe || '').trim();
         const [stRes, evRes] = await Promise.all([
             fetch(`/api/admin/students?class=${encodeURIComponent(canonicalClass || hw.classe)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`, { cache: 'no-store' }),
@@ -12477,7 +12541,9 @@ async function submitCurrentHomeworkEvaluation() {
 
     try {
         const hw = activeEvalHomework;
-        const section = currentSection || 'garcons';
+        const section = (hw.section && hw.section !== 'all')
+            ? hw.section
+            : ((activeTeacherHwFilters.section && activeTeacherHwFilters.section !== 'all') ? activeTeacherHwFilters.section : (currentSection || 'garcons'));
         const canonicalClass = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(hw.classe) : (hw.classe || '').trim();
         const statusEls = document.querySelectorAll('.modal-eval-status');
         const evaluations = [];
