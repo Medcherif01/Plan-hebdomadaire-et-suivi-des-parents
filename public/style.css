@@ -4499,3 +4499,172 @@ tr.row-plan-error {
     }
 }
 
+/* ==========================================================================
+   DESIGN PROFESSIONNEL : REGROUPEMENT DES BOUTONS, BARRE ÉLÈVE & PARENTS/ENSEIGNANTS
+   ========================================================================== */
+
+/* 1. Dock de navigation professionnelle Espace Parents */
+.parent-nav-tabs {
+    background: #FFFFFF !important;
+    padding: 8px 10px !important;
+    border-radius: 16px !important;
+    border: 1.5px solid #E2E8F0 !important;
+    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-bottom: 24px !important;
+    overflow-x: auto !important;
+}
+
+.parent-nav-tabs .pro-button {
+    flex: 1;
+    min-width: 155px;
+    padding: 11px 16px !important;
+    font-size: 0.9rem !important;
+    font-weight: 700 !important;
+    border-radius: 12px !important;
+    background: #F8FAFC !important;
+    color: #334155 !important;
+    border: 1.5px solid transparent !important;
+    box-shadow: none !important;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    white-space: nowrap;
+}
+
+.parent-nav-tabs .pro-button:hover {
+    background: #F1F5F9 !important;
+    color: #0F172A !important;
+    border-color: #CBD5E1 !important;
+    transform: translateY(-1px) !important;
+}
+
+.parent-nav-tabs .pro-button.active,
+.parent-nav-tabs .pro-button.primary-button.active {
+    background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%) !important;
+    color: #FFFFFF !important;
+    border-color: #1D4ED8 !important;
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.28) !important;
+    transform: translateY(-1px) !important;
+}
+
+.parent-nav-tabs .pro-button.tab-btn-messenger {
+    background: linear-gradient(135deg, #EFF6FF, #DBEAFE) !important;
+    color: #1D4ED8 !important;
+    border: 1.5px solid #93C5FD !important;
+    flex: 0.9;
+}
+
+.parent-nav-tabs .pro-button.tab-btn-messenger:hover {
+    background: linear-gradient(135deg, #DBEAFE, #BFDBFE) !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18) !important;
+}
+
+/* 2. Onglets Élève : Devoirs d'Aujourd'hui EN PREMIER, puis Progression & Évaluations */
+.student-workspace-tabs {
+    display: flex;
+    gap: 10px;
+    background: #F1F5F9;
+    padding: 7px;
+    border-radius: 16px;
+    border: 1.5px solid #E2E8F0;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
+}
+
+.student-tab-pill {
+    flex: 1;
+    min-width: 220px;
+    padding: 13px 20px;
+    border-radius: 12px;
+    border: 1.5px solid transparent;
+    background: transparent;
+    color: #475569;
+    font-weight: 800;
+    font-size: 0.96rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.student-tab-pill:hover {
+    background: rgba(255, 255, 255, 0.7);
+    color: #1E293B;
+}
+
+.student-tab-pill.active {
+    background: #FFFFFF;
+    color: #1D4ED8;
+    border-color: #BFDBFE;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.14);
+}
+
+.student-tab-pill .pill-count-badge {
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    background: #DBEAFE;
+    color: #1E40AF;
+}
+
+.student-tab-pill.active .pill-count-badge {
+    background: #2563EB;
+    color: #FFFFFF;
+}
+
+/* 3. Enseignant : Groupes de boutons professionnels par fonctionnalité */
+.pro-action-hub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 14px;
+    width: 100%;
+    padding: 18px 20px !important;
+    background: #FFFFFF !important;
+    border: 1.5px solid #E2E8F0 !important;
+    border-radius: 18px !important;
+    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05) !important;
+}
+
+.pro-action-group-card {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pro-action-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #475569;
+    border-bottom: 1px dashed #CBD5E1;
+    padding-bottom: 6px;
+}
+
+.pro-action-group-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.pro-action-group-buttons .pro-button {
+    padding: 9px 14px !important;
+    font-size: 0.85rem !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    flex: 1 1 auto;
+}
+
+

@@ -8171,6 +8171,9 @@ async function openStudentDashboard(studentName, className) {
         const starsCountEl = document.getElementById('student-stars-count');
         if (starsCountEl) starsCountEl.innerHTML = `<i class="fas fa-star"></i> ${starCount} Étoile(s)`;
 
+        // Toujours ouvrir la section "1. Devoirs du Jour" en premier lors de l'ouverture du profil élève
+        switchStudentDashboardSection('homeworks');
+
         // Évaluations 8 semaines
         loadGeneralEvaluations(cleanName, className);
 
@@ -8181,6 +8184,26 @@ async function openStudentDashboard(studentName, className) {
         console.error('Erreur openStudentDashboard:', e);
     }
 }
+
+function switchStudentDashboardSection(sectionKey) {
+    const hwSection = document.getElementById('student-section-homeworks');
+    const progSection = document.getElementById('student-section-progress');
+    const btnHw = document.getElementById('studentTabBtn_homeworks');
+    const btnProg = document.getElementById('studentTabBtn_progress');
+
+    if (sectionKey === 'progress') {
+        if (hwSection) hwSection.style.display = 'none';
+        if (progSection) progSection.style.display = 'block';
+        if (btnHw) btnHw.classList.remove('active');
+        if (btnProg) btnProg.classList.add('active');
+    } else {
+        if (hwSection) hwSection.style.display = 'block';
+        if (progSection) progSection.style.display = 'none';
+        if (btnHw) btnHw.classList.add('active');
+        if (btnProg) btnProg.classList.remove('active');
+    }
+}
+window.switchStudentDashboardSection = switchStudentDashboardSection;
 
 let lastEvaluationsData = null;
 let isShowingWeeklyHomeworks = false;
@@ -8426,21 +8449,35 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             if (txtNextDay) txtNextDay.textContent = (isAr ? 'اليوم التالي' : (currentUserLanguage === 'en' ? 'Next Day' : 'Jour suivant'));
             if (txtTodayBtn) txtTodayBtn.textContent = (isAr ? 'اليوم' : (currentUserLanguage === 'en' ? 'Today' : 'Aujourd\'hui'));
 
+            // Mise à jour des intitulés des 2 onglets élèves (1. Devoirs du Jour | 2. Progression & Évaluations)
+            const lblTabHw = document.getElementById('lblStudentTabHomeworks');
+            const lblTabProg = document.getElementById('lblStudentTabProgress');
+            if (lblTabHw) lblTabHw.textContent = isAr ? '1. واجبات اليوم' : (currentUserLanguage === 'en' ? '1. Today\'s Homework' : '1. Devoirs du Jour');
+            if (lblTabProg) lblTabProg.textContent = isAr ? '2. التقدم والتقييمات' : (currentUserLanguage === 'en' ? '2. Progress & Evaluations' : '2. Progression & Évaluations');
+
             // Affichage de la barre des 5 jours d'école
             if (typeof renderSchoolDaysBar === 'function') {
                 renderSchoolDaysBar(currentStudentSchoolDays, effectiveDateStr, studentName, className);
             }
 
-            // Règle stricte pour les élèves : afficher uniquement les devoirs du jour demandé (ou jeudi en cas de week-end)
-            const displayList = homeworks;
+            // Règle stricte pour les élèves : afficher uniquement les devoirs déjà mis dans la colonne Devoirs par les enseignants ce jour
+            const displayList = (homeworks || []).filter(hw => {
+                const text = String(hw.assignment || '').trim();
+                return text !== '' && text !== '-' && text !== '—' && text.toLowerCase() !== 'aucun';
+            });
+
+            const countBadgeEl = document.getElementById('badgeStudentTodayHwCount');
+            if (countBadgeEl) {
+                countBadgeEl.textContent = String(displayList.length);
+            }
 
             if (displayList.length === 0) {
                 const noHwTitle = isWeekendStay
-                    ? (isAr ? 'لا توجد واجبات مسجلة ليوم الخميس الماضي' : 'Aucun devoir renseigné pour le jeudi dernier')
-                    : (isAr ? 'لا توجد واجبات مسجلة لهذا اليوم' : 'Aucun devoir renseigné pour aujourd\'hui');
+                    ? (isAr ? 'لا توجد واجبات مسجلة في خانة الواجبات ليوم الخميس الماضي' : 'Aucun devoir inscrit dans la colonne Devoirs pour jeudi dernier')
+                    : (isAr ? 'لا توجد واجبات مسجلة في خانة الواجبات لهذا اليوم' : 'Aucun devoir inscrit dans la colonne Devoirs pour ce jour');
                 const noHwDesc = isWeekendStay
-                    ? (isAr ? 'لم يقم المدرسون بإضافة واجبات محددة ليوم الخميس. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل.' : 'Les enseignants n\'ont pas programmé de devoirs spécifiques pour le jeudi. Vous pouvez consulter le plan hebdomadaire complet de la classe.')
-                    : (isAr ? 'لم يقم المدرسون بإضافة واجبات محددة لهذا اليوم. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل.' : 'Les enseignants n\'ont pas programmé de devoirs spécifiques pour cette date. Vous pouvez consulter le plan hebdomadaire complet de la classe.');
+                    ? (isAr ? 'لم يقم المدرسون بإدراج واجبات في عمود الواجبات ليوم الخميس. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل أو متابعة التقدم.' : 'Les enseignants n\'ont pas inscrit de devoirs dans la colonne Devoirs pour jeudi. Vous pouvez consulter la progression de l\'élève ou le plan hebdomadaire.')
+                    : (isAr ? 'لم يقم المدرسون بإدراج واجبات في عمود الواجبات لهذا اليوم. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل أو متابعة التقدم.' : 'Les enseignants n\'ont pas inscrit de devoirs dans la colonne Devoirs pour cette journée. Vous pouvez consulter la progression de l\'élève ou le plan hebdomadaire.');
 
                 grid.innerHTML = `
                     <div style="grid-column: 1/-1; background:white; padding:35px 25px; border-radius:16px; text-align:center; color:#6B7280; box-shadow:0 4px 15px rgba(0,0,0,0.04); border:1px solid #E2E8F0;">
@@ -8450,10 +8487,13 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                         <h4 style="color:#1E293B; font-size:1.15rem; margin:0 0 8px 0; font-weight:700;">
                             ${noHwTitle}
                         </h4>
-                        <p style="margin:0 0 16px 0; font-size:0.92rem; color:#64748B;">
+                        <p style="margin:0 0 18px 0; font-size:0.92rem; color:#64748B;">
                             ${noHwDesc}
                         </p>
                         <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+                            <button type="button" class="pro-button" onclick="switchStudentDashboardSection('progress')" style="padding:10px 18px; font-weight:700; background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; box-shadow:none;">
+                                <i class="fas fa-chart-line"></i> <span>${isAr ? 'عرض التقدم والتقييمات' : 'Voir Progression & Évaluations'}</span>
+                            </button>
                             <button type="button" class="pro-button primary-button" onclick="goToCurrentStudentClassPlan()" style="padding:10px 18px; font-weight:700;">
                                 <i class="fas fa-book-open"></i> <span>${isAr ? 'الخطة الأسبوعية للفصل' : 'Consulter le Plan Hebdo'}</span>
                             </button>

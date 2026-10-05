@@ -3874,10 +3874,9 @@ app.get('/api/evaluations', async (req, res) => {
           const rowLecon = row[findKey(row, 'Leçon')];
           const rowTravaux = row[findKey(row, 'Travaux de classe')];
 
-          const hasRowContent = (rowDevoirs && String(rowDevoirs).trim() !== '' && String(rowDevoirs).trim() !== '-') ||
-                                (rowLecon && String(rowLecon).trim() !== '' && String(rowLecon).trim() !== '-') ||
-                                (rowTravaux && String(rowTravaux).trim() !== '' && String(rowTravaux).trim() !== '-');
-          if (rowClass && hasRowContent) {
+          const rowDevoirsClean = String(rowDevoirs || '').trim();
+          const hasExplicitDevoir = rowDevoirsClean !== '' && rowDevoirsClean !== '-' && rowDevoirsClean !== '—' && rowDevoirsClean.toLowerCase() !== 'aucun' && rowDevoirsClean.toLowerCase() !== 'sans';
+          if (rowClass && hasExplicitDevoir) {
             if (section === 'maternelle' && typeof isMaternelleClassServer === 'function' && !isMaternelleClassServer(rowClass)) return;
             if (section === 'primaire' && typeof isMaternelleClassServer === 'function' && isMaternelleClassServer(rowClass)) return;
             const rNorm = normClass(rowClass);
@@ -3896,7 +3895,7 @@ app.get('/api/evaluations', async (req, res) => {
                 }
               }
 
-              // Mettre à jour le compteur du jour d'école pour la semaine cible
+              // Mettre à jour le compteur du jour d'école pour la semaine cible (uniquement si devoir dans colonne Devoirs)
               if (isTargetWeek && stdDay) {
                 const sDayObj = schoolDays.find(sd => sd.day === stdDay || sd.date === exactRowDate);
                 if (sDayObj) {
@@ -3922,11 +3921,7 @@ app.get('/api/evaluations', async (req, res) => {
                 }
               }
 
-              const effectiveAssignment = (rowDevoirs && String(rowDevoirs).trim() !== '' && String(rowDevoirs).trim() !== '-')
-                ? String(rowDevoirs).trim()
-                : (rowTravaux && String(rowTravaux).trim() !== '' && String(rowTravaux).trim() !== '-'
-                    ? String(rowTravaux).trim()
-                    : `Révision : ${String(rowLecon || rowMatiere || '').trim()}`);
+              const effectiveAssignment = rowDevoirsClean;
 
               const hwItem = {
                 week: doc.week,
