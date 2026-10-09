@@ -40,17 +40,17 @@
             max-width: 100%;
         }
         
-        /* Largeur des colonnes fixes */
+        /* Largeur des colonnes fixes (Enseignant, Classe, Matière, Période, Jour) réduite au maximum au profit des colonnes de saisie */
         #planTable th:nth-child(1),
-        #planTable td:nth-child(1) { width: 110px; } /* Enseignant */
+        #planTable td:nth-child(1) { width: 62px; max-width: 72px; } /* Enseignant */
         
         #planTable th:nth-child(2),
-        #planTable td:nth-child(2) { width: 90px; } /* Classe */
+        #planTable td:nth-child(2) { width: 52px; max-width: 62px; } /* Classe */
         
         #planTable th:nth-child(3),
         #planTable td:nth-child(3) {
-            width: 130px;
-            max-width: 160px;
+            width: 72px;
+            max-width: 86px;
             white-space: normal !important;
             word-wrap: break-word !important;
             overflow-wrap: break-word !important;
@@ -59,10 +59,10 @@
         } /* Matière */
         
         #planTable th:nth-child(4),
-        #planTable td:nth-child(4) { width: 60px; } /* Période */
+        #planTable td:nth-child(4) { width: 38px; max-width: 44px; } /* Période */
         
         #planTable th:nth-child(5),
-        #planTable td:nth-child(5) { width: 100px; } /* Jour */
+        #planTable td:nth-child(5) { width: 58px; max-width: 68px; } /* Jour */
 
         /* Centrage et direction Droite-à-Gauche (RTL) de l'écriture arabe pour TOUTES les cases */
         #planTable td.arabic-content,
@@ -494,21 +494,25 @@
              </div>
          </div>
 
-         <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn">
-             <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
-        </button>
-        <div id="incompleteTeachersDisplay" style="display: none;">
-            <h4>Enseignants Incomplets</h4>
-            <ul id="incompleteList">
-                <li>Chargement...</li>
-            </ul>
-        </div>
-        <div class="filter-container week-selector-container">
-            <label for="weekSelector"><i class="fas fa-calendar-week"></i> Semaine:</label>
-            <select id="weekSelector" onchange="loadPlanForWeek()">
-                 <option value="">-- Sélectionnez une semaine --</option>
-            </select>
-        </div>
+         <div class="filter-container week-selector-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:white; border:1.5px solid #E2E8F0; border-radius:14px; padding:12px 18px; margin-bottom:14px; box-shadow:0 4px 14px rgba(15,23,42,0.04);">
+             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:260px;">
+                 <label for="weekSelector" style="margin:0; font-weight:800; color:#1E293B; white-space:nowrap;"><i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine :</label>
+                 <select id="weekSelector" onchange="loadPlanForWeek()" style="flex:1; max-width:440px; padding:9px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-weight:700; color:#0F172A; background:#F8FAFC;">
+                      <option value="">-- Sélectionnez une semaine --</option>
+                 </select>
+             </div>
+             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                 <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px;">
+                     <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
+                 </button>
+             </div>
+         </div>
+         <div id="incompleteTeachersDisplay" style="display: none; margin-bottom:14px;">
+             <h4>Enseignants Incomplets</h4>
+             <ul id="incompleteList">
+                 <li>Chargement...</li>
+             </ul>
+         </div>
         <div id="admin-actions" class="filter-container admin-section" style="display: none;">
              <div class="admin-header-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -893,51 +897,21 @@
                      <h4><i class="fas fa-user-graduate" style="color:#8B5CF6;"></i> Gestion des Élèves (Liste, Photos, Déplacement de Classes)</h4>
                      <p class="admin-subtext">Ajoutez ou modifiez les fiches élèves, leurs liens photos Google Drive, et déplacez un élève facilement d'une classe à une autre.</p>
                      
-                     <div class="user-mgmt-header" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
-                         <label for="adminStudentClassFilter" style="font-weight:700;">Classe :</label>
-                         <select id="adminStudentClassFilter" onchange="loadAdminStudentsList()" style="padding:7px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
-                             <option value="all">-- Toutes les classes --</option>
-                             <option value="PEI1">السادس (PEI1)</option>
-                             <option value="PEI2">الاول متوسط (PEI2)</option>
-                             <option value="PEI3">الثاني متوسط (PEI3)</option>
-                             <option value="PEI4">الثالث متوسط (PEI4)</option>
-                             <option value="PEI5">الأول ثانوي (PEI5)</option>
-                             <option value="DP1">الثاني ثانوي (DP1)</option>
-                             <option value="DP2">الثالث ثانوي (DP2)</option>
-                         </select>
-                         <label for="adminStudentSectionFilter" style="font-weight:700;">Section :</label>
-                         <select id="adminStudentSectionFilter" onchange="loadAdminStudentsList()" style="padding:7px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
-                             <option value="garcons">Section Garçons 👦</option>
-                             <option value="filles">Section Filles 👧</option>
-                             <option value="primaire">Section Primaire 🎒</option>
-                             <option value="maternelle">Section Maternelle 🧸</option>
-                         </select>
-                     </div>
-
-                     <div class="add-user-form" style="margin-top:10px;">
-                         <input type="text" id="adminStudentName" placeholder="Nom de l'élève">
-                         <input type="text" id="adminStudentPhoto" placeholder="Lien photo Google Drive / Web">
-                         <input type="text" id="adminStudentBirthday" placeholder="Date d'anniversaire (ex: 4/2014)">
-                         <button class="pro-button success-button" onclick="adminAddOrUpdateStudent()">
-                             <i class="fas fa-plus-circle"></i> <span class="btn-text">Ajouter / Enregistrer Élève</span>
-                         </button>
-                     </div>
-
-                     <!-- OUTIL DÉPLACEMENT D'ÉLÈVE VERS UNE AUTRE CLASSE -->
-                     <div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:12px; padding:15px; margin-top:15px;">
-                         <h5 style="margin:0 0 10px 0; color:#1E1B4B; font-weight:700; font-size:0.95rem;">
-                             <i class="fas fa-exchange-alt" style="color:#2563EB;"></i> Déplacer un Élève vers une Autre Classe (ex: Yasser de PEI2 vers PEI3) :
-                         </h5>
-                         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                             <div style="flex:1; min-width:180px;">
-                                 <label style="font-size:0.8rem; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Élève à déplacer :</label>
-                                 <select id="adminMoveStudentSelector" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
-                                     <option value="">-- Choisir un élève --</option>
+                     <div class="user-mgmt-header" style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:14px; background:#F8FAFC; padding:12px 16px; border-radius:12px; border:1px solid #E2E8F0;">
+                         <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                             <div style="display:flex; align-items:center; gap:6px;">
+                                 <label for="adminStudentSectionFilter" style="font-weight:700; color:#334155; margin:0;"><i class="fas fa-layer-group" style="color:#2563EB;"></i> Section :</label>
+                                 <select id="adminStudentSectionFilter" onchange="loadAdminStudentsList()" style="padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;">
+                                     <option value="garcons">Section Garçons 👦</option>
+                                     <option value="filles">Section Filles 👧</option>
+                                     <option value="primaire">Section Primaire 🎒</option>
+                                     <option value="maternelle">Section Maternelle 🧸</option>
                                  </select>
                              </div>
-                             <div style="width:170px;">
-                                 <label style="font-size:0.8rem; font-weight:600; color:#475569; display:block; margin-bottom:4px;">Nouvelle Classe :</label>
-                                 <select id="adminMoveTargetClass" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600;">
+                             <div style="display:flex; align-items:center; gap:6px;">
+                                 <label for="adminStudentClassFilter" style="font-weight:700; color:#334155; margin:0;"><i class="fas fa-chalkboard" style="color:#8B5CF6;"></i> Classe :</label>
+                                 <select id="adminStudentClassFilter" onchange="loadAdminStudentsList()" style="padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; background:white;">
+                                     <option value="all">-- Toutes les classes --</option>
                                      <option value="PEI1">السادس (PEI1)</option>
                                      <option value="PEI2">الاول متوسط (PEI2)</option>
                                      <option value="PEI3">الثاني متوسط (PEI3)</option>
@@ -947,15 +921,76 @@
                                      <option value="DP2">الثالث ثانوي (DP2)</option>
                                  </select>
                              </div>
-                             <div style="padding-top:18px;">
-                                 <button type="button" class="pro-button primary-button" onclick="adminQuickMoveStudent()" style="padding:9px 16px;">
-                                     <i class="fas fa-check-circle"></i> Enregistrer le déplacement
-                                 </button>
-                             </div>
+                         </div>
+                         <div style="flex:1; min-width:220px; max-width:320px; position:relative;">
+                             <i class="fas fa-search" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:#94A3B8;"></i>
+                             <input type="text" id="adminStudentSearchInput" oninput="filterAdminStudentsTable(this.value)" placeholder="Rechercher un élève..." style="width:100%; padding:8px 12px 8px 34px; border-radius:8px; border:1.5px solid #CBD5E1; font-size:0.88rem; background:white;">
                          </div>
                      </div>
 
-                     <div id="adminStudentStatus" style="font-size:0.9em; margin-bottom:10px; margin-top:10px;"></div>
+                     <!-- GRILLE DE GESTION : AJOUT/MODIFICATION RAPIDE & DÉPLACEMENT DE CLASSE REGROUPÉS -->
+                     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:14px; margin-bottom:14px;">
+                         <!-- Carte 1 : Ajouter ou Modifier un Élève (sans perdre son suivi) -->
+                         <div style="background:#F8FAFC; border:1.5px solid #CBD5E1; border-radius:12px; padding:15px;">
+                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                 <h5 id="adminStudentFormHeading" style="margin:0; color:#1E1B4B; font-weight:800; font-size:0.95rem; display:flex; align-items:center; gap:6px;">
+                                     <i class="fas fa-user-plus" style="color:#10B981;"></i> <span>Ajouter ou Modifier un Élève</span>
+                                 </h5>
+                                 <span style="font-size:0.74rem; font-weight:700; color:#059669; background:#ECFDF5; padding:2px 8px; border-radius:999px; border:1px solid #A7F3D0;">
+                                     <i class="fas fa-shield-alt"></i> Suivi 100% conservé
+                                 </span>
+                             </div>
+                             <input type="hidden" id="adminStudentEditId" value="">
+                             <input type="hidden" id="adminStudentOriginalName" value="">
+                             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:8px;">
+                                 <input type="text" id="adminStudentName" placeholder="Nom complet de l'élève *" style="grid-column: 1 / -1; padding:8px 11px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;">
+                                 <input type="text" id="adminStudentPhoto" placeholder="Lien photo (Google Drive / URL)" style="padding:8px 11px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                                 <input type="text" id="adminStudentBirthday" placeholder="Anniversaire (ex: 4/2014)" style="padding:8px 11px; border-radius:8px; border:1px solid #CBD5E1; background:white;">
+                             </div>
+                             <div style="display:flex; gap:8px; align-items:center;">
+                                 <button type="button" id="adminStudentSubmitBtn" class="pro-button success-button" onclick="adminAddOrUpdateStudent()" style="flex:1; padding:9px 14px; font-size:0.88rem; font-weight:700; border-radius:8px;">
+                                     <i class="fas fa-save"></i> <span id="adminStudentSubmitBtnTxt">Enregistrer l'Élève</span>
+                                 </button>
+                                 <button type="button" id="adminStudentCancelEditBtn" class="pro-button secondary-button" onclick="resetAdminStudentForm()" style="display:none; padding:9px 12px; font-size:0.84rem; border-radius:8px;">
+                                     Annuler
+                                 </button>
+                             </div>
+                         </div>
+
+                         <!-- Carte 2 : Déplacer un Élève vers une Autre Classe -->
+                         <div style="background:#F8FAFC; border:1.5px solid #CBD5E1; border-radius:12px; padding:15px; display:flex; flex-direction:column; justify-content:space-between;">
+                             <div>
+                                 <h5 style="margin:0 0 10px 0; color:#1E1B4B; font-weight:800; font-size:0.95rem; display:flex; align-items:center; gap:6px;">
+                                     <i class="fas fa-exchange-alt" style="color:#2563EB;"></i> <span>Déplacer un Élève vers une Autre Classe</span>
+                                 </h5>
+                                 <div style="display:grid; grid-template-columns: 1.3fr 1fr; gap:8px; margin-bottom:10px;">
+                                     <div>
+                                         <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:3px;">Élève à déplacer :</label>
+                                         <select id="adminMoveStudentSelector" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;">
+                                             <option value="">-- Choisir un élève --</option>
+                                         </select>
+                                     </div>
+                                     <div>
+                                         <label style="font-size:0.78rem; font-weight:700; color:#475569; display:block; margin-bottom:3px;">Nouvelle Classe :</label>
+                                         <select id="adminMoveTargetClass" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #CBD5E1; font-weight:600; background:white;">
+                                             <option value="PEI1">السادس (PEI1)</option>
+                                             <option value="PEI2">الاول متوسط (PEI2)</option>
+                                             <option value="PEI3">الثاني متوسط (PEI3)</option>
+                                             <option value="PEI4">الثالث متوسط (PEI4)</option>
+                                             <option value="PEI5">الأول ثانوي (PEI5)</option>
+                                             <option value="DP1">الثاني ثانوي (DP1)</option>
+                                             <option value="DP2">الثالث ثانوي (DP2)</option>
+                                         </select>
+                                     </div>
+                                 </div>
+                             </div>
+                             <button type="button" class="pro-button primary-button" onclick="adminQuickMoveStudent()" style="width:100%; padding:9px 14px; font-size:0.88rem; font-weight:700; border-radius:8px;">
+                                 <i class="fas fa-check-circle"></i> Transférer l'élève avec son suivi
+                             </button>
+                         </div>
+                     </div>
+
+                     <div id="adminStudentStatus" style="font-size:0.9em; margin-bottom:10px; margin-top:4px;"></div>
 
                      <div id="studentsTableContainer" class="users-table-wrapper">
                          <p>Chargement des élèves...</p>
@@ -2117,9 +2152,19 @@
                     <!-- CARTE D'IDENTITÉ DE L'ÉLÈVE AVEC RÉSUMÉ RAPIDE DE PROGRESSION -->
                     <div style="background:linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-radius:20px; padding:22px 26px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px; box-shadow:0 6px 22px rgba(15,23,42,0.06); border:1.5px solid #E2E8F0; margin-bottom:20px;">
                         <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
-                            <img id="student-profile-photo" src="" alt="Élève" style="width:94px; height:94px; border-radius:50%; object-fit:cover; border:4px solid #3B82F6; box-shadow:0 4px 12px rgba(37,99,235,0.2); background:#EFF6FF;">
+                            <div style="position:relative; width:94px; height:94px; flex-shrink:0;">
+                                <img id="student-profile-photo" src="" alt="Élève" style="width:94px; height:94px; border-radius:50%; object-fit:cover; border:4px solid #3B82F6; box-shadow:0 4px 12px rgba(37,99,235,0.2); background:#EFF6FF;">
+                                <button type="button" id="btnQuickEditStudentPhoto" onclick="openEditCurrentStudentModal()" title="Modifier la photo ou le nom de l'élève (sans perdre son suivi)" style="position:absolute; bottom:0; right:0; width:32px; height:32px; border-radius:50%; background:#2563EB; color:white; border:2px solid white; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(37,99,235,0.4); font-size:0.82rem; transition:transform 0.2s;">
+                                    <i class="fas fa-camera"></i>
+                                </button>
+                            </div>
                             <div>
-                                <h2 id="student-profile-name" style="margin:0; color:#0F172A; font-size:1.45rem; font-weight:800; letter-spacing:-0.3px;"></h2>
+                                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                    <h2 id="student-profile-name" style="margin:0; color:#0F172A; font-size:1.45rem; font-weight:800; letter-spacing:-0.3px;"></h2>
+                                    <button type="button" id="btnEditStudentIdentity" onclick="openEditCurrentStudentModal()" class="pro-button" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:none;" title="Modifier le nom ou la photo de l'élève sans perdre son suivi">
+                                        <i class="fas fa-user-edit"></i> <span id="lblEditStudentBtn">Modifier nom / photo</span>
+                                    </button>
+                                </div>
                                 <p id="student-profile-details" style="color:#64748B; margin:5px 0 8px 0; font-weight:600; font-size:0.95rem;"></p>
                                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                                     <span id="student-progress-badge" class="status-text" style="font-size:0.86rem; cursor:pointer;" onclick="switchStudentDashboardSection('progress')" title="Cliquer pour voir le détail de la progression"></span>
@@ -3849,6 +3894,81 @@
                 </button>
                 <button type="button" id="confirmAdminDeleteRowBtn" onclick="confirmAdminDeleteSelectedRow()" class="pro-button" disabled style="background:#DC2626; color:white; border:none; padding:9px 20px; border-radius:8px; cursor:pointer; font-weight:700; opacity:0.6;">
                     <i class="fas fa-trash-alt"></i> Supprimer définitivement
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE MODIFICATION DU NOM OU DE LA PHOTO DE L'ÉLÈVE (SANS PERDRE SON SUIVI) -->
+    <div id="editStudentProfileModal" class="hw-modal" style="display:none; z-index:99999;">
+        <div class="hw-modal-content" style="max-width:520px; border-radius:20px; padding:26px; background:white; box-shadow:0 24px 50px rgba(15,23,42,0.25); border:1px solid #E2E8F0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #F1F5F9; padding-bottom:14px; margin-bottom:16px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:42px; height:42px; border-radius:12px; background:#EFF6FF; color:#2563EB; display:flex; align-items:center; justify-content:center; font-size:1.2rem;">
+                        <i class="fas fa-user-edit"></i>
+                    </div>
+                    <div>
+                        <h3 id="editStudentModalTitle" style="margin:0; font-size:1.15rem; color:#0F172A; font-weight:800;">Modifier le profil de l'élève</h3>
+                        <p id="editStudentModalSubtitle" style="margin:2px 0 0 0; font-size:0.8rem; color:#059669; font-weight:700;">
+                            <i class="fas fa-shield-alt"></i> Tout l'historique des devoirs, étoiles et évaluations est conservé
+                        </p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeEditStudentProfileModal()" style="border:none; background:#F1F5F9; width:34px; height:34px; border-radius:50%; font-size:1.2rem; color:#64748B; cursor:pointer; display:flex; align-items:center; justify-content:center;">&times;</button>
+            </div>
+
+            <input type="hidden" id="editStudentModalId" value="">
+            <input type="hidden" id="editStudentModalOriginalName" value="">
+            <input type="hidden" id="editStudentModalSection" value="">
+            <input type="hidden" id="editStudentModalClass" value="">
+
+            <!-- Aperçu de la photo en direct -->
+            <div style="display:flex; align-items:center; gap:16px; background:#F8FAFC; padding:12px 16px; border-radius:14px; border:1px solid #E2E8F0; margin-bottom:16px;">
+                <img id="editStudentModalAvatarPreview" src="" alt="Aperçu" style="width:72px; height:72px; border-radius:50%; object-fit:cover; border:3px solid #3B82F6; background:white; flex-shrink:0;">
+                <div style="flex:1;">
+                    <div id="editStudentModalPreviewName" style="font-weight:800; color:#0F172A; font-size:1rem;">Nom de l'élève</div>
+                    <div id="editStudentModalPreviewClass" style="font-size:0.82rem; color:#64748B; font-weight:600; margin-top:2px;">Classe</div>
+                    <label for="editStudentModalPhotoFile" style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:5px 11px; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; border-radius:8px; font-size:0.78rem; font-weight:700; cursor:pointer;">
+                        <i class="fas fa-upload"></i> Choisir une photo depuis l'appareil
+                    </label>
+                    <input type="file" id="editStudentModalPhotoFile" accept="image/*" style="display:none;" onchange="handleStudentPhotoFileUpload(event)">
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label for="editStudentModalNameInput" id="lblEditStudentName" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.88rem;">
+                    <i class="fas fa-user" style="color:#2563EB;"></i> Nom complet de l'élève :
+                </label>
+                <input type="text" id="editStudentModalNameInput" oninput="document.getElementById('editStudentModalPreviewName').textContent = this.value || 'Nom de l\'élève'" placeholder="Nom de l'élève" style="width:100%; padding:10px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.95rem; font-weight:700; color:#0F172A; box-sizing:border-box;">
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label for="editStudentModalPhotoInput" id="lblEditStudentPhoto" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.88rem;">
+                    <i class="fas fa-image" style="color:#0EA5E9;"></i> Lien Photo (Google Drive ou URL d'image) :
+                </label>
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="editStudentModalPhotoInput" oninput="updateEditStudentModalPhotoPreview(this.value)" placeholder="Coller un lien Google Drive ou URL d'image..." style="flex:1; padding:10px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; box-sizing:border-box;">
+                    <button type="button" onclick="updateEditStudentModalPhotoPreview('')" class="pro-button" style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; padding:8px 12px; border-radius:10px; font-size:0.82rem; font-weight:700; cursor:pointer;" title="Effacer la photo">
+                        <i class="fas fa-eraser"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div style="margin-bottom:18px;">
+                <label for="editStudentModalBirthdayInput" id="lblEditStudentBirthday" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.88rem;">
+                    <i class="fas fa-birthday-cake" style="color:#EC4899;"></i> Date d'anniversaire (optionnel) :
+                </label>
+                <input type="text" id="editStudentModalBirthdayInput" placeholder="Ex: 04/2014 ou 15/05/2015" style="width:100%; padding:10px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; box-sizing:border-box;">
+            </div>
+
+            <div id="editStudentModalStatus" style="margin-bottom:12px; font-size:0.88rem; font-weight:700;"></div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid #F1F5F9; padding-top:14px;">
+                <button type="button" onclick="closeEditStudentProfileModal()" class="pro-button" style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer;">
+                    Annuler
+                </button>
+                <button type="button" id="btnSaveStudentProfileModal" onclick="saveEditedStudentProfile()" class="pro-button success-button" style="background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; border:none; padding:10px 22px; border-radius:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 4px 14px rgba(37,99,235,0.3);">
+                    <i class="fas fa-save"></i> <span>Enregistrer sans perdre le suivi</span>
                 </button>
             </div>
         </div>

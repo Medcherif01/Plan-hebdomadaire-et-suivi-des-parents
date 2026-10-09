@@ -2841,20 +2841,23 @@
                     if (isMetaCol(h)) {
                         th.classList.add('col-meta-compact');
                         th.style.width = '1%';
+                        th.style.maxWidth = '72px';
+                        th.style.padding = '6px 4px';
+                        th.style.fontSize = '0.76rem';
                         th.style.whiteSpace = 'nowrap';
                     } else {
                         th.classList.add('col-editable-header');
                         th.style.width = 'auto';
-                        th.style.minWidth = '220px';
+                        th.style.minWidth = '240px';
                     }
                     
                     const getColIcon = (col) => {
                         const c = String(col).toLowerCase();
-                        if (c.includes('enseign') || c.includes('معلم') || c.includes('teacher')) return '<i class="fas fa-chalkboard-teacher" style="margin-right:6px; color:#4F46E5;"></i>';
-                        if (c.includes('class') || c.includes('صف') || c.includes('grade')) return '<i class="fas fa-graduation-cap" style="margin-right:6px; color:#059669;"></i>';
-                        if (c.includes('mati') || c.includes('مادة') || c.includes('subject')) return '<i class="fas fa-book" style="margin-right:6px; color:#2563EB;"></i>';
-                        if (c.includes('périod') || c.includes('period') || c.includes('حصة')) return '<i class="fas fa-clock" style="margin-right:6px; color:#D97706;"></i>';
-                        if (c.includes('jour') || c.includes('يوم') || c.includes('day')) return '<i class="fas fa-calendar-day" style="margin-right:6px; color:#7C3AED;"></i>';
+                        if (c.includes('enseign') || c.includes('معلم') || c.includes('teacher')) return '<i class="fas fa-chalkboard-teacher" style="margin-right:3px; color:#4F46E5; font-size:0.75rem;"></i>';
+                        if (c.includes('class') || c.includes('صف') || c.includes('grade')) return '<i class="fas fa-graduation-cap" style="margin-right:3px; color:#059669; font-size:0.75rem;"></i>';
+                        if (c.includes('mati') || c.includes('مادة') || c.includes('subject')) return '<i class="fas fa-book" style="margin-right:3px; color:#2563EB; font-size:0.75rem;"></i>';
+                        if (c.includes('périod') || c.includes('period') || c.includes('حصة')) return '<i class="fas fa-clock" style="margin-right:3px; color:#D97706; font-size:0.75rem;"></i>';
+                        if (c.includes('jour') || c.includes('يوم') || c.includes('day')) return '<i class="fas fa-calendar-day" style="margin-right:3px; color:#7C3AED; font-size:0.75rem;"></i>';
                         if (c.includes('leçon') || c.includes('lecon') || c.includes('درس') || c.includes('lesson')) return '<i class="fas fa-book-open" style="margin-right:6px; color:#0891B2;"></i>';
                         if (c.includes('trav') || c.includes('صفي') || c.includes('work')) return '<i class="fas fa-tasks" style="margin-right:6px; color:#64748B;"></i>';
                         if (c.includes('devoir') || c.includes('واجب') || c.includes('homework')) return '<i class="fas fa-pen-fancy" style="margin-right:6px; color:#16A34A;"></i>';
@@ -3519,13 +3522,16 @@ function displayPlanTable(data) {
                     };
                     if (isMetaColHeader(header)) {
                         td.classList.add('col-meta-compact');
+                        td.style.padding = '5px 4px';
+                        td.style.fontSize = '0.78rem';
                         if (header === matK) {
                             td.classList.add('col-matiere-cell');
-                            td.style.width = '130px';
-                            td.style.maxWidth = '160px';
+                            td.style.width = '72px';
+                            td.style.maxWidth = '86px';
                             td.style.whiteSpace = 'normal';
                             td.style.wordBreak = 'break-word';
                             td.style.overflowWrap = 'break-word';
+                            td.style.lineHeight = '1.25';
                             const isArabicSubjectName = (typeof containsArabic === 'function' && containsArabic(content)) ||
                                 /[\u0600-\u06FF]/.test(String(content || '')) ||
                                 /arabe|coran|islam|quran|hadith|fiqh|tarbiya|tajweed|civique|charia/i.test(String(content || ''));
@@ -3534,18 +3540,34 @@ function displayPlanTable(data) {
                                 td.style.textAlign = 'center';
                                 td.style.direction = 'rtl';
                             }
-                        } else {
-                            td.style.width = '1%';
+                        } else if (header === perK) {
+                            td.style.width = '36px';
+                            td.style.maxWidth = '42px';
                             td.style.whiteSpace = 'nowrap';
+                        } else if (header === clsK) {
+                            td.style.width = '52px';
+                            td.style.maxWidth = '62px';
+                            td.style.whiteSpace = 'normal';
+                            td.style.lineHeight = '1.2';
+                        } else if (header === jK) {
+                            td.style.width = '58px';
+                            td.style.maxWidth = '68px';
+                            td.style.whiteSpace = 'normal';
+                            td.style.lineHeight = '1.2';
+                        } else {
+                            td.style.width = '62px';
+                            td.style.maxWidth = '72px';
+                            td.style.whiteSpace = 'normal';
+                            td.style.lineHeight = '1.2';
                         }
                     }
                     
                     // Une ligne d'une autre section est TOUJOURS en lecture seule (non éditable)
                     const isEditable = !isCrossReadOnly && editHdrKeys.includes(header);
-                    if (isEditable) {
+                    if (isEditable && !isMetaColHeader(header)) {
                         td.classList.add('col-editable-content');
                         td.style.width = 'auto';
-                        td.style.minWidth = '220px';
+                        td.style.minWidth = '240px';
                     }
 
                     if (header === ensK && (!content || !content.trim()) && !isCrossReadOnly) {
@@ -7707,8 +7729,14 @@ function renderStudentsGrid(students, className, section) {
         const safeName = (s.name || '').trim();
         const photoSrc = (s.photo && s.photo.trim() !== '') ? s.photo : fallbackAvatar;
         const escapedName = escapeHtml(safeName).replace(/'/g, "\\'");
+        const escapedId = escapeHtml(s._id || '').replace(/'/g, "\\'");
+        const escapedPhoto = escapeHtml(s.photo || '').replace(/'/g, "\\'");
+        const escapedBirthday = escapeHtml(s.birthday || '').replace(/'/g, "\\'");
         return `
-            <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapedName}', '${className}')" style="background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.25s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
+            <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapedName}', '${className}')" style="position:relative; background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.25s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
+                <button type="button" onclick="event.stopPropagation(); openEditStudentProfileModal('${escapedId}', '${escapedName}', '${className}', '${section}', '${escapedPhoto}', '${escapedBirthday}')" title="${currentUserLanguage === 'ar' ? 'تعديل الاسم أو الصورة (مع حفظ المتابعة)' : 'Modifier le nom ou la photo (sans perdre le suivi)'}" style="position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.78rem; transition:all 0.2s; z-index:2;" onmouseover="this.style.background='#2563EB'; this.style.color='white';" onmouseout="this.style.background='#EFF6FF'; this.style.color='#2563EB';">
+                    <i class="fas fa-pen"></i>
+                </button>
                 <div style="position:relative; width:96px; height:96px; margin:0 auto 12px auto; overflow:hidden; border-radius:50%;">
                     <img src="${photoSrc}" loading="lazy" decoding="async" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(safeName)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${borderColor}; background:#F8FAFC; display:block; margin:0 auto;">
                 </div>
@@ -8894,54 +8922,70 @@ async function loadAdminStudentsList() {
         }
 
         const fallbackAvatar = getStudentFallbackAvatar(section);
+        window.adminLoadedStudentsList = studentsToDisplay;
         container.innerHTML = `
-            <div style="margin-bottom:8px; font-size:0.85rem; color:#475569;">
-                Total affiché : <strong>${studentsToDisplay.length}</strong> élève(s)
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:0.85rem; color:#475569;">
+                <span>Total affiché : <strong id="adminStudentsDisplayedCount">${studentsToDisplay.length}</strong> élève(s)</span>
+                <span style="color:#059669; font-weight:600;"><i class="fas fa-check-circle"></i> Cliquez sur « Modifier » pour changer le nom ou la photo sans perdre le suivi</span>
             </div>
-            <table class="users-table">
+            <table class="users-table" id="adminStudentsTableElement">
                 <thead>
                     <tr>
-                        <th style="width:60px;">Photo</th>
+                        <th style="width:56px;">Photo</th>
                         <th>Nom de l'élève</th>
-                        <th>Classe actuelle</th>
+                        <th>Classe</th>
                         <th>Anniversaire</th>
                         <th>Déplacer vers une autre classe</th>
-                        <th style="width:60px;">Action</th>
+                        <th style="width:140px; text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${studentsToDisplay.map((s, idx) => {
                         const safeId = `row_${idx}_` + (s._id || s.name).replace(/[^a-zA-Z0-9_-]/g, '_');
+                        const escapedId = (s._id || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         const escapedName = (s.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        const escapedPhoto = (s.photo || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                        const escapedBirthday = (s.birthday || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
                         const photoSrc = s.photo && s.photo.trim() ? s.photo : fallbackAvatar;
                         return `
-                        <tr>
-                            <td>
+                        <tr class="admin-student-row" data-student-name="${escapeHtml((s.name || '').toLowerCase())}">
+                            <td style="text-align:center;">
                                 <img src="${photoSrc}" 
-                                     style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:1px solid #CBD5E1; background:#F1F5F9;" 
+                                     style="width:42px; height:42px; border-radius:50%; object-fit:cover; border:2px solid #CBD5E1; background:#F1F5F9; cursor:pointer;" 
+                                     title="Cliquer pour modifier la photo ou le nom"
+                                     onclick="openEditStudentProfileModal('${escapedId}', '${escapedName}', '${s.class}', '${section}', '${escapedPhoto}', '${escapedBirthday}')"
                                      onerror="this.onerror=null; this.src='${fallbackAvatar}';">
                             </td>
-                            <td><strong>${s.name}</strong></td>
                             <td>
-                                <span style="background:#E0E7FF; color:#3730A3; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.85rem; display:inline-block;">
-                                    ${s.class}
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <strong style="color:#0F172A; font-size:0.95rem;">${escapeHtml(s.name)}</strong>
+                                </div>
+                            </td>
+                            <td>
+                                <span style="background:#E0E7FF; color:#3730A3; padding:4px 10px; border-radius:6px; font-weight:700; font-size:0.82rem; display:inline-block;">
+                                    ${escapeHtml(s.class)}
                                 </span>
                             </td>
-                            <td>${s.birthday || '-'}</td>
+                            <td>${escapeHtml(s.birthday || '-')}</td>
                             <td>
-                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                                     <select id="moveClass_${safeId}" class="move-student-select" style="padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1; font-weight:600;">
                                         ${allClasses.map(c => `<option value="${c.id}" ${c.id === s.class ? 'selected' : ''}>${c.label}</option>`).join('')}
                                     </select>
-                                    <button type="button" class="btn-sm-move" style="background:#2563EB; color:white; border:none; border-radius:6px; padding:6px 12px; cursor:pointer; font-weight:600; display:inline-flex; align-items:center; gap:5px;" onclick="adminMoveStudent('${s._id || ''}', '${escapedName}', '${s.class}', 'moveClass_${safeId}')">
+                                    <button type="button" class="btn-sm-move" style="background:#2563EB; color:white; border:none; border-radius:6px; padding:6px 10px; cursor:pointer; font-weight:600; display:inline-flex; align-items:center; gap:4px; font-size:0.8rem;" onclick="adminMoveStudent('${escapedId}', '${escapedName}', '${s.class}', 'moveClass_${safeId}')">
                                         <i class="fas fa-exchange-alt"></i> Déplacer
                                     </button>
                                 </div>
                             </td>
-                            <td>
-                                <button class="btn-sm-delete" style="background:#EF4444; color:white; border:none; border-radius:6px; padding:6px 10px; cursor:pointer;" onclick="adminDeleteStudent('${s._id || ''}', '${escapedName}', '${s.class}')" title="Supprimer l'élève">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
+                            <td style="text-align:center; white-space:nowrap;">
+                                <div style="display:inline-flex; gap:6px; align-items:center;">
+                                    <button type="button" class="btn-sm-edit" style="background:#0EA5E9; color:white; border:none; border-radius:6px; padding:6px 10px; cursor:pointer; font-weight:700; display:inline-flex; align-items:center; gap:4px; font-size:0.8rem;" onclick="openEditStudentProfileModal('${escapedId}', '${escapedName}', '${s.class}', '${section}', '${escapedPhoto}', '${escapedBirthday}')" title="Modifier le nom ou la photo sans perdre le suivi">
+                                        <i class="fas fa-user-edit"></i> Modifier
+                                    </button>
+                                    <button type="button" class="btn-sm-delete" style="background:#EF4444; color:white; border:none; border-radius:6px; padding:6px 10px; cursor:pointer;" onclick="adminDeleteStudent('${escapedId}', '${escapedName}', '${s.class}')" title="Supprimer l'élève">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                         `;
@@ -8953,6 +8997,45 @@ async function loadAdminStudentsList() {
         console.error('Erreur loadAdminStudentsList:', e);
     }
 }
+
+function filterAdminStudentsTable(query) {
+    const q = (query || '').trim().toLowerCase();
+    const rows = document.querySelectorAll('#adminStudentsTableElement tbody tr.admin-student-row');
+    let visible = 0;
+    rows.forEach(r => {
+        const name = r.getAttribute('data-student-name') || '';
+        if (!q || name.includes(q)) {
+            r.style.display = '';
+            visible++;
+        } else {
+            r.style.display = 'none';
+        }
+    });
+    const countEl = document.getElementById('adminStudentsDisplayedCount');
+    if (countEl) countEl.textContent = String(visible);
+}
+window.filterAdminStudentsTable = filterAdminStudentsTable;
+
+function resetAdminStudentForm() {
+    const idEl = document.getElementById('adminStudentEditId');
+    const origEl = document.getElementById('adminStudentOriginalName');
+    const nameEl = document.getElementById('adminStudentName');
+    const photoEl = document.getElementById('adminStudentPhoto');
+    const bdayEl = document.getElementById('adminStudentBirthday');
+    const headingEl = document.getElementById('adminStudentFormHeading');
+    const btnTxt = document.getElementById('adminStudentSubmitBtnTxt');
+    const cancelBtn = document.getElementById('adminStudentCancelEditBtn');
+
+    if (idEl) idEl.value = '';
+    if (origEl) origEl.value = '';
+    if (nameEl) nameEl.value = '';
+    if (photoEl) photoEl.value = '';
+    if (bdayEl) bdayEl.value = '';
+    if (headingEl) headingEl.innerHTML = '<i class="fas fa-user-plus" style="color:#10B981;"></i> <span>Ajouter ou Modifier un Élève</span>';
+    if (btnTxt) btnTxt.textContent = "Enregistrer l'Élève";
+    if (cancelBtn) cancelBtn.style.display = 'none';
+}
+window.resetAdminStudentForm = resetAdminStudentForm;
 
 async function adminMoveStudent(studentId, studentName, oldClass, selectElementId) {
     try {
@@ -9075,38 +9158,281 @@ async function adminQuickMoveStudent() {
 
 async function adminAddOrUpdateStudent() {
     try {
-        const name = document.getElementById('adminStudentName')?.value;
-        const photo = document.getElementById('adminStudentPhoto')?.value;
-        const birthday = document.getElementById('adminStudentBirthday')?.value;
-        const className = document.getElementById('adminStudentClassFilter')?.value || 'PEI1';
+        const id = document.getElementById('adminStudentEditId')?.value || '';
+        const originalName = document.getElementById('adminStudentOriginalName')?.value || '';
+        const name = document.getElementById('adminStudentName')?.value?.trim();
+        const photo = document.getElementById('adminStudentPhoto')?.value?.trim() || '';
+        const birthday = document.getElementById('adminStudentBirthday')?.value?.trim() || '';
+        let className = document.getElementById('adminStudentClassFilter')?.value || 'PEI1';
         const section = document.getElementById('adminStudentSectionFilter')?.value || 'garcons';
         const statusEl = document.getElementById('adminStudentStatus');
 
         if (!name) {
-            if (statusEl) statusEl.innerHTML = '<span style="color:red;">Le nom de l\'élève est obligatoire.</span>';
+            if (statusEl) statusEl.innerHTML = '<span style="color:#DC2626; font-weight:700;"><i class="fas fa-exclamation-circle"></i> Le nom de l\'élève est obligatoire.</span>';
             return;
         }
+        if (className === 'all') {
+            const secClasses = getSectionClasses(section);
+            className = secClasses[0] || 'PEI1';
+        }
+
+        if (statusEl) statusEl.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement en cours...</span>';
 
         const res = await fetch('/api/admin/students', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, photo, birthday, class: className, section })
+            body: JSON.stringify({ id, originalName, name, photo, birthday, class: className, section })
         });
 
+        const data = await res.json().catch(() => ({}));
         if (res.ok) {
             if (typeof studentsClientCache !== 'undefined') studentsClientCache.clear();
-            if (statusEl) statusEl.innerHTML = '<span style="color:green;">Élève enregistré avec succès.</span>';
-            document.getElementById('adminStudentName').value = '';
-            document.getElementById('adminStudentPhoto').value = '';
-            document.getElementById('adminStudentBirthday').value = '';
+            if (statusEl) statusEl.innerHTML = `<span style="color:#059669; font-weight:700;"><i class="fas fa-check-circle"></i> ${data.message || 'Élève enregistré avec succès (suivi conservé).'}</span>`;
+            resetAdminStudentForm();
             loadAdminStudentsList();
+            if (currentActiveClassName) {
+                loadClassStudents(currentActiveClassName, true);
+            }
         } else {
-            if (statusEl) statusEl.innerHTML = '<span style="color:red;">Erreur lors de l\'enregistrement.</span>';
+            if (statusEl) statusEl.innerHTML = `<span style="color:#DC2626; font-weight:700;">${data.message || 'Erreur lors de l\'enregistrement.'}</span>`;
         }
     } catch (e) {
         console.error('Erreur adminAddOrUpdateStudent:', e);
     }
 }
+
+// ============================================================================
+// MODALE DE MODIFICATION DU PROFIL ÉLÈVE (NOM, PHOTO, ANNIVERSAIRE) SANS PERDRE LE SUIVI
+// ============================================================================
+
+function openEditStudentProfileModal(id, name, className, section, photo, birthday) {
+    const modal = document.getElementById('editStudentProfileModal');
+    if (!modal) return;
+
+    const targetSection = section || currentSection || 'garcons';
+    const targetClass = className || currentActiveClassName || 'PEI1';
+    const cleanName = (name || '').trim();
+    let cleanPhoto = (photo || '').trim();
+    let cleanBirthday = (birthday || '').trim();
+
+    // Chercher les informations complètes en mémoire si non passées
+    if ((!cleanPhoto || !cleanBirthday) && window.currentLoadedStudentsMap) {
+        const stMem = window.currentLoadedStudentsMap.get(cleanName.toLowerCase());
+        if (stMem) {
+            if (!cleanPhoto && stMem.photo) cleanPhoto = stMem.photo;
+            if (!cleanBirthday && stMem.birthday) cleanBirthday = stMem.birthday;
+            if (!id && stMem._id) id = stMem._id;
+        }
+    }
+
+    document.getElementById('editStudentModalId').value = id || '';
+    document.getElementById('editStudentModalOriginalName').value = cleanName;
+    document.getElementById('editStudentModalSection').value = targetSection;
+    document.getElementById('editStudentModalClass').value = targetClass;
+
+    const nameInput = document.getElementById('editStudentModalNameInput');
+    const photoInput = document.getElementById('editStudentModalPhotoInput');
+    const bdayInput = document.getElementById('editStudentModalBirthdayInput');
+    const previewName = document.getElementById('editStudentModalPreviewName');
+    const previewClass = document.getElementById('editStudentModalPreviewClass');
+    const statusEl = document.getElementById('editStudentModalStatus');
+    const fileInput = document.getElementById('editStudentModalPhotoFile');
+
+    if (nameInput) nameInput.value = cleanName;
+    if (photoInput) photoInput.value = cleanPhoto;
+    if (bdayInput) bdayInput.value = cleanBirthday;
+    if (previewName) previewName.textContent = cleanName || "Nom de l'élève";
+    if (previewClass) previewClass.textContent = `Classe : ${targetClass}`;
+    if (statusEl) statusEl.innerHTML = '';
+    if (fileInput) fileInput.value = '';
+
+    updateEditStudentModalPhotoPreview(cleanPhoto, targetSection);
+    modal.style.display = 'flex';
+}
+window.openEditStudentProfileModal = openEditStudentProfileModal;
+
+function openEditCurrentStudentModal() {
+    if (!selectedStudentObj || !selectedStudentObj.name) return;
+    const section = currentSection || 'garcons';
+    const cleanName = selectedStudentObj.name;
+    const className = selectedStudentObj.class || currentActiveClassName || 'PEI1';
+    let photo = '';
+    let birthday = '';
+    let id = '';
+
+    if (window.currentLoadedStudentsMap) {
+        const st = window.currentLoadedStudentsMap.get(cleanName.toLowerCase());
+        if (st) {
+            photo = st.photo || '';
+            birthday = st.birthday || '';
+            id = st._id || '';
+        }
+    }
+    const imgEl = document.getElementById('student-profile-photo');
+    if (!photo && imgEl && imgEl.src && !imgEl.src.startsWith('data:image/svg')) {
+        photo = imgEl.src;
+    }
+
+    openEditStudentProfileModal(id, cleanName, className, section, photo, birthday);
+}
+window.openEditCurrentStudentModal = openEditCurrentStudentModal;
+
+function closeEditStudentProfileModal() {
+    const modal = document.getElementById('editStudentProfileModal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeEditStudentProfileModal = closeEditStudentProfileModal;
+
+function updateEditStudentModalPhotoPreview(urlVal, sectionOverride) {
+    const photoInput = document.getElementById('editStudentModalPhotoInput');
+    if (photoInput && urlVal !== undefined && photoInput.value !== urlVal) {
+        photoInput.value = urlVal;
+    }
+    const section = sectionOverride || document.getElementById('editStudentModalSection')?.value || currentSection || 'garcons';
+    const fallback = getStudentFallbackAvatar(section);
+    const previewImg = document.getElementById('editStudentModalAvatarPreview');
+    if (!previewImg) return;
+
+    const raw = (urlVal || '').trim();
+    if (!raw) {
+        previewImg.src = fallback;
+        return;
+    }
+    const formatted = (typeof formatDriveImageUrl === 'function') ? formatDriveImageUrl(raw) : raw;
+    previewImg.src = formatted;
+    previewImg.onerror = function() {
+        this.onerror = null;
+        this.src = fallback;
+    };
+}
+window.updateEditStudentModalPhotoPreview = updateEditStudentModalPhotoPreview;
+
+function handleStudentPhotoFileUpload(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const MAX_SIZE = 320;
+            let width = img.width;
+            let height = img.height;
+            if (width > height) {
+                if (width > MAX_SIZE) {
+                    height = Math.round((height * MAX_SIZE) / width);
+                    width = MAX_SIZE;
+                }
+            } else {
+                if (height > MAX_SIZE) {
+                    width = Math.round((width * MAX_SIZE) / height);
+                    height = MAX_SIZE;
+                }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.84);
+            updateEditStudentModalPhotoPreview(dataUrl);
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+window.handleStudentPhotoFileUpload = handleStudentPhotoFileUpload;
+
+async function saveEditedStudentProfile() {
+    const id = document.getElementById('editStudentModalId')?.value || '';
+    const originalName = document.getElementById('editStudentModalOriginalName')?.value?.trim() || '';
+    const section = document.getElementById('editStudentModalSection')?.value || currentSection || 'garcons';
+    let className = document.getElementById('editStudentModalClass')?.value || currentActiveClassName || 'PEI1';
+    const newName = document.getElementById('editStudentModalNameInput')?.value?.trim() || '';
+    const photo = document.getElementById('editStudentModalPhotoInput')?.value?.trim() || '';
+    const birthday = document.getElementById('editStudentModalBirthdayInput')?.value?.trim() || '';
+    const statusEl = document.getElementById('editStudentModalStatus');
+    const saveBtn = document.getElementById('btnSaveStudentProfileModal');
+
+    if (!newName) {
+        if (statusEl) statusEl.innerHTML = '<span style="color:#DC2626;"><i class="fas fa-exclamation-triangle"></i> Le nom de l\'élève ne peut pas être vide.</span>';
+        return;
+    }
+    if (!className || className === 'all') {
+        const secClasses = getSectionClasses(section);
+        className = secClasses[0] || 'PEI1';
+    }
+
+    if (saveBtn) saveBtn.disabled = true;
+    if (statusEl) statusEl.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Mise à jour du profil et synchronisation du suivi...</span>';
+
+    try {
+        const res = await fetch('/api/admin/students', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id,
+                originalName,
+                name: newName,
+                photo,
+                birthday,
+                class: className,
+                section
+            })
+        });
+
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok || result.success === false) {
+            throw new Error(result.message || 'Erreur lors de la mise à jour.');
+        }
+
+        if (typeof studentsClientCache !== 'undefined') studentsClientCache.clear();
+        const savedStudent = result.student || { _id: id, name: newName, photo, birthday, class: className, section };
+
+        // Mettre à jour la carte en mémoire
+        if (window.currentLoadedStudentsMap) {
+            if (originalName && originalName.toLowerCase() !== newName.toLowerCase()) {
+                window.currentLoadedStudentsMap.delete(originalName.toLowerCase());
+            }
+            window.currentLoadedStudentsMap.set(newName.toLowerCase(), savedStudent);
+        }
+
+        // Si le tableau de bord de cet élève est actuellement ouvert, le rafraîchir immédiatement sans quitter la vue
+        if (selectedStudentObj && (!originalName || selectedStudentObj.name.toLowerCase() === originalName.toLowerCase())) {
+            selectedStudentObj.name = newName;
+            selectedStudentObj.class = className;
+            const nameEl = document.getElementById('student-profile-name');
+            const photoEl = document.getElementById('student-profile-photo');
+            if (nameEl) nameEl.innerText = newName;
+            if (photoEl) {
+                const fallback = getStudentFallbackAvatar(section);
+                photoEl.src = savedStudent.photo && savedStudent.photo.trim() !== '' ? savedStudent.photo : fallback;
+            }
+        }
+
+        // Rafraîchir la grille des élèves et la table admin si visibles
+        if (typeof loadClassStudents === 'function' && className) {
+            loadClassStudents(className, true);
+        }
+        if (typeof loadAdminStudentsList === 'function' && document.getElementById('studentsTableContainer')) {
+            loadAdminStudentsList();
+        }
+
+        if (statusEl) statusEl.innerHTML = `<span style="color:#059669;"><i class="fas fa-check-circle"></i> ${result.message || 'Profil mis à jour avec succès !'}</span>`;
+        if (typeof showToastNotification === 'function') {
+            showToastNotification(result.message || 'Profil de l\'élève mis à jour (suivi conservé) !', 'success');
+        }
+
+        setTimeout(() => {
+            closeEditStudentProfileModal();
+        }, 650);
+    } catch (err) {
+        console.error('Erreur saveEditedStudentProfile:', err);
+        if (statusEl) statusEl.innerHTML = `<span style="color:#DC2626;"><i class="fas fa-exclamation-triangle"></i> ${err.message}</span>`;
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+window.saveEditedStudentProfile = saveEditedStudentProfile;
 
 async function adminDeleteStudent(id, name, className) {
     if (!confirm(`Voulez-vous vraiment supprimer l'élève '${name}' ?`)) return;

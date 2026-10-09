@@ -3247,33 +3247,73 @@ app.get('/api/admin/students', async (req, res) => {
 
 app.post('/api/admin/students', async (req, res) => {
   try {
-    const { id, name, photo, birthday, class: className, section = 'garcons' } = req.body;
+    const { id, name, originalName, oldName, photo, birthday, class: className, section = 'garcons' } = req.body;
     if (!name || !className || className === 'all') {
       return res.status(400).json({ success: false, message: 'Le nom et une classe valide sont requis.' });
     }
     const db = await connectToDatabase();
     const cleanName = name.trim();
+    const cleanOldName = (originalName || oldName || '').trim();
     const cleanClass = normalizeStudentClass(className) || className.trim();
-    const studentId = id || `${section}_${cleanClass}_${cleanName}`;
+    const studentId = `${section}_${cleanClass}_${cleanName}`;
     const formattedPhoto = convertGoogleDriveUrl(photo || '');
 
-    // Identifier l'ancien nom de l'élève avant modification éventuelle
+    // Identifier l'ancien élève avant modification éventuelle (par id, originalName ou nom actuel)
     let prevStudent = null;
     if (id) {
       prevStudent = await db.collection('students').findOne({ _id: id });
+      if (!prevStudent) {
+        try {
+          const { ObjectId } = require('mongodb');
+          if (ObjectId.isValid(id)) {
+            prevStudent = await db.collection('students').findOne({ _id: new ObjectId(id) });
+          }
+        } catch (e) {}
+      }
+    }
+    if (!prevStudent && cleanOldName) {
+      prevStudent = await db.collection('students').findOne({
+        name: { $regex: new RegExp(`^${cleanOldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        section: section
+      });
     }
     if (!prevStudent && studentId) {
       prevStudent = await db.collection('students').findOne({ _id: studentId });
     }
-    const prevName = prevStudent ? (prevStudent.name || '').trim() : '';
+    if (!prevStudent) {
+      prevStudent = await db.collection('students').findOne({
+        name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        section: section
+      });
+    }
 
-    // 1. Retirer immédiatement des élèves supprimés si présent
-    await db.collection('deleted_students').deleteMany({
-      name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
-      section: section
-    });
+    const prevName = cleanOldName || (prevStudent ? (prevStudent.name || '').trim() : '');
+    const prevId = prevStudent ? prevStudent._id : id;
 
-    // 2. Nettoyer les doublons potentiels de cet élève dans cette section
+    // 1. Retirer immédiatement des élèves supprimés si présent (nouveau nom et ancien nom)
+    const namesToUnblock = [cleanName];
+    if (prevName && prevName.toLowerCase() !== cleanName.toLowerCase()) {
+      namesToUnblock.push(prevName);
+    }
+    for (const n of namesToUnblock) {
+      await db.collection('deleted_students').deleteMany({
+        name: { $regex: new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        section: section
+      });
+    }
+
+    // 2. Si l'identifiant ou le nom a changé, supprimer l'ancien enregistrement pour éviter tout doublon
+    if (prevId && String(prevId) !== String(studentId)) {
+      await db.collection('students').deleteOne({ _id: prevId });
+    }
+    if (prevName && prevName.toLowerCase() !== cleanName.toLowerCase()) {
+      await db.collection('students').deleteMany({
+        name: { $regex: new RegExp(`^${prevName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        section: section
+      });
+    }
+
+    // 3. Nettoyer les doublons potentiels de cet élève dans cette section
     await db.collection('students').deleteMany({
       _id: { $ne: studentId },
       name: { $regex: new RegExp(`^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
@@ -3283,10 +3323,11 @@ app.post('/api/admin/students', async (req, res) => {
     const studentData = {
       _id: studentId,
       name: cleanName,
-      photo: formattedPhoto,
-      birthday: (birthday || '').trim(),
+      photo: formattedPhoto !== '' ? formattedPhoto : (photo === '' ? '' : (prevStudent?.photo || '')),
+      birthday: birthday !== undefined ? (birthday || '').trim() : (prevStudent?.birthday || ''),
       class: cleanClass,
       section: section,
+      createdAt: prevStudent?.createdAt || new Date(),
       updatedAt: new Date()
     };
 
@@ -3296,24 +3337,44 @@ app.post('/api/admin/students', async (req, res) => {
       { upsert: true }
     );
 
-    // 3. Si le nom a été modifié/corrigé par l'admin, propager vers toutes les évaluations et étoiles passées
-    if (prevName && prevName.toLowerCase() !== cleanName.toLowerCase()) {
+    // 4. Si le nom ou la classe a été modifié, propager vers TOUTES les collections de suivi sans perdre aucune donnée
+    if (prevName) {
       try {
         const nameRegex = { $regex: new RegExp(`^${prevName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') };
-        await db.collection('evaluations').updateMany(
-          { studentName: nameRegex, section: section },
-          { $set: { studentName: cleanName } }
-        );
-        await db.collection('daily_stars').updateMany(
-          { studentName: nameRegex, section: section },
-          { $set: { studentName: cleanName } }
-        );
+        const sectionOrMissing = { $or: [{ section: section }, { section: { $exists: false } }] };
+
+        if (prevName.toLowerCase() !== cleanName.toLowerCase() || (prevStudent && prevStudent.class !== cleanClass)) {
+          await db.collection('evaluations').updateMany(
+            { studentName: nameRegex, ...sectionOrMissing },
+            { $set: { studentName: cleanName, class: cleanClass, section: section } }
+          );
+          await db.collection('daily_stars').updateMany(
+            { studentName: nameRegex, ...sectionOrMissing },
+            { $set: { studentName: cleanName, class: cleanClass, className: cleanClass, section: section } }
+          );
+          await db.collection('teacher_messages').updateMany(
+            { studentName: nameRegex, ...sectionOrMissing },
+            { $set: { studentName: cleanName, studentClass: cleanClass } }
+          );
+        }
+
+        // Mettre à jour l'élève de la semaine s'il correspondait à cet élève (nom et/ou photo)
+        const sotwUpdate = {
+          name: cleanName,
+          studentName: cleanName,
+          class: cleanClass,
+          className: cleanClass
+        };
+        if (studentData.photo) {
+          sotwUpdate.photo = studentData.photo;
+          sotwUpdate.photoUrl = studentData.photo;
+        }
         await db.collection('students_of_the_week').updateMany(
-          { studentName: nameRegex, section: section },
-          { $set: { studentName: cleanName } }
+          { $or: [{ studentName: nameRegex }, { name: nameRegex }], section: section },
+          { $set: sotwUpdate }
         );
       } catch (propErr) {
-        console.warn('Note propagation renommage élève:', propErr.message);
+        console.warn('Note propagation renommage/modification élève:', propErr.message);
       }
     }
 
@@ -3322,7 +3383,14 @@ app.post('/api/admin/students', async (req, res) => {
 
     invalidateStudentsCache();
 
-    res.status(200).json({ success: true, message: `Élève '${cleanName}' enregistré avec succès.`, student: studentData });
+    res.status(200).json({
+      success: true,
+      message: prevName && prevName !== cleanName
+        ? `Élève '${prevName}' renommé en '${cleanName}' avec conservation intégrale de son suivi.`
+        : `Élève '${cleanName}' mis à jour avec succès (suivi conservé).`,
+      student: studentData,
+      previousName: prevName
+    });
   } catch (error) {
     console.error('Erreur POST /api/admin/students:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur lors de l\'enregistrement de l\'élève.' });

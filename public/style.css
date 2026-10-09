@@ -4681,4 +4681,62 @@ tr.row-plan-error {
     flex: 1 1 auto;
 }
 
+/* ==========================================================================
+   4. ULTRA-COMPACT METADATA COLUMNS & MAXIMUM SPACE FOR EDITABLE COLUMNS
+   ========================================================================== */
+#planTable {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+}
 
+/* Enseignant (1), Classe (2), Matière (3), Période (4), Jour (5) -> Ultra-compact */
+#planTable th.col-meta-compact,
+#planTable td.col-meta-compact,
+#planTable th:nth-child(1),
+#planTable td:nth-child(1),
+#planTable th:nth-child(2),
+#planTable td:nth-child(2),
+#planTable th:nth-child(3),
+#planTable td:nth-child(3),
+#planTable th:nth-child(4),
+#planTable td:nth-child(4),
+#planTable th:nth-child(5),
+#planTable td:nth-child(5) {
+    width: 1% !important;
+    padding: 6px 5px !important;
+    font-size: 0.76rem !important;
+    line-height: 1.25 !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+}
+
+#planTable th:nth-child(1), #planTable td:nth-child(1) { max-width: 72px !important; } /* Enseignant */
+#planTable th:nth-child(2), #planTable td:nth-child(2) { max-width: 50px !important; white-space: nowrap !important; } /* Classe */
+#planTable th:nth-child(3), #planTable td:nth-child(3) { max-width: 78px !important; word-break: break-word !important; } /* Matière */
+#planTable th:nth-child(4), #planTable td:nth-child(4) { max-width: 38px !important; white-space: nowrap !important; padding: 6px 3px !important; } /* Période */
+#planTable th:nth-child(5), #planTable td:nth-child(5) { max-width: 58px !important; white-space: nowrap !important; } /* Jour */
+
+/* Colonnes de contenu éditables (Contenu, Devoirs, Notes, etc.) -> Espace maximal */
+#planTable th.col-editable-wide,
+#planTable td.col-editable-wide,
+#planTable td.editable {
+    min-width: 220px !important;
+    width: auto !important;
+    padding: 12px 14px !important;
+    font-size: 0.94rem !important;
+    line-height: 1.55 !important;
+    vertical-align: top !important;
+}
+
+/* Student card edit button hover effect */
+.student-card-pro {
+    position: relative;
+}
+
+.student-card-edit-btn:hover {
+    background: #EFF6FF !important;
+    color: #2563EB !important;
+    border-color: #93C5FD !important;
+    transform: scale(1.08);
+}
