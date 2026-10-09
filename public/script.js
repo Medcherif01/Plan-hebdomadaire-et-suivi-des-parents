@@ -3560,8 +3560,25 @@ function displayPlanTable(data) {
                     };
                     if (isMetaColHeader(header)) {
                         td.classList.add('col-meta-compact');
-                        td.style.width = '1%';
-                        td.style.whiteSpace = 'nowrap';
+                        if (header === matK) {
+                            td.classList.add('col-matiere-cell');
+                            td.style.width = '130px';
+                            td.style.maxWidth = '160px';
+                            td.style.whiteSpace = 'normal';
+                            td.style.wordBreak = 'break-word';
+                            td.style.overflowWrap = 'break-word';
+                            const isArabicSubjectName = (typeof containsArabic === 'function' && containsArabic(content)) ||
+                                /[\u0600-\u06FF]/.test(String(content || '')) ||
+                                /arabe|coran|islam|quran|hadith|fiqh|tarbiya|tajweed|civique|charia/i.test(String(content || ''));
+                            if (isArabicSubjectName) {
+                                td.classList.add('matiere-arabic');
+                                td.style.textAlign = 'center';
+                                td.style.direction = 'rtl';
+                            }
+                        } else {
+                            td.style.width = '1%';
+                            td.style.whiteSpace = 'nowrap';
+                        }
                     }
                     
                     // Une ligne d'une autre section est TOUJOURS en lecture seule (non éditable)
@@ -14349,15 +14366,19 @@ function renderAdminScheduleGrid() {
                 const matEscaped = typeof escapeHtml === 'function' ? escapeHtml(slot.matiere) : slot.matiere;
                 const ensEscaped = typeof escapeHtml === 'function' ? escapeHtml(slot.enseignant || 'Non spécifié') : (slot.enseignant || 'Non spécifié');
 
+                const isArabicSlot = (typeof containsArabic === 'function' && containsArabic(slot.matiere)) ||
+                    /[\u0600-\u06FF]/.test(String(slot.matiere || '')) ||
+                    /arabe|coran|islam|quran|hadith|fiqh|tarbiya|tajweed|civique|charia/i.test(String(slot.matiere || ''));
+
                 td.innerHTML =
                     '<div style="display:flex; flex-direction:column; height:100%; justify-content:space-between; gap:4px;">' +
                         '<div>' +
                             '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:4px;">' +
-                                '<span style="font-weight:800; font-size:0.88rem; color:' + colors.text + '; display:flex; align-items:center; gap:5px;">' +
-                                    '<span style="width:8px; height:8px; border-radius:50%; background:' + colors.dot + '; display:inline-block;"></span>' +
-                                    matEscaped +
+                                '<span style="font-weight:800; font-size:0.88rem; color:' + colors.text + '; display:flex; align-items:center; gap:5px; flex:1; min-width:0; word-break:break-word; overflow-wrap:break-word; white-space:normal; line-height:1.25; ' + (isArabicSlot ? 'justify-content:center; text-align:center; direction:rtl;' : '') + '">' +
+                                    '<span style="width:8px; height:8px; border-radius:50%; background:' + colors.dot + '; display:inline-block; flex-shrink:0;"></span>' +
+                                    '<span style="white-space:normal; word-break:break-word; overflow-wrap:break-word; ' + (isArabicSlot ? 'text-align:center; direction:rtl;' : '') + '">' + matEscaped + '</span>' +
                                 '</span>' +
-                                '<button type="button" onclick="clearScheduleSlot(\'' + day + '\', ' + p + ')" title="Vider ce créneau" style="background:none; border:none; color:#EF4444; cursor:pointer; font-size:0.8rem; padding:1px 3px;">' +
+                                '<button type="button" onclick="clearScheduleSlot(\'' + day + '\', ' + p + ')" title="Vider ce créneau" style="background:none; border:none; color:#EF4444; cursor:pointer; font-size:0.8rem; padding:1px 3px; flex-shrink:0;">' +
                                     '<i class="fas fa-times"></i>' +
                                 '</button>' +
                             '</div>' +
@@ -14532,13 +14553,17 @@ function renderSubjectTeacherLinkingList() {
         optionsHtml += `<option value="__custom_new__">➕ Saisir / Renommer l'enseignant...</option>`;
 
         const safeMatId = escapeHtml(matiere).replace(/[^a-zA-Z0-9]/g, '_');
+        const isArabicMat = (typeof containsArabic === 'function' && containsArabic(matiere)) ||
+            /[\u0600-\u06FF]/.test(String(matiere || '')) ||
+            /arabe|coran|islam|quran|hadith|fiqh|tarbiya|tajweed|civique|charia/i.test(String(matiere || ''));
+
         itemDiv.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:800; font-size:0.86rem; color:${colors.text}; display:inline-flex; align-items:center; gap:6px;">
-                    <span style="width:8px; height:8px; border-radius:50%; background:${colors.dot};"></span>
-                    ${escapeHtml(matiere)}
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                <span style="font-weight:800; font-size:0.86rem; color:${colors.text}; display:inline-flex; align-items:center; gap:6px; flex:1; min-width:0; word-break:break-word; overflow-wrap:break-word; white-space:normal; line-height:1.25; ${isArabicMat ? 'direction:rtl; text-align:center; justify-content:center;' : ''}">
+                    <span style="width:8px; height:8px; border-radius:50%; background:${colors.dot}; flex-shrink:0;"></span>
+                    <span style="${isArabicMat ? 'direction:rtl; text-align:center;' : ''}">${escapeHtml(matiere)}</span>
                 </span>
-                ${currentTeacher ? `<span style="font-size:0.75rem; background:#DCFCE7; color:#15803D; font-weight:700; padding:2px 6px; border-radius:4px;"><i class="fas fa-check"></i> Lié</span>` : `<span style="font-size:0.75rem; background:#F1F5F9; color:#64748B; padding:2px 6px; border-radius:4px;">Non assigné</span>`}
+                ${currentTeacher ? `<span style="font-size:0.75rem; background:#DCFCE7; color:#15803D; font-weight:700; padding:2px 6px; border-radius:4px; white-space:nowrap; flex-shrink:0;"><i class="fas fa-check"></i> Lié</span>` : `<span style="font-size:0.75rem; background:#F1F5F9; color:#64748B; padding:2px 6px; border-radius:4px; white-space:nowrap; flex-shrink:0;">Non assigné</span>`}
             </div>
             <div style="display:flex; gap:6px; align-items:center;">
                 <select id="linking_select_${safeMatId}" onchange="handleClassSubjectTeacherSelectChange('${escapeHtml(matiere).replace(/'/g, "\\'")}', this.value)" style="flex:1; min-width:0; padding:6px 8px; border-radius:6px; border:1.5px solid #CBD5E1; font-weight:600; font-size:0.84rem; background:#FAFAFA;">
@@ -14546,6 +14571,9 @@ function renderSubjectTeacherLinkingList() {
                 </select>
                 <button type="button" title="Saisir ou renommer manuellement le nom de l'enseignant" onclick="promptCustomTeacherForSubject('${escapeHtml(matiere).replace(/'/g, "\\'")}')" style="background:#EFF6FF; border:1.5px solid #93C5FD; color:#1D4ED8; border-radius:6px; padding:6px 9px; cursor:pointer; font-size:0.82rem; font-weight:700; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
                     <i class="fas fa-edit"></i>
+                </button>
+                <button type="button" title="Supprimer cette matière de l'emploi du temps de cette classe" onclick="deleteSubjectFromClassSchedule('${escapeHtml(matiere).replace(/'/g, "\\'")}')" style="background:#FEE2E2; border:1.5px solid #FCA5A5; color:#DC2626; border-radius:6px; padding:6px 9px; cursor:pointer; font-size:0.82rem; font-weight:700; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
+                    <i class="fas fa-trash-alt"></i>
                 </button>
             </div>
         `;
@@ -14926,8 +14954,135 @@ function clearScheduleSlot(day, period) {
             if (!conf) return;
         }
         window.currentAdminScheduleSlots.splice(idx, 1);
+        renderSubjectTeacherLinkingList();
         renderAdminScheduleGrid();
     }
+}
+
+async function deleteSubjectFromClassSchedule(matiere) {
+    if (!matiere) return;
+    const selectedClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
+    const targetSection = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
+
+    if (!selectedClass) {
+        alert("Veuillez d'abord sélectionner une classe.");
+        return;
+    }
+
+    const matchingSlots = (window.currentAdminScheduleSlots || []).filter(s => {
+        return s.matiere && (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(s.matiere, matiere) : s.matiere.trim().toLowerCase() === matiere.trim().toLowerCase());
+    });
+    const slotsCount = matchingSlots.length;
+
+    const confirmMsg = 'Confirmez-vous la suppression de la matière "' + matiere + '" de l\'emploi du temps de la classe ' + selectedClass + ' ?\n\n' +
+        '• ' + slotsCount + ' créneau(x) de cette matière seront retirés de la grille.\n' +
+        '• La liaison enseignant pour cette matière sera également retirée.\n\n' +
+        'Cliquez sur OK pour confirmer.';
+
+    if (!confirm(confirmMsg)) return;
+
+    // 1. Retirer tous les créneaux de cette matière de la grille en mémoire
+    if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
+        window.currentAdminScheduleSlots = window.currentAdminScheduleSlots.filter(s => {
+            const match = s.matiere && (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(s.matiere, matiere) : s.matiere.trim().toLowerCase() === matiere.trim().toLowerCase());
+            return !match;
+        });
+    }
+
+    // 2. Retirer de la liaison enseignants
+    if (window.currentClassSubjectTeachersMap) {
+        delete window.currentClassSubjectTeachersMap[matiere];
+        Object.keys(window.currentClassSubjectTeachersMap).forEach(k => {
+            if (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(k, matiere) : k.trim().toLowerCase() === matiere.trim().toLowerCase()) {
+                delete window.currentClassSubjectTeachersMap[k];
+            }
+        });
+    }
+
+    // 3. Demander si suppression sur le serveur dans les plans hebdomadaires de la base
+    const deleteFromDb = confirm('Voulez-vous également supprimer toutes les lignes de "' + matiere + '" pour la classe ' + selectedClass + ' dans les plans hebdomadaires enregistrés sur le serveur (base de données) ?\n\n• OK = Supprimer aussi de la base de données\n• Annuler = Modifier uniquement la grille locale (vous pourrez cliquer ensuite sur "Enregistrer & Réorganiser")');
+
+    if (deleteFromDb) {
+        try {
+            const res = await fetch('/api/admin/delete-subject-from-schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    section: targetSection,
+                    classe: selectedClass,
+                    matiere: matiere,
+                    deleteFromPlans: true
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'Erreur serveur');
+            }
+            if (typeof showToastNotification === 'function') {
+                showToastNotification('Matière "' + matiere + '" supprimée avec succès de l\'emploi du temps et des plans de la classe ' + selectedClass + ' !', 'success');
+            } else {
+                alert('Matière "' + matiere + '" supprimée avec succès de l\'emploi du temps et des plans de la classe ' + selectedClass + ' !');
+            }
+            if (typeof fetchData === 'function') {
+                await fetchData(currentWeek, currentSection);
+            }
+        } catch (err) {
+            console.error("Erreur deleteSubjectFromClassSchedule:", err);
+            alert("Erreur lors de la suppression sur le serveur : " + err.message);
+        }
+    } else {
+        if (typeof showToastNotification === 'function') {
+            showToastNotification('Matière "' + matiere + '" retirée de la grille (' + slotsCount + ' créneaux libérés). Cliquez sur "Enregistrer & Réorganiser" pour valider la réorganisation.', 'info');
+        }
+    }
+
+    // 4. Mettre à jour l'affichage
+    renderSubjectTeacherLinkingList();
+    renderAdminScheduleGrid();
+}
+
+function promptDeleteSubjectFromClassScheduleModal() {
+    const selectedClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
+    if (!selectedClass) {
+        alert("Veuillez d'abord sélectionner une classe.");
+        return;
+    }
+
+    const subjectsSet = new Set();
+    (window.currentAdminScheduleSlots || []).forEach(s => {
+        if (s.matiere && s.matiere.trim()) subjectsSet.add(s.matiere.trim());
+    });
+    if (window.currentClassSubjectTeachersMap) {
+        Object.keys(window.currentClassSubjectTeachersMap).forEach(m => {
+            if (m && m.trim()) subjectsSet.add(m.trim());
+        });
+    }
+
+    const subjects = Array.from(subjectsSet).sort();
+    if (subjects.length === 0) {
+        alert("Aucune matière présente dans l'emploi du temps de la classe " + selectedClass + ".");
+        return;
+    }
+
+    const listPrompt = subjects.map((s, idx) => (idx + 1) + '. ' + s).join('\n');
+    const choice = prompt("Quelle matière souhaitez-vous supprimer de l'emploi du temps de " + selectedClass + " ?\n\nEntrez le nom ou le numéro de la matière :\n\n" + listPrompt);
+    if (!choice) return;
+
+    let chosenSubject = '';
+    const num = parseInt(choice.trim(), 10);
+    if (!isNaN(num) && num >= 1 && num <= subjects.length) {
+        chosenSubject = subjects[num - 1];
+    } else {
+        const found = subjects.find(s => s.toLowerCase() === choice.trim().toLowerCase());
+        if (found) chosenSubject = found;
+    }
+
+    if (!chosenSubject) {
+        alert("Matière non reconnue dans la liste.");
+        return;
+    }
+
+    deleteSubjectFromClassSchedule(chosenSubject);
 }
 
 function applyQuickScheduleSwap() {

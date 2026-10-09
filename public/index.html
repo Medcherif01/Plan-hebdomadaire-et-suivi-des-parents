@@ -48,13 +48,34 @@
         #planTable td:nth-child(2) { width: 90px; } /* Classe */
         
         #planTable th:nth-child(3),
-        #planTable td:nth-child(3) { width: 120px; } /* Matière */
+        #planTable td:nth-child(3) {
+            width: 130px;
+            max-width: 160px;
+            white-space: normal !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+            word-break: break-word !important;
+            hyphens: auto;
+        } /* Matière */
         
         #planTable th:nth-child(4),
         #planTable td:nth-child(4) { width: 60px; } /* Période */
         
         #planTable th:nth-child(5),
         #planTable td:nth-child(5) { width: 100px; } /* Jour */
+
+        /* Centrage de l'écriture arabe des matières arabophones */
+        #planTable td:nth-child(3).matiere-arabic,
+        #planTable td.matiere-arabic,
+        .matiere-arabic-cell {
+            text-align: center !important;
+            direction: rtl !important;
+            font-family: 'Cairo', 'Amiri', 'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif !important;
+            white-space: normal !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+            word-break: break-word !important;
+        }
 
         /* Styles pour le tri interactif des colonnes */
         #planTable th.sortable-th {
@@ -1352,6 +1373,9 @@
                                   <i class="fas fa-exchange-alt" style="color:#0284C7;"></i> Déplacer ou Permuter rapidement deux créneaux :
                               </span>
                               <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                  <button type="button" class="pro-button" onclick="promptDeleteSubjectFromClassScheduleModal()" style="padding:6px 12px; font-size:0.82rem; font-weight:700; background:#FEF2F2; color:#DC2626; border:1.5px solid #FECACA;">
+                                      <i class="fas fa-trash-alt"></i> Supprimer une matière
+                                  </button>
                                   <button type="button" class="pro-button" onclick="duplicateScheduleToOtherClassModal()" style="padding:6px 12px; font-size:0.82rem; font-weight:700; background:white; color:#0369A1; border:1.5px solid #BAE6FD;">
                                       <i class="fas fa-copy"></i> Copier cet emploi vers une autre classe
                                   </button>

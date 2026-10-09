@@ -7677,6 +7677,68 @@ app.post('/api/admin/class-subject-teachers', async (req, res) => {
   }
 });
 
+app.post('/api/admin/delete-subject-from-schedule', async (req, res) => {
+  try {
+    const { section = 'garcons', classe, matiere, deleteFromPlans = true } = req.body;
+    if (!classe || !matiere) {
+      return res.status(400).json({ error: 'Classe et Matière sont requises.' });
+    }
+
+    const db = await connectToDatabase();
+    const cleanMat = String(matiere).trim();
+    const normSubj = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const targetNormMat = normSubj(cleanMat);
+
+    // 1. Supprimer de class_subject_teachers
+    await db.collection('class_subject_teachers').deleteMany({
+      section,
+      classe,
+      $or: [
+        { matiere: cleanMat },
+        { matiere: { $regex: new RegExp(`^${escapeRegex(cleanMat)}$`, 'i') } }
+      ]
+    });
+
+    let modifiedPlansCount = 0;
+    if (deleteFromPlans !== false) {
+      // 2. Parcourir les plans de cette section et retirer les lignes de cette matière pour cette classe
+      const plansCursor = await db.collection('plans').find({ section });
+      const allPlans = await plansCursor.toArray();
+
+      for (const pDoc of allPlans) {
+        if (!Array.isArray(pDoc.data)) continue;
+        const initialLen = pDoc.data.length;
+        const filteredData = pDoc.data.filter(row => {
+          const rowCls = row[findKey(row, 'Classe')];
+          const isClass = rowCls && isClassMatchServer(rowCls, classe);
+          if (!isClass) return true;
+
+          const rowMat = row[findKey(row, 'Matière')];
+          const isMat = rowMat && (normSubj(rowMat) === targetNormMat || String(rowMat).trim().toLowerCase() === cleanMat.toLowerCase());
+          return !isMat;
+        });
+
+        if (filteredData.length !== initialLen) {
+          await db.collection('plans').updateOne(
+            { _id: pDoc._id },
+            { $set: { data: filteredData, updatedAt: new Date() } }
+          );
+          modifiedPlansCount++;
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Matière "${cleanMat}" supprimée avec succès de l'emploi du temps de la classe ${classe}.`,
+      modifiedPlansCount
+    });
+  } catch (error) {
+    console.error('Erreur POST /api/admin/delete-subject-from-schedule:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/admin/reorganize-schedule', async (req, res) => {
   try {
     const {
@@ -7686,7 +7748,8 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
       endWeek = 1,
       targetMode = 'single',
       slots = [],
-      classSchedules = {}
+      classSchedules = {},
+      deletedSubjects = []
     } = req.body;
 
     let sWeek = parseInt(startWeek, 10);
@@ -7882,8 +7945,13 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
             });
           }
 
+          const deletedNormSubjects = new Set((deletedSubjects || []).map(s => normSubj(s)));
           oldClassRows.forEach(oldRow => {
             if (!usedOldRowIndices.has(oldRow)) {
+              const rawSub = oldRow[findKey(oldRow, 'Matière')] || '';
+              if (deletedNormSubjects.has(normSubj(rawSub))) {
+                return; // Exclure formellement les matières supprimées
+              }
               const lec = (oldRow[findKey(oldRow, 'Leçon')] || '').trim();
               const dev = (oldRow[findKey(oldRow, 'Devoirs')] || '').trim();
               const obj = (oldRow[findKey(oldRow, 'Objectifs')] || '').trim();

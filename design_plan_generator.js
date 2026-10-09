@@ -90,6 +90,16 @@ function getSubjectStyle(subjectName) {
   return subjectColors.defaut;
 }
 
+// Détection précise des matières arabophones (caractères arabes ou mots-clés)
+function isArabicSubject(subjectName) {
+  if (!subjectName) return false;
+  const s = String(subjectName).trim();
+  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s)) {
+    return true;
+  }
+  return /arabe|coran|islam|quran|hadith|fiqh|tarbiya|tajweed|civique|charia|nahw|sarf|tawhid|sirah|aqeedah/i.test(s);
+}
+
 // Formatage robuste et haute compatibilité des URLs Google Drive
 function formatDriveImageUrl(url) {
   if (!url || typeof url !== 'string') return '';
@@ -341,12 +351,6 @@ function generateDesignPlanHtml(options = {}) {
         <span class="footer-meta-item">Classe : <strong class="footer-class-name">${escapeHtml(classe)}</strong></span>
         <span class="footer-sep">•</span>
         <span class="footer-meta-item">Semaine <strong>${week}</strong></span>
-      </div>
-      <div class="footer-center-stamp">
-        <div class="footer-stamp-frame">
-          <i class="fas fa-stamp footer-stamp-icon"></i>
-          <span class="footer-stamp-text">Visa de la Direction</span>
-        </div>
       </div>
       <div class="footer-right-page">
         <span class="footer-page-pill">
@@ -901,6 +905,16 @@ function generateDesignPlanHtml(options = {}) {
     .col-matieres-td {
       background: #FFFFFF;
       border-right: 1.5px solid var(--border-dark) !important;
+      word-wrap: break-word !important;
+      overflow-wrap: break-word !important;
+      word-break: break-word !important;
+      white-space: normal !important;
+      box-sizing: border-box !important;
+      max-width: 100% !important;
+    }
+
+    .col-matieres-td.cell-arabic-mat {
+      text-align: center !important;
     }
 
     .subject-header-row {
@@ -908,6 +922,24 @@ function generateDesignPlanHtml(options = {}) {
       justify-content: space-between;
       align-items: center;
       margin-bottom: 2px;
+      gap: 4px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .subject-header-row.header-arabic-mat {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      position: relative;
+    }
+
+    .subject-header-row.header-arabic-mat .period-badge-pill {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
     }
 
     .subject-name-tag {
@@ -916,11 +948,38 @@ function generateDesignPlanHtml(options = {}) {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      padding: 1px 5px;
+      padding: 2px 6px;
       border-radius: 4px;
       border: 1px solid transparent;
-      white-space: nowrap;
-      line-height: 1.15;
+      white-space: normal !important;
+      word-wrap: break-word !important;
+      overflow-wrap: break-word !important;
+      word-break: break-word !important;
+      hyphens: auto;
+      line-height: 1.25;
+      max-width: calc(100% - 28px);
+      box-sizing: border-box;
+    }
+
+    .subject-name-tag.tag-arabic-mat {
+      direction: rtl !important;
+      text-align: center !important;
+      justify-content: center !important;
+      font-family: 'Cairo', 'Amiri', 'Traditional Arabic', sans-serif !important;
+      font-size: 0.82rem;
+      margin: 0 auto !important;
+    }
+
+    .subject-title-span {
+      white-space: normal !important;
+      word-break: break-word !important;
+      overflow-wrap: break-word !important;
+      display: inline-block;
+    }
+
+    .subject-title-span.span-arabic-mat {
+      direction: rtl !important;
+      text-align: center !important;
     }
 
     .period-badge-pill {
@@ -931,6 +990,7 @@ function generateDesignPlanHtml(options = {}) {
       padding: 1px 5px;
       border-radius: 3px;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .teacher-item-box {
@@ -940,6 +1000,13 @@ function generateDesignPlanHtml(options = {}) {
       margin-top: 2px;
       padding-top: 2px;
       border-top: 1px dashed #E2E8F0;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .teacher-item-box.teacher-box-arabic {
+      justify-content: center;
+      text-align: center;
     }
 
     body.hide-teacher-photos .teacher-photo-thumb,
@@ -1075,8 +1142,8 @@ function generateDesignPlanHtml(options = {}) {
       padding-top: 6px;
       padding-bottom: 2px;
       border-top: 1.5px solid var(--primary-color, #0F2E5C);
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
+      display: flex;
+      justify-content: space-between;
       align-items: center;
       font-size: 0.72rem;
       color: #475569;
@@ -1088,7 +1155,6 @@ function generateDesignPlanHtml(options = {}) {
     }
 
     .footer-left-info {
-      justify-self: start;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -1116,37 +1182,7 @@ function generateDesignPlanHtml(options = {}) {
       color: var(--primary-color, #0F2E5C);
     }
 
-    .footer-center-stamp {
-      justify-self: center;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .footer-stamp-frame {
-      border: 1px dashed #64748B;
-      background: #F8FAFC;
-      padding: 3px 14px;
-      border-radius: 4px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.69rem;
-      font-weight: 700;
-      color: #1E293B;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      white-space: nowrap;
-    }
-
-    .footer-stamp-icon {
-      font-size: 0.75rem;
-      color: var(--primary-color, #0F2E5C);
-      opacity: 0.85;
-    }
-
     .footer-right-page {
-      justify-self: end;
       display: flex;
       align-items: center;
     }
@@ -1155,13 +1191,13 @@ function generateDesignPlanHtml(options = {}) {
       background: var(--primary-color, #0F2E5C);
       color: #FFFFFF !important;
       font-weight: 700;
-      padding: 2.5px 10px;
+      padding: 3px 12px;
       border-radius: 12px;
-      font-size: 0.72rem;
+      font-size: 0.74rem;
       letter-spacing: 0.03em;
       display: inline-flex;
       align-items: center;
-      gap: 3px;
+      gap: 4px;
       box-shadow: 0 1px 2px rgba(0,0,0,0.08);
       white-space: nowrap;
     }
@@ -1483,8 +1519,8 @@ function generateDesignPlanHtml(options = {}) {
         padding-top: 5px !important;
         padding-bottom: 1px !important;
         border-top: 1.5px solid var(--primary-color, #0F2E5C) !important;
-        display: grid !important;
-        grid-template-columns: 1fr auto 1fr !important;
+        display: flex !important;
+        justify-content: space-between !important;
         align-items: center !important;
         width: 100% !important;
         page-break-inside: avoid !important;
@@ -1493,24 +1529,14 @@ function generateDesignPlanHtml(options = {}) {
       }
 
       .footer-left-info {
-        justify-self: start !important;
+        display: flex !important;
+        align-items: center !important;
         white-space: nowrap !important;
-      }
-
-      .footer-center-stamp {
-        justify-self: center !important;
       }
 
       .footer-right-page {
-        justify-self: end !important;
-      }
-
-      .footer-stamp-frame {
-        border: 1px dashed #475569 !important;
-        background: #F8FAFC !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-        white-space: nowrap !important;
+        display: flex !important;
+        align-items: center !important;
       }
 
       .footer-page-pill {
@@ -1811,6 +1837,7 @@ function generateDesignPlanHtml(options = {}) {
                   const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
                   const matiere = row['Matière'] || row['matiere'] || 'Cours';
                   const styleMat = getSubjectStyle(matiere);
+                  const isArabicMat = isArabicSubject(matiere);
                   const enseignant = row['Enseignant'] || row['enseignant'] || '';
 
                   // Résolution robuste de la photo Google Drive de l'enseignant
@@ -1826,16 +1853,16 @@ function generateDesignPlanHtml(options = {}) {
                   return `
                   <tr>
                     <!-- 1. MATIÈRES -->
-                    <td class="col-matieres-td">
-                      <div class="subject-header-row">
-                        <span class="subject-name-tag" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
+                    <td class="col-matieres-td ${isArabicMat ? 'cell-arabic-mat' : ''}">
+                      <div class="subject-header-row ${isArabicMat ? 'header-arabic-mat' : ''}">
+                        <span class="subject-name-tag ${isArabicMat ? 'tag-arabic-mat' : ''}" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
                           <i class="fas ${styleMat.icon}"></i>
-                          <span>${escapeHtml(matiere)}</span>
+                          <span class="subject-title-span ${isArabicMat ? 'span-arabic-mat' : ''}">${escapeHtml(matiere)}</span>
                         </span>
                         <span class="period-badge-pill">P${escapeHtml(periodeVal)}</span>
                       </div>
 
-                      <div class="teacher-item-box">
+                      <div class="teacher-item-box ${isArabicMat ? 'teacher-box-arabic' : ''}">
                         ${(showPhotos && photoUrl) ? `
                           <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';" loading="lazy" />
                           <span class="teacher-fallback-thumb" style="display:none;">${escapeHtml(teacherInitial)}</span>
@@ -1944,6 +1971,7 @@ function generateDesignPlanHtml(options = {}) {
                 return hwRows.map((r, idx) => {
                   const matiere = r['Matière'] || r['matiere'] || 'Cours';
                   const styleMat = getSubjectStyle(matiere);
+                  const isArabicMat = isArabicSubject(matiere);
                   const devoirs = r['Devoirs'] || r['devoirs'] || '';
                   const support = String(r['Support'] || r['support'] || '').trim();
                   const hasSupport = support && support !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد');
@@ -1969,10 +1997,10 @@ function generateDesignPlanHtml(options = {}) {
                         </div>
                       </td>
                     ` : ''}
-                    <td>
-                      <span class="subject-name-tag" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
+                    <td class="${isArabicMat ? 'cell-arabic-mat' : ''}">
+                      <span class="subject-name-tag ${isArabicMat ? 'tag-arabic-mat' : ''}" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
                         <i class="fas ${styleMat.icon}"></i>
-                        <span>${escapeHtml(matiere)}</span>
+                        <span class="subject-title-span ${isArabicMat ? 'span-arabic-mat' : ''}">${escapeHtml(matiere)}</span>
                       </span>
                     </td>
                     <td>
