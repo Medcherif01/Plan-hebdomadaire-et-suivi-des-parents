@@ -5208,17 +5208,6 @@ app.get('/api/plans/:week', async (req, res) => {
         { week: String(weekNumber), section: section }
       ]
     });
-
-    if (!planDocument && section === 'maternelle') {
-      planDocument = await db.collection('plans').findOne({
-        $or: [
-          { _id: `primaire_${weekNumber}` },
-          { _id: `primaire_${String(weekNumber)}` },
-          { week: weekNumber, section: 'primaire' },
-          { week: String(weekNumber), section: 'primaire' }
-        ]
-      });
-    }
     
     if (planDocument) {
       const lessonPlans = await db.collection('lessonPlans')
@@ -8265,17 +8254,60 @@ app.post('/api/generate-word', async (req, res) => {
 
 	    let planData = Array.isArray(data) ? data : [];
 	    if (planData.length === 0) {
-	      let planDoc = await db.collection('plans').findOne({ week: weekNumber, section: section });
+	      let planDoc = await db.collection('plans').findOne({ _id: `${section}_${weekNumber}` });
 	      if (!planDoc) {
-	        planDoc = await db.collection('plans').findOne({ _id: `${section}_${weekNumber}` });
-	      }
-	      if (!planDoc) {
-	        planDoc = await db.collection('plans').findOne({ week: weekNumber });
+	        planDoc = await db.collection('plans').findOne({ week: weekNumber, section: section });
 	      }
 	      planData = planDoc ? (planDoc.data || planDoc.planData || []) : [];
 	    }
 
-	    // Règle 5 : Traiter chaque classe SEULE de façon strictement isolée
+	    // RÈGLE CRITIQUE : STRICTE INDÉPENDANCE ET SÉPARATION DES SECTIONS
+	    // Le plan hebdomadaire des garçons est strictement indépendant de celui des filles, maternelle ou primaire
+	    if (section === 'garcons') {
+	      planData = planData.filter(row => {
+	        if (row._section && row._section !== 'garcons') return false;
+	        const cls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim().toUpperCase();
+	        if (['PS', 'MS', 'GS', 'PP1', 'PP2', 'PP3', 'PP4', 'PP5'].includes(cls) || isMaternelleClassServer(cls)) return false;
+	        const enseignant = (row[findKey(row, 'Enseignant')] || row.Enseignant || row.enseignant || '').trim();
+	        if (isDualMusicTeacher(enseignant)) return true;
+	        return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase()) &&
+	               !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
+	               !maternelleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
+	      });
+	    } else if (section === 'filles') {
+	      planData = planData.filter(row => {
+	        if (row._section && row._section !== 'filles') return false;
+	        const cls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim().toUpperCase();
+	        if (['PS', 'MS', 'GS', 'PP1', 'PP2', 'PP3', 'PP4', 'PP5'].includes(cls) || isMaternelleClassServer(cls)) return false;
+	        const enseignant = (row[findKey(row, 'Enseignant')] || row.Enseignant || row.enseignant || '').trim();
+	        if (isDualMusicTeacher(enseignant)) return true;
+	        return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
+	               !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
+	               !maternelleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
+	      });
+	    } else if (section === 'primaire') {
+	      planData = planData.filter(row => {
+	        if (row._section && row._section !== 'primaire') return false;
+	        const cls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim().toUpperCase();
+	        if (['PS', 'MS', 'GS', 'PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].includes(cls) || isMaternelleClassServer(cls)) return false;
+	        const enseignant = (row[findKey(row, 'Enseignant')] || row.Enseignant || row.enseignant || '').trim();
+	        if (isDualMusicTeacher(enseignant)) return true;
+	        return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
+	               !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
+	      });
+	    } else if (section === 'maternelle') {
+	      planData = planData.filter(row => {
+	        if (row._section && row._section !== 'maternelle') return false;
+	        const cls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim().toUpperCase();
+	        if (cls && !['PS', 'MS', 'GS'].includes(cls) && !isMaternelleClassServer(cls)) return false;
+	        const enseignant = (row[findKey(row, 'Enseignant')] || row.Enseignant || row.enseignant || '').trim();
+	        if (isDualMusicTeacher(enseignant)) return true;
+	        return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
+	               !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
+	      });
+	    }
+
+	    // Traiter la classe demandée de façon strictement isolée
 	    if (classe && typeof classe === 'string' && !['toutes', 'all', 'classe'].includes(classe.trim().toLowerCase())) {
 	      const targetNorm = classe.trim().toLowerCase().replace(/[\s\-_]+/g, '');
 	      planData = planData.filter(r => {
@@ -8289,7 +8321,7 @@ app.post('/api/generate-word', async (req, res) => {
 	    if (typeof notes === 'string' && notes.trim() !== '') {
 	      classNotes = notes.trim();
 	    } else if (notes && typeof notes === 'object') {
-	      // 2. Si `notes` a été fourni en dictionnaire (ex: { "PEI2 Garçons": "..." })
+	      // 2. Si `notes` a été fourni en dictionnaire
 	      if (notes[classe] && typeof notes[classe] === 'string' && notes[classe].trim() !== '') {
 	        classNotes = notes[classe].trim();
 	      } else {
@@ -8306,7 +8338,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      }
 	    }
 
-	    // 3. Si toujours non trouvé, chercher dans la collection 'plans' (où /api/save-notes enregistre classNotes)
+	    // 3. Chercher dans la collection 'plans' pour cette section STRICTEMENT
 	    if (!classNotes) {
 	      try {
 	        const planDocs = await db.collection('plans').find({
@@ -8314,8 +8346,7 @@ app.post('/api/generate-word', async (req, res) => {
 	            { _id: `${section}_${weekNumber}` },
 	            { _id: `${section}_${String(weekNumber)}` },
 	            { week: weekNumber, section: section },
-	            { week: String(weekNumber), section: section },
-	            { week: weekNumber }
+	            { week: String(weekNumber), section: section }
 	          ]
 	        }).toArray();
 
@@ -8344,7 +8375,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      }
 	    }
 
-	    // 4. Repli sur 'weekly_notes' si existant
+	    // 4. Repli sur 'weekly_notes' pour cette section strictement
 	    if (!classNotes) {
 	      try {
 	        const notesDoc = await db.collection('weekly_notes').findOne({ week: weekNumber, section: section });
@@ -8356,7 +8387,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      }
 	    }
 
-	    // Récupérer la photo de la semaine associée aux remarques
+	    // Récupérer la photo de la semaine associée aux remarques pour cette section strictement
 	    let classNotesPhoto = req.body.notesPhoto || req.body.photoUrl || '';
 	    if (!classNotesPhoto) {
 	      try {
@@ -8365,8 +8396,7 @@ app.post('/api/generate-word', async (req, res) => {
 	            { _id: `${section}_${weekNumber}` },
 	            { _id: `${section}_${String(weekNumber)}` },
 	            { week: weekNumber, section: section },
-	            { week: String(weekNumber), section: section },
-	            { week: weekNumber }
+	            { week: String(weekNumber), section: section }
 	          ]
 	        }).toArray();
 
@@ -8414,16 +8444,20 @@ app.post('/api/generate-word', async (req, res) => {
 	      console.warn('Erreur lecture special_days dans generate-design-plan:', sde.message);
 	    }
 
-	    const photosDocs = await db.collection('teachers_photos').find({}).toArray();
+	    // Option d'ajouter ou non la photo de l'enseignant
+	    const shouldShowPhotos = showPhotos !== false && String(showPhotos) !== 'false' && showPhotos !== 0 && String(showPhotos) !== '0';
 	    const teachersPhotos = {};
-	    photosDocs.forEach(d => {
-	      if (d.teacherName && d.photoUrl) teachersPhotos[d.teacherName] = d.photoUrl;
-	    });
-	    const usersWithPhotos = await db.collection('users').find({ photoUrl: { $exists: true, $ne: '' } }).toArray();
-	    usersWithPhotos.forEach(u => {
-	      if (u.username && u.photoUrl && !teachersPhotos[u.username]) teachersPhotos[u.username] = u.photoUrl;
-	      if (u.tableTeacherName && u.photoUrl && !teachersPhotos[u.tableTeacherName]) teachersPhotos[u.tableTeacherName] = u.photoUrl;
-	    });
+	    if (shouldShowPhotos) {
+	      const photosDocs = await db.collection('teachers_photos').find({}).toArray();
+	      photosDocs.forEach(d => {
+	        if (d.teacherName && d.photoUrl) teachersPhotos[d.teacherName] = d.photoUrl;
+	      });
+	      const usersWithPhotos = await db.collection('users').find({ photoUrl: { $exists: true, $ne: '' } }).toArray();
+	      usersWithPhotos.forEach(u => {
+	        if (u.username && u.photoUrl && !teachersPhotos[u.username]) teachersPhotos[u.username] = u.photoUrl;
+	        if (u.tableTeacherName && u.photoUrl && !teachersPhotos[u.tableTeacherName]) teachersPhotos[u.tableTeacherName] = u.photoUrl;
+	      });
+	    }
 
 	    const datesNode = getSectionWeekDates(section, weekNumber);
 	    let weekStartDateNode = null;
@@ -8448,7 +8482,7 @@ app.post('/api/generate-word', async (req, res) => {
 	      notesPhoto: classNotesPhoto,
 	      section,
 	      theme,
-	      showPhotos,
+	      showPhotos: shouldShowPhotos,
 	      teachersPhotos,
 	      weekStartDate: weekStartDateNode,
 	      weekDateRange: plageSemaineText,
@@ -8458,7 +8492,7 @@ app.post('/api/generate-word', async (req, res) => {
 	    });
 
 	    if (download) {
-	      const filename = `Plan_Hebdomadaire_S${displayWeekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}.html`;
+	      const filename = `Plan_Hebdomadaire_S${displayWeekNumber}_${section}_${classe.replace(/[^a-z0-9]/gi, '_')}.html`;
 	      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 	      res.setHeader('Content-Type', 'text/html; charset=utf-8');
 	      return res.send(html);
@@ -8524,9 +8558,6 @@ app.post('/api/generate-word', async (req, res) => {
 	    let planDocument = await db.collection('weeklyLessonPlans').findOne({ _id: lessonPlanId });
 	    if (!planDocument) {
 	      planDocument = await db.collection('weeklyLessonPlans').findOne({ week: weekNumber, classe: classe, section: section });
-	    }
-	    if (!planDocument) {
-	      planDocument = await db.collection('weeklyLessonPlans').findOne({ _id: `S${weekNumber}_${classe.replace(/[^a-z0-9]/gi, '_')}` });
 	    }
 
 	    if (!planDocument || !planDocument.fileData) {

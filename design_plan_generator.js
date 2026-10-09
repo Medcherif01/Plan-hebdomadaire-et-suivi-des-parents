@@ -189,6 +189,15 @@ function generateDesignPlanHtml(options = {}) {
     isParent = false
   } = options;
 
+  const sectionLabels = {
+    garcons: 'Section Garçons 👦',
+    filles: 'Section Filles 👧',
+    primaire: 'Section Primaire 🎒📚',
+    maternelle: 'Section Maternelle 🧸🎨'
+  };
+  const secKey = String(section || 'garcons').toLowerCase().trim();
+  const sectionDisplayLabel = sectionLabels[secKey] || 'Section Garçons 👦';
+
   let resolvedNotes = '';
   if (typeof notes === 'string') {
     resolvedNotes = notes;
@@ -302,6 +311,10 @@ function generateDesignPlanHtml(options = {}) {
         <!-- DROITE : MÉTADONNÉES CLASSE / SEMAINE -->
         <div class="header-meta-col">
           <div class="meta-tag-row">
+            <span class="meta-tag-label">SECTION :</span>
+            <span class="meta-tag-val" style="font-weight:800; color:var(--primary-color);">${escapeHtml(sectionDisplayLabel)}</span>
+          </div>
+          <div class="meta-tag-row">
             <span class="meta-tag-label">CLASSE :</span>
             <span class="meta-tag-val meta-class-highlight">${escapeHtml(classe)}</span>
           </div>
@@ -322,6 +335,8 @@ function generateDesignPlanHtml(options = {}) {
     <footer class="a4-page-footer">
       <div class="footer-left-info">
         <span class="footer-doc-title">Plan de travail hebdomadaire</span>
+        <span class="footer-sep">•</span>
+        <span class="footer-meta-item"><strong>${escapeHtml(sectionDisplayLabel)}</strong></span>
         <span class="footer-sep">•</span>
         <span class="footer-meta-item">Classe : <strong class="footer-class-name">${escapeHtml(classe)}</strong></span>
         <span class="footer-sep">•</span>
@@ -925,6 +940,11 @@ function generateDesignPlanHtml(options = {}) {
       margin-top: 2px;
       padding-top: 2px;
       border-top: 1px dashed #E2E8F0;
+    }
+
+    body.hide-teacher-photos .teacher-photo-thumb,
+    body.hide-teacher-photos .teacher-fallback-thumb {
+      display: none !important;
     }
 
     .teacher-photo-thumb {
@@ -1572,13 +1592,13 @@ function generateDesignPlanHtml(options = {}) {
     }
   </style>
 </head>
-<body>
+<body class="${(showPhotos && showPhotos !== false) ? '' : 'hide-teacher-photos'}">
 
   <!-- BARRE D'ACTIONS NON IMPRIMABLE -->
   <div class="screen-toolbar no-print">
     <div class="toolbar-info">
       <i class="fas fa-file-pdf" style="color:#38BDF8; font-size:1.15rem;"></i>
-      <span>Plan Hebdomadaire • Semaine ${week} • Classe : ${escapeHtml(classe)}</span>
+      <span>Plan Hebdomadaire • ${escapeHtml(sectionDisplayLabel)} • Semaine ${week} • Classe : ${escapeHtml(classe)}</span>
     </div>
     <div class="toolbar-controls">
       ${!isParent ? `
@@ -1589,6 +1609,11 @@ function generateDesignPlanHtml(options = {}) {
         <button type="button" class="theme-opt-btn ${theme === 'navy' ? 'active' : ''}" onclick="setTheme('navy')">Marine</button>
         <button type="button" class="theme-opt-btn ${theme === 'burgundy' ? 'active' : ''}" onclick="setTheme('burgundy')">Bordeaux</button>
       </div>
+
+      <!-- Bouton d'activation/désactivation photo enseignant -->
+      <button type="button" class="btn-action" onclick="toggleTeacherPhotos(this)" title="Afficher ou masquer la photo de l'enseignant">
+        <i class="fas fa-camera"></i> <span id="togglePhotoLabel">${(showPhotos && showPhotos !== false) ? 'Masquer Photos' : 'Afficher Photos'}</span>
+      </button>
 
       <!-- Bouton Télécharger HTML -->
       <button type="button" class="btn-action btn-download-html" onclick="downloadSelfHtml()">
@@ -1789,7 +1814,7 @@ function generateDesignPlanHtml(options = {}) {
                   const enseignant = row['Enseignant'] || row['enseignant'] || '';
 
                   // Résolution robuste de la photo Google Drive de l'enseignant
-                  const photoUrl = findTeacherPhotoUrl(enseignant, teachersPhotos);
+                  const photoUrl = (showPhotos && showPhotos !== false) ? findTeacherPhotoUrl(enseignant, teachersPhotos) : '';
                   const teacherInitial = enseignant ? enseignant.charAt(0).toUpperCase() : '?';
 
                   const lecon = row['Leçon'] || row['lecon'] || '';
@@ -1811,7 +1836,12 @@ function generateDesignPlanHtml(options = {}) {
                       </div>
 
                       <div class="teacher-item-box">
-                        <i class="fas fa-chalkboard-teacher" style="color:#64748B; font-size:0.75rem;"></i>
+                        ${(showPhotos && photoUrl) ? `
+                          <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';" loading="lazy" />
+                          <span class="teacher-fallback-thumb" style="display:none;">${escapeHtml(teacherInitial)}</span>
+                        ` : `
+                          <i class="fas fa-chalkboard-teacher" style="color:#64748B; font-size:0.75rem;"></i>
+                        `}
                         <div class="teacher-name-print">${escapeHtml(enseignant)}</div>
                       </div>
                     </td>
@@ -2001,6 +2031,12 @@ function generateDesignPlanHtml(options = {}) {
       document.querySelectorAll('.theme-opt-btn').forEach(btn => {
         btn.classList.toggle('active', btn.textContent.toLowerCase().includes(t.substring(0, 3)));
       });
+    }
+
+    function toggleTeacherPhotos(btn) {
+      const isHidden = document.body.classList.toggle('hide-teacher-photos');
+      const lbl = document.getElementById('togglePhotoLabel');
+      if (lbl) lbl.textContent = isHidden ? 'Afficher Photos' : 'Masquer Photos';
     }
 
     function downloadSelfHtml() {

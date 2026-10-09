@@ -8093,9 +8093,9 @@ async function printParentWeeklyPlan() {
         displayAlert("Veuillez sélectionner une classe pour afficher et imprimer son plan hebdomadaire.", true);
         return;
     }
-    const section = currentSection || 'garcons';
+    const section = (typeof lockedParentSection !== 'undefined' && lockedParentSection) ? lockedParentSection : (currentSection || 'garcons');
     // isParent = true pour n'afficher que le bouton d'impression sans sélecteur de couleurs ni bouton Enregistrer HTML
-    await downloadFullClassDesign(weekNum, className, 'indigo', true, true, 'print', true);
+    await downloadFullClassDesign(weekNum, className, 'indigo', true, true, 'print', true, section);
 }
 window.printParentWeeklyPlan = printParentWeeklyPlan;
 
@@ -8108,8 +8108,8 @@ async function downloadParentWeeklyPlan() {
         displayAlert("Veuillez sélectionner une classe pour télécharger son plan hebdomadaire.", true);
         return;
     }
-    const section = currentSection || 'garcons';
-    await downloadFullClassDesign(weekNum, className, 'indigo', true, true, 'download');
+    const section = (typeof lockedParentSection !== 'undefined' && lockedParentSection) ? lockedParentSection : (currentSection || 'garcons');
+    await downloadFullClassDesign(weekNum, className, 'indigo', true, true, 'download', true, section);
 }
 window.downloadParentWeeklyPlan = downloadParentWeeklyPlan;
 
@@ -12964,16 +12964,18 @@ function handleClassFilterChange() {
     }
 }
 
-function openFullClassWordModal(preselectedClass, preselectedWeek) {
+function openFullClassWordModal(preselectedClass, preselectedWeek, preselectedSection) {
     const modal = document.getElementById('fullClassWordModal');
+    const secSel = document.getElementById('modalWordSectionSelector');
     const weekSel = document.getElementById('modalWordWeekSelector');
-    const classSel = document.getElementById('modalWordClassSelector');
-    const chipsContainer = document.getElementById('modalWordQuickClassChips');
     if (!modal) return;
 
+    const initialSection = preselectedSection || currentSection || 'garcons';
+    if (secSel) {
+        secSel.value = initialSection;
+    }
+
     const currentFilterClass = preselectedClass || document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value || '';
-    const section = currentSection || 'garcons';
-    const classes = getSectionClasses(section);
 
     let baseWeek = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
     const curWeek = preselectedWeek || baseWeek;
@@ -12988,6 +12990,23 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
             weekSel.appendChild(opt);
         }
     }
+
+    syncWordModalClasses(initialSection, currentFilterClass, preselectedWeek);
+    modal.style.display = 'flex';
+}
+
+function onModalWordSectionChange() {
+    const secSel = document.getElementById('modalWordSectionSelector');
+    const section = secSel ? secSel.value : (currentSection || 'garcons');
+    syncWordModalClasses(section);
+}
+window.onModalWordSectionChange = onModalWordSectionChange;
+
+function syncWordModalClasses(section, preselectedClass, preselectedWeek) {
+    const classSel = document.getElementById('modalWordClassSelector');
+    const chipsContainer = document.getElementById('modalWordQuickClassChips');
+    const weekSel = document.getElementById('modalWordWeekSelector');
+    const classes = getSectionClasses(section);
 
     // Identifier les classes enseignées par l'utilisateur connecté
     const teacherClasses = new Set();
@@ -13019,9 +13038,13 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
             opt.value = c;
             const isMine = teacherClasses.has(c);
             opt.textContent = (isMine ? '⭐ ' : '') + c + (isMine ? ' (Votre classe)' : '');
-            if (c === currentFilterClass) opt.selected = true;
+            if (c === preselectedClass) opt.selected = true;
             classSel.appendChild(opt);
         });
+
+        if (!classSel.value && classes.length > 0) {
+            classSel.value = classes[0];
+        }
 
         classSel.onchange = () => {
             syncWeekForWordClass(classSel.value);
@@ -13063,7 +13086,6 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
             chipBtn.onclick = () => {
                 if (classSel) classSel.value = c;
                 syncWeekForWordClass(c);
-                // Highlighting selected chip
                 Array.from(chipsContainer.children).forEach(ch => ch.style.outline = 'none');
                 chipBtn.style.outline = '2px solid #2563EB';
             };
@@ -13071,8 +13093,6 @@ function openFullClassWordModal(preselectedClass, preselectedWeek) {
             chipsContainer.appendChild(chipBtn);
         });
     }
-
-    modal.style.display = 'flex';
 }
 
 function closeFullClassWordModal() {
@@ -13120,7 +13140,7 @@ async function downloadSelectedClassFullExcel() {
     }
 }
 
-async function downloadFullClassWord(weekNum, className) {
+async function downloadFullClassWord(weekNum, className, explicitSection = null) {
     if (!className) {
         openFullClassWordModal();
         return;
@@ -13131,7 +13151,7 @@ async function downloadFullClassWord(weekNum, className) {
     displayAlert(`Préparation du plan complet Word de la Semaine ${weekNum} pour la classe ${className}...`, false);
 
     try {
-        const section = currentSection || 'garcons';
+        const section = explicitSection || currentSection || 'garcons';
         updateProgressBar(35);
 
         let fullPlanData = [];
@@ -13145,26 +13165,14 @@ async function downloadFullClassWord(weekNum, className) {
             console.warn("Erreur fetch plan section:", e);
         }
 
-        // Si vide, tenter sans filtre de section ou utiliser les données en mémoire
-        if (fullPlanData.length === 0 && weekNum == currentWeek && planData && planData.length > 0) {
+        // Utiliser les données en mémoire si elles correspondent strictement à la section et semaine
+        if (fullPlanData.length === 0 && weekNum == currentWeek && planData && planData.length > 0 && currentSection === section) {
             fullPlanData = planData;
         }
 
         if (fullPlanData.length === 0) {
-            try {
-                const resAlt = await fetch(`/api/plans/${weekNum}`);
-                if (resAlt.ok) {
-                    const dataAlt = await resAlt.json();
-                    fullPlanData = dataAlt.planData || [];
-                }
-            } catch (e) {
-                console.warn("Erreur fetch plan sans section:", e);
-            }
-        }
-
-        if (fullPlanData.length === 0) {
             hideProgressBar();
-            displayAlert(`Aucune donnée de plan enregistrée pour la Semaine ${weekNum}.`, true);
+            displayAlert(`Aucune donnée de plan enregistrée pour la Semaine ${weekNum} (${section}).`, true);
             return;
         }
 
@@ -13180,7 +13188,7 @@ async function downloadFullClassWord(weekNum, className) {
     }
 }
 
-async function downloadFullClassExcel(weekNum, className) {
+async function downloadFullClassExcel(weekNum, className, explicitSection = null) {
     if (!className) {
         openFullClassWordModal();
         return;
@@ -13191,14 +13199,14 @@ async function downloadFullClassExcel(weekNum, className) {
     displayAlert(`Préparation du fichier Excel de la Semaine ${weekNum} pour la classe ${className}...`, false);
 
     try {
-        const section = currentSection || 'garcons';
+        const section = explicitSection || currentSection || 'garcons';
         updateProgressBar(40);
 
         const payload = {
             week: Number(weekNum),
             section: section,
             classe: className,
-            data: (planData && planData.length > 0 && weekNum == currentWeek) ? planData : undefined,
+            data: (planData && planData.length > 0 && weekNum == currentWeek && currentSection === section) ? planData : undefined,
             notes: weeklyClassNotes
         };
 
@@ -13324,11 +13332,13 @@ async function exportClasseToWordDocx(selectedClass, rawPlanData, weekNum, secti
 }
 
 async function executeFullClassWordDownload(explicitClass) {
+    const secSel = document.getElementById('modalWordSectionSelector');
     const weekSel = document.getElementById('modalWordWeekSelector');
     const classSel = document.getElementById('modalWordClassSelector');
     const btn = document.getElementById('btnExecuteWordDownload');
     const btnText = document.getElementById('btnExecuteWordText');
 
+    const selectedSection = (secSel ? secSel.value : currentSection) || 'garcons';
     const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
     const selectedClass = explicitClass || (classSel ? classSel.value : '');
 
@@ -13343,8 +13353,8 @@ async function executeFullClassWordDownload(explicitClass) {
     }
 
     try {
-        const section = currentSection || 'garcons';
-        displayAlert(`Chargement du plan complet de la Semaine ${selectedWeek} pour la classe ${selectedClass}...`, false);
+        const section = selectedSection;
+        displayAlert(`Chargement du plan complet de la Semaine ${selectedWeek} (${section}) pour la classe ${selectedClass}...`, false);
 
         let fullPlanData = [];
         try {
@@ -13357,20 +13367,8 @@ async function executeFullClassWordDownload(explicitClass) {
             console.warn("Erreur fetch plan section:", e);
         }
 
-        if (fullPlanData.length === 0 && selectedWeek == currentWeek && planData && planData.length > 0) {
+        if (fullPlanData.length === 0 && selectedWeek == currentWeek && planData && planData.length > 0 && currentSection === section) {
             fullPlanData = planData;
-        }
-
-        if (fullPlanData.length === 0) {
-            try {
-                const resAlt = await fetch(`/api/plans/${selectedWeek}`);
-                if (resAlt.ok) {
-                    const dataAlt = await resAlt.json();
-                    fullPlanData = dataAlt.planData || [];
-                }
-            } catch (e) {
-                console.warn("Erreur fetch plan sans section:", e);
-            }
         }
 
         if (fullPlanData.length === 0) {
@@ -13395,11 +13393,13 @@ async function executeFullClassWordDownload(explicitClass) {
 }
 
 async function executeFullClassExcelDownload(explicitClass) {
+    const secSel = document.getElementById('modalWordSectionSelector');
     const weekSel = document.getElementById('modalWordWeekSelector');
     const classSel = document.getElementById('modalWordClassSelector');
     const btn = document.getElementById('btnExecuteExcelDownload');
     const btnText = document.getElementById('btnExecuteExcelText');
 
+    const selectedSection = (secSel ? secSel.value : currentSection) || 'garcons';
     const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
     const selectedClass = explicitClass || (classSel ? classSel.value : '');
 
@@ -13414,7 +13414,7 @@ async function executeFullClassExcelDownload(explicitClass) {
     }
 
     try {
-        await downloadFullClassExcel(selectedWeek, selectedClass);
+        await downloadFullClassExcel(selectedWeek, selectedClass, selectedSection);
         closeFullClassWordModal();
     } catch (err) {
         console.error("Erreur executeFullClassExcelDownload:", err);
@@ -13485,15 +13485,18 @@ function updateAdminFormPhotoPreview(url) {
 /**
  * Ouvre la boîte de dialogue pour générer le plan hebdomadaire stylisé
  */
-function openDesignPlanModal(preselectedClass, preselectedWeek) {
+function openDesignPlanModal(preselectedClass, preselectedWeek, preselectedSection) {
     const modal = document.getElementById('designPlanModal');
+    const secSel = document.getElementById('designModalSectionSelector');
     const weekSel = document.getElementById('designModalWeekSelector');
-    const classSel = document.getElementById('designModalClassSelector');
     if (!modal) return;
 
+    const initialSection = preselectedSection || currentSection || 'garcons';
+    if (secSel) {
+        secSel.value = initialSection;
+    }
+
     const currentFilterClass = preselectedClass || document.getElementById('filterClasse')?.value || document.getElementById('notesClassSelector')?.value || '';
-    const section = currentSection || 'garcons';
-    const classes = getSectionClasses(section);
 
     let baseWeek = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
     const curWeek = preselectedWeek || baseWeek;
@@ -13509,30 +13512,44 @@ function openDesignPlanModal(preselectedClass, preselectedWeek) {
         }
     }
 
-    function syncWeekForDesignClass(cls) {
+    syncDesignModalClasses(initialSection, currentFilterClass, preselectedWeek);
+
+    selectDesignTheme(window.currentSelectedDesignTheme || 'indigo');
+    modal.style.display = 'flex';
+}
+
+function onDesignModalSectionChange() {
+    const secSel = document.getElementById('designModalSectionSelector');
+    const section = secSel ? secSel.value : (currentSection || 'garcons');
+    syncDesignModalClasses(section);
+}
+window.onDesignModalSectionChange = onDesignModalSectionChange;
+
+function syncDesignModalClasses(section, preselectedClass, preselectedWeek) {
+    const classSel = document.getElementById('designModalClassSelector');
+    const weekSel = document.getElementById('designModalWeekSelector');
+    if (!classSel) return;
+    const classes = getSectionClasses(section);
+
+    classSel.innerHTML = '';
+    classes.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c === preselectedClass) opt.selected = true;
+        classSel.appendChild(opt);
+    });
+
+    if (!classSel.value && classes.length > 0) {
+        classSel.value = classes[0];
+    }
+
+    classSel.onchange = () => {
         if (!preselectedWeek && weekSel) {
             let w = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
             weekSel.value = w;
         }
-    }
-
-    if (classSel) {
-        classSel.innerHTML = '';
-        classes.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c;
-            opt.textContent = c;
-            if (c === currentFilterClass) opt.selected = true;
-            classSel.appendChild(opt);
-        });
-
-        classSel.onchange = () => {
-            syncWeekForDesignClass(classSel.value);
-        };
-    }
-
-    selectDesignTheme(window.currentSelectedDesignTheme || 'indigo');
-    modal.style.display = 'flex';
+    };
 }
 
 function closeDesignPlanModal() {
@@ -13563,11 +13580,13 @@ function selectDesignTheme(theme) {
  * Exécute l'action choisie depuis le modal Design (Aperçu / Imprimer ou Télécharger HTML)
  */
 async function executeDesignPlanAction(action) {
+    const secSel = document.getElementById('designModalSectionSelector');
     const weekSel = document.getElementById('designModalWeekSelector');
     const classSel = document.getElementById('designModalClassSelector');
     const showPhotosCheck = document.getElementById('designOptShowPhotos');
     const highlightHwCheck = document.getElementById('designOptHighlightHomework');
 
+    const selectedSection = (secSel ? secSel.value : currentSection) || 'garcons';
     const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
     const selectedClass = classSel ? classSel.value : '';
     const theme = window.currentSelectedDesignTheme || 'indigo';
@@ -13579,7 +13598,7 @@ async function executeDesignPlanAction(action) {
         return;
     }
 
-    await downloadFullClassDesign(selectedWeek, selectedClass, theme, showPhotos, highlightHomework, action || 'print');
+    await downloadFullClassDesign(selectedWeek, selectedClass, theme, showPhotos, highlightHomework, action || 'print', false, selectedSection);
     closeDesignPlanModal();
 }
 
@@ -13587,8 +13606,10 @@ async function executeDesignPlanAction(action) {
  * Raccourci depuis le modal Word & Excel existant
  */
 async function executeFullClassDesignDownload(explicitClass) {
+    const secSel = document.getElementById('modalWordSectionSelector');
     const weekSel = document.getElementById('modalWordWeekSelector');
     const classSel = document.getElementById('modalWordClassSelector');
+    const selectedSection = (secSel ? secSel.value : currentSection) || 'garcons';
     const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
     const selectedClass = explicitClass || (classSel ? classSel.value : '');
 
@@ -13598,7 +13619,7 @@ async function executeFullClassDesignDownload(explicitClass) {
     }
 
     closeFullClassWordModal();
-    await downloadFullClassDesign(selectedWeek, selectedClass, 'indigo', true, true, 'print');
+    await downloadFullClassDesign(selectedWeek, selectedClass, 'indigo', true, true, 'print', false, selectedSection);
 }
 
 /**
@@ -13617,7 +13638,7 @@ async function downloadSelectedClassFullDesign() {
 /**
  * Moteur d'appel et de génération du Plan Hebdomadaire (Design & PDF)
  */
-async function downloadFullClassDesign(weekNum, className, theme, showPhotos, highlightHomework, action, isParent = false) {
+async function downloadFullClassDesign(weekNum, className, theme, showPhotos, highlightHomework, action, isParent = false, explicitSection = null) {
     if (!className) {
         openDesignPlanModal();
         return;
@@ -13628,7 +13649,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
     displayAlert(`Génération du Plan Hebdomadaire pour la classe ${className} (Semaine ${weekNum})...`, false);
 
     try {
-        const section = currentSection || 'garcons';
+        const section = explicitSection || (isParent && typeof lockedParentSection !== 'undefined' && lockedParentSection ? lockedParentSection : (currentSection || 'garcons'));
         updateProgressBar(45);
 
         // Récupérer la note active de cette classe (en mémoire ou saisie en direct dans le bloc notes)
@@ -13664,7 +13685,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             theme: theme || 'indigo',
             showPhotos: showPhotos !== false,
             highlightHomework: highlightHomework !== false,
-            notes: activeNoteForClass || weeklyClassNotes,
+            notes: activeNoteForClass || (weeklyClassNotes && weeklyClassNotes[className] ? weeklyClassNotes[className] : ''),
             notesPhoto: activePhotoForClass,
             isParent: isParent === true
         };
