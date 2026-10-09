@@ -385,26 +385,9 @@
         function updateCrossSectionToggleUI() {
             const toggleContainer = document.getElementById('crossSectionToggleWrapper') || document.getElementById('crossSectionToggleContainer');
             const toggleCheckbox = document.getElementById('toggleCrossSectionView') || document.getElementById('crossSectionToggle');
-            const toggleLabelText = document.getElementById('crossSectionToggleText') || document.querySelector('#crossSectionToggleLabel span') || document.getElementById('crossSectionToggleLabel');
-            if (!toggleContainer || !toggleCheckbox) return;
-
-            // Afficher le commutateur pour les enseignants et administrateurs
-            toggleContainer.style.display = 'inline-flex';
-            toggleCheckbox.checked = !!showCrossSectionView;
-
-            let otherSectionLabelFr = (currentSection === 'garcons') ? 'Section Filles' : (currentSection === 'filles' ? 'Section Garçons' : (currentSection === 'maternelle' ? 'Section Primaire' : 'Section Maternelle'));
-            let otherSectionLabelAr = (currentSection === 'garcons') ? 'قسم البنات' : (currentSection === 'filles' ? 'قسم البنين' : (currentSection === 'maternelle' ? 'قسم الابتدائي' : 'قسم الروضة'));
-            let otherSectionLabelEn = (currentSection === 'garcons') ? 'Girls Section' : (currentSection === 'filles' ? 'Boys Section' : (currentSection === 'maternelle' ? 'Primary Section' : 'Kindergarten Section'));
-
-            if (toggleLabelText) {
-                if (currentUserLanguage === 'ar') {
-                    toggleLabelText.textContent = `👁️ عرض مساهمات ${otherSectionLabelAr} (قراءة فقط)`;
-                } else if (currentUserLanguage === 'en') {
-                    toggleLabelText.textContent = `👁️ View ${otherSectionLabelEn} entries (Read-only)`;
-                } else {
-                    toggleLabelText.textContent = `👁️ Voir les saisies de la ${otherSectionLabelFr} (Lecture seule)`;
-                }
-            }
+            if (toggleContainer) toggleContainer.style.display = 'none';
+            if (toggleCheckbox) toggleCheckbox.checked = false;
+            showCrossSectionView = false;
         }
 
         const teachersSectionMap = {
@@ -1967,8 +1950,23 @@
         }
         function displayAlert(msgKey, isErr = false, params = {}) { if (!msgKey) { const div=document.getElementById('message-alerte'); div.style.display='none'; div.textContent=''; div.className=''; if(alertTimeoutId) clearTimeout(alertTimeoutId); alertTimeoutId = null; return; } const msg = t(msgKey, params); console.log(`Alert:${isErr?'ERR':'OK'}-${msg}`); const div=document.getElementById('message-alerte'); div.textContent=msg; div.className = isErr ? 'alert-error' : (msgKey.includes('warn') || msgKey.includes('partial') ? 'alert-warning' : 'alert-success'); div.classList.add('message-alert-base'); div.style.display='block'; if(alertTimeoutId) clearTimeout(alertTimeoutId); alertTimeoutId=setTimeout(()=>{ if(div.textContent===msg){div.style.display='none'; div.textContent=''; div.className='';} alertTimeoutId=null; }, isErr ? 8000 : 5000); }
         function setButtonLoading(btnId, isLoading, iconClass) { const btn=document.getElementById(btnId); if(!btn) return; btn.disabled=isLoading; const icon=btn.querySelector('i'); if(icon) icon.className=isLoading ? 'fas fa-spinner fa-spin' : iconClass; }
-        function containsArabic(text) { if (typeof text !== 'string') return false; const arabicRegex = /[\u0600-\u06FF]/; return arabicRegex.test(text); }
-        function applyRTLToElement(element, content) { if (containsArabic(content)) { element.classList.add('arabic-content'); } else { element.classList.remove('arabic-content'); } }
+        function containsArabic(text) { if (typeof text !== 'string') return false; const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/; return arabicRegex.test(text); }
+        function applyRTLToElement(element, content) { 
+            if (!element) return;
+            if (containsArabic(content)) { 
+                element.classList.add('arabic-content'); 
+                element.setAttribute('dir', 'rtl');
+                element.style.direction = 'rtl';
+                element.style.textAlign = 'center';
+            } else { 
+                element.classList.remove('arabic-content'); 
+                if (element.getAttribute('dir') === 'rtl') {
+                    element.removeAttribute('dir');
+                }
+                element.style.direction = '';
+                element.style.textAlign = '';
+            } 
+        }
         function formatDateForDisplay(d) { if (!d || isNaN(d.getTime())) return "Invalid Date"; const dayIndex = d.getUTCDay(); if (dayIndex === 5) { console.warn(`⚠️ Vendredi détecté (${d.toISOString().split('T')[0]}), remplacement par Jeudi`); d.setUTCDate(d.getUTCDate() - 1); } else if (dayIndex === 6) { console.warn(`⚠️ Samedi détecté (${d.toISOString().split('T')[0]}), remplacement par Dimanche suivant`); d.setUTCDate(d.getUTCDate() + 1); } const days = translations[currentUserLanguage].fullDays || translations.fr.fullDays; const months = translations[currentUserLanguage].months || translations.fr.months; const correctedDayIndex = d.getUTCDay(); const dayName = days[correctedDayIndex] || `Jour ${correctedDayIndex}`; const dayOfMonth = String(d.getUTCDate()).padStart(2, '0'); const monthName = months[d.getUTCMonth()]; const year = d.getUTCFullYear(); if (currentUserLanguage === 'en') { return `${dayName}, ${monthName} ${dayOfMonth}, ${year}`; } else { return `${dayName} ${dayOfMonth} ${monthName} ${year}`; } }
         
         const fieldKeyAliases = {
@@ -2649,30 +2647,8 @@
                     }
                 });
 
-                let combinedRows = [...primaryRows];
-
-                // 2. Si la vue inter-section est activée, charger les données de l'autre section en lecture seule
-                if (showCrossSectionView) {
-                    const otherSection = (currentSection === 'garcons') ? 'filles' : 'garcons';
-                    try {
-                        const rOther = await fetch(`/api/plans/${week}?section=${otherSection}`);
-                        if (rOther.ok) {
-                            const fetchedOther = await rOther.json();
-                            const otherRows = (fetchedOther && fetchedOther.planData) || [];
-                            otherRows.forEach(row => {
-                                if (row) {
-                                    row._section = otherSection;
-                                    row.isReadOnlyCrossSection = true;
-                                }
-                            });
-                            combinedRows = combinedRows.concat(otherRows);
-                        }
-                    } catch (errOther) {
-                        console.warn("Erreur chargement cross-section:", errOther);
-                    }
-                }
-
-                planData = combinedRows;
+                // Séparation stricte et définitive des sections : aucune donnée d'une autre section n'est fusionnée
+                planData = primaryRows;
                 updateProgressBar(90); 
 
                 if (planData.length > 0) {
@@ -3126,46 +3102,29 @@
                     return false;
                 } 
                 
+                // Séparation stricte et définitive des sections
+                if (i.isReadOnlyCrossSection || (i._section && i._section !== currentSection)) {
+                    return false;
+                }
+                if (currentSection === 'garcons') {
+                    if (/fille|filles|banat|بنات/i.test(iC) || /\bf\b/i.test(iC)) return false;
+                    const fLow = ['amina', 'fatima', 'khadija', 'mariam', 'salma', 'zainab', 'nour', 'houda', 'leila', 'sarah', 'zohra', 'nadia', 'samira', 'imane', 'mouna', 'siham', 'hajar', 'meriem', 'aicha', 'hanane', 'أمينة', 'فاطمة', 'خديجة', 'مريم', 'سلمى', 'زينب', 'نور', 'هدى', 'ليلى', 'سارة', 'زهرة'];
+                    if (fLow.some(f => iE.toLowerCase().includes(f)) && !iE.toLowerCase().includes('farah') && !iE.toLowerCase().includes('musique') && !iE.toLowerCase().includes('music')) return false;
+                } else if (currentSection === 'filles') {
+                    if (/garcon|garçons|garcons|banin|بنين|اولاد/i.test(iC) || /\bg\b|\bb\b/i.test(iC)) return false;
+                    const mLow = ['mohamed', 'abas', 'jaber', 'imad', 'kamel', 'majed', 'mohamed ali', 'morched', 'saeed', 'sami', 'sylvano', 'tonga', 'oumarou', 'zine', 'youssouf', 'محمد', 'عباس', 'جابر', 'عماد', 'كامل', 'ماجد', 'مرشد', 'سعيد', 'سامي', 'زين', 'يوسف'];
+                    if (mLow.some(m => iE.toLowerCase().includes(m))) return false;
+                }
+                
                 // Si enseignant connecté (non admin)
                 if (isTeacherOnly) {
-                    if (!i.isReadOnlyCrossSection) {
-                        // Section propre: n'afficher que les séances de l'enseignant
-                        if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
-                            return false;
-                        }
-                    } else {
-                        // Autre section (cross-section): afficher UNIQUEMENT les séances correspondant
-                        // STRICTEMENT à la matière ET à la classe enseignées ensemble par l'enseignant
-                        if (!showCrossSectionView) return false;
-                        if (myAssignments.length > 0 && !isCrossSectionRowMatchingTeacherAssignments(i, myAssignments)) {
-                            return false;
-                        }
-                    }
-                } else {
-                    // Si mode Admin / Superviseur
-                    if (i.isReadOnlyCrossSection && !showCrossSectionView) {
+                    if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
                         return false;
                     }
                 }
                 
                 // Filtre Enseignant :
-                let pE = true;
-                if (!i.isReadOnlyCrossSection) {
-                    // Pour ses propres cours
-                    pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF);
-                } else {
-                    // Pour les cours de l'autre section
-                    if (!ensF) {
-                        // "Tous" sélectionné -> afficher
-                        pE = true;
-                    } else if (isRowForLoggedInTeacher(ensF, loggedInUser, loggedInTeacherTable)) {
-                        // L'enseignant a sélectionné son propre nom -> ne pas afficher les lignes du collègue
-                        pE = false;
-                    } else {
-                        // Un enseignant spécifique a été choisi dans le filtre
-                        pE = (iE === ensF) || isTeacherMatch(iE, ensF);
-                    }
-                }
+                const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF);
 
                 const pC = !clsF || (iC === clsF) || isClassMatch(iC, clsF); 
                 const pM = !matF || (iM === matF) || (iM.toLowerCase() === matF.toLowerCase()) || isEquivalentSubject(iM, matF); 
@@ -3684,6 +3643,7 @@ function displayPlanTable(data) {
                     } else {
                         td.textContent = content;
                     }
+                    applyRTLToElement(td, td.textContent || content);
                     tr.appendChild(td);
                 });
 
@@ -6906,6 +6866,13 @@ function renderParentPlanCards(rows) {
             const isHomeworkEmpty = !devoirs || String(devoirs).trim() === '';
             const bgRow = (idx % 2 === 0) ? '#FFFFFF' : '#F8FAFC';
             
+            const isArMat = containsArabic(matiere);
+            const isArEns = containsArabic(enseignant);
+            const isArLec = containsArabic(lecon);
+            const isArTra = containsArabic(travaux);
+            const isArDev = containsArabic(devoirs);
+            const isArSup = containsArabic(support);
+            
             tableHtml += `
                 <tr style="background:${bgRow}; border-bottom:1px solid #E2E8F0; vertical-align:middle; transition:background 0.2s ease;">
                     <!-- Période -->
@@ -6916,8 +6883,8 @@ function renderParentPlanCards(rows) {
                     </td>
                     
                     <!-- Matière & Enseignant -->
-                    <td style="padding:16px 14px; border-bottom:1px solid #E2E8F0;">
-                        <div style="font-weight:800; color:#1E1B4B; font-size:1.05rem; margin-bottom:4px;">${escapeHtml(matiere)}</div>
+                    <td class="${isArMat || isArEns ? 'arabic-content' : ''}" ${isArMat || isArEns ? 'dir="rtl"' : ''} style="padding:16px 14px; border-bottom:1px solid #E2E8F0; ${isArMat || isArEns ? 'text-align:center; direction:rtl;' : ''}">
+                        <div style="font-weight:800; color:#1E1B4B; font-size:1.05rem; margin-bottom:4px; ${isArMat ? 'text-align:center;' : ''}">${escapeHtml(matiere)}</div>
                         ${enseignant ? `
                             <button type="button" onclick="openContactTeacherModal('${escapeHtml(enseignant).replace(/'/g, "\\'")}')" class="teacher-direct-msg-btn" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:4px 10px; border-radius:8px; font-size:0.82rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; margin-top:2px;">
                                 <i class="fas fa-chalkboard-teacher"></i>
@@ -6928,24 +6895,24 @@ function renderParentPlanCards(rows) {
                     </td>
                     
                     <!-- Leçon / Sujet -->
-                    <td style="padding:16px 14px; border-bottom:1px solid #E2E8F0; font-size:0.98rem; line-height:1.5; color:${isLessonEmpty ? '#94A3B8' : '#1E293B'}; font-weight:${isLessonEmpty ? '400' : '600'};">
+                    <td class="${isArLec ? 'arabic-content' : ''}" ${isArLec ? 'dir="rtl"' : ''} style="padding:16px 14px; border-bottom:1px solid #E2E8F0; font-size:0.98rem; line-height:1.5; color:${isLessonEmpty ? '#94A3B8' : '#1E293B'}; font-weight:${isLessonEmpty ? '400' : '600'}; ${isArLec ? 'text-align:center; direction:rtl;' : ''}">
                         ${isLessonEmpty ? `<i>${currentUserLanguage === 'ar' ? 'غير مسجل' : 'Non renseigné'}</i>` : escapeHtml(lecon)}
                     </td>
                     
                     <!-- Travaux de classe -->
-                    <td style="padding:16px 14px; border-bottom:1px solid #E2E8F0; font-size:0.95rem; line-height:1.5; color:#334155;">
+                    <td class="${isArTra ? 'arabic-content' : ''}" ${isArTra ? 'dir="rtl"' : ''} style="padding:16px 14px; border-bottom:1px solid #E2E8F0; font-size:0.95rem; line-height:1.5; color:#334155; ${isArTra ? 'text-align:center; direction:rtl;' : ''}">
                         ${travaux && String(travaux).trim() !== '' ? escapeHtml(travaux) : `<span style="color:#94A3B8;">-</span>`}
                     </td>
                     
                     <!-- Devoirs à la maison -->
-                    <td style="padding:16px 14px; border-bottom:1px solid #E2E8F0; background:${isHomeworkEmpty ? 'inherit' : '#F0FDF4'};">
+                    <td class="${isArDev ? 'arabic-content' : ''}" ${isArDev ? 'dir="rtl"' : ''} style="padding:16px 14px; border-bottom:1px solid #E2E8F0; background:${isHomeworkEmpty ? 'inherit' : '#F0FDF4'}; ${isArDev ? 'text-align:center; direction:rtl;' : ''}">
                         <div style="font-size:0.98rem; font-weight:${isHomeworkEmpty ? '400' : '700'}; color:${isHomeworkEmpty ? '#94A3B8' : '#065F46'}; line-height:1.4;">
-                            ${isHomeworkEmpty ? `<span style="color:#94A3B8;">${t.noHomework}</span>` : `<div style="display:flex; align-items:flex-start; gap:6px;"><i class="fas fa-check" style="color:#10B981; margin-top:4px;"></i> <span>${escapeHtml(devoirs)}</span></div>`}
+                            ${isHomeworkEmpty ? `<span style="color:#94A3B8;">${t.noHomework}</span>` : `<div style="display:flex; align-items:center; ${isArDev ? 'justify-content:center;' : ''} gap:6px;"><i class="fas fa-check" style="color:#10B981; margin-top:2px;"></i> <span ${isArDev ? 'dir="rtl"' : ''}>${escapeHtml(devoirs)}</span></div>`}
                         </div>
                     </td>
                     
                     <!-- Support / Liens -->
-                    <td style="padding:16px 12px; border-bottom:1px solid #E2E8F0; text-align:center;">
+                    <td class="${isArSup ? 'arabic-content' : ''}" ${isArSup ? 'dir="rtl"' : ''} style="padding:16px 12px; border-bottom:1px solid #E2E8F0; text-align:center; ${isArSup ? 'direction:rtl;' : ''}">
                         ${support && String(support).trim() !== '' ? `
                             <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; padding:6px 10px; border-radius:8px; font-size:0.85rem; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
                                 <i class="fas fa-external-link-alt"></i> <span>Ouvrir</span>
@@ -14080,7 +14047,7 @@ window.currentAdminScheduleSlots = [];
 window.adminScheduleTeachersCache = [];
 window.adminScheduleSubjectsCache = [];
 window.adminScheduleClassesCache = [];
-window.adminScheduleMaxPeriod = 7;
+window.adminScheduleMaxPeriod = 8;
 window.currentEditingSlot = null;
 
 async function initAdminScheduleTab() {
@@ -14244,7 +14211,7 @@ async function loadAdminScheduleForClass() {
             const pNum = parseInt(s.periode, 10);
             if (!isNaN(pNum) && pNum > maxP) maxP = pNum;
         });
-        window.adminScheduleMaxPeriod = Math.max(7, maxP);
+        window.adminScheduleMaxPeriod = Math.max(8, maxP);
 
         if (noticeEl) {
             if (data.filledSlotsCount > 0) {
@@ -14317,7 +14284,7 @@ function renderAdminScheduleGrid() {
 
     tbody.innerHTML = '';
     const days = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
-    const maxP = window.adminScheduleMaxPeriod || 7;
+    const maxP = window.adminScheduleMaxPeriod || 8;
 
     for (let p = 1; p <= maxP; p++) {
         const tr = document.createElement('tr');

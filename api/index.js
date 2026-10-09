@@ -311,7 +311,7 @@ async function getWordTemplateBuffer() {
 
 // Configuration IA Providers (GROQ et GEMINI)
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY_1;
 const USE_GROQ = GROQ_API_KEY ? true : false;
 const AI_API_KEY = USE_GROQ ? GROQ_API_KEY : GEMINI_API_KEY;
 
@@ -357,20 +357,27 @@ function isArabicTeacher(username, userLang, subject) {
 
 const maleTeachers = [
   'Mohamed', 'Abas', 'Jaber', 'Imad', 'Kamel', 'Majed', 'Mohamed Ali', 'Morched', 
-  'Saeed', 'Sami', 'Sylvano', 'Tonga', 'Oumarou', 'Zine', 'Youssouf'
+  'Saeed', 'Sami', 'Sylvano', 'Tonga', 'Oumarou', 'Zine', 'Youssouf',
+  'محمد', 'عباس', 'جابر', 'عماد', 'كامل', 'ماجد', 'محمد علي', 'مرشد', 'سعيد', 'سامي', 'زين', 'يوسف'
 ];
 
 const femaleTeachers = [
   'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-  'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe'
+  'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe',
+  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
+  'Salma P', 'Khadija P', 'Aicha', 'Hanane',
+  'أمينة', 'فاطمة', 'خديجة', 'مريم', 'سلمى', 'زينب', 'نور', 'هدى', 'ليلى', 'سارة', 'زهرة',
+  'نادية', 'سميرة', 'إيمان', 'فاطمة الزهراء', 'منى', 'سهام', 'هاجر', 'عائشة', 'حنان', 'أمل', 'فرح'
 ];
 
 const primaireTeachers = [
-  'Mouna', 'Hajar', 'Meriem', 'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal'
+  'Mouna', 'Hajar', 'Meriem', 'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal',
+  'منى', 'هاجر', 'مريم', 'عائشة', 'حنان'
 ];
 
 const maternelleTeachers = [
-  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Siham', 'Farah', 'Music', 'Musique', 'Amal'
+  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Siham', 'Farah', 'Music', 'Musique', 'Amal',
+  'نادية', 'سميرة', 'إيمان', 'فاطمة الزهراء', 'سهام'
 ];
 
 function isMaternelleClassServer(cls) {
@@ -387,20 +394,20 @@ function isMaternelleClassServer(cls) {
 const isMusicTeacher = (name) => {
   if (!name) return false;
   const n = String(name).trim().toLowerCase();
-  return n === 'farah' || n.includes('farah') || n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique');
+  return n === 'farah' || n.includes('farah') || n === 'music' || n === 'musique' || n.includes('music') || n.includes('musique') || n.includes('فرح') || n.includes('موسيقى');
 };
 
 const isAmalArabeTeacher = (name) => {
   if (!name) return false;
   const n = String(name).trim().toLowerCase();
-  return (n.includes('amal') || n.startsWith('amal')) && (n.includes('arabe') || n.includes('arab') || n.includes('عرب'));
+  return (n.includes('amal') || n.startsWith('amal') || n.includes('أمل')) && (n.includes('arabe') || n.includes('arab') || n.includes('عرب'));
 };
 
 const isAmalSoleTeacher = (name) => {
   if (!name) return false;
   const n = String(name).trim().toLowerCase();
   if (isAmalArabeTeacher(n)) return false;
-  return n.includes('amal') || n.startsWith('amal');
+  return n.includes('amal') || n.startsWith('amal') || n.includes('أمل');
 };
 
 function detectLessonLanguage(enseignant, matiere, lecon, travaux) {
@@ -429,6 +436,184 @@ const isDualSectionTeacher = (name) => {
 };
 
 const isDualMusicTeacher = isDualSectionTeacher;
+
+// ========================================================================
+// SÉPARATION STRICTE ET DÉFINITIVE DES SECTIONS
+// ========================================================================
+function isRowAllowedForSection(row, targetSection) {
+  if (!row || typeof row !== 'object') return false;
+  const sec = String(targetSection || 'garcons').toLowerCase().trim();
+
+  // Si la ligne porte une section explicite différente
+  if (row._section && String(row._section).toLowerCase().trim() !== sec) {
+    return false;
+  }
+
+  const ens = (row['Enseignant'] || row.enseignant || (typeof findKey === 'function' ? row[findKey(row, 'Enseignant')] : '') || '').trim();
+  const cls = (row['Classe'] || row.classe || (typeof findKey === 'function' ? row[findKey(row, 'Classe')] : '') || '').trim();
+  const clsUpper = cls.toUpperCase();
+  const clsNorm = cls.toLowerCase().replace(/[\s\-_]+/g, '');
+  const ensNorm = ens.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const isFemaleClass = /fille|filles|banat|بنات/i.test(cls) || /\bf\b/i.test(cls);
+  const isMaleClass = /garcon|garçons|garcons|banin|بنين|اولاد/i.test(cls) || /\bg\b|\bb\b/i.test(cls);
+  const isMatClass = isMaternelleClassServer(cls) || ['PS', 'MS', 'GS'].includes(clsUpper) || /maternelle|روض/i.test(cls);
+  const isPrimClass = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'].includes(clsUpper) || /primaire|ابتدائي/i.test(cls);
+
+  const isFemaleTeacher = femaleTeachers.some(f => {
+    const fLow = f.toLowerCase();
+    return ensNorm.includes(fLow) || ens.toLowerCase().includes(fLow);
+  });
+  const isMaleTeacher = maleTeachers.some(m => {
+    const mLow = m.toLowerCase();
+    return ensNorm.includes(mLow) || ens.toLowerCase().includes(mLow);
+  });
+
+  if (sec === 'garcons') {
+    if (isFemaleClass || isMatClass || isPrimClass) return false;
+    if (isFemaleTeacher && !isDualMusicTeacher(ens)) return false;
+    return true;
+  } else if (sec === 'filles') {
+    if (isMaleClass || isMatClass || isPrimClass) return false;
+    if (isMaleTeacher) return false;
+    return true;
+  } else if (sec === 'primaire') {
+    if (isMatClass || isMaleClass || isFemaleClass) return false;
+    if (isMaleTeacher) return false;
+    if (['PEI1','PEI2','PEI3','PEI4','PEI5','DP1','DP2'].includes(clsUpper)) return false;
+    return true;
+  } else if (sec === 'maternelle') {
+    if (cls && !isMatClass) return false;
+    if (isMaleTeacher) return false;
+    return true;
+  }
+  return true;
+}
+
+function filterPlanDataBySection(rows, section) {
+  if (!Array.isArray(rows)) return [];
+  return rows.filter(r => isRowAllowedForSection(r, section));
+}
+
+// ========================================================================
+// GARANTIE ABSOLUE DES 8 PÉRIODES (1 À 8) POUR CHAQUE JOUR ET CHAQUE CLASSE
+// ========================================================================
+function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
+  if (!Array.isArray(data)) return [];
+  const schoolDays = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
+
+  // 1. Détecter les classes de la section
+  let distinctClasses = new Set();
+  data.forEach(r => {
+    if (!r) return;
+    const c = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
+    if (c) distinctClasses.add(c);
+  });
+
+  // 1.b Toujours inclure toutes les classes officielles de la section pour garantir l'exhaustivité
+  if (section === 'garcons' || section === 'filles') {
+    ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].forEach(c => distinctClasses.add(c));
+  } else if (section === 'primaire') {
+    ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'].forEach(c => distinctClasses.add(c));
+  } else if (section === 'maternelle') {
+    ['PS', 'MS', 'GS'].forEach(c => distinctClasses.add(c));
+  }
+
+  // 2. Déterminer les libellés de jours avec date pour cette semaine
+  const dayStringMap = new Map();
+  data.forEach(r => {
+    if (!r) return;
+    const rawJ = (r['Jour'] || r.jour || (typeof findKey === 'function' ? r[findKey(r, 'Jour')] : ''))?.trim();
+    if (rawJ) {
+      for (const d of schoolDays) {
+        if (rawJ.toLowerCase().includes(d.toLowerCase()) && !dayStringMap.has(d)) {
+          dayStringMap.set(d, rawJ);
+        }
+      }
+    }
+  });
+
+  const datesNode = typeof getSectionWeekDates === 'function' ? getSectionWeekDates(section, weekNumber) : null;
+  let weekStartDate = null;
+  if (datesNode?.start) {
+    weekStartDate = new Date(datesNode.start + 'T00:00:00Z');
+  }
+
+  schoolDays.forEach(d => {
+    if (!dayStringMap.has(d)) {
+      if (weekStartDate && !isNaN(weekStartDate.getTime()) && typeof getDateForDayNameNode === 'function') {
+        const dt = getDateForDayNameNode(weekStartDate, d);
+        dayStringMap.set(d, dt ? formatDateFrenchNode(dt) : d);
+      } else {
+        dayStringMap.set(d, d);
+      }
+    }
+  });
+
+  // 3. Indexer les séances existantes par classe, jour et période
+  const existingMap = new Map();
+  const extraRows = [];
+
+  data.forEach(row => {
+    if (!row) return;
+    const c = (row['Classe'] || row.classe || (typeof findKey === 'function' ? row[findKey(row, 'Classe')] : ''))?.trim();
+    const rawJ = (row['Jour'] || row.jour || (typeof findKey === 'function' ? row[findKey(row, 'Jour')] : ''))?.trim();
+    const pVal = parseInt(row['Période'] || row.periode || (typeof findKey === 'function' ? row[findKey(row, 'Période')] : '') || 0, 10);
+
+    let matchedDay = null;
+    if (rawJ) {
+      for (const d of schoolDays) {
+        if (rawJ.toLowerCase().includes(d.toLowerCase())) {
+          matchedDay = d;
+          break;
+        }
+      }
+    }
+
+    if (c && matchedDay && pVal >= 1 && pVal <= 8) {
+      const k = `${c.toLowerCase()}___${matchedDay.toLowerCase()}___${pVal}`;
+      if (!existingMap.has(k)) {
+        existingMap.set(k, row);
+      } else {
+        extraRows.push(row);
+      }
+    } else {
+      extraRows.push(row);
+    }
+  });
+
+  // 4. Construire la liste garantie avec les 8 périodes de 1 à 8 pour chaque jour et chaque classe
+  const result = [];
+  Array.from(distinctClasses).sort().forEach(cls => {
+    schoolDays.forEach(day => {
+      const dayLabel = dayStringMap.get(day) || day;
+      for (let p = 1; p <= 8; p++) {
+        const k = `${cls.toLowerCase()}___${day.toLowerCase()}___${p}`;
+        if (existingMap.has(k)) {
+          const item = existingMap.get(k);
+          if (!item._section) item._section = section;
+          result.push(item);
+        } else {
+          result.push({
+            'Classe': cls,
+            'Jour': dayLabel,
+            'Période': String(p),
+            'Enseignant': '',
+            'Matière': '—',
+            'Leçon': '',
+            'Travaux de classe': '—',
+            'Support': '',
+            'Devoirs': '',
+            '_section': section,
+            '_id': `${section}_${weekNumber}_${cls}_${day}_P${p}`.replace(/\s+/g, '_')
+          });
+        }
+      }
+    });
+  });
+
+  return result.concat(extraRows);
+}
 
 const defaultWeeksConfig = {
   1: { title: "Semaine 1", titleAr: "الأسبوع 1", start: "2026-08-30", end: "2026-09-03" },
@@ -1400,8 +1585,8 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    mongoConfigured: !!MONGO_URL,
-    geminiConfigured: !!GEMINI_API_KEY
+    mongoConfigured: !!(process.env.MONGO_URL && (process.env.MONGO_URL.startsWith('mongodb://') || process.env.MONGO_URL.startsWith('mongodb+srv://'))),
+    geminiConfigured: !!(process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY_1)
   });
 });
 
@@ -5224,43 +5409,8 @@ app.get('/api/plans/:week', async (req, res) => {
       
       console.log(`📋 Plans disponibles pour S${weekNumber} (${section}):`, Array.from(availableLessonPlanIds));
       
-      let rawData = planDocument.data || [];
-      // Filtrage strict par section pour garantir qu'aucun enseignant ou classe d'une autre section ne figure dans le plan
-      if (section === 'garcons') {
-        rawData = rawData.filter(row => {
-          const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
-          if (isDualMusicTeacher(enseignant)) return true;
-          return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase()) &&
-                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
-                 !maternelleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
-        });
-      } else if (section === 'filles') {
-        rawData = rawData.filter(row => {
-          const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
-          if (isDualMusicTeacher(enseignant)) return true;
-          return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
-                 !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
-                 !maternelleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
-        });
-      } else if (section === 'primaire') {
-        rawData = rawData.filter(row => {
-          const cls = (row[findKey(row, 'Classe')] || '').trim().toUpperCase();
-          if (['PS', 'MS', 'GS'].includes(cls) || isMaternelleClassServer(cls)) return false;
-          const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
-          if (isDualMusicTeacher(enseignant)) return true;
-          return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
-                 !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
-        });
-      } else if (section === 'maternelle') {
-        rawData = rawData.filter(row => {
-          const cls = (row[findKey(row, 'Classe')] || '').trim().toUpperCase();
-          if (cls && !['PS', 'MS', 'GS'].includes(cls) && !isMaternelleClassServer(cls)) return false;
-          const enseignant = (row[findKey(row, 'Enseignant')] || '').trim();
-          if (isDualMusicTeacher(enseignant)) return true;
-          return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
-                 !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
-        });
-      }
+      // Filtrage strict par section : aucune classe ou enseignant d'une autre section n'est toléré
+      let rawData = filterPlanDataBySection(planDocument.data || [], section);
 
       // Récupérer les liaisons Matière ➔ Enseignant configurées pour cette section
       const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
@@ -5309,6 +5459,9 @@ app.get('/api/plans/:week', async (req, res) => {
         }
         return row;
       });
+
+      // Garantie absolue de toutes les périodes de 1 à 8 pour chaque jour et chaque classe
+      const finalSectionData = ensureAllPeriods1To8ForPlan(enrichedData, section, weekNumber);
       
       // Statut de publication aux parents
       const pubDoc = await db.collection('published_plans').findOne({
@@ -5323,7 +5476,7 @@ app.get('/api/plans/:week', async (req, res) => {
       });
       const isPublishedToParents = (pubDoc && (pubDoc.published !== undefined || pubDoc.isPublishedToParents !== undefined))
         ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents)
-        : (enrichedData && enrichedData.length > 0);
+        : (finalSectionData && finalSectionData.length > 0);
 
       // Récupérer les journées spéciales / fusionnées pour cette semaine et section
       const specialDays = await db.collection('special_days').find({ 
@@ -5340,7 +5493,7 @@ app.get('/api/plans/:week', async (req, res) => {
       });
 
       res.status(200).json({ 
-          planData: enrichedData, 
+          planData: finalSectionData, 
           classNotes: planDocument.classNotes || {},
           classNotesPhotos: planDocument.classNotesPhotos || {},
           availableWeeklyPlans: availableWeeklyPlans,
@@ -5348,6 +5501,7 @@ app.get('/api/plans/:week', async (req, res) => {
           specialDays: specialDays || []
       });
     } else {
+      const defaultEmptyData = ensureAllPeriods1To8ForPlan([], section, weekNumber);
       const pubDoc = await db.collection('published_plans').findOne({
         $or: [
           { _id: `${section}_${weekNumber}` },
@@ -5371,7 +5525,7 @@ app.get('/api/plans/:week', async (req, res) => {
           }];
         }
       });
-      res.status(200).json({ planData: [], classNotes: {}, classNotesPhotos: {}, availableWeeklyPlans: [], isPublishedToParents, specialDays: specialDays || [] });
+      res.status(200).json({ planData: defaultEmptyData, classNotes: {}, classNotesPhotos: {}, availableWeeklyPlans: [], isPublishedToParents, specialDays: specialDays || [] });
     }
   } catch (error) {
     console.error('Erreur MongoDB /plans/:week:', error);
@@ -5390,11 +5544,15 @@ app.post('/api/save-plan', async (req, res) => {
     const docId = `${section}_${weekNumber}`;
     const now = new Date();
 
+    // Filtrer strictement les données pour exclure les cours et enseignants des autres sections
+    const cleanSectionData = filterPlanDataBySection(data, section);
+    const completedData = ensureAllPeriods1To8ForPlan(cleanSectionData, section, weekNumber);
+
     // Récupérer le plan existant pour préserver les notes, leçons et devoirs saisis par les enseignants
     const existingDoc = await db.collection('plans').findOne({ _id: docId });
     const existingData = (existingDoc && Array.isArray(existingDoc.data)) ? existingDoc.data : [];
 
-    const mergedData = data.map(item => {
+    const mergedData = completedData.map(item => {
       if (!item || typeof item !== 'object') return item;
       const stamped = { ...item, _section: section };
       const match = existingData.find(oldRow => matchPlanRow(oldRow, stamped));
@@ -5423,7 +5581,7 @@ app.post('/api/save-plan', async (req, res) => {
       },
       { upsert: true }
     );
-    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${mergedData.length} lignes enregistrées (notes enseignants préservées).`);
+    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${mergedData.length} lignes enregistrées (notes enseignants préservées, 8 périodes garanties).`);
     res.status(200).json({ 
       success: true,
       message: `Plan S${weekNumber} pour la section ${section} enregistré avec succès.`,
@@ -5453,6 +5611,9 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
     const db = await connectToDatabase();
     const now = new Date();
 
+    // Filtrer strictement les données pour exclure toute autre section
+    const cleanSectionData = filterPlanDataBySection(data, section);
+
     // Récupérer les documents existants pour ces semaines afin de PRÉSERVER les notes et données saisies par les enseignants !
     const existingDocs = await db.collection('plans').find({ _id: { $in: validWeeks.map(w => `${section}_${w}`) } }).toArray();
     const existingMap = new Map();
@@ -5463,8 +5624,10 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
       const existingDoc = existingMap.get(docId);
       const existingData = (existingDoc && Array.isArray(existingDoc.data)) ? existingDoc.data : [];
 
+      const completedWeekData = ensureAllPeriods1To8ForPlan(cleanSectionData, section, w);
+
       // Fusionner les données pour ne JAMAIS supprimer ou écraser les notes, leçons ou devoirs saisis par les enseignants
-      const mergedData = data.map(newItem => {
+      const mergedData = completedWeekData.map(newItem => {
         if (!newItem || typeof newItem !== 'object') return newItem;
         const stamped = { ...newItem, _section: section };
 
@@ -5500,10 +5663,10 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
     });
 
     await db.collection('plans').bulkWrite(operations);
-    console.log(`[Multi-Weeks Upload] ${data.length} lignes appliquées aux semaines ${validWeeks.join(', ')} (notes enseignants 100% préservées).`);
+    console.log(`[Multi-Weeks Upload] ${cleanSectionData.length} lignes appliquées aux semaines ${validWeeks.join(', ')} (section ${section}, 8 périodes garanties).`);
     res.status(200).json({ 
       success: true,
-      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section} avec préservation des notes.`,
+      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section} avec garantie des 8 périodes.`,
       savedWeeks: validWeeks,
       section: section
     });
@@ -8070,14 +8233,33 @@ app.post('/api/generate-word', async (req, res) => {
 
       const dateOfDay = getDateForDayNameNode(weekStartDateNode, dayName);
       const formattedDate = dateOfDay ? formatDateFrenchNode(dateOfDay) : dayName;
-      const sortedEntries = groupedByDay[dayName].sort((a, b) => {
-        const pA = a[findKey(a, 'Période')] || a[defaultPeriodeKey] || 0;
-        const pB = b[findKey(b, 'Période')] || b[defaultPeriodeKey] || 0;
-        return (parseInt(pA, 10) || 0) - (parseInt(pB, 10) || 0);
+
+      const entriesMap = new Map();
+      (groupedByDay[dayName] || []).forEach(item => {
+        const pVal = parseInt(item[findKey(item, 'Période')] || item[defaultPeriodeKey] || 0, 10);
+        if (pVal >= 1 && pVal <= 8 && !entriesMap.has(pVal)) {
+          entriesMap.set(pVal, item);
+        }
       });
 
-      const matieres = sortedEntries.map(item => ({
-        matiere: item[findKey(item, 'Matière')] || item[defaultMatiereKey] || "",
+      const all8Entries = [];
+      for (let p = 1; p <= 8; p++) {
+        if (entriesMap.has(p)) {
+          all8Entries.push(entriesMap.get(p));
+        } else {
+          all8Entries.push({
+            [defaultPeriodeKey]: String(p),
+            [defaultMatiereKey]: '—',
+            [defaultLeconKey]: '',
+            [defaultTravauxKey]: '—',
+            [defaultSupportKey]: '',
+            [defaultDevoirsKey]: ''
+          });
+        }
+      }
+
+      const matieres = all8Entries.map(item => ({
+        matiere: item[findKey(item, 'Matière')] || item[defaultMatiereKey] || "—",
         Lecon: formatTextForWord(item[findKey(item, 'Leçon')] || item[defaultLeconKey], { color: 'FF0000' }),
         travailDeClasse: formatTextForWord(item[findKey(item, 'Travaux de classe')] || item[defaultTravauxKey]),
         Support: formatTextForWord(item[findKey(item, 'Support')] || item[defaultSupportKey], { color: 'FF0000', italic: true }),
@@ -8233,10 +8415,33 @@ app.post('/api/generate-word', async (req, res) => {
 
 	        const dateOfDay = getDateForDayNameNode(weekStartDateNode, dayName);
 	        const formattedDate = dateOfDay ? formatDateFrenchNode(dateOfDay) : dayName;
-	        const sortedEntries = groupedByDay[dayName].sort((a, b) => (parseInt(a[periodeKey], 10) || 0) - (parseInt(b[periodeKey], 10) || 0));
 
-	        const matieres = sortedEntries.map(item => ({
-	          matiere: item[matiereKey] ?? "",
+	        const entriesMap = new Map();
+	        (groupedByDay[dayName] || []).forEach(item => {
+	          const pVal = parseInt(item[periodeKey] || 0, 10);
+	          if (pVal >= 1 && pVal <= 8 && !entriesMap.has(pVal)) {
+	            entriesMap.set(pVal, item);
+	          }
+	        });
+
+	        const all8Entries = [];
+	        for (let p = 1; p <= 8; p++) {
+	          if (entriesMap.has(p)) {
+	            all8Entries.push(entriesMap.get(p));
+	          } else {
+	            all8Entries.push({
+	              [periodeKey]: String(p),
+	              [matiereKey]: '—',
+	              [leconKey]: '',
+	              [travauxKey]: '—',
+	              [supportKey]: '',
+	              [devoirsKey]: ''
+	            });
+	          }
+	        }
+
+	        const matieres = all8Entries.map(item => ({
+	          matiere: item[matiereKey] || "—",
 	          Lecon: formatTextForWord(item[leconKey], { color: 'FF0000' }),
 	          travailDeClasse: formatTextForWord(item[travauxKey]),
 	          Support: formatTextForWord(item[supportKey], { color: 'FF0000', italic: true }),
@@ -8888,6 +9093,7 @@ function getAllGeminiApiKeys() {
 
   addKeyStr(process.env.GEMINI_API_KEYS);
   addKeyStr(process.env.GEMINI_API_KEY);
+  addKeyStr(process.env.API_KEY);
   addKeyStr(process.env.GEMINI_API_KEY_BACKUP);
   addKeyStr(process.env.GOOGLE_API_KEY);
   addKeyStr(process.env.GEMINI_KEY);
@@ -10780,7 +10986,7 @@ app.use((err, req, res, next) => {
 });
 
 // Configuration Port et Host — Port 3000 requis pour l'environnement AI Studio
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = 3000;
 const HOST = '0.0.0.0';
 
 // Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel

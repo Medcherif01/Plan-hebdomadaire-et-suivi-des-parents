@@ -90,11 +90,17 @@ function getSubjectStyle(subjectName) {
   return subjectColors.defaut;
 }
 
+// Détection des caractères arabes
+function containsArabic(text) {
+  if (!text || typeof text !== 'string') return false;
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+}
+
 // Détection précise des matières arabophones (caractères arabes ou mots-clés)
 function isArabicSubject(subjectName) {
   if (!subjectName) return false;
   const s = String(subjectName).trim();
-  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(s)) {
+  if (containsArabic(s)) {
     return true;
   }
   return /arabe|coran|islam|quran|hadith|fiqh|tarbiya|tajweed|civique|charia|nahw|sarf|tawhid|sirah|aqeedah/i.test(s);
@@ -982,6 +988,25 @@ function generateDesignPlanHtml(options = {}) {
       text-align: center !important;
     }
 
+    /* Support RTL et centrage universel pour toutes les cases avec écriture arabe */
+    .is-arabic-text,
+    [dir="rtl"],
+    .cell-arabic-mat,
+    .tag-arabic-mat,
+    .span-arabic-mat,
+    .teacher-box-arabic,
+    .teacher-name-print.is-arabic-text,
+    .classwork-detail-txt.is-arabic-text,
+    .lesson-title-strong.is-arabic-text,
+    .classwork-support-chip.is-arabic-text,
+    .homework-item-card.is-arabic-text,
+    .backpack-ar-cell {
+      direction: rtl !important;
+      text-align: center !important;
+      font-family: 'Cairo', 'Amiri', 'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif !important;
+      justify-content: center !important;
+    }
+
     .period-badge-pill {
       font-size: 0.68rem;
       font-weight: 800;
@@ -1798,108 +1823,135 @@ function generateDesignPlanHtml(options = {}) {
                       </div>
                     </td>
                   </tr>
-                ` : (rows.length === 0 ? `
-                  <tr>
-                    <td colspan="3" style="text-align:center; padding: 25px; color:#64748B; font-style:italic;">
-                      <i class="fas fa-calendar-times" style="font-size:1.3rem; margin-bottom:6px; display:block; color:#94A3B8;"></i>
-                      Aucun cours programmé pour ce jour.
-                    </td>
-                  </tr>
-                ` : rows.map(row => {
-                  const rowPhotos = Array.isArray(row.photos) ? row.photos : (Array.isArray(row.images) ? row.images : []);
-                  if ((row.isMerged || row.merged) && rowPhotos.length > 0) {
+                ` : (() => {
+                  const periodMap = new Map();
+                  (rows || []).forEach(r => {
+                    if (!r) return;
+                    const pVal = parseInt(r['Période'] || r.periode || r['Période (Heure)'] || 0, 10);
+                    if (pVal >= 1 && pVal <= 8 && !periodMap.has(pVal)) {
+                      periodMap.set(pVal, r);
+                    }
+                  });
+
+                  // Garantir que toutes les périodes de 1 à 8 sont strictement présentes
+                  const dayRows = [];
+                  for (let p = 1; p <= 8; p++) {
+                    if (periodMap.has(p)) {
+                      dayRows.push(periodMap.get(p));
+                    } else {
+                      dayRows.push({
+                        'Période': String(p),
+                        'Matière': '—',
+                        'Enseignant': '',
+                        'Leçon': '',
+                        'Travaux de classe': '—',
+                        'Support': '',
+                        'Devoirs': ''
+                      });
+                    }
+                  }
+
+                  return dayRows.map(row => {
+                    const rowPhotos = Array.isArray(row.photos) ? row.photos : (Array.isArray(row.images) ? row.images : []);
+                    if ((row.isMerged || row.merged) && rowPhotos.length > 0) {
+                      return `
+                      <tr>
+                        <td colspan="3" class="merged-day-special-cell">
+                          <div class="merged-special-container">
+                            <div class="merged-day-title">${escapeHtml(row['Leçon'] || row.lecon || row['Matière'] || 'Séance Spéciale')}</div>
+                            ${(row['Travaux de classe'] || row.travaux) ? `<div class="merged-day-desc">${escapeHtml(row['Travaux de classe'] || row.travaux)}</div>` : ''}
+                            <div class="merged-photos-gallery">
+                              ${rowPhotos.map(p => {
+                                const rawUrl = typeof p === 'string' ? p : (p.url || p.src || '');
+                                const pUrl = formatDriveImageUrl(rawUrl);
+                                const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
+                                return `
+                                  <div class="merged-photo-card">
+                                    <img src="${pUrl}" alt="Affiche" class="merged-photo-img" referrerpolicy="no-referrer"
+                                      data-file-id="${driveId || ''}"
+                                      onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w2560';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
+                                  </div>
+                                `;
+                              }).join('')}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      `;
+                    }
+
+                    const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
+                    const matiere = row['Matière'] || row['matiere'] || '—';
+                    const styleMat = getSubjectStyle(matiere);
+                    const isArabicMat = isArabicSubject(matiere) || containsArabic(matiere);
+                    const enseignant = row['Enseignant'] || row['enseignant'] || '';
+                    const isArabicEns = containsArabic(enseignant);
+
+                    // Résolution robuste de la photo Google Drive de l'enseignant
+                    const photoUrl = (showPhotos && showPhotos !== false) ? findTeacherPhotoUrl(enseignant, teachersPhotos) : '';
+                    const teacherInitial = enseignant ? enseignant.charAt(0).toUpperCase() : '?';
+
+                    const lecon = row['Leçon'] || row['lecon'] || '';
+                    const isArabicLec = containsArabic(lecon);
+                    const travaux = row['Travaux de classe'] || row['travaux'] || '';
+                    const isArabicTra = containsArabic(travaux);
+                    const support = row['Support'] || row['support'] || '';
+                    const isArabicSup = containsArabic(support);
+                    const devoirs = row['Devoirs'] || row['devoirs'] || '';
+                    const isArabicDev = containsArabic(devoirs);
+                    const hasHw = devoirs && devoirs.trim() !== '' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
+
                     return `
                     <tr>
-                      <td colspan="3" class="merged-day-special-cell">
-                        <div class="merged-special-container">
-                          <div class="merged-day-title">${escapeHtml(row['Leçon'] || row.lecon || row['Matière'] || 'Séance Spéciale')}</div>
-                          ${(row['Travaux de classe'] || row.travaux) ? `<div class="merged-day-desc">${escapeHtml(row['Travaux de classe'] || row.travaux)}</div>` : ''}
-                          <div class="merged-photos-gallery">
-                            ${rowPhotos.map(p => {
-                              const rawUrl = typeof p === 'string' ? p : (p.url || p.src || '');
-                              const pUrl = formatDriveImageUrl(rawUrl);
-                              const driveId = (rawUrl && typeof rawUrl === 'string') ? (rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/)?.[1] || rawUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1] || '') : '';
-                              return `
-                                <div class="merged-photo-card">
-                                  <img src="${pUrl}" alt="Affiche" class="merged-photo-img" referrerpolicy="no-referrer"
-                                    data-file-id="${driveId || ''}"
-                                    onerror="if(!this.dataset.retry && this.dataset.fileId){this.dataset.retry='1';this.src='https://lh3.googleusercontent.com/d/'+this.dataset.fileId+'=w2560';}else if(this.dataset.retry==='1' && this.dataset.fileId){this.dataset.retry='2';this.src='https://drive.google.com/uc?export=view&id='+this.dataset.fileId;}" />
-                                </div>
-                              `;
-                            }).join('')}
-                          </div>
+                      <!-- 1. MATIÈRES -->
+                      <td class="col-matieres-td ${isArabicMat || isArabicEns ? 'cell-arabic-mat is-arabic-text' : ''}" ${isArabicMat || isArabicEns ? 'dir="rtl"' : ''}>
+                        <div class="subject-header-row ${isArabicMat ? 'header-arabic-mat' : ''}">
+                          <span class="subject-name-tag ${isArabicMat ? 'tag-arabic-mat is-arabic-text' : ''}" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
+                            <i class="fas ${styleMat.icon}"></i>
+                            <span class="subject-title-span ${isArabicMat ? 'span-arabic-mat is-arabic-text' : ''}">${escapeHtml(matiere)}</span>
+                          </span>
+                          <span class="period-badge-pill">P${escapeHtml(periodeVal)}</span>
                         </div>
+
+                        <div class="teacher-item-box ${isArabicEns ? 'teacher-box-arabic is-arabic-text' : ''}" ${isArabicEns ? 'dir="rtl"' : ''}>
+                          ${(showPhotos && photoUrl) ? `
+                            <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';" loading="lazy" />
+                            <span class="teacher-fallback-thumb" style="display:none;">${escapeHtml(teacherInitial)}</span>
+                          ` : `
+                            <i class="fas fa-chalkboard-teacher" style="color:#64748B; font-size:0.75rem;"></i>
+                          `}
+                          <div class="teacher-name-print ${isArabicEns ? 'is-arabic-text' : ''}" ${isArabicEns ? 'dir="rtl"' : ''}>${escapeHtml(enseignant)}</div>
+                        </div>
+                      </td>
+
+                      <!-- 2. TRAVAIL DE CLASSE (AVEC SUPPORT DÉPLACÉ DEDANS) -->
+                      <td class="col-classwork-td ${isArabicLec || isArabicTra || isArabicSup ? 'is-arabic-text' : ''}" ${isArabicLec || isArabicTra || isArabicSup ? 'dir="rtl"' : ''}>
+                        ${lecon ? `<strong class="lesson-title-strong ${isArabicLec ? 'is-arabic-text' : ''}" ${isArabicLec ? 'dir="rtl"' : ''}><i class="fas fa-book-reader" style="font-size:0.70rem;"></i> ${escapeHtml(lecon)}</strong>` : ''}
+                        <div class="classwork-detail-txt ${isArabicTra ? 'is-arabic-text' : ''}" ${isArabicTra ? 'dir="rtl"' : ''}>${escapeHtml(travaux || '—')}</div>
+                        ${(support && support.trim() !== '' && support.trim() !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد')) ? `
+                          <div class="classwork-support-chip ${isArabicSup ? 'is-arabic-text' : ''}" ${isArabicSup ? 'dir="rtl"' : ''}>
+                            <i class="fas fa-paperclip"></i>
+                            <span class="support-chip-label">Support :</span>
+                            <span class="support-chip-val">${escapeHtml(support)}</span>
+                          </div>
+                        ` : ''}
+                      </td>
+
+                      <!-- 3. DEVOIRS -->
+                      <td class="col-homework-td ${isArabicDev ? 'is-arabic-text' : ''}" ${isArabicDev ? 'dir="rtl"' : ''}>
+                        ${hasHw ? `
+                          <div class="homework-item-card ${isArabicDev ? 'is-arabic-text' : ''}" ${isArabicDev ? 'dir="rtl"' : ''}>
+                            <span class="homework-tag-label"><i class="fas fa-pencil-alt"></i> À faire :</span>
+                            <div class="${isArabicDev ? 'is-arabic-text' : ''}" ${isArabicDev ? 'dir="rtl"' : ''}>${escapeHtml(devoirs)}</div>
+                          </div>
+                        ` : `
+                          <span class="no-homework-txt">Aucun</span>
+                        `}
                       </td>
                     </tr>
                     `;
-                  }
-
-                  const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
-                  const matiere = row['Matière'] || row['matiere'] || 'Cours';
-                  const styleMat = getSubjectStyle(matiere);
-                  const isArabicMat = isArabicSubject(matiere);
-                  const enseignant = row['Enseignant'] || row['enseignant'] || '';
-
-                  // Résolution robuste de la photo Google Drive de l'enseignant
-                  const photoUrl = (showPhotos && showPhotos !== false) ? findTeacherPhotoUrl(enseignant, teachersPhotos) : '';
-                  const teacherInitial = enseignant ? enseignant.charAt(0).toUpperCase() : '?';
-
-                  const lecon = row['Leçon'] || row['lecon'] || '';
-                  const travaux = row['Travaux de classe'] || row['travaux'] || '';
-                  const support = row['Support'] || row['support'] || '';
-                  const devoirs = row['Devoirs'] || row['devoirs'] || '';
-                  const hasHw = devoirs && devoirs.trim() !== '' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
-
-                  return `
-                  <tr>
-                    <!-- 1. MATIÈRES -->
-                    <td class="col-matieres-td ${isArabicMat ? 'cell-arabic-mat' : ''}">
-                      <div class="subject-header-row ${isArabicMat ? 'header-arabic-mat' : ''}">
-                        <span class="subject-name-tag ${isArabicMat ? 'tag-arabic-mat' : ''}" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
-                          <i class="fas ${styleMat.icon}"></i>
-                          <span class="subject-title-span ${isArabicMat ? 'span-arabic-mat' : ''}">${escapeHtml(matiere)}</span>
-                        </span>
-                        <span class="period-badge-pill">P${escapeHtml(periodeVal)}</span>
-                      </div>
-
-                      <div class="teacher-item-box ${isArabicMat ? 'teacher-box-arabic' : ''}">
-                        ${(showPhotos && photoUrl) ? `
-                          <img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(enseignant)}" class="teacher-photo-thumb" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='inline-flex';" loading="lazy" />
-                          <span class="teacher-fallback-thumb" style="display:none;">${escapeHtml(teacherInitial)}</span>
-                        ` : `
-                          <i class="fas fa-chalkboard-teacher" style="color:#64748B; font-size:0.75rem;"></i>
-                        `}
-                        <div class="teacher-name-print">${escapeHtml(enseignant)}</div>
-                      </div>
-                    </td>
-
-                    <!-- 2. TRAVAIL DE CLASSE (AVEC SUPPORT DÉPLACÉ DEDANS) -->
-                    <td class="col-classwork-td">
-                      ${lecon ? `<strong class="lesson-title-strong"><i class="fas fa-book-reader" style="font-size:0.70rem;"></i> ${escapeHtml(lecon)}</strong>` : ''}
-                      <div class="classwork-detail-txt">${escapeHtml(travaux || '—')}</div>
-                      ${(support && support.trim() !== '' && support.trim() !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد')) ? `
-                        <div class="classwork-support-chip">
-                          <i class="fas fa-paperclip"></i>
-                          <span class="support-chip-label">Support :</span>
-                          <span class="support-chip-val">${escapeHtml(support)}</span>
-                        </div>
-                      ` : ''}
-                    </td>
-
-                    <!-- 3. DEVOIRS -->
-                    <td class="col-homework-td">
-                      ${hasHw ? `
-                        <div class="homework-item-card">
-                          <span class="homework-tag-label"><i class="fas fa-pencil-alt"></i> À faire :</span>
-                          <div>${escapeHtml(devoirs)}</div>
-                        </div>
-                      ` : `
-                        <span class="no-homework-txt">Aucun</span>
-                      `}
-                    </td>
-                  </tr>
-                  `;
-                }).join(''))}
+                  }).join('');
+                })()}
               </tbody>
             </table>
           </div>
@@ -1997,19 +2049,19 @@ function generateDesignPlanHtml(options = {}) {
                         </div>
                       </td>
                     ` : ''}
-                    <td class="${isArabicMat ? 'cell-arabic-mat' : ''}">
-                      <span class="subject-name-tag ${isArabicMat ? 'tag-arabic-mat' : ''}" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
+                    <td class="${isArabicMat ? 'cell-arabic-mat is-arabic-text' : ''}" ${isArabicMat ? 'dir="rtl"' : ''}>
+                      <span class="subject-name-tag ${isArabicMat ? 'tag-arabic-mat is-arabic-text' : ''}" style="background:${styleMat.bg}; border-color:${styleMat.border}; color:${styleMat.text};">
                         <i class="fas ${styleMat.icon}"></i>
-                        <span class="subject-title-span ${isArabicMat ? 'span-arabic-mat' : ''}">${escapeHtml(matiere)}</span>
+                        <span class="subject-title-span ${isArabicMat ? 'span-arabic-mat is-arabic-text' : ''}">${escapeHtml(matiere)}</span>
                       </span>
                     </td>
-                    <td>
-                      <div class="backpack-homework-desc">${cleanDevoirsHtml}</div>
+                    <td class="${containsArabic(devoirs) ? 'is-arabic-text' : ''}" ${containsArabic(devoirs) ? 'dir="rtl"' : ''}>
+                      <div class="backpack-homework-desc ${containsArabic(devoirs) ? 'is-arabic-text' : ''}" ${containsArabic(devoirs) ? 'dir="rtl" style="text-align:center;"' : ''}>${cleanDevoirsHtml}</div>
                     </td>
-                    <td>
-                      <div class="backpack-book-card">
+                    <td class="${containsArabic(bookText) ? 'is-arabic-text' : ''}" ${containsArabic(bookText) ? 'dir="rtl"' : ''}>
+                      <div class="backpack-book-card ${containsArabic(bookText) ? 'is-arabic-text' : ''}" ${containsArabic(bookText) ? 'dir="rtl" style="text-align:center;"' : ''}>
                         <i class="fas fa-book-bookmark" style="color:#2563EB;"></i>
-                        <span>${escapeHtml(bookText)}</span>
+                        <span class="${containsArabic(bookText) ? 'is-arabic-text' : ''}">${escapeHtml(bookText)}</span>
                       </div>
                     </td>
                     <td style="text-align:center;">

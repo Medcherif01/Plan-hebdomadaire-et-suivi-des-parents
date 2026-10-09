@@ -567,15 +567,29 @@ tr.modified > td.editable {
     }
 }
 
-/* Support RTL pour l'écriture arabe */
-td.editable.arabic-content {
-    direction: rtl;
-    text-align: right;
+/* Support RTL pour l'écriture arabe : droite à gauche et centré dans TOUTES les cases */
+td.arabic-content,
+td.editable.arabic-content,
+td[dir="rtl"],
+th.arabic-content,
+th[dir="rtl"],
+.arabic-cell,
+.arabic-content,
+[dir="rtl"] {
+    direction: rtl !important;
+    text-align: center !important;
+    font-family: 'Cairo', 'Amiri', 'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif !important;
 }
 
-#notesInput.arabic-content {
-    direction: rtl;
-    text-align: right;
+#notesInput.arabic-content,
+#notesInput[dir="rtl"],
+textarea.arabic-content,
+textarea[dir="rtl"],
+input.arabic-content,
+input[dir="rtl"] {
+    direction: rtl !important;
+    text-align: center !important;
+    font-family: 'Cairo', 'Amiri', 'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif !important;
 }
 
 /* --- ANIMATIONS ET EFFETS --- */
