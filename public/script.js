@@ -1953,9 +1953,11 @@
         function containsArabic(text) { if (typeof text !== 'string') return false; const arabicRegex = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/; return arabicRegex.test(text); }
         function applyRTLToElement(element, content) { 
             if (!element) return;
-            if (containsArabic(content)) { 
+            const hasAr = containsArabic(content);
+            if (hasAr) { 
                 element.classList.add('arabic-content'); 
                 element.setAttribute('dir', 'rtl');
+                element.setAttribute('lang', 'ar');
                 element.style.direction = 'rtl';
                 element.style.textAlign = 'center';
             } else { 
@@ -1963,10 +1965,495 @@
                 if (element.getAttribute('dir') === 'rtl') {
                     element.removeAttribute('dir');
                 }
+                const isEnglishText = /\b(the|and|read|write|page|workbook|lesson|homework|chapter|exercise|questions|student|students|complete|worksheet|activity|vocabulary|grammar|science|math)\b/i.test(String(content || ''));
+                element.setAttribute('lang', isEnglishText ? 'en' : 'fr');
                 element.style.direction = '';
                 element.style.textAlign = '';
-            } 
+            }
+            element.setAttribute('spellcheck', 'true');
+            element.setAttribute('autocorrect', 'on');
+            element.setAttribute('autocapitalize', 'sentences');
         }
+
+        // --- VÉRIFICATEUR D'ORTHOGRAPHE ET FAUTES DE SAISIE EN TEMPS RÉEL (SOULIGNEMENT ROUGE) ---
+        const LIVE_TYPO_DICTIONARY = {
+            // Fautes fréquentes en Français (scolaire, devoirs, leçons)
+            'lecon': { fix: 'leçon', reason: 'Orthographe : cédille manquante (leçon)' },
+            'lecons': { fix: 'leçons', reason: 'Orthographe : cédille manquante (leçons)' },
+            'francais': { fix: 'français', reason: 'Orthographe : cédille manquante (français)' },
+            'francaise': { fix: 'française', reason: 'Orthographe : cédille manquante (française)' },
+            'exerice': { fix: 'exercice', reason: 'Faute de frappe : « exercice »' },
+            'exerices': { fix: 'exercices', reason: 'Faute de frappe : « exercices »' },
+            'excercice': { fix: 'exercice', reason: 'Orthographe : « exercice » (sans c après ex)' },
+            'excercices': { fix: 'exercices', reason: 'Orthographe : « exercices » (sans c après ex)' },
+            'exersice': { fix: 'exercice', reason: 'Orthographe : « exercice »' },
+            'exersices': { fix: 'exercices', reason: 'Orthographe : « exercices »' },
+            'exercisse': { fix: 'exercice', reason: 'Orthographe : « exercice »' },
+            'devoire': { fix: 'devoir', reason: 'Orthographe : « devoir » s\'écrit sans e final' },
+            'devoires': { fix: 'devoirs', reason: 'Orthographe : « devoirs » s\'écrit sans e' },
+            'cahie': { fix: 'cahier', reason: 'Faute de frappe : « cahier »' },
+            'cahié': { fix: 'cahier', reason: 'Orthographe : « cahier »' },
+            'chaier': { fix: 'cahier', reason: 'Faute de frappe : « cahier »' },
+            'chayer': { fix: 'cahier', reason: 'Orthographe : « cahier »' },
+            'activitee': { fix: 'activité', reason: 'Orthographe : « activité »' },
+            'activitees': { fix: 'activités', reason: 'Orthographe : « activités »' },
+            'activite': { fix: 'activité', reason: 'Accent manquant : « activité »' },
+            'activites': { fix: 'activités', reason: 'Accent manquant : « activités »' },
+            'evaluaton': { fix: 'évaluation', reason: 'Faute de frappe : « évaluation »' },
+            'evaluation': { fix: 'évaluation', reason: 'Accent manquant : « évaluation »' },
+            'evaluations': { fix: 'évaluations', reason: 'Accent manquant : « évaluations »' },
+            'dictee': { fix: 'dictée', reason: 'Accent manquant : « dictée »' },
+            'dictees': { fix: 'dictées', reason: 'Accent manquant : « dictées »' },
+            'dicté': { fix: 'dictée', reason: 'Accord : « dictée » prend un e muet' },
+            'poesie': { fix: 'poésie', reason: 'Accent manquant : « poésie »' },
+            'geometrie': { fix: 'géométrie', reason: 'Accents manquants : « géométrie »' },
+            'geographie': { fix: 'géographie', reason: 'Accent manquant : « géographie »' },
+            'mathematique': { fix: 'mathématiques', reason: 'Accent manquant : « mathématiques »' },
+            'mathematiques': { fix: 'mathématiques', reason: 'Accent manquant : « mathématiques »' },
+            'reviser': { fix: 'réviser', reason: 'Accent manquant : « réviser »' },
+            'revisez': { fix: 'révisez', reason: 'Accent manquant : « révisez »' },
+            'revision': { fix: 'révision', reason: 'Accent manquant : « révision »' },
+            'revisions': { fix: 'révisions', reason: 'Accent manquant : « révisions »' },
+            'ecrire': { fix: 'écrire', reason: 'Accent manquant : « écrire »' },
+            'ecrit': { fix: 'écrit', reason: 'Accent manquant : « écrit »' },
+            'ecriture': { fix: 'écriture', reason: 'Accent manquant : « écriture »' },
+            'etudier': { fix: 'étudier', reason: 'Accent manquant : « étudier »' },
+            'etude': { fix: 'étude', reason: 'Accent manquant : « étude »' },
+            'eleve': { fix: 'élève', reason: 'Accents manquants : « élève »' },
+            'eleves': { fix: 'élèves', reason: 'Accents manquants : « élèves »' },
+            'ecole': { fix: 'école', reason: 'Accent manquant : « école »' },
+            'lequel': null,
+            ' personelle': { fix: 'personnelle', reason: 'Orthographe : « personnelle » prend deux n' },
+            'personel': { fix: 'personnel', reason: 'Orthographe : « personnel » prend deux n' },
+            'gramaire': { fix: 'grammaire', reason: 'Orthographe : « grammaire » prend deux m' },
+            'orthografe': { fix: 'orthographe', reason: 'Orthographe : « orthographe »' },
+            'ortographe': { fix: 'orthographe', reason: 'Orthographe : « orthographe » (th)' },
+            'vocabulair': { fix: 'vocabulaire', reason: 'Faute de frappe : « vocabulaire »' },
+            'conjugeson': { fix: 'conjugaison', reason: 'Orthographe : « conjugaison »' },
+            'conjugaison': null,
+            'compréhention': { fix: 'compréhension', reason: 'Orthographe : « compréhension » avec s' },
+            'comprehension': { fix: 'compréhension', reason: 'Accent manquant : « compréhension »' },
+            'preparation': { fix: 'préparation', reason: 'Accent manquant : « préparation »' },
+            'preparer': { fix: 'préparer', reason: 'Accent manquant : « préparer »' },
+            'presentaton': { fix: 'présentation', reason: 'Faute de frappe : « présentation »' },
+            'presentation': { fix: 'présentation', reason: 'Accent manquant : « présentation »' },
+            'lecon': { fix: 'leçon', reason: 'Orthographe : « leçon »' },
+            'chapître': { fix: 'chapitre', reason: 'Orthographe : « chapitre » sans accent circonflexe' },
+            'chaptire': { fix: 'chapitre', reason: 'Faute de frappe : « chapitre »' },
+            'paje': { fix: 'page', reason: 'Orthographe : « page »' },
+            'numéro': null,
+            'numero': { fix: 'numéro', reason: 'Accent manquant : « numéro »' },
+            'numeros': { fix: 'numéros', reason: 'Accent manquant : « numéros »' },
+            'probleme': { fix: 'problème', reason: 'Accent manquant : « problème »' },
+            'problemes': { fix: 'problèmes', reason: 'Accent manquant : « problèmes »' },
+            'questionaire': { fix: 'questionnaire', reason: 'Orthographe : « questionnaire » prend deux n' },
+            'repondre': { fix: 'répondre', reason: 'Accent manquant : « répondre »' },
+            'reponse': { fix: 'réponse', reason: 'Accent manquant : « réponse »' },
+            'reponses': { fix: 'réponses', reason: 'Accent manquant : « réponses »' },
+            'completer': { fix: 'compléter', reason: 'Accent manquant : « compléter »' },
+            'completez': { fix: 'complétez', reason: 'Accent manquant : « complétez »' },
+            'memoriser': { fix: 'mémoriser', reason: 'Accent manquant : « mémoriser »' },
+            'reciter': { fix: 'réciter', reason: 'Accent manquant : « réciter »' },
+            'recitation': { fix: 'récitation', reason: 'Accent manquant : « récitation »' },
+            'poeme': { fix: 'poème', reason: 'Accent manquant : « poème »' },
+            'poemes': { fix: 'poèmes', reason: 'Accent manquant : « poèmes »' },
+            'resume': { fix: 'résumé', reason: 'Accents manquants : « résumé »' },
+            'resumer': { fix: 'résumer', reason: 'Accent manquant : « résumer »' },
+            'leçon': null,
+            'apoprendre': { fix: 'apprendre', reason: 'Faute de frappe : « apprendre »' },
+            'aprendre': { fix: 'apprendre', reason: 'Orthographe : « apprendre » prend deux p' },
+            'apris': { fix: 'appris', reason: 'Orthographe : « appris » prend deux p' },
+            'finit': null,
+            'terminé': null,
+            'termine': { fix: 'terminé', reason: 'Accent conseillé : « terminé »' },
+            'coriger': { fix: 'corriger', reason: 'Orthographe : « corriger » prend deux r' },
+            'corection': { fix: 'correction', reason: 'Orthographe : « correction » prend deux r' },
+            'explication': null,
+            'expliquation': { fix: 'explication', reason: 'Orthographe : « explication » s\'écrit avec c' },
+            'lectur': { fix: 'lecture', reason: 'Faute de frappe : « lecture »' },
+            'paragafe': { fix: 'paragraphe', reason: 'Orthographe : « paragraphe »' },
+            'paragraf': { fix: 'paragraphe', reason: 'Orthographe : « paragraphe »' },
+            // Fautes fréquentes en Anglais
+            'homwork': { fix: 'homework', reason: 'Spelling: "homework"' },
+            'homewok': { fix: 'homework', reason: 'Spelling: "homework"' },
+            'homewrok': { fix: 'homework', reason: 'Spelling: "homework"' },
+            'exersise': { fix: 'exercise', reason: 'Spelling: "exercise"' },
+            'exersize': { fix: 'exercise', reason: 'Spelling: "exercise"' },
+            'excercise': { fix: 'exercise', reason: 'Spelling: "exercise"' },
+            'wokbook': { fix: 'workbook', reason: 'Spelling: "workbook"' },
+            'workbok': { fix: 'workbook', reason: 'Spelling: "workbook"' },
+            'studnet': { fix: 'student', reason: 'Spelling: "student"' },
+            'studnets': { fix: 'students', reason: 'Spelling: "students"' },
+            'writting': { fix: 'writing', reason: 'Spelling: "writing" (single t)' },
+            'grammer': { fix: 'grammar', reason: 'Spelling: "grammar" (with a)' },
+            'vocablary': { fix: 'vocabulary', reason: 'Spelling: "vocabulary"' },
+            'vocabuary': { fix: 'vocabulary', reason: 'Spelling: "vocabulary"' },
+            'queston': { fix: 'question', reason: 'Spelling: "question"' },
+            'questons': { fix: 'questions', reason: 'Spelling: "questions"' },
+            'answre': { fix: 'answer', reason: 'Spelling: "answer"' },
+            'answres': { fix: 'answers', reason: 'Spelling: "answers"' },
+            'practise': null,
+            'practce': { fix: 'practice', reason: 'Spelling: "practice"' },
+            'comprehention': { fix: 'comprehension', reason: 'Spelling: "comprehension"' },
+            'readng': { fix: 'reading', reason: 'Spelling: "reading"' },
+            'lisening': { fix: 'listening', reason: 'Spelling: "listening"' },
+            'speling': { fix: 'spelling', reason: 'Spelling: "spelling"' },
+            'asignemnt': { fix: 'assignment', reason: 'Spelling: "assignment"' },
+            'asignment': { fix: 'assignment', reason: 'Spelling: "assignment" (double s)' },
+            // Fautes fréquentes en Arabe
+            'واجبب': { fix: 'واجب', reason: 'خطأ مطبعي: تكرار حرف الباء (واجب)' },
+            'الواجبب': { fix: 'الواجب', reason: 'خطأ مطبعي: (الواجب)' },
+            'حفض': { fix: 'حفظ', reason: 'خطأ إملائي: « حفظ » بالظاء وليس بالضاد' },
+            'الحفض': { fix: 'الحفظ', reason: 'خطأ إملائي: « الحفظ » بالظاء وليس بالضاد' },
+            'قرائة': { fix: 'قراءة', reason: 'خطأ إملائي: « قراءة » تكتب الهمزة على السطر' },
+            'القرائة': { fix: 'القراءة', reason: 'خطأ إملائي: « القراءة » تكتب الهمزة على السطر' },
+            'انشاء الله': { fix: 'إن شاء الله', reason: 'خطأ إملائي: تكتب « إن شاء الله » منفصلة' },
+            'انشاء': { fix: 'إنشاء', reason: 'همزة قطع: « إنشاء »' },
+            'املاء': { fix: 'إملاء', reason: 'همزة قطع: « إملاء »' },
+            'الإملا': { fix: 'الإملاء', reason: 'نقص همزة: « الإملاء »' },
+            'الاملاء': { fix: 'الإملاء', reason: 'همزة قطع: « الإملاء »' },
+            'إختبار': { fix: 'اختبار', reason: 'همزة وصل: « اختبار » بدون همزة تحت الألف' },
+            'إمتحان': { fix: 'امتحان', reason: 'همزة وصل: « امتحان » بدون همزة تحت الألف' },
+            'إستخراج': { fix: 'استخراج', reason: 'همزة وصل: « استخراج » بدون همزة' },
+            'إستماع': { fix: 'استماع', reason: 'همزة وصل: « استماع » بدون همزة' },
+            'تطبيقاتت': { fix: 'تطبيقات', reason: 'خطأ مطبعي: « تطبيقات »' },
+            'صفحه': { fix: 'صفحة', reason: 'تاء مربوطة: « صفحة »' },
+            'المدرسه': { fix: 'المدرسة', reason: 'تاء مربوطة: « المدرسة »' },
+            'مراجعه': { fix: 'مراجعة', reason: 'تاء مربوطة: « مراجعة »' },
+            'المراجعه': { fix: 'المراجعة', reason: 'تاء مربوطة: « المراجعة »' },
+            'كتابه': { fix: 'كتابة', reason: 'تاء مربوطة: « كتابة »' },
+            'الكتابه': { fix: 'الكتابة', reason: 'تاء مربوطة: « الكتابة »' },
+            'ورقه': { fix: 'ورقة', reason: 'تاء مربوطة: « ورقة »' },
+            'سوره': { fix: 'سورة', reason: 'تاء مربوطة: « سورة »' },
+            'السوره': { fix: 'السورة', reason: 'تاء مربوطة: « السورة »' }
+        };
+
+        // Détecte les erreurs de saisie (orthographe, répétition de lettres ex: "eee", mot dupliqué "le le", ponctuation collée, etc.)
+        function analyzeTextForSpellingErrors(rawText) {
+            if (!rawText || typeof rawText !== 'string') return [];
+            const issues = [];
+            const tokenRegex = /([A-Za-zÀ-ÖØ-öø-ÿ\u0600-\u06FF']+)/g;
+            let match;
+            let prevWordLower = '';
+            let prevWordEnd = -1;
+
+            while ((match = tokenRegex.exec(rawText)) !== null) {
+                const word = match[1];
+                const startIdx = match.index;
+                const endIdx = startIdx + word.length;
+                const lower = word.toLowerCase();
+
+                // 1. Dictionnaire des fautes d'orthographe et de frappe courantes
+                if (Object.prototype.hasOwnProperty.call(LIVE_TYPO_DICTIONARY, lower) && LIVE_TYPO_DICTIONARY[lower]) {
+                    const entry = LIVE_TYPO_DICTIONARY[lower];
+                    let suggested = entry.fix;
+                    // Conserver la majuscule initiale si le mot original commençait par une majuscule
+                    if (word[0] && word[0] === word[0].toUpperCase() && word[0] !== word[0].toLowerCase()) {
+                        suggested = suggested.charAt(0).toUpperCase() + suggested.slice(1);
+                    }
+                    issues.push({
+                        word,
+                        start: startIdx,
+                        end: endIdx,
+                        fix: suggested,
+                        reason: entry.reason
+                    });
+                }
+                // 2. Trois lettres identiques consécutives ou plus (ex: "leeeçon", "exeeercice", "وااااجب")
+                else if (/(.)\1\1/i.test(word) && !/^(www|iii|xxx)$/i.test(word)) {
+                    const fixedWord = word.replace(/(.)\1+/gi, '$1$1');
+                    issues.push({
+                        word,
+                        start: startIdx,
+                        end: endIdx,
+                        fix: word.replace(/(.)\1\1+/gi, '$1'),
+                        reason: containsArabic(word) ? 'تكرار غير صحيح للأحرف' : `Répétition excessive de lettres dans « ${word} »`
+                    });
+                }
+                // 3. Deux consonnes majuscules au début d'un mot par erreur de touche Shift (ex: "LEçon", "EXercice", "PAge")
+                else if (/^[A-ZÀ-ÖØ-Þ]{2}[a-zà-öø-ÿ]{2,}$/.test(word)) {
+                    const fixedCap = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                    issues.push({
+                        word,
+                        start: startIdx,
+                        end: endIdx,
+                        fix: fixedCap,
+                        reason: `Erreur de majuscule : « ${fixedCap} »`
+                    });
+                }
+                // 4. Mot répété deux fois de suite par erreur (ex: "de de", "la la", "page page", "في في")
+                else if (lower.length >= 2 && lower === prevWordLower && !['nous', 'vous'].includes(lower)) {
+                    const between = rawText.slice(prevWordEnd, startIdx);
+                    if (/^\s+$/.test(between)) {
+                        issues.push({
+                            word,
+                            start: startIdx,
+                            end: endIdx,
+                            fix: '',
+                            isDuplicate: true,
+                            reason: containsArabic(word) ? `تكرار الكلمة « ${word} »` : `Mot répété deux fois : « ${word} ${word} »`
+                        });
+                    }
+                }
+
+                prevWordLower = lower;
+                prevWordEnd = endIdx;
+            }
+            return issues;
+        }
+
+        // Sauvegarde et restauration de la position du curseur dans un élément contentEditable
+        function saveCaretCharacterOffsetWithin(element) {
+            let caretOffset = 0;
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+                if (element.contains(range.commonAncestorContainer)) {
+                    const preCaretRange = range.cloneRange();
+                    preCaretRange.selectNodeContents(element);
+                    preCaretRange.setEnd(range.endContainer, range.endOffset);
+                    caretOffset = preCaretRange.toString().length;
+                } else {
+                    return null;
+                }
+            }
+            return caretOffset;
+        }
+
+        function restoreCaretCharacterOffsetWithin(element, offset) {
+            if (offset === null || offset === undefined) return;
+            const sel = window.getSelection();
+            if (!sel) return;
+            let charIndex = 0;
+            const range = document.createRange();
+            range.setStart(element, 0);
+            range.collapse(true);
+            const nodeStack = [element];
+            let node, foundStart = false;
+
+            while (!foundStart && (node = nodeStack.pop())) {
+                if (node.nodeType === 3) {
+                    const nextCharIndex = charIndex + node.length;
+                    if (offset >= charIndex && offset <= nextCharIndex) {
+                        range.setStart(node, offset - charIndex);
+                        range.collapse(true);
+                        foundStart = true;
+                    }
+                    charIndex = nextCharIndex;
+                } else {
+                    let i = node.childNodes.length;
+                    while (i--) {
+                        nodeStack.push(node.childNodes[i]);
+                    }
+                }
+            }
+            if (foundStart) {
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }
+
+        // Applique le soulignement rouge ondulé directement dans la cellule éditable sans perturber la saisie
+        function highlightCellSpellingErrors(td, preserveCaret = true) {
+            if (!td || !td.isContentEditable) return;
+            const rawText = td.textContent || '';
+            const issues = analyzeTextForSpellingErrors(rawText);
+
+            // Ajouter ou retirer l'indicateur sur la cellule
+            if (issues.length > 0) {
+                td.classList.add('has-spelling-errors');
+                td.dataset.spellErrorCount = String(issues.length);
+            } else {
+                td.classList.remove('has-spelling-errors');
+                delete td.dataset.spellErrorCount;
+                // Si aucun span d'erreur n'existe déjà, inutile de toucher au DOM
+                if (!td.querySelector('.spell-error-word')) return;
+            }
+
+            const caretPos = (preserveCaret && document.activeElement === td)
+                ? saveCaretCharacterOffsetWithin(td)
+                : null;
+
+            if (issues.length === 0) {
+                td.textContent = rawText;
+                if (caretPos !== null) restoreCaretCharacterOffsetWithin(td, caretPos);
+                return;
+            }
+
+            let htmlParts = [];
+            let lastIndex = 0;
+            issues.forEach((iss, idx) => {
+                if (iss.start > lastIndex) {
+                    htmlParts.push(escapeHtml(rawText.slice(lastIndex, iss.start)));
+                }
+                const errText = escapeHtml(rawText.slice(iss.start, iss.end));
+                const fixAttr = escapeHtml(iss.fix || '');
+                const reasonAttr = escapeHtml(iss.reason || 'Erreur d\'orthographe');
+                htmlParts.push(
+                    `<span class="spell-error-word" data-error-idx="${idx}" data-word="${errText}" data-fix="${fixAttr}" data-reason="${reasonAttr}" title="${reasonAttr}${iss.fix ? ' → Cliquez pour corriger par : ' + fixAttr : ''}">${errText}</span>`
+                );
+                lastIndex = iss.end;
+            });
+            if (lastIndex < rawText.length) {
+                htmlParts.push(escapeHtml(rawText.slice(lastIndex)));
+            }
+
+            td.innerHTML = htmlParts.join('');
+            if (caretPos !== null) {
+                restoreCaretCharacterOffsetWithin(td, caretPos);
+            }
+        }
+
+        // Infobulle flottante interactive pour corriger une faute soulignée en rouge en 1 clic
+        let activeSpellPopover = null;
+        function closeSpellErrorPopover() {
+            if (activeSpellPopover) {
+                activeSpellPopover.remove();
+                activeSpellPopover = null;
+            }
+        }
+
+        function showSpellErrorPopover(targetSpan, parentCell) {
+            closeSpellErrorPopover();
+            if (!targetSpan || !parentCell) return;
+
+            const word = targetSpan.dataset.word || targetSpan.textContent || '';
+            const fix = targetSpan.dataset.fix || '';
+            const reason = targetSpan.dataset.reason || 'Erreur de saisie détectée';
+
+            const pop = document.createElement('div');
+            pop.className = 'spell-correction-popover';
+            pop.innerHTML = `
+                <div class="spell-pop-header">
+                    <i class="fas fa-spell-check" style="color:#EF4444;"></i>
+                    <span>${escapeHtml(reason)}</span>
+                </div>
+                <div class="spell-pop-actions">
+                    ${fix !== '' ? `
+                        <button type="button" class="spell-fix-btn">
+                            <i class="fas fa-magic"></i> Remplacer par <strong>« ${escapeHtml(fix)} »</strong>
+                        </button>
+                    ` : `
+                        <button type="button" class="spell-fix-btn">
+                            <i class="fas fa-trash-alt"></i> Supprimer le doublon <strong>« ${escapeHtml(word)} »</strong>
+                        </button>
+                    `}
+                    <button type="button" class="spell-ignore-btn" title="Ignorer">
+                        Ignorer
+                    </button>
+                </div>
+            `;
+
+            document.body.appendChild(pop);
+            activeSpellPopover = pop;
+
+            const rect = targetSpan.getBoundingClientRect();
+            const popRect = pop.getBoundingClientRect();
+            let top = rect.bottom + window.scrollY + 6;
+            let left = rect.left + window.scrollX;
+            if (left + popRect.width > window.innerWidth - 16) {
+                left = Math.max(12, window.innerWidth - popRect.width - 16);
+            }
+            pop.style.top = `${top}px`;
+            pop.style.left = `${left}px`;
+
+            const fixBtn = pop.querySelector('.spell-fix-btn');
+            if (fixBtn) {
+                fixBtn.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (fix !== '') {
+                        targetSpan.replaceWith(document.createTextNode(fix));
+                    } else {
+                        // Suppression de mot en doublon + espace précédent
+                        const prev = targetSpan.previousSibling;
+                        if (prev && prev.nodeType === 3 && /\s+$/.test(prev.nodeValue)) {
+                            prev.nodeValue = prev.nodeValue.replace(/\s+$/, '');
+                        }
+                        targetSpan.remove();
+                    }
+                    closeSpellErrorPopover();
+                    parentCell.dispatchEvent(new Event('input', { bubbles: true }));
+                    highlightCellSpellingErrors(parentCell, false);
+                });
+            }
+
+            const ignoreBtn = pop.querySelector('.spell-ignore-btn');
+            if (ignoreBtn) {
+                ignoreBtn.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    targetSpan.replaceWith(document.createTextNode(word));
+                    closeSpellErrorPopover();
+                    if (!parentCell.querySelector('.spell-error-word')) {
+                        parentCell.classList.remove('has-spelling-errors');
+                        delete parentCell.dataset.spellErrorCount;
+                    }
+                });
+            }
+        }
+
+        // Écouteurs globaux pour afficher la suggestion au clic/survol sur un mot souligné en rouge
+        document.addEventListener('click', (e) => {
+            const errSpan = e.target.closest ? e.target.closest('.spell-error-word') : null;
+            if (errSpan) {
+                const cell = errSpan.closest('td.editable, [contenteditable="true"]');
+                if (cell) {
+                    showSpellErrorPopover(errSpan, cell);
+                    return;
+                }
+            }
+            if (activeSpellPopover && !activeSpellPopover.contains(e.target)) {
+                closeSpellErrorPopover();
+            }
+        });
+
+        // Activation automatique de spellcheck="true" et détection des erreurs sur tous les champs texte (input / textarea)
+        function attachLiveSpellcheckToInputs() {
+            const fields = document.querySelectorAll('textarea, input[type="text"], input:not([type])');
+            fields.forEach(field => {
+                if (field.dataset.spellcheckAttached === 'true') return;
+                field.dataset.spellcheckAttached = 'true';
+                field.setAttribute('spellcheck', 'true');
+                field.setAttribute('autocorrect', 'on');
+                if (!field.getAttribute('lang')) {
+                    field.setAttribute('lang', 'fr');
+                }
+                field.addEventListener('input', () => {
+                    const val = field.value || '';
+                    const issues = analyzeTextForSpellingErrors(val);
+                    let badge = field.parentElement ? field.parentElement.querySelector('.input-spell-warning') : null;
+                    if (issues.length > 0) {
+                        field.classList.add('input-has-spell-errors');
+                        if (!badge && field.parentElement) {
+                            badge = document.createElement('div');
+                            badge.className = 'input-spell-warning';
+                            field.insertAdjacentElement('afterend', badge);
+                        }
+                        if (badge) {
+                            const firstIssue = issues[0];
+                            badge.innerHTML = `<i class="fas fa-exclamation-circle"></i> <span>Faute détectée : <u class="spell-error-word-inline">${escapeHtml(firstIssue.word)}</u>${firstIssue.fix ? ` → <button type="button" class="inline-fix-chip" data-word="${escapeHtml(firstIssue.word)}" data-fix="${escapeHtml(firstIssue.fix)}">Corriger par « ${escapeHtml(firstIssue.fix)} »</button>` : ` (${escapeHtml(firstIssue.reason)})`}</span>`;
+                            const chip = badge.querySelector('.inline-fix-chip');
+                            if (chip) {
+                                chip.onclick = (ev) => {
+                                    ev.preventDefault();
+                                    const w = chip.dataset.word;
+                                    const f = chip.dataset.fix;
+                                    field.value = field.value.replace(new RegExp(`\\b${w}\\b`), f);
+                                    field.dispatchEvent(new Event('input', { bubbles: true }));
+                                    field.focus();
+                                };
+                            }
+                        }
+                    } else {
+                        field.classList.remove('input-has-spell-errors');
+                        if (badge) badge.remove();
+                    }
+                });
+            });
+        }
+        document.addEventListener('DOMContentLoaded', attachLiveSpellcheckToInputs);
+        setTimeout(attachLiveSpellcheckToInputs, 1500);
         function formatDateForDisplay(d) { if (!d || isNaN(d.getTime())) return "Invalid Date"; const dayIndex = d.getUTCDay(); if (dayIndex === 5) { console.warn(`⚠️ Vendredi détecté (${d.toISOString().split('T')[0]}), remplacement par Jeudi`); d.setUTCDate(d.getUTCDate() - 1); } else if (dayIndex === 6) { console.warn(`⚠️ Samedi détecté (${d.toISOString().split('T')[0]}), remplacement par Dimanche suivant`); d.setUTCDate(d.getUTCDate() + 1); } const days = translations[currentUserLanguage].fullDays || translations.fr.fullDays; const months = translations[currentUserLanguage].months || translations.fr.months; const correctedDayIndex = d.getUTCDay(); const dayName = days[correctedDayIndex] || `Jour ${correctedDayIndex}`; const dayOfMonth = String(d.getUTCDate()).padStart(2, '0'); const monthName = months[d.getUTCMonth()]; const year = d.getUTCFullYear(); if (currentUserLanguage === 'en') { return `${dayName}, ${monthName} ${dayOfMonth}, ${year}`; } else { return `${dayName} ${dayOfMonth} ${monthName} ${year}`; } }
         
         const fieldKeyAliases = {
@@ -3607,7 +4094,9 @@ function displayPlanTable(data) {
                         td.textContent = content;
                         td.spellcheck = true;
                         applyRTLToElement(td, content);
+                        highlightCellSpellingErrors(td, false);
                         
+                        let spellTimer = null;
                         td.addEventListener('paste', (e) => {
                             const handled = handleCellTablePaste(e, td);
                             if (!handled) {
@@ -3620,6 +4109,7 @@ function displayPlanTable(data) {
                                     rowObj[header] = td.textContent;
                                     applyRTLToElement(td, td.textContent);
                                 }
+                                highlightCellSpellingErrors(td, true);
                                 const parentTR = td.closest('tr');
                                 if (parentTR) {
                                     parentTR.classList.add('modified');
@@ -3631,19 +4121,20 @@ function displayPlanTable(data) {
                         });
                         
                         td.addEventListener('input', (e) => {
+                            const currentText = td.textContent || '';
                             if (rowObj) {
-                                rowObj[header] = e.target.textContent;
-                                applyRTLToElement(e.target, e.target.textContent);
+                                rowObj[header] = currentText;
+                                applyRTLToElement(td, currentText);
 
                                 // Si la matière est modifiée, attribuer automatiquement l'enseignant lié si vide
                                 if (matK && header === matK && ensK && typeof findLinkedTeacherForSubject === 'function') {
-                                    const newSubject = (e.target.textContent || '').trim();
+                                    const newSubject = currentText.trim();
                                     const curEns = (rowObj && rowObj[ensK]) ? rowObj[ensK].trim() : '';
                                     if ((!curEns || curEns === '') && newSubject) {
                                         const autoEns = findLinkedTeacherForSubject(newSubject);
                                         if (autoEns) {
                                             rowObj[ensK] = autoEns;
-                                            const parentRow = e.target.closest('tr');
+                                            const parentRow = td.closest('tr');
                                             const ensCell = parentRow ? parentRow.querySelector(`td[data-header="${ensK}"]`) : null;
                                             if (ensCell) {
                                                 ensCell.textContent = autoEns;
@@ -3654,13 +4145,26 @@ function displayPlanTable(data) {
                                     }
                                 }
                             }
-                            const parentTR = e.target.closest('tr');
+                            const parentTR = td.closest('tr');
                             if (parentTR) {
                                 parentTR.classList.add('modified');
                                 const indicator = parentTR.querySelector('.save-indicator');
                                 if (indicator) indicator.style.display = 'none';
                                 updateTeacherCounters();
                             }
+
+                            // Soulignement rouge en temps réel pendant la saisie
+                            if (spellTimer) clearTimeout(spellTimer);
+                            const lastChar = currentText.slice(-1);
+                            const delay = /[\s.,;!?:\n]/.test(lastChar) ? 60 : 420;
+                            spellTimer = setTimeout(() => {
+                                highlightCellSpellingErrors(td, true);
+                            }, delay);
+                        });
+
+                        td.addEventListener('blur', () => {
+                            if (spellTimer) clearTimeout(spellTimer);
+                            highlightCellSpellingErrors(td, false);
                         });
                     } else {
                         td.textContent = content;

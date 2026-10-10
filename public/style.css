@@ -4740,3 +4740,158 @@ tr.row-plan-error {
     border-color: #93C5FD !important;
     transform: scale(1.08);
 }
+
+/* ==========================================================================
+   5. VÉRIFICATEUR D'ORTHOGRAPHE & FAUTES DE SAISIE (SOULIGNEMENT ROUGE ONDULÉ)
+   ========================================================================== */
+.spell-error-word,
+.spell-error-word-inline {
+    text-decoration-line: underline !important;
+    text-decoration-style: wavy !important;
+    text-decoration-color: #EF4444 !important;
+    text-decoration-thickness: 2px !important;
+    text-underline-offset: 3px !important;
+    background-color: rgba(239, 68, 68, 0.08);
+    border-radius: 3px;
+    padding: 0 2px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.spell-error-word:hover {
+    background-color: rgba(239, 68, 68, 0.2);
+}
+
+#planTable td.editable.has-spelling-errors {
+    position: relative;
+    box-shadow: inset 0 -2px 0 rgba(239, 68, 68, 0.35);
+}
+
+#planTable td.editable.has-spelling-errors::after {
+    content: "ABC";
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    font-size: 0.62rem;
+    font-weight: 800;
+    color: #DC2626;
+    background: #FEE2E2;
+    border: 1px solid #FECACA;
+    border-radius: 4px;
+    padding: 0px 4px;
+    line-height: 1.3;
+    pointer-events: none;
+    text-decoration: underline wavy #EF4444;
+    opacity: 0.85;
+}
+
+/* Infobulle flottante de correction en 1 clic */
+.spell-correction-popover {
+    position: absolute;
+    z-index: 99999;
+    background: #FFFFFF;
+    border: 1.5px solid #FECACA;
+    border-left: 4px solid #EF4444;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
+    padding: 10px 12px;
+    min-width: 230px;
+    max-width: 340px;
+    font-family: 'Poppins', sans-serif;
+    animation: spellPopFadeIn 0.15s ease-out;
+}
+
+@keyframes spellPopFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.spell-pop-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #991B1B;
+    margin-bottom: 8px;
+}
+
+.spell-pop-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.spell-fix-btn {
+    background: linear-gradient(135deg, #EFF6FF, #DBEAFE);
+    color: #1D4ED8;
+    border: 1px solid #93C5FD;
+    border-radius: 7px;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s ease;
+}
+
+.spell-fix-btn:hover {
+    background: #2563EB;
+    color: #FFFFFF;
+    border-color: #1D4ED8;
+}
+
+.spell-ignore-btn {
+    background: #F1F5F9;
+    color: #64748B;
+    border: 1px solid #CBD5E1;
+    border-radius: 7px;
+    padding: 5px 9px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.spell-ignore-btn:hover {
+    background: #E2E8F0;
+    color: #334155;
+}
+
+/* Alerte sous les champs input / textarea */
+.input-has-spell-errors {
+    border-color: #F87171 !important;
+    text-decoration-color: #EF4444;
+}
+
+.input-spell-warning {
+    margin-top: 4px;
+    font-size: 0.76rem;
+    color: #DC2626;
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 6px;
+    padding: 4px 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.inline-fix-chip {
+    background: #FFFFFF;
+    color: #1D4ED8;
+    border: 1px solid #93C5FD;
+    border-radius: 5px;
+    padding: 1px 7px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-left: 4px;
+}
+
+.inline-fix-chip:hover {
+    background: #2563EB;
+    color: #FFFFFF;
+}
