@@ -15009,20 +15009,52 @@ async function loadAdminScheduleForClass() {
     }
     if (tblEl) tblEl.style.display = 'none';
 
+    const isPlaceholderMat = (m) => {
+        const s = String(m || '').trim();
+        return !s || s === '—' || s === '-' || s === '–';
+    };
+
     try {
         const response = await fetch('/api/admin/schedule-class?section=' + encodeURIComponent(targetSection) + '&week=' + encodeURIComponent(selectedWeek) + '&classe=' + encodeURIComponent(selectedClass));
         if (!response.ok) throw new Error('Erreur ' + response.status);
         const data = await response.json();
 
-        window.currentAdminScheduleSlots = data.slots || [];
-        window.adminScheduleTeachersCache = data.teachers || [];
-        window.adminScheduleSubjectsCache = data.distinctSubjects || [];
-        window.currentClassSubjectTeachersMap = data.subjectTeachersMap || {};
+        // Filtrer les créneaux vides ("—") et dédupliquer par (Jour, Période)
+        const rawSlots = data.slots || [];
+        const dedupedMap = new Map();
+        rawSlots.forEach(s => {
+            if (!s || isPlaceholderMat(s.matiere)) return;
+            const dName = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(s.jour) : s.jour) || String(s.jour || '').trim();
+            const pNum = String(s.periode || '1').replace(/[^0-9]/g, '') || '1';
+            const k = `${dName.toLowerCase()}_${pNum}`;
+            if (!dedupedMap.has(k) || (!dedupedMap.get(k).hasContent && s.hasContent)) {
+                dedupedMap.set(k, {
+                    ...s,
+                    jour: dName,
+                    periode: pNum,
+                    matiere: String(s.matiere).trim(),
+                    enseignant: (s.enseignant && String(s.enseignant).trim() !== '—') ? String(s.enseignant).trim() : ''
+                });
+            }
+        });
+
+        window.currentAdminScheduleSlots = Array.from(dedupedMap.values());
+        window.adminScheduleTeachersCache = (data.teachers || []).filter(t => t && String(t).trim() !== '—');
+        window.adminScheduleSubjectsCache = (data.distinctSubjects || []).filter(m => !isPlaceholderMat(m));
+        window.currentClassSubjectTeachersMap = {};
+        if (data.subjectTeachersMap && typeof data.subjectTeachersMap === 'object') {
+            for (const [m, t] of Object.entries(data.subjectTeachersMap)) {
+                if (!isPlaceholderMat(m) && t && String(t).trim() !== '—') {
+                    window.currentClassSubjectTeachersMap[m.trim()] = String(t).trim();
+                }
+            }
+        }
         window.currentAdminScheduleClass = selectedClass;
+        window.currentAdminScheduleDeletedSubjects = [];
 
         // Récupérer et consolider les attributions existantes pour la classe
         (window.currentAdminScheduleSlots || []).forEach(s => {
-            if (s.matiere && s.enseignant && s.enseignant.trim()) {
+            if (s.matiere && !isPlaceholderMat(s.matiere) && s.enseignant && s.enseignant.trim()) {
                 if (!window.currentClassSubjectTeachersMap[s.matiere]) {
                     window.currentClassSubjectTeachersMap[s.matiere] = s.enseignant.trim();
                 }
@@ -15045,9 +15077,9 @@ async function loadAdminScheduleForClass() {
 
         if (noticeEl) {
             if (data.filledSlotsCount > 0) {
-                noticeEl.innerHTML = '🛡️ <strong>' + data.filledSlotsCount + ' séance(s)</strong> de cette semaine ont déjà été remplies par les enseignants (leçons, devoirs). <em>Toutes leurs saisies seront intégralement conservées</em> et replacées sur le nouvel horaire.';
+                noticeEl.innerHTML = '🛡️ <strong>' + data.filledSlotsCount + ' séance(s)</strong> de cette semaine ont déjà été remplies par les enseignants (leçons, devoirs). <em>Toutes les modifications sont appliquées directement sur le tableau sans doublons ni cours fantômes.</em>';
             } else {
-                noticeEl.innerHTML = '✨ <strong>0 séance remplie</strong> pour cette semaine. L\'emploi du temps sera configuré proprement pour les futurs remplissages.';
+                noticeEl.innerHTML = '✨ <strong>Synchronisation directe active :</strong> Toute modification de l\'emploi du temps est répercutée immédiatement sur le tableau hebdomadaire sans aucun doublon.';
             }
         }
 
@@ -15067,6 +15099,203 @@ async function loadAdminScheduleForClass() {
     }
 }
 
+/**
+ * Synchronise automatiquement et immédiatement la grille d'emploi du temps actuelle avec le serveur et le tableau principal,
+ * sans nécessiter de rechargement manuel et sans créer de doublons ni laisser de cours supprimés.
+ */
+async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+    const weekSel = document.getElementById('adminScheduleWeekSelect');
+    const selectedWeek = weekSel ? parseInt(weekSel.value, 10) || (currentWeek || 1) : (currentWeek || 1);
+    const selectedClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
+
+    if (!selectedClass) return;
+
+    const radios = document.getElementsByName('adminScheduleScopeRadio');
+    let targetMode = 'all_year';
+    for (const r of radios) {
+        if (r.checked) { targetMode = r.value; break; }
+    }
+
+    let startW = selectedWeek;
+    let endW = selectedWeek;
+    if (targetMode === 'all_year') {
+        startW = 1;
+        endW = 38;
+    } else if (targetMode === 'remaining') {
+        startW = selectedWeek;
+        endW = 38;
+    }
+
+    // 1. Mise à jour locale immédiate du tableau en mémoire (window.planData / window.rawPlanData) si la section correspond
+    if (targetSection === currentSection && Array.isArray(window.planData)) {
+        applyClassScheduleDirectlyToLocalPlanData(selectedClass, window.currentAdminScheduleSlots || []);
+    }
+
+    // 2. Sauvegarde serveur asynchrone pour persister sur la ou les semaines sélectionnées
+    try {
+        const res = await fetch('/api/admin/reorganize-schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                section: targetSection,
+                classe: selectedClass,
+                startWeek: startW,
+                endWeek: endW,
+                targetMode: targetMode,
+                slots: window.currentAdminScheduleSlots || [],
+                deletedSubjects: window.currentAdminScheduleDeletedSubjects || []
+            })
+        });
+        if (res.ok) {
+            if (targetSection === currentSection && typeof fetchPlanData === 'function' && currentWeek) {
+                await fetchPlanData(currentWeek);
+            }
+            if (!silent && typeof showToastNotification === 'function') {
+                showToastNotification(`Emploi du temps de ${selectedClass} mis à jour directement sur le tableau !`, 'success');
+            }
+        }
+    } catch (err) {
+        console.warn('Erreur syncCurrentClassScheduleDirectlyToTable:', err);
+    }
+}
+
+/**
+ * Applique instantanément les créneaux d'une classe sur window.planData et window.rawPlanData
+ * en éliminant tout doublon et tout cours supprimé, puis rafraîchit le tableau HTML.
+ */
+function applyClassScheduleDirectlyToLocalPlanData(classeName, newSlots) {
+    if (!classeName || !Array.isArray(window.planData)) return;
+
+    const clsK = findHKey('Classe') || 'Classe';
+    const jourK = findHKey('Jour') || 'Jour';
+    const perK = findHKey('Période') || 'Période';
+    const matK = findHKey('Matière') || 'Matière';
+    const ensK = findHKey('Enseignant') || 'Enseignant';
+    const lecK = findHKey('Leçon') || 'Leçon';
+    const traK = findHKey('Travaux de classe') || 'Travaux de classe';
+    const supK = findHKey('Support') || 'Support';
+    const devK = findHKey('Devoirs') || 'Devoirs';
+
+    const isPlaceholder = (v) => {
+        const s = String(v || '').trim();
+        return !s || s === '—' || s === '-' || s === '–';
+    };
+
+    const rebuildArrayForClass = (sourceArray) => {
+        if (!Array.isArray(sourceArray)) return [];
+        const otherRows = [];
+        const oldClassRows = [];
+
+        sourceArray.forEach(row => {
+            if (!row) return;
+            const rCls = String(row[clsK] || '').trim();
+            const isTarget = !row.isReadOnlyCrossSection && (typeof isClassMatch === 'function' ? isClassMatch(rCls, classeName) : rCls.toLowerCase() === classeName.toLowerCase());
+            if (isTarget) {
+                oldClassRows.push(row);
+            } else {
+                otherRows.push(row);
+            }
+        });
+
+        const validOldRows = oldClassRows.filter(r => !isPlaceholder(r[matK]));
+        const usedOld = new Set();
+        const slotMap = new Map();
+
+        // Placer les nouveaux créneaux dans slotMap par (Jour, Période)
+        (newSlots || []).forEach(slot => {
+            if (!slot || isPlaceholder(slot.matiere)) return;
+            const dName = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(slot.jour) : slot.jour) || String(slot.jour || '').trim();
+            const pStr = String(slot.periode || '1').replace(/[^0-9]/g, '') || '1';
+            const key = `${dName}_${pStr}`;
+
+            // Chercher une ancienne ligne correspondante (même jour/période/matière ou même matière) pour préserver leçons/devoirs
+            let matchedOld = validOldRows.find(o => {
+                if (usedOld.has(o)) return false;
+                const oDay = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(o[jourK]) : o[jourK]) || String(o[jourK] || '').trim();
+                const oPer = String(o[perK] || '').replace(/[^0-9]/g, '');
+                const oMat = String(o[matK] || '').trim();
+                const eqMat = typeof isEquivalentSubject === 'function' ? isEquivalentSubject(oMat, slot.matiere) : oMat.toLowerCase() === String(slot.matiere).trim().toLowerCase();
+                return oDay.toLowerCase() === dName.toLowerCase() && oPer === pStr && eqMat;
+            });
+
+            if (!matchedOld) {
+                matchedOld = validOldRows.find(o => {
+                    if (usedOld.has(o)) return false;
+                    const oMat = String(o[matK] || '').trim();
+                    return typeof isEquivalentSubject === 'function' ? isEquivalentSubject(oMat, slot.matiere) : oMat.toLowerCase() === String(slot.matiere).trim().toLowerCase();
+                });
+            }
+
+            if (matchedOld) {
+                usedOld.add(matchedOld);
+                slotMap.set(key, {
+                    ...matchedOld,
+                    [clsK]: classeName,
+                    [jourK]: dName,
+                    [perK]: pStr,
+                    [matK]: String(slot.matiere).trim(),
+                    [ensK]: (slot.enseignant && String(slot.enseignant).trim()) ? String(slot.enseignant).trim() : (matchedOld[ensK] || '')
+                });
+            } else {
+                slotMap.set(key, {
+                    [ensK]: (slot.enseignant && String(slot.enseignant).trim()) ? String(slot.enseignant).trim() : '',
+                    [jourK]: dName,
+                    [perK]: pStr,
+                    [clsK]: classeName,
+                    [matK]: String(slot.matiere).trim(),
+                    [lecK]: '',
+                    [traK]: '',
+                    [supK]: '',
+                    [devK]: '',
+                    _section: currentSection || 'garcons'
+                });
+            }
+        });
+
+        // Compléter les 5 jours x 8 périodes avec des lignes vides "—" pour les créneaux sans cours
+        const daysOrder = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
+        const rebuiltClassRows = [];
+        daysOrder.forEach(dName => {
+            for (let p = 1; p <= 8; p++) {
+                const key = `${dName}_${p}`;
+                if (slotMap.has(key)) {
+                    rebuiltClassRows.push(slotMap.get(key));
+                } else {
+                    rebuiltClassRows.push({
+                        [ensK]: '—',
+                        [jourK]: dName,
+                        [perK]: String(p),
+                        [clsK]: classeName,
+                        [matK]: '—',
+                        [lecK]: '—',
+                        [traK]: '—',
+                        [supK]: '—',
+                        [devK]: '—',
+                        _section: currentSection || 'garcons',
+                        _autoGeneratedEmptyPeriod: true
+                    });
+                }
+            }
+        });
+
+        return [...otherRows, ...rebuiltClassRows];
+    };
+
+    window.planData = rebuildArrayForClass(window.planData);
+    if (Array.isArray(window.rawPlanData)) {
+        window.rawPlanData = rebuildArrayForClass(window.rawPlanData);
+    }
+
+    if (typeof populateFilterOptions === 'function') populateFilterOptions();
+    if (typeof sortAndDisplay === 'function') {
+        sortAndDisplay();
+    } else if (typeof renderTable === 'function') {
+        renderTable();
+    }
+}
+
 function updateScheduleModalDatalists() {
     const dl = document.getElementById('slotModalSubjectsDatalist');
     if (dl) {
@@ -15076,7 +15305,9 @@ function updateScheduleModalDatalists() {
             "SVT", "Histoire-Géographie", "Éducation Islamique", "Anglais", "Informatique",
             "Éducation Physique et Sportive (EPS)", "Arts Plastiques", "Éducation Civique"
         ];
-        const combined = Array.from(new Set([...defaultSubjects, ...(window.adminScheduleSubjectsCache || [])])).sort();
+        const combined = Array.from(new Set([...defaultSubjects, ...(window.adminScheduleSubjectsCache || [])]))
+            .filter(s => s && String(s).trim() !== '—' && String(s).trim() !== '-')
+            .sort();
         combined.forEach(sub => {
             const opt = document.createElement('option');
             opt.value = sub;
@@ -15087,12 +15318,14 @@ function updateScheduleModalDatalists() {
     const tSel = document.getElementById('slotModalTeacherSelect');
     if (tSel) {
         tSel.innerHTML = '<option value="">-- Aucun enseignant spécifié --</option>';
-        (window.adminScheduleTeachersCache || []).forEach(t => {
-            const opt = document.createElement('option');
-            opt.value = t;
-            opt.textContent = t;
-            tSel.appendChild(opt);
-        });
+        (window.adminScheduleTeachersCache || [])
+            .filter(t => t && String(t).trim() !== '—' && String(t).trim() !== '-')
+            .forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t;
+                opt.textContent = t;
+                tSel.appendChild(opt);
+            });
     }
 }
 
@@ -15115,6 +15348,11 @@ function renderAdminScheduleGrid() {
     tbody.innerHTML = '';
     const days = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
     const maxP = window.adminScheduleMaxPeriod || 8;
+
+    const isPlaceholderMat = (m) => {
+        const s = String(m || '').trim();
+        return !s || s === '—' || s === '-' || s === '–';
+    };
 
     for (let p = 1; p <= maxP; p++) {
         const tr = document.createElement('tr');
@@ -15143,10 +15381,10 @@ function renderAdminScheduleGrid() {
             const slot = (window.currentAdminScheduleSlots || []).find(s => {
                 const sDay = (s.jour || '').trim();
                 const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
-                return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(p);
+                return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(p) && !isPlaceholderMat(s.matiere);
             });
 
-            if (slot && slot.matiere) {
+            if (slot && !isPlaceholderMat(slot.matiere)) {
                 const colors = getSubjectBadgeColor(slot.matiere);
                 const hasFilled = Boolean(slot.hasContent);
 
@@ -15175,7 +15413,7 @@ function renderAdminScheduleGrid() {
                                     '<span style="width:8px; height:8px; border-radius:50%; background:' + colors.dot + '; display:inline-block; flex-shrink:0;"></span>' +
                                     '<span style="white-space:normal; word-break:break-word; overflow-wrap:break-word; ' + (isArabicSlot ? 'text-align:center; direction:rtl;' : '') + '">' + matEscaped + '</span>' +
                                 '</span>' +
-                                '<button type="button" onclick="clearScheduleSlot(\'' + day + '\', ' + p + ')" title="Vider ce créneau" style="background:none; border:none; color:#EF4444; cursor:pointer; font-size:0.8rem; padding:1px 3px; flex-shrink:0;">' +
+                                '<button type="button" onclick="clearScheduleSlot(\'' + day + '\', ' + p + ')" title="Supprimer ce cours de ce créneau" style="background:none; border:none; color:#EF4444; cursor:pointer; font-size:0.8rem; padding:1px 3px; flex-shrink:0;">' +
                                     '<i class="fas fa-times"></i>' +
                                 '</button>' +
                             '</div>' +
@@ -15211,6 +15449,7 @@ function renderAdminScheduleGrid() {
 function findLinkedTeacherForSubject(matiere) {
     if (!matiere || typeof matiere !== 'string') return '';
     const norm = matiere.trim().toLowerCase();
+    if (!norm || norm === '—' || norm === '-') return '';
     
     // 1. Chercher dans le dictionnaire de liaison de la classe
     if (window.currentClassSubjectTeachersMap) {
@@ -15219,7 +15458,7 @@ function findLinkedTeacherForSubject(matiere) {
         }
         for (const [m, t] of Object.entries(window.currentClassSubjectTeachersMap)) {
             if (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(m, matiere) : m.trim().toLowerCase() === norm) {
-                if (t) return t;
+                if (t && t !== '—') return t;
             }
         }
     }
@@ -15227,7 +15466,7 @@ function findLinkedTeacherForSubject(matiere) {
     // 2. Chercher dans les créneaux déjà configurés pour cette classe
     if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
         const found = window.currentAdminScheduleSlots.find(s => 
-            s.matiere && s.matiere.trim().toLowerCase() === norm && s.enseignant && s.enseignant.trim()
+            s.matiere && s.matiere.trim().toLowerCase() === norm && s.enseignant && s.enseignant.trim() && s.enseignant.trim() !== '—'
         );
         if (found && found.enseignant) return found.enseignant.trim();
     }
@@ -15243,7 +15482,7 @@ function findLinkedTeacherForSubject(matiere) {
                 !r.isReadOnlyCrossSection && 
                 (!currentClass || !clsK || isClassMatch(r[clsK], currentClass)) &&
                 r[matK] && r[matK].trim().toLowerCase() === norm && 
-                r[ensK] && r[ensK].trim()
+                r[ensK] && r[ensK].trim() && r[ensK].trim() !== '—'
             );
             if (foundRow && foundRow[ensK]) return foundRow[ensK].trim();
         }
@@ -15266,10 +15505,8 @@ function onSlotModalMatiereChange() {
 
     const linkedTeacher = findLinkedTeacherForSubject(val);
     if (linkedTeacher) {
-        // Sélectionner l'enseignant si présent dans la liste
         let foundOpt = Array.from(tSel.options).find(opt => opt.value.trim().toLowerCase() === linkedTeacher.toLowerCase());
         if (!foundOpt) {
-            // Ajouter l'option si manquante
             const newOpt = document.createElement('option');
             newOpt.value = linkedTeacher;
             newOpt.textContent = linkedTeacher;
@@ -15304,16 +15541,16 @@ function renderSubjectTeacherLinkingList() {
     card.style.display = 'block';
     list.innerHTML = '';
 
-    // Trouver toutes les matières uniques de cette classe
+    const isPlaceholderMat = (m) => {
+        const s = String(m || '').trim();
+        return !s || s === '—' || s === '-' || s === '–';
+    };
+
+    // Trouver uniquement les matières réelles présentes dans l'emploi du temps de cette classe
     const subjectsSet = new Set();
     (window.currentAdminScheduleSlots || []).forEach(s => {
-        if (s.matiere && s.matiere.trim()) subjectsSet.add(s.matiere.trim());
+        if (!isPlaceholderMat(s.matiere)) subjectsSet.add(s.matiere.trim());
     });
-    if (window.currentClassSubjectTeachersMap) {
-        Object.keys(window.currentClassSubjectTeachersMap).forEach(m => {
-            if (m && m.trim()) subjectsSet.add(m.trim());
-        });
-    }
 
     const subjects = Array.from(subjectsSet).sort();
     if (subjects.length === 0) {
@@ -15321,7 +15558,7 @@ function renderSubjectTeacherLinkingList() {
         return;
     }
 
-    const teachersList = window.adminScheduleTeachersCache || [];
+    const teachersList = (window.adminScheduleTeachersCache || []).filter(t => t && String(t).trim() !== '—');
 
     subjects.forEach(matiere => {
         const currentTeacher = (window.currentClassSubjectTeachersMap && window.currentClassSubjectTeachersMap[matiere]) || '';
@@ -15343,8 +15580,7 @@ function renderSubjectTeacherLinkingList() {
             optionsHtml += `<option value="${escapeHtml(t)}" ${isSel}>${escapeHtml(t)}</option>`;
         });
 
-        // Si l'enseignant actuel n'est pas dans la liste des profs, l'ajouter
-        if (currentTeacher && !teachersList.some(t => t.toLowerCase() === currentTeacher.toLowerCase())) {
+        if (currentTeacher && currentTeacher !== '—' && !teachersList.some(t => t.toLowerCase() === currentTeacher.toLowerCase())) {
             optionsHtml += `<option value="${escapeHtml(currentTeacher)}" selected>${escapeHtml(currentTeacher)}</option>`;
         }
         optionsHtml += `<option value="__custom_new__">➕ Saisir / Renommer l'enseignant...</option>`;
@@ -15415,7 +15651,6 @@ async function onClassSubjectTeacherChange(matiere, newTeacher) {
     if (!window.currentClassSubjectTeachersMap) window.currentClassSubjectTeachersMap = {};
     window.currentClassSubjectTeachersMap[matiere] = cleanTeacher;
 
-    // Ajouter l'enseignant dans le cache si nouveau
     if (cleanTeacher && window.adminScheduleTeachersCache && !window.adminScheduleTeachersCache.some(t => t.toLowerCase() === cleanTeacher.toLowerCase())) {
         window.adminScheduleTeachersCache.push(cleanTeacher);
         window.adminScheduleTeachersCache.sort();
@@ -15438,7 +15673,7 @@ async function onClassSubjectTeacherChange(matiere, newTeacher) {
         renderAdminScheduleGrid();
     }
 
-    // 2. Mettre à jour immédiatement le TABLEAU DE SAISIE DE PLAN HEBDO (colonne nom de l'enseignant)
+    // 2. Mettre à jour immédiatement le TABLEAU DE SAISIE DE PLAN HEBDO
     let updatedPlanRows = 0;
     const clsK = findHKey('Classe');
     const matK = findHKey('Matière');
@@ -15474,18 +15709,16 @@ async function onClassSubjectTeacherChange(matiere, newTeacher) {
         }
     }
 
-    // Ré-afficher immédiatement le tableau du plan hebdo et rafraîchir les filtres
     if (typeof sortAndDisplay === 'function') {
         sortAndDisplay();
     } else if (typeof renderTable === 'function') {
         renderTable();
     }
-    if (typeof updateFilters === 'function') {
-        updateFilters();
+    if (typeof populateFilterOptions === 'function') {
+        populateFilterOptions();
     }
 
     // 3. SAUVEGARDE ET SYNCHRONISATION AUTOMATIQUE SUR LE SERVEUR
-    // Enregistre la liaison et propage le nouveau nom d'enseignant à toutes les semaines du plan hebdo dans MongoDB
     if (selectedClass) {
         try {
             fetch('/api/admin/class-subject-teachers', {
@@ -15497,7 +15730,7 @@ async function onClassSubjectTeacherChange(matiere, newTeacher) {
                     assignments: window.currentClassSubjectTeachersMap,
                     singleUpdate: { matiere, enseignant: cleanTeacher }
                 })
-            }).then(r => r.json()).then(res => {
+            }).then(r => r.json()).then(() => {
                 console.log(`✅ [Auto-sync] Liaison ${matiere} ➔ "${cleanTeacher}" enregistrée et appliquée.`);
             }).catch(e => {
                 console.warn('Note auto-sync class_subject_teachers:', e.message);
@@ -15540,15 +15773,12 @@ async function saveSubjectTeacherAssignmentsForCurrentClass() {
             throw new Error(err.error || 'Erreur HTTP ' + res.status);
         }
 
-        // Mettre à jour les créneaux dans l'emploi du temps
-        let updatedSlots = 0;
         if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
             window.currentAdminScheduleSlots.forEach(s => {
                 if (s.matiere) {
                     for (const [mKey, tVal] of Object.entries(assignments)) {
                         if (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(s.matiere, mKey) : s.matiere.trim().toLowerCase() === mKey.trim().toLowerCase()) {
                             s.enseignant = (tVal || '').trim();
-                            updatedSlots++;
                             break;
                         }
                     }
@@ -15561,7 +15791,6 @@ async function saveSubjectTeacherAssignmentsForCurrentClass() {
             renderAdminScheduleGrid();
         }
 
-        // Répercuter immédiatement les enseignants liés sur le tableau principal si affiché
         let updatedTableRows = 0;
         const clsK = findHKey('Classe');
         const matK = findHKey('Matière');
@@ -15597,8 +15826,8 @@ async function saveSubjectTeacherAssignmentsForCurrentClass() {
             } else if (typeof renderTable === 'function') {
                 renderTable();
             }
-            if (typeof updateFilters === 'function') {
-                updateFilters();
+            if (typeof populateFilterOptions === 'function') {
+                populateFilterOptions();
             }
         }
 
@@ -15629,14 +15858,13 @@ function openScheduleSlotModal(day, period) {
         return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(period);
     });
 
-    const existingMat = existing ? (existing.matiere || '') : '';
-    let existingEns = existing ? (existing.enseignant || '') : '';
+    const existingMat = (existing && existing.matiere && existing.matiere !== '—') ? existing.matiere : '';
+    let existingEns = (existing && existing.enseignant && existing.enseignant !== '—') ? existing.enseignant : '';
 
     if (matInput) {
         matInput.value = existingMat;
     }
 
-    // Si le créneau n'avait pas d'enseignant, vérifier s'il existe une liaison pour cette matière
     if (!existingEns && existingMat) {
         existingEns = findLinkedTeacherForSubject(existingMat);
     }
@@ -15664,7 +15892,7 @@ function closeScheduleSlotModal() {
     window.currentEditingSlot = null;
 }
 
-function applyScheduleSlotModal() {
+async function applyScheduleSlotModal() {
     if (!window.currentEditingSlot) return;
     const day = window.currentEditingSlot.day;
     const period = window.currentEditingSlot.period;
@@ -15674,18 +15902,16 @@ function applyScheduleSlotModal() {
     const matiere = matInput ? matInput.value.trim() : '';
     let enseignant = tSel ? tSel.value.trim() : '';
 
-    if (!matiere) {
-        alert("Veuillez saisir ou sélectionner une matière.");
+    if (!matiere || matiere === '—' || matiere === '-') {
+        alert("Veuillez saisir ou sélectionner une matière valide.");
         if (matInput) matInput.focus();
         return;
     }
 
-    // Si aucun enseignant n'a été manuellement choisi, chercher la liaison existante
     if (!enseignant) {
         enseignant = findLinkedTeacherForSubject(matiere);
     }
 
-    // Mémoriser la liaison pour la matière
     if (enseignant) {
         if (!window.currentClassSubjectTeachersMap) window.currentClassSubjectTeachersMap = {};
         window.currentClassSubjectTeachersMap[matiere] = enseignant;
@@ -15693,28 +15919,21 @@ function applyScheduleSlotModal() {
 
     if (!window.currentAdminScheduleSlots) window.currentAdminScheduleSlots = [];
 
-    const slotIdx = window.currentAdminScheduleSlots.findIndex(s => {
+    // Supprimer toute entrée existante sur ce même créneau (Jour, Période) pour éviter tout doublon
+    window.currentAdminScheduleSlots = window.currentAdminScheduleSlots.filter(s => {
         const sDay = (s.jour || '').trim();
         const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
-        return sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(period);
+        return !(sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(period));
     });
 
-    if (slotIdx >= 0) {
-        window.currentAdminScheduleSlots[slotIdx].matiere = matiere;
-        if (enseignant) {
-            window.currentAdminScheduleSlots[slotIdx].enseignant = enseignant;
-        }
-    } else {
-        window.currentAdminScheduleSlots.push({
-            jour: day,
-            periode: String(period),
-            matiere: matiere,
-            enseignant: enseignant,
-            hasContent: false
-        });
-    }
+    window.currentAdminScheduleSlots.push({
+        jour: day,
+        periode: String(period),
+        matiere: matiere,
+        enseignant: enseignant,
+        hasContent: false
+    });
 
-    // Propager également cet enseignant aux autres créneaux de cette même matière qui n'ont pas encore d'enseignant
     if (enseignant) {
         window.currentAdminScheduleSlots.forEach(s => {
             if (s.matiere && s.matiere.trim().toLowerCase() === matiere.toLowerCase() && (!s.enseignant || !s.enseignant.trim())) {
@@ -15726,6 +15945,9 @@ function applyScheduleSlotModal() {
     closeScheduleSlotModal();
     renderSubjectTeacherLinkingList();
     renderAdminScheduleGrid();
+
+    // Appliquer directement sur le tableau hebdomadaire et synchroniser avec la base de données
+    await syncCurrentClassScheduleDirectlyToTable(false);
 }
 
 function clearCurrentSlotFromModal() {
@@ -15736,7 +15958,7 @@ function clearCurrentSlotFromModal() {
     closeScheduleSlotModal();
 }
 
-function clearScheduleSlot(day, period) {
+async function clearScheduleSlot(day, period) {
     if (!window.currentAdminScheduleSlots) return;
     const idx = window.currentAdminScheduleSlots.findIndex(s => {
         const sDay = (s.jour || '').trim();
@@ -15745,14 +15967,11 @@ function clearScheduleSlot(day, period) {
     });
 
     if (idx >= 0) {
-        const slot = window.currentAdminScheduleSlots[idx];
-        if (slot.hasContent) {
-            const conf = confirm("Attention : ce créneau (" + day + " P" + period + " - " + slot.matiere + ") contient des données saisies par l'enseignant. Si vous le supprimez, ses saisies seront réaffectées si la matière a d'autres créneaux. Confirmer le vidage de ce créneau ?");
-            if (!conf) return;
-        }
         window.currentAdminScheduleSlots.splice(idx, 1);
         renderSubjectTeacherLinkingList();
         renderAdminScheduleGrid();
+        // Synchroniser immédiatement la suppression du créneau sur le tableau hebdomadaire
+        await syncCurrentClassScheduleDirectlyToTable(false);
     }
 }
 
@@ -15772,11 +15991,13 @@ async function deleteSubjectFromClassSchedule(matiere) {
     const slotsCount = matchingSlots.length;
 
     const confirmMsg = 'Confirmez-vous la suppression de la matière "' + matiere + '" de l\'emploi du temps de la classe ' + selectedClass + ' ?\n\n' +
-        '• ' + slotsCount + ' créneau(x) de cette matière seront retirés de la grille.\n' +
-        '• La liaison enseignant pour cette matière sera également retirée.\n\n' +
-        'Cliquez sur OK pour confirmer.';
+        '• Les ' + slotsCount + ' créneau(x) de cette matière seront immédiatement retirés de la grille et du tableau hebdomadaire.\n' +
+        '• Aucun cours supprimé ne restera sur le tableau.';
 
     if (!confirm(confirmMsg)) return;
+
+    if (!window.currentAdminScheduleDeletedSubjects) window.currentAdminScheduleDeletedSubjects = [];
+    window.currentAdminScheduleDeletedSubjects.push(matiere);
 
     // 1. Retirer tous les créneaux de cette matière de la grille en mémoire
     if (window.currentAdminScheduleSlots && Array.isArray(window.currentAdminScheduleSlots)) {
@@ -15796,46 +16017,37 @@ async function deleteSubjectFromClassSchedule(matiere) {
         });
     }
 
-    // 3. Demander si suppression sur le serveur dans les plans hebdomadaires de la base
-    const deleteFromDb = confirm('Voulez-vous également supprimer toutes les lignes de "' + matiere + '" pour la classe ' + selectedClass + ' dans les plans hebdomadaires enregistrés sur le serveur (base de données) ?\n\n• OK = Supprimer aussi de la base de données\n• Annuler = Modifier uniquement la grille locale (vous pourrez cliquer ensuite sur "Enregistrer & Réorganiser")');
-
-    if (deleteFromDb) {
-        try {
-            const res = await fetch('/api/admin/delete-subject-from-schedule', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    section: targetSection,
-                    classe: selectedClass,
-                    matiere: matiere,
-                    deleteFromPlans: true
-                })
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                throw new Error(data.error || 'Erreur serveur');
-            }
-            if (typeof showToastNotification === 'function') {
-                showToastNotification('Matière "' + matiere + '" supprimée avec succès de l\'emploi du temps et des plans de la classe ' + selectedClass + ' !', 'success');
-            } else {
-                alert('Matière "' + matiere + '" supprimée avec succès de l\'emploi du temps et des plans de la classe ' + selectedClass + ' !');
-            }
-            if (typeof fetchData === 'function') {
-                await fetchData(currentWeek, currentSection);
-            }
-        } catch (err) {
-            console.error("Erreur deleteSubjectFromClassSchedule:", err);
-            alert("Erreur lors de la suppression sur le serveur : " + err.message);
-        }
-    } else {
-        if (typeof showToastNotification === 'function') {
-            showToastNotification('Matière "' + matiere + '" retirée de la grille (' + slotsCount + ' créneaux libérés). Cliquez sur "Enregistrer & Réorganiser" pour valider la réorganisation.', 'info');
-        }
-    }
-
-    // 4. Mettre à jour l'affichage
+    // 3. Mettre à jour l'affichage de la grille et du tableau local immédiatement
     renderSubjectTeacherLinkingList();
     renderAdminScheduleGrid();
+    if (targetSection === currentSection) {
+        applyClassScheduleDirectlyToLocalPlanData(selectedClass, window.currentAdminScheduleSlots || []);
+    }
+
+    // 4. Supprimer directement sur le serveur dans les plans hebdomadaires et l'emploi du temps
+    try {
+        const res = await fetch('/api/admin/delete-subject-from-schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                section: targetSection,
+                classe: selectedClass,
+                matiere: matiere,
+                deleteFromPlans: true
+            })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || 'Erreur serveur');
+        }
+        await syncCurrentClassScheduleDirectlyToTable(true);
+        if (typeof showToastNotification === 'function') {
+            showToastNotification('Matière "' + matiere + '" supprimée directement de l\'emploi du temps et du tableau de ' + selectedClass + ' !', 'success');
+        }
+    } catch (err) {
+        console.error("Erreur deleteSubjectFromClassSchedule:", err);
+        alert("Erreur lors de la suppression sur le serveur : " + err.message);
+    }
 }
 
 function promptDeleteSubjectFromClassScheduleModal() {
@@ -15845,15 +16057,15 @@ function promptDeleteSubjectFromClassScheduleModal() {
         return;
     }
 
+    const isPlaceholderMat = (m) => {
+        const s = String(m || '').trim();
+        return !s || s === '—' || s === '-' || s === '–';
+    };
+
     const subjectsSet = new Set();
     (window.currentAdminScheduleSlots || []).forEach(s => {
-        if (s.matiere && s.matiere.trim()) subjectsSet.add(s.matiere.trim());
+        if (!isPlaceholderMat(s.matiere)) subjectsSet.add(s.matiere.trim());
     });
-    if (window.currentClassSubjectTeachersMap) {
-        Object.keys(window.currentClassSubjectTeachersMap).forEach(m => {
-            if (m && m.trim()) subjectsSet.add(m.trim());
-        });
-    }
 
     const subjects = Array.from(subjectsSet).sort();
     if (subjects.length === 0) {
@@ -15882,7 +16094,7 @@ function promptDeleteSubjectFromClassScheduleModal() {
     deleteSubjectFromClassSchedule(chosenSubject);
 }
 
-function applyQuickScheduleSwap() {
+async function applyQuickScheduleSwap() {
     const sDay = document.getElementById('swapSourceDay')?.value || 'Dimanche';
     const sPer = document.getElementById('swapSourcePeriod')?.value || '1';
     const tDay = document.getElementById('swapTargetDay')?.value || 'Lundi';
@@ -15944,6 +16156,7 @@ function applyQuickScheduleSwap() {
     }
 
     renderAdminScheduleGrid();
+    await syncCurrentClassScheduleDirectlyToTable(false);
 }
 
 function addNewPeriodToSchedule() {
@@ -16004,8 +16217,9 @@ async function applyDuplicateScheduleToClass() {
     closeScheduleDuplicateModal();
     if (classSel) {
         classSel.value = targetClass;
+        window.currentAdminScheduleClass = targetClass;
         renderAdminScheduleGrid();
-        alert('L\'agencement des créneaux a été copié pour la classe ' + targetClass + '. Cliquez sur "Enregistrer & Réorganiser" pour appliquer.');
+        await syncCurrentClassScheduleDirectlyToTable(false);
     }
 }
 
@@ -16018,7 +16232,7 @@ async function saveAndReorganizeSchedule() {
     const selectedClass = classSel ? classSel.value : '';
 
     const radios = document.getElementsByName('adminScheduleScopeRadio');
-    let targetMode = 'single';
+    let targetMode = 'all_year';
     for (const r of radios) {
         if (r.checked) { targetMode = r.value; break; }
     }
@@ -16028,46 +16242,33 @@ async function saveAndReorganizeSchedule() {
         return;
     }
 
-    if (!window.currentAdminScheduleSlots || window.currentAdminScheduleSlots.length === 0) {
-        alert("Aucun créneau d'emploi du temps n'a été défini pour cette classe.");
-        return;
-    }
-
     let startW = selectedWeek;
     let endW = selectedWeek;
-    let scopeDescription = '';
 
     if (targetMode === 'all_year') {
         startW = 1;
         endW = 38;
-        scopeDescription = 'TOUTES les semaines dès le début (Semaine 1 jusqu\'à la Semaine 38, année complète)';
     } else if (targetMode === 'remaining') {
         startW = selectedWeek;
         endW = 38;
-        scopeDescription = 'toutes les semaines restantes de la Semaine ' + selectedWeek + ' jusqu\'à la Semaine 38';
     } else {
         startW = selectedWeek;
         endW = selectedWeek;
-        scopeDescription = 'la Semaine ' + selectedWeek + ' uniquement';
     }
-
-    const confirmMsg = 'Confirmez-vous la réorganisation de l\'emploi du temps ?\n\n' +
-        '• Classe : ' + selectedClass + '\n' +
-        '• Section : ' + targetSection + '\n' +
-        '• Portée : ' + scopeDescription + '\n' +
-        '• Nombre de créneaux hebdomadaires : ' + window.currentAdminScheduleSlots.length + '\n\n' +
-        '🛡️ Garantie absolue : Toutes les informations déjà saisies par les enseignants (leçons, devoirs, travaux) seront scrupuleusement conservées et réagencées selon les nouveaux créneaux.';
-
-    if (!confirm(confirmMsg)) return;
 
     const saveBtn = document.getElementById('btnSaveScheduleReorganize');
     const origBtnHtml = saveBtn ? saveBtn.innerHTML : '';
     if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Réorganisation en cours...';
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Synchronisation sur le tableau...';
     }
 
     try {
+        // Appliquer immédiatement en local sur le tableau
+        if (targetSection === currentSection) {
+            applyClassScheduleDirectlyToLocalPlanData(selectedClass, window.currentAdminScheduleSlots || []);
+        }
+
         const response = await fetch('/api/admin/reorganize-schedule', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -16077,7 +16278,8 @@ async function saveAndReorganizeSchedule() {
                 startWeek: startW,
                 endWeek: endW,
                 targetMode: targetMode,
-                slots: window.currentAdminScheduleSlots
+                slots: window.currentAdminScheduleSlots || [],
+                deletedSubjects: window.currentAdminScheduleDeletedSubjects || []
             })
         });
 
@@ -16088,16 +16290,15 @@ async function saveAndReorganizeSchedule() {
 
         const resData = await response.json();
 
-        alert('✅ Succès !\n\n' + resData.message + '\n' +
-              '• Semaines mises à jour : ' + resData.affectedWeeksCount + '\n' +
-              '• Lignes réorganisées : ' + resData.totalUpdatedRows + '\n\n' +
-              'Toutes les saisies et devoirs des enseignants ont été préservés avec succès.');
-
-        if (typeof fetchData === 'function') {
-            await fetchData(currentWeek, currentSection);
+        if (typeof fetchPlanData === 'function' && currentWeek) {
+            await fetchPlanData(currentWeek);
         }
 
         await loadAdminScheduleForClass();
+
+        if (typeof showToastNotification === 'function') {
+            showToastNotification(`Emploi du temps de ${selectedClass} appliqué directement sur le tableau (${resData.affectedWeeksCount} semaine(s) synchronisée(s), sans doublons ni cours supprimés) !`, 'success');
+        }
     } catch (err) {
         console.error("Erreur saveAndReorganizeSchedule:", err);
         alert('❌ Erreur lors de la réorganisation : ' + err.message);
