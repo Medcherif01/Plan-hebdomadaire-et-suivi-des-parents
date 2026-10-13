@@ -14491,6 +14491,40 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             ? getEffectiveWeekNumberForPlan(weekNum, section, className)
             : weekNum;
 
+        // Récupérer les données du plan : d'abord depuis la mémoire active de la page (tableau rempli par les enseignants),
+        // sinon depuis l'API de la section
+        let fullPlanData = [];
+        if (typeof planData !== 'undefined' && Array.isArray(planData) && planData.length > 0 && weekNum == currentWeek && (!currentSection || currentSection === section)) {
+            fullPlanData = planData;
+        } else {
+            try {
+                const res = await fetch(`/api/plans/${weekNum}?section=${section}`);
+                if (res.ok) {
+                    const fetchedJson = await res.json();
+                    fullPlanData = fetchedJson.planData || fetchedJson.data || [];
+                }
+            } catch (e) {
+                console.warn("Erreur fetch plan pour design:", e);
+            }
+            if (fullPlanData.length === 0 && typeof planData !== 'undefined' && Array.isArray(planData) && planData.length > 0) {
+                fullPlanData = planData;
+            }
+        }
+
+        // Filtrer les séances de la classe sélectionnée
+        let targetClassRows = [];
+        if (fullPlanData && fullPlanData.length > 0) {
+            targetClassRows = fullPlanData.filter(row => {
+                if (!row) return false;
+                const cVal = (typeof getRowField === 'function' ? getRowField(row, 'Classe') : null) || row['Classe'] || row['classe'] || row['class'] || row['الفصل'];
+                if (!cVal) return false;
+                if (typeof isClassMatch === 'function' && isClassMatch(cVal, className)) return true;
+                const cClean = String(cVal).toLowerCase().replace(/[\s\-_]+/g, '');
+                const targetClean = String(className).toLowerCase().replace(/[\s\-_]+/g, '');
+                return cClean === targetClean || cClean.includes(targetClean) || targetClean.includes(cClean);
+            });
+        }
+
         const payload = {
             week: Number(weekNum),
             displayWeek: Number(effectiveWeek),
@@ -14501,7 +14535,8 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             highlightHomework: highlightHomework !== false,
             notes: activeNoteForClass || (weeklyClassNotes && weeklyClassNotes[className] ? weeklyClassNotes[className] : ''),
             notesPhoto: activePhotoForClass,
-            isParent: isParent === true
+            isParent: isParent === true,
+            data: targetClassRows.length > 0 ? targetClassRows : (fullPlanData.length > 0 ? fullPlanData : undefined)
         };
 
         const response = await fetch('/api/generate-design-plan', {
@@ -14537,32 +14572,37 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
             displayAlert(`✅ Fichier Plan Hebdomadaire téléchargé avec succès !`, false);
         } else {
             // Aperçu interactif et boîte d'impression PDF
-            const printWindow = window.open('', '_blank');
+            let printWindow = null;
+            try {
+                printWindow = window.open('', '_blank');
+            } catch (e) {
+                printWindow = null;
+            }
             if (printWindow) {
-                printWindow.document.open();
-                printWindow.document.write(htmlContent);
-                printWindow.document.close();
-                printWindow.focus();
-                displayAlert(`✅ Plan Hebdomadaire ouvert dans un nouvel onglet avec aperçu d'impression PDF !`, false);
-            } else {
-                // Si le popup est bloqué par le navigateur, créer une iframe invisible pour imprimer
-                const iframe = document.createElement('iframe');
-                iframe.style.position = 'fixed';
-                iframe.style.right = '0';
-                iframe.style.bottom = '0';
-                iframe.style.width = '0';
-                iframe.style.height = '0';
-                iframe.style.border = 'none';
-                document.body.appendChild(iframe);
-                iframe.contentWindow.document.open();
-                iframe.contentWindow.document.write(htmlContent);
-                iframe.contentWindow.document.close();
+                try {
+                    printWindow.document.open();
+                    printWindow.document.write(htmlContent);
+                    printWindow.document.close();
+                    printWindow.focus();
+                    displayAlert(`✅ Plan Hebdomadaire ouvert dans un nouvel onglet avec aperçu d'impression PDF !`, false);
+                } catch (e) {
+                    printWindow = null;
+                }
+            }
+            if (!printWindow) {
+                // Secours robuste si popup bloqué : ouvrir via Blob URL
+                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.target = '_blank';
+                document.body.appendChild(a);
+                a.click();
                 setTimeout(() => {
-                    iframe.contentWindow.focus();
-                    iframe.contentWindow.print();
-                    setTimeout(() => document.body.removeChild(iframe), 3000);
-                }, 500);
-                displayAlert(`✅ Boîte d'impression PDF prête !`, false);
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(blobUrl);
+                }, 15000);
+                displayAlert(`✅ Plan Hebdomadaire ouvert avec succès (Aperçu & PDF) !`, false);
             }
         }
         updateProgressBar(100);

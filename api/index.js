@@ -8957,66 +8957,56 @@ app.post('/api/generate-word', async (req, res) => {
 
 	    let planData = Array.isArray(data) ? data : [];
 	    if (planData.length === 0) {
-	      let planDoc = await db.collection('plans').findOne({ _id: `${section}_${weekNumber}` });
+	      let planDoc = await db.collection('plans').findOne({
+	        $or: [
+	          { _id: `${section}_${weekNumber}` },
+	          { _id: `${section}_${String(weekNumber)}` },
+	          { week: weekNumber, section: section },
+	          { week: String(weekNumber), section: section },
+	          { _id: String(weekNumber) },
+	          { week: weekNumber }
+	        ]
+	      });
 	      if (!planDoc) {
-	        planDoc = await db.collection('plans').findOne({ week: weekNumber, section: section });
+	        planDoc = await db.collection('published_plans').findOne({
+	          $or: [
+	            { _id: `${section}_${weekNumber}` },
+	            { week: weekNumber, section: section }
+	          ]
+	        });
 	      }
 	      planData = planDoc ? (planDoc.data || planDoc.planData || []) : [];
 	    }
 
-	    // RÈGLE CRITIQUE : STRICTE INDÉPENDANCE ET SÉPARATION DES SECTIONS
-	    // Le plan hebdomadaire des garçons est strictement indépendant de celui des filles, maternelle ou primaire
-	    if (section === 'garcons') {
+	    // Filtrage souple par section si la ligne porte un marqueur explicite différent
+	    if (Array.isArray(planData) && planData.length > 0) {
 	      planData = planData.filter(row => {
-	        if (row._section && row._section !== 'garcons') return false;
-	        const cls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim().toUpperCase();
-	        if (['PS', 'MS', 'GS', 'PP1', 'PP2', 'PP3', 'PP4', 'PP5'].includes(cls) || isMaternelleClassServer(cls)) return false;
-	        const enseignant = (row[findKey(row, 'Enseignant')] || row.Enseignant || row.enseignant || '').trim();
-	        if (isDualMusicTeacher(enseignant)) return true;
-	        return !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase()) &&
-	               !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
-	               !maternelleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
-	      });
-	    } else if (section === 'filles') {
-	      planData = planData.filter(row => {
-	        if (row._section && row._section !== 'filles') return false;
-	        const cls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim().toUpperCase();
-	        if (['PS', 'MS', 'GS', 'PP1', 'PP2', 'PP3', 'PP4', 'PP5'].includes(cls) || isMaternelleClassServer(cls)) return false;
-	        const enseignant = (row[findKey(row, 'Enseignant')] || row.Enseignant || row.enseignant || '').trim();
-	        if (isDualMusicTeacher(enseignant)) return true;
-	        return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
-	               !primaireTeachers.some(p => p.toLowerCase() === enseignant.toLowerCase()) &&
-	               !maternelleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase());
-	      });
-	    } else if (section === 'primaire') {
-	      planData = planData.filter(row => {
-	        if (row._section && row._section !== 'primaire') return false;
-	        const cls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim().toUpperCase();
-	        if (['PS', 'MS', 'GS', 'PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].includes(cls) || isMaternelleClassServer(cls)) return false;
-	        const enseignant = (row[findKey(row, 'Enseignant')] || row.Enseignant || row.enseignant || '').trim();
-	        if (isDualMusicTeacher(enseignant)) return true;
-	        return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
-	               !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
-	      });
-	    } else if (section === 'maternelle') {
-	      planData = planData.filter(row => {
-	        if (row._section && row._section !== 'maternelle') return false;
-	        const cls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim().toUpperCase();
-	        if (cls && !['PS', 'MS', 'GS'].includes(cls) && !isMaternelleClassServer(cls)) return false;
-	        const enseignant = (row[findKey(row, 'Enseignant')] || row.Enseignant || row.enseignant || '').trim();
-	        if (isDualMusicTeacher(enseignant)) return true;
-	        return !maleTeachers.some(m => m.toLowerCase() === enseignant.toLowerCase()) &&
-	               !femaleTeachers.some(f => f.toLowerCase() === enseignant.toLowerCase());
+	        if (!row || typeof row !== 'object') return false;
+	        if (row._section && String(row._section).toLowerCase().trim() !== section) {
+	          return false;
+	        }
+	        return true;
 	      });
 	    }
 
-	    // Traiter la classe demandée de façon strictement isolée
+	    // Traiter la classe demandée : filtrer les séances de cette classe sans jamais supprimer les enseignants qui l'ont remplie
 	    if (classe && typeof classe === 'string' && !['toutes', 'all', 'classe'].includes(classe.trim().toLowerCase())) {
 	      const targetNorm = classe.trim().toLowerCase().replace(/[\s\-_]+/g, '');
-	      planData = planData.filter(r => {
-	        const c = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim().toLowerCase().replace(/[\s\-_]+/g, '');
-	        return c === targetNorm || c.includes(targetNorm) || targetNorm.includes(c);
+	      const classMatches = planData.filter(r => {
+	        if (!r || typeof r !== 'object') return false;
+	        const rawC = String(
+	          r['Classe'] || r['classe'] || r['class'] || r['الفصل'] || r['الصف'] ||
+	          (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : '') || ''
+	        ).trim();
+	        if (!rawC) return false;
+	        const cNorm = rawC.toLowerCase().replace(/[\s\-_]+/g, '');
+	        if (cNorm === targetNorm) return true;
+	        if (typeof isClassMatchServer === 'function' && isClassMatchServer(rawC, classe)) return true;
+	        return cNorm.includes(targetNorm) || targetNorm.includes(cNorm);
 	      });
+	      if (classMatches.length > 0) {
+	        planData = classMatches;
+	      }
 	    }
 
 	    let classNotes = '';

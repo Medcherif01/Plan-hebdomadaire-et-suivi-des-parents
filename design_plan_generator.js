@@ -170,6 +170,74 @@ function formatDateFrench(date) {
   return `${dayName} ${dayNum} ${monthName} ${yearNum}`;
 }
 
+// Alias et détection multilingue des jours
+const dayAliasesMap = {
+  'dimanche': 'Dimanche', 'sun': 'Dimanche', 'sunday': 'Dimanche', 'الأحد': 'Dimanche', 'الاحد': 'Dimanche',
+  'lundi': 'Lundi', 'mon': 'Lundi', 'monday': 'Lundi', 'الإثنين': 'Lundi', 'الاثنين': 'Lundi',
+  'mardi': 'Mardi', 'tue': 'Mardi', 'tuesday': 'Mardi', 'الثلاثاء': 'Mardi',
+  'mercredi': 'Mercredi', 'wed': 'Mercredi', 'wednesday': 'Mercredi', 'الأربعاء': 'Mercredi', 'الاربعاء': 'Mercredi',
+  'jeudi': 'Jeudi', 'thu': 'Jeudi', 'thursday': 'Jeudi', 'الخميس': 'Jeudi'
+};
+
+function resolveDayName(raw) {
+  if (!raw) return null;
+  const s = String(raw).trim().toLowerCase();
+  if (dayAliasesMap[s]) return dayAliasesMap[s];
+  for (const [k, v] of Object.entries(dayAliasesMap)) {
+    if (s.includes(k.toLowerCase())) return v;
+  }
+  return null;
+}
+
+const fieldAliasesMap = {
+  'classe': ['classe', 'class', 'الفصل', 'الصف', 'صف', 'فصل', 'classes'],
+  'jour': ['jour', 'day', 'اليوم', 'يوم', 'jours'],
+  'periode': ['periode', 'période', 'period', 'الحصة', 'حصة', 'seance', 'séance', 'période (heure)', 'periode (heure)', 'p', 'heure'],
+  'matiere': ['matiere', 'matière', 'subject', 'المادة', 'مادة', 'discipline'],
+  'enseignant': ['enseignant', 'professeur', 'teacher', 'المعلم', 'الأستاذ', 'الاستاذ', 'prof', 'professeur(e)', 'nom', 'nom de l\'enseignant'],
+  'lecon': ['lecon', 'leçon', 'lesson', 'الدرس', 'درس', 'titre', 'titre de la leçon', 'titre de la lecon', 'cours'],
+  'travaux': ['travaux de classe', 'travaux', 'classwork', 'العمل الصفي', 'أعمال الفصل', 'اعمال الفصل', 'activites', 'activités', 'activité', 'activite'],
+  'devoirs': ['devoirs', 'devoir', 'homework', 'الواجبات', 'الواجب', 'واجب', 'واجبات', 'devoir a la maison', 'travail maison'],
+  'support': ['support', 'supports', 'ressources', 'الدعم', 'المرفقات', 'السند', 'lien', 'liens', 'manuel']
+};
+
+function getFieldValue(obj, fieldName, fallback = '') {
+  if (!obj || typeof obj !== 'object') return fallback;
+  if (obj[fieldName] !== undefined && obj[fieldName] !== null && String(obj[fieldName]).trim() !== '') {
+    return String(obj[fieldName]).trim();
+  }
+  const normTarget = String(fieldName).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const keys = Object.keys(obj);
+  for (const k of keys) {
+    const kNorm = k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (kNorm === normTarget && obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== '') {
+      return String(obj[k]).trim();
+    }
+  }
+  const aliases = fieldAliasesMap[normTarget] || [];
+  for (const k of keys) {
+    const kNorm = k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (aliases.some(a => a.normalize('NFD').replace(/[\u0300-\u036f]/g, '') === kNorm)) {
+      if (obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== '') {
+        return String(obj[k]).trim();
+      }
+    }
+  }
+  return fallback;
+}
+
+function extractPeriodNum(row) {
+  const rawP = getFieldValue(row, 'periode', '');
+  if (typeof rawP === 'number' && !isNaN(rawP)) return rawP;
+  const str = String(rawP || '').trim();
+  const match = str.match(/\d+/);
+  if (match) {
+    const n = parseInt(match[0], 10);
+    if (!isNaN(n)) return n;
+  }
+  return null;
+}
+
 function getDateForDayName(weekStartDate, dayName) {
   if (!weekStartDate || isNaN(weekStartDate.getTime())) return null;
   const dayOrder = { "Dimanche": 0, "Lundi": 1, "Mardi": 2, "Mercredi": 3, "Jeudi": 4 };
@@ -238,15 +306,13 @@ function generateDesignPlanHtml(options = {}) {
   };
 
   const groupedByDay = {};
-  data.forEach(item => {
-    let rawDay = item['Jour'] || item.jour || item['jour'] || '';
-    if (!rawDay) return;
-    for (const d of dayOrder) {
-      if (rawDay.toLowerCase().includes(d.toLowerCase())) {
-        if (!groupedByDay[d]) groupedByDay[d] = [];
-        groupedByDay[d].push(item);
-        break;
-      }
+  (data || []).forEach(item => {
+    if (!item) return;
+    const rawDay = getFieldValue(item, 'jour', item['Jour'] || item.jour || item['jour'] || '');
+    const resolvedDay = resolveDayName(rawDay);
+    if (resolvedDay) {
+      if (!groupedByDay[resolvedDay]) groupedByDay[resolvedDay] = [];
+      groupedByDay[resolvedDay].push(item);
     }
   });
 
@@ -277,8 +343,8 @@ function generateDesignPlanHtml(options = {}) {
   daysToRender.forEach(dayName => {
     const dayRows = groupedByDay[dayName] || [];
     const hwRows = dayRows.filter(r => {
-      const devoirs = String(r['Devoirs'] || r['devoirs'] || '').trim();
-      return devoirs !== '' && devoirs !== '-' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
+      const devoirs = String(getFieldValue(r, 'devoirs', '')).trim();
+      return devoirs !== '' && devoirs !== '-' && devoirs !== '—' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
     });
     backpackDaysData.push({ dayName, hwRows });
     totalBackpackRows += (hwRows.length > 0 ? hwRows.length : 1);
@@ -1825,19 +1891,31 @@ function generateDesignPlanHtml(options = {}) {
                   </tr>
                 ` : (() => {
                   const periodMap = new Map();
+                  const unassignedRows = [];
                   (rows || []).forEach(r => {
                     if (!r) return;
-                    const pVal = parseInt(r['Période'] || r.periode || r['Période (Heure)'] || 0, 10);
-                    if (pVal >= 1 && pVal <= 8 && !periodMap.has(pVal)) {
+                    const pVal = extractPeriodNum(r);
+                    if (pVal !== null && pVal >= 1 && pVal <= 8 && !periodMap.has(pVal)) {
                       periodMap.set(pVal, r);
+                    } else {
+                      const mat = getFieldValue(r, 'matiere', '');
+                      const lec = getFieldValue(r, 'lecon', '');
+                      const tra = getFieldValue(r, 'travaux', '');
+                      const dev = getFieldValue(r, 'devoirs', '');
+                      if (mat || lec || tra || dev) {
+                        unassignedRows.push(r);
+                      }
                     }
                   });
 
-                  // Garantir que toutes les périodes de 1 à 8 sont strictement présentes
+                  // Garantir que toutes les périodes de 1 à 8 sont strictement présentes sans rien perdre
                   const dayRows = [];
                   for (let p = 1; p <= 8; p++) {
                     if (periodMap.has(p)) {
                       dayRows.push(periodMap.get(p));
+                    } else if (unassignedRows.length > 0) {
+                      const unassigned = unassignedRows.shift();
+                      dayRows.push({ ...unassigned, 'Période': String(p) });
                     } else {
                       dayRows.push({
                         'Période': String(p),
@@ -1850,16 +1928,27 @@ function generateDesignPlanHtml(options = {}) {
                       });
                     }
                   }
+                  while (unassignedRows.length > 0) {
+                    dayRows.push(unassignedRows.shift());
+                  }
 
-                  return dayRows.map(row => {
+                  return dayRows.map((row, rIdx) => {
                     const rowPhotos = Array.isArray(row.photos) ? row.photos : (Array.isArray(row.images) ? row.images : []);
+                    const lecon = getFieldValue(row, 'lecon', '');
+                    const travaux = getFieldValue(row, 'travaux', '');
+                    const matiere = getFieldValue(row, 'matiere', '—');
+                    const support = getFieldValue(row, 'support', '');
+                    const devoirs = getFieldValue(row, 'devoirs', '');
+                    const enseignant = getFieldValue(row, 'enseignant', '');
+                    const periodeVal = extractPeriodNum(row) || getFieldValue(row, 'periode', String(rIdx + 1));
+
                     if ((row.isMerged || row.merged) && rowPhotos.length > 0) {
                       return `
                       <tr>
                         <td colspan="3" class="merged-day-special-cell">
                           <div class="merged-special-container">
-                            <div class="merged-day-title">${escapeHtml(row['Leçon'] || row.lecon || row['Matière'] || 'Séance Spéciale')}</div>
-                            ${(row['Travaux de classe'] || row.travaux) ? `<div class="merged-day-desc">${escapeHtml(row['Travaux de classe'] || row.travaux)}</div>` : ''}
+                            <div class="merged-day-title">${escapeHtml(lecon || matiere || 'Séance Spéciale')}</div>
+                            ${travaux ? `<div class="merged-day-desc">${escapeHtml(travaux)}</div>` : ''}
                             <div class="merged-photos-gallery">
                               ${rowPhotos.map(p => {
                                 const rawUrl = typeof p === 'string' ? p : (p.url || p.src || '');
@@ -1880,24 +1969,17 @@ function generateDesignPlanHtml(options = {}) {
                       `;
                     }
 
-                    const periodeVal = row['Période'] || row['periode'] || row['Période (Heure)'] || '1';
-                    const matiere = row['Matière'] || row['matiere'] || '—';
                     const styleMat = getSubjectStyle(matiere);
                     const isArabicMat = isArabicSubject(matiere) || containsArabic(matiere);
-                    const enseignant = row['Enseignant'] || row['enseignant'] || '';
                     const isArabicEns = containsArabic(enseignant);
 
                     // Résolution robuste de la photo Google Drive de l'enseignant
                     const photoUrl = (showPhotos && showPhotos !== false) ? findTeacherPhotoUrl(enseignant, teachersPhotos) : '';
                     const teacherInitial = enseignant ? enseignant.charAt(0).toUpperCase() : '?';
 
-                    const lecon = row['Leçon'] || row['lecon'] || '';
                     const isArabicLec = containsArabic(lecon);
-                    const travaux = row['Travaux de classe'] || row['travaux'] || '';
                     const isArabicTra = containsArabic(travaux);
-                    const support = row['Support'] || row['support'] || '';
                     const isArabicSup = containsArabic(support);
-                    const devoirs = row['Devoirs'] || row['devoirs'] || '';
                     const isArabicDev = containsArabic(devoirs);
                     const hasHw = devoirs && devoirs.trim() !== '' && !devoirs.toLowerCase().includes('aucun') && !devoirs.toLowerCase().includes('لا يوجد');
 
@@ -2021,12 +2103,12 @@ function generateDesignPlanHtml(options = {}) {
                 }
 
                 return hwRows.map((r, idx) => {
-                  const matiere = r['Matière'] || r['matiere'] || 'Cours';
+                  const matiere = getFieldValue(r, 'matiere', 'Cours');
                   const styleMat = getSubjectStyle(matiere);
                   const isArabicMat = isArabicSubject(matiere);
-                  const devoirs = r['Devoirs'] || r['devoirs'] || '';
-                  const support = String(r['Support'] || r['support'] || '').trim();
-                  const hasSupport = support && support !== '-' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد');
+                  const devoirs = getFieldValue(r, 'devoirs', '');
+                  const support = String(getFieldValue(r, 'support', '')).trim();
+                  const hasSupport = support && support !== '-' && support !== '—' && !support.toLowerCase().includes('aucun') && !support.toLowerCase().includes('لا يوجد');
                   
                   let bookText = '';
                   if (hasSupport) {
