@@ -789,9 +789,10 @@
                 if (typeof populateAdminReportClassSelector === 'function') populateAdminReportClassSelector();
             }
             
-            // Recharger le tableau du plan hebdomadaire de la semaine en cours si ouvert
-            if (typeof currentWeek !== 'undefined' && currentWeek) {
-                if (typeof fetchPlanData === 'function') fetchPlanData(currentWeek);
+            // Recharger le tableau du plan hebdomadaire de la section sélectionnée
+            const weekToReload = (typeof currentWeek !== 'undefined' && currentWeek) || document.getElementById('weekSelector')?.value || (typeof getTeacherDefaultWeekNumber === 'function' ? getTeacherDefaultWeekNumber() : '1');
+            if (weekToReload && typeof fetchPlanData === 'function') {
+                fetchPlanData(weekToReload);
             }
             
             const secLabel = newSection === 'garcons' 
@@ -1527,6 +1528,15 @@
             }
           }
         }
+
+        function onAdminUploadSectionChange(newSec) {
+          if (newSec && newSec !== currentSection && typeof switchAdminActiveSection === 'function') {
+            switchAdminActiveSection(newSec);
+          } else {
+            updateUploadTargetInfo();
+          }
+        }
+        window.onAdminUploadSectionChange = onAdminUploadSectionChange;
 
         function populateMainWeekSelector() {
           const sel = document.getElementById('weekSelector');
@@ -3519,24 +3529,35 @@
             if (filterEnsSelect) {
                 if (isTeacherOnly) { 
                     if (showCrossSectionView) {
-                        // Lorsque la consultation inter-section est activée, l'enseignant peut choisir "Tous" (pour voir son travail et celui de son homologue) ou filtrer
                         filterEnsSelect.disabled = false;
                     } else {
                         const matchingOption = Array.from(filterEnsSelect.options).find(o => 
                             (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
                         );
-                        if (matchingOption) {
+                        const hasAnyRowsAssigned = allData.some(r => {
+                            const rE = (getRowField(r, 'Enseignant') || '').trim();
+                            return rE && isRowForLoggedInTeacher(rE, loggedInUser, loggedInTeacherTable);
+                        });
+
+                        if (hasAnyRowsAssigned && matchingOption) {
                             filterEnsSelect.value = matchingOption.value;
-                        } else if (filterEnsSelect.options.length > 1) {
+                            filterEnsSelect.disabled = true;
+                        } else if (hasAnyRowsAssigned && filterEnsSelect.options.length > 1) {
                             filterEnsSelect.selectedIndex = 1;
-                        } else {
+                            filterEnsSelect.disabled = true;
+                        } else if (hasAnyRowsAssigned) {
                             const opt = document.createElement('option');
                             opt.value = loggedInTeacherTable || loggedInUser;
                             opt.textContent = loggedInTeacherTable || loggedInUser;
                             filterEnsSelect.appendChild(opt);
                             filterEnsSelect.value = opt.value;
+                            filterEnsSelect.disabled = true;
+                        } else {
+                            // Si aucun cours n'est encore assigné nommément à cet enseignant dans cette semaine,
+                            // ne pas bloquer le filtre : lui permettre de voir tous les cours et de sélectionner sa classe
+                            filterEnsSelect.value = "";
+                            filterEnsSelect.disabled = false;
                         }
-                        filterEnsSelect.disabled = true; 
                     }
                 } else { 
                     filterEnsSelect.disabled = false; 
@@ -3546,20 +3567,47 @@
 
         function sortAndDisplay() { 
             const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
+            const ensK = findHKey('Enseignant'); 
+            const clsK = findHKey('Classe'); 
+            const matK = findHKey('Matière'); 
+            const perK = findHKey('Période'); 
+            const jK = findHKey('Jour'); 
+
+            // Détecter si des créneaux sont déjà assignés nommément à cet enseignant
+            const hasAnyTeacherAssignedRows = isTeacherOnly && Array.isArray(planData) && planData.some(r => {
+                const rE = (getRowField(r, 'Enseignant') || '').trim();
+                return rE && isRowForLoggedInTeacher(rE, loggedInUser, loggedInTeacherTable);
+            });
+
+            // Si toutes les lignes de planData ont une section différente de currentSection, recharger le plan de currentSection
+            if (Array.isArray(planData) && planData.length > 0 && currentSection && planData.every(r => r && r._section && r._section !== currentSection)) {
+                console.log(`[Auto-Sync] Section mismatch (données: ${planData[0]._section}, actif: ${currentSection}). Rechargement semaine ${currentWeek}...`);
+                if (currentWeek && typeof fetchPlanData === 'function') {
+                    fetchPlanData(currentWeek);
+                    return;
+                }
+            }
+
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
                 if (isTeacherOnly && !showCrossSectionView) { 
                     const matchingOption = Array.from(filterEnsSelect.options).find(o => 
                         (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
                     );
-                    if (matchingOption) {
+                    if (hasAnyTeacherAssignedRows && matchingOption) {
                         filterEnsSelect.value = matchingOption.value;
-                    } else if (filterEnsSelect.options.length > 1) {
+                        filterEnsSelect.disabled = true; 
+                    } else if (hasAnyTeacherAssignedRows && filterEnsSelect.options.length > 1) {
                         filterEnsSelect.selectedIndex = 1;
-                    } else {
+                        filterEnsSelect.disabled = true; 
+                    } else if (hasAnyTeacherAssignedRows) {
                         filterEnsSelect.value = loggedInTeacherTable || loggedInUser; 
+                        filterEnsSelect.disabled = true; 
+                    } else {
+                        // Autoriser l'accès aux créneaux disponibles si aucun n'est encore assigné
+                        if (!filterEnsSelect.value) filterEnsSelect.value = "";
+                        filterEnsSelect.disabled = false;
                     }
-                    filterEnsSelect.disabled = true; 
                 } else { 
                     filterEnsSelect.disabled = false; 
                 } 
@@ -3570,22 +3618,17 @@
             const matF = document.getElementById('filterMatiere')?.value || ''; 
             const perF = document.getElementById('filterPeriode')?.value || ''; 
             const jF = document.getElementById('filterJour')?.value || ''; 
-            const ensK = findHKey('Enseignant'); 
-            const clsK = findHKey('Classe'); 
-            const matK = findHKey('Matière'); 
-            const perK = findHKey('Période'); 
-            const jK = findHKey('Jour'); 
 
             // Identifier les assignations (Matière + Classe) de l'enseignant connecté
             const myAssignments = isTeacherOnly ? getTeacherTeachingAssignments(planData, loggedInUser, loggedInTeacherTable) : [];
             
             filteredAndSortedData = planData.filter(i => { 
                 if (!i) return false; 
-                const iE = ensK && i.hasOwnProperty(ensK) ? String(i[ensK]).trim() : ''; 
-                const iC = clsK && i.hasOwnProperty(clsK) ? String(i[clsK]).trim() : ''; 
-                const iM = matK && i.hasOwnProperty(matK) ? String(i[matK]).trim() : ''; 
-                const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]).trim() : ''; 
-                const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]).trim() : ''; 
+                const iE = (ensK && i[ensK] !== undefined ? String(i[ensK]) : (getRowField(i, 'Enseignant') || '')).trim(); 
+                const iC = (clsK && i[clsK] !== undefined ? String(i[clsK]) : (getRowField(i, 'Classe') || '')).trim(); 
+                const iM = (matK && i[matK] !== undefined ? String(i[matK]) : (getRowField(i, 'Matière') || '')).trim(); 
+                const iP = (perK && i[perK] !== undefined ? String(i[perK]) : (getRowField(i, 'Période') || '')).trim(); 
+                const iJ = (jK && i[jK] !== undefined ? String(i[jK]) : (getRowField(i, 'Jour') || '')).trim(); 
                 
                 // Filtre de visibilité des classes (masquer les doublons ou classes non souhaitées)
                 if (iC && typeof isClassVisibleOnTable === 'function' && !isClassVisibleOnTable(iC, currentSection)) {
@@ -3593,7 +3636,7 @@
                 } 
                 
                 // Séparation stricte et définitive des sections
-                if (i.isReadOnlyCrossSection || (i._section && i._section !== currentSection)) {
+                if (i.isReadOnlyCrossSection || (i._section && currentSection && i._section !== currentSection)) {
                     return false;
                 }
                 if (currentSection === 'garcons') {
@@ -3608,13 +3651,18 @@
                 
                 // Si enseignant connecté (non admin)
                 if (isTeacherOnly) {
-                    if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
-                        return false;
+                    if (hasAnyTeacherAssignedRows) {
+                        if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
+                            return false;
+                        }
+                    } else {
+                        // S'il n'y a pas encore de créneaux assignés à cet enseignant dans cette semaine,
+                        // on n'exclut pas les créneaux vierges pour qu'il puisse voir le tableau et renseigner ses cours
                     }
                 }
                 
                 // Filtre Enseignant :
-                const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF);
+                const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF) || (!hasAnyTeacherAssignedRows && !iE);
 
                 const pC = !clsF || (iC === clsF) || isClassMatch(iC, clsF); 
                 const pM = !matF || (iM === matF) || (iM.toLowerCase() === matF.toLowerCase()) || isEquivalentSubject(iM, matF); 
@@ -3957,7 +4005,43 @@ function displayPlanTable(data) {
                 return;
             }
             if (!data || data.length === 0) {
-                tBody.innerHTML = `<tr id="initial-table-row"><td colspan="${colspanVal}" class="table-message">${t('no_data_to_display_filters')}</td></tr>`;
+                const totalAvailable = (planData && Array.isArray(planData)) ? planData.length : 0;
+                const activeFilterLabels = [];
+                const ensV = document.getElementById('filterEnseignant')?.value;
+                const clsV = document.getElementById('filterClasse')?.value;
+                const matV = document.getElementById('filterMatiere')?.value;
+                const perV = document.getElementById('filterPeriode')?.value;
+                const jV = document.getElementById('filterJour')?.value;
+                if (ensV) activeFilterLabels.push(`Enseignant: "${ensV}"`);
+                if (clsV) activeFilterLabels.push(`Classe: "${clsV}"`);
+                if (matV) activeFilterLabels.push(`Matière: "${matV}"`);
+                if (perV) activeFilterLabels.push(`Période: "${perV}"`);
+                if (jV) activeFilterLabels.push(`Jour: "${jV}"`);
+
+                const filterNotice = activeFilterLabels.length > 0 
+                    ? ` (${activeFilterLabels.join(' • ')})` 
+                    : '';
+
+                const emptyTitle = t('no_data_to_display_filters');
+
+                tBody.innerHTML = `
+                    <tr id="initial-table-row">
+                        <td colspan="${colspanVal}" class="table-message" style="text-align:center; padding:32px 16px;">
+                            <div style="display:inline-flex; flex-direction:column; align-items:center; gap:12px; max-width:640px; margin:0 auto;">
+                                <div style="display:flex; align-items:center; justify-content:center; gap:10px; background:#FFFBEB; border:1.5px solid #FCD34D; color:#92400E; padding:12px 18px; border-radius:12px; font-weight:700; font-size:0.96rem; text-align:center; width:100%; box-shadow:0 2px 8px rgba(245,158,11,0.08);">
+                                    <i class="fas fa-filter" style="font-size:1.2rem; color:#D97706;"></i>
+                                    <span>${emptyTitle}${filterNotice}</span>
+                                </div>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+                                    <button type="button" class="pro-button" onclick="resetTeacherFilters()" style="background:#2563EB; color:#FFFFFF; font-weight:700; padding:9px 18px; border-radius:10px; font-size:0.88rem; box-shadow:0 3px 10px rgba(37,99,235,0.25); display:inline-flex; align-items:center; gap:7px; cursor:pointer;">
+                                        <i class="fas fa-undo"></i> 
+                                        <span>${currentUserLanguage === 'ar' ? 'إعادة ضبط الفلاتر وعرض جميع المواد' : (currentUserLanguage === 'en' ? 'Reset filters & show all courses' : 'Effacer les filtres & Tout afficher')}${totalAvailable > 0 ? ` (${totalAvailable} créneaux)` : ''}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
                 return;
             }
 
@@ -4353,14 +4437,18 @@ function displayPlanTable(data) {
         }
 
         function resetTeacherFilters() {
+            const selEns = document.getElementById('filterEnseignant');
+            const selClasse = document.getElementById('filterClasse');
             const selMatiere = document.getElementById('filterMatiere');
             const selPeriode = document.getElementById('filterPeriode');
             const selJour = document.getElementById('filterJour');
+            if (selEns && !selEns.disabled) selEns.value = '';
+            if (selClasse) selClasse.value = '';
             if (selMatiere) selMatiere.value = '';
             if (selPeriode) selPeriode.value = '';
             if (selJour) selJour.value = '';
             sortAndDisplay();
-            showToastNotification(currentUserLanguage === 'en' ? 'Filters reset, all classes displayed.' : (currentUserLanguage === 'ar' ? 'تمت إعادة ضبط جميع التصفِيات' : 'Filtres réinitialisés, tous les cours sont affichés.'), 'success');
+            showToastNotification(currentUserLanguage === 'en' ? 'Filters reset, all classes displayed.' : (currentUserLanguage === 'ar' ? 'تمت إعادة ضبط جميع التصفِيات وعرض جميع الفصول' : 'Filtres réinitialisés, tous les cours sont affichés.'), 'success');
         }
         
         async function generateAILessonPlan(rowData, tableRowElement) {
@@ -18281,9 +18369,22 @@ function isClassVisibleOnTable(classe, section) {
 
     // 2. Vérifier si un ensemble restreint de classes visibles est défini
     if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[sec]) && window.sectionVisibleClassesMap[sec].length > 0) {
-        return window.sectionVisibleClassesMap[sec].some(v => 
+        const matchesExplicit = window.sectionVisibleClassesMap[sec].some(v => 
             String(v).trim().toLowerCase() === lowerClass || (typeof isClassMatch === 'function' && isClassMatch(v, rawClass))
         );
+        if (matchesExplicit) return true;
+
+        // Sécurité anti-blocage : si aucune classe du planData actuel ne correspond à sectionVisibleClassesMap,
+        // c'est que la configuration en cache local est obsolète ou désynchronisée. On ne bloque jamais l'affichage global.
+        const currentDataClasses = Array.isArray(planData) ? planData.map(r => r && (r[findHKey('Classe')] || r.Classe)).filter(Boolean) : [];
+        const hasOverlap = currentDataClasses.some(c => 
+            window.sectionVisibleClassesMap[sec].some(v => String(v).trim().toLowerCase() === String(c).trim().toLowerCase() || (typeof isClassMatch === 'function' && isClassMatch(v, String(c).trim())))
+        );
+        if (!hasOverlap && currentDataClasses.length > 0) {
+            return true;
+        }
+
+        return false;
     }
 
     return true;

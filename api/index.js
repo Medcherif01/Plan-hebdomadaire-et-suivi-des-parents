@@ -5536,7 +5536,8 @@ app.get('/api/general-evaluations', async (req, res) => {
 
 app.get('/api/plans/:week', async (req, res) => {
   const weekNumber = parseInt(req.params.week, 10);
-  const section = req.query.section || 'garcons';
+  const rawSection = String(req.query.section || 'garcons').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const section = rawSection.includes('fille') ? 'filles' : (rawSection.includes('prim') ? 'primaire' : (rawSection.includes('mat') ? 'maternelle' : 'garcons'));
   if (isNaN(weekNumber)) return res.status(400).json({ message: 'Semaine invalide.' });
   try {
     const db = await connectToDatabase();
