@@ -523,79 +523,22 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
     return score;
   };
 
-  // Canonicaliser le nom de la classe pour éviter les doublons de casse et de suffixes ("DP2 Garçons" -> "DP2")
+  // Canonicaliser le nom de la classe pour éviter les doublons de casse
   const canonicalClassMap = new Map();
-  const canonicalList = [];
   if (section === 'garcons' || section === 'filles') {
-    canonicalList.push('PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2');
+    ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
   } else if (section === 'primaire') {
-    canonicalList.push('PP1', 'PP2', 'PP3', 'PP4', 'PP5');
+    ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
   } else if (section === 'maternelle') {
-    canonicalList.push('PS', 'MS', 'GS');
+    ['PS', 'MS', 'GS'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
   }
-
-  // Collect any other / custom classes present in incoming data
-  if (Array.isArray(data)) {
-    data.forEach(r => {
-      if (!r) return;
-      const c = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
-      if (c && !canonicalList.includes(c)) {
-        canonicalList.push(c);
-      }
-    });
-  }
-
-  canonicalList.forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
-
-  const resolveClassCanonical = (rawName) => {
-    if (!rawName) return '';
-    let clean = String(rawName).trim();
-    // Supprimer les suffixes de section et de genre redondants
-    clean = clean.replace(/\s*(?:Garçons|Garcons|Banin|بنين|اولاد|أولاد|Filles|Fille|Banat|بنات|Section\s*Garçons|Section\s*Garcons|Section\s*Filles|Primaire|ابتدائي|Maternelle|روضة|روضه)\s*$/i, '').trim();
-    clean = clean.replace(/^(?:Classe\s*(?:de)?|الصف|فصل)\s*/i, '').trim();
-
-    const peiM = clean.match(/^PEI\s*([1-6])$/i);
-    if (peiM) clean = `PEI${peiM[1]}`;
-    const dpM = clean.match(/^DP\s*([1-3])$/i);
-    if (dpM) clean = `DP${dpM[1]}`;
-    const ppM = clean.match(/^PP\s*([1-6])$/i);
-    if (ppM) clean = `PP${ppM[1]}`;
-    const matM = clean.match(/^(PS|MS|GS)\s*[1-2]?$/i);
-    if (matM) clean = matM[1].toUpperCase();
-
-    const sLow = clean.toLowerCase();
-    if (sLow === '6eme' || sLow === '6' || sLow.includes('سادس')) clean = 'PEI1';
-    else if (sLow === '7eme' || sLow === '7' || sLow === '1am' || sLow.includes('اول متوسط')) clean = 'PEI2';
-    else if (sLow === '8eme' || sLow === '8' || sLow === '2am' || sLow.includes('ثاني متوسط')) clean = 'PEI3';
-    else if (sLow === '9eme' || sLow === '9' || sLow === '3am' || sLow.includes('ثالث متوسط')) clean = 'PEI4';
-    else if (sLow === '10eme' || sLow === '10' || sLow === '1as' || sLow === 'seconde' || sLow.includes('اول ثانوي')) clean = 'PEI5';
-    else if (sLow === '11eme' || sLow === '11' || sLow === '2as' || sLow === 'premiere' || sLow.includes('ثاني ثانوي')) clean = 'DP1';
-    else if (sLow === '12eme' || sLow === '12' || sLow === '3as' || sLow === 'terminale' || sLow.includes('ثالث ثانوي')) clean = 'DP2';
-    else if (sLow === 'cp' || sLow === 'primaire 1' || sLow.includes('ابتدائي 1')) clean = 'PP1';
-    else if (sLow === 'ce1' || sLow === 'primaire 2' || sLow.includes('ابتدائي 2')) clean = 'PP2';
-    else if (sLow === 'ce2' || sLow === 'primaire 3' || sLow.includes('ابتدائي 3')) clean = 'PP3';
-    else if (sLow === 'cm1' || sLow === 'primaire 4' || sLow.includes('ابتدائي 4')) clean = 'PP4';
-    else if (sLow === 'cm2' || sLow === 'primaire 5' || sLow.includes('ابتدائي 5')) clean = 'PP5';
-    else if (sLow.includes('petite section') || sLow.includes('روضه اولى') || sLow.includes('روضة أولى')) clean = 'PS';
-    else if (sLow.includes('moyenne section') || sLow.includes('روضه متوسطه') || sLow.includes('روضة متوسطة')) clean = 'MS';
-    else if (sLow.includes('grande section') || sLow.includes('روضه كبرى') || sLow.includes('روضة كبرى')) clean = 'GS';
-
-    if (canonicalClassMap.has(clean.toLowerCase())) {
-      return canonicalClassMap.get(clean.toLowerCase());
-    }
-    for (const canon of canonicalList) {
-      if (typeof isClassMatchServer === 'function' && isClassMatchServer(clean, canon)) {
-        canonicalClassMap.set(clean.toLowerCase(), canon);
-        return canon;
-      }
-    }
-    return clean;
-  };
 
   data.forEach(r => {
     if (!r) return;
     const c = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
-    if (c) resolveClassCanonical(c);
+    if (c && !canonicalClassMap.has(c.toLowerCase())) {
+      canonicalClassMap.set(c.toLowerCase(), c);
+    }
   });
 
   // 2. Déterminer les libellés de jours avec date pour cette semaine
@@ -652,7 +595,7 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
 
     if (rawC && matchedDay && !isNaN(pVal) && pVal >= 1 && pVal <= 10) {
       if (pVal > maxPeriodDetected) maxPeriodDetected = pVal;
-      const clsCanonical = resolveClassCanonical(rawC);
+      const clsCanonical = canonicalClassMap.get(rawC.toLowerCase()) || rawC;
       const k = `${clsCanonical.toLowerCase()}___${matchedDay.toLowerCase()}___${pVal}`;
 
       if (!existingMap.has(k)) {
@@ -696,7 +639,7 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
 
   // 4. Construire la liste garantie avec exactement 1 ligne par créneau (1 à maxPeriodDetected) pour chaque jour et chaque classe
   const result = [];
-  const sortedClasses = canonicalList.slice();
+  const sortedClasses = Array.from(canonicalClassMap.values()).sort();
 
   sortedClasses.forEach(cls => {
     schoolDays.forEach(day => {
@@ -1384,8 +1327,8 @@ function isClassMatchServer(classA, classB) {
   const normB = normalizeClassStringServer(b);
   if (!normA || !normB) return false;
   if (normA === normB) return true;
-  const cleanNorm = (s) => s.replace(/(?:garcons?|filles?|banin|banat|section|primaire|maternelle|g|f|b)$/i, '');
-  if (cleanNorm(normA) === cleanNorm(normB) && cleanNorm(normA).length > 1) return true;
+
+  if (normA.includes(normB) || normB.includes(normA)) return true;
 
   for (const group of canonicalClassEquivalentsServer) {
     const matchA = (normA === group.code) || group.names.some(n => {
@@ -5570,8 +5513,7 @@ app.get('/api/general-evaluations', async (req, res) => {
 
 app.get('/api/plans/:week', async (req, res) => {
   const weekNumber = parseInt(req.params.week, 10);
-  const rawSection = String(req.query.section || 'garcons').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const section = rawSection.includes('fille') ? 'filles' : (rawSection.includes('prim') ? 'primaire' : (rawSection.includes('mat') ? 'maternelle' : 'garcons'));
+  const section = req.query.section || 'garcons';
   if (isNaN(weekNumber)) return res.status(400).json({ message: 'Semaine invalide.' });
   try {
     const db = await connectToDatabase();
@@ -6063,41 +6005,6 @@ function withPlanLock(docId, asyncFn) {
   return currentPromise;
 }
 
-function resolveClassCanonicalGlobal(rawName) {
-  if (!rawName) return '';
-  let clean = String(rawName).trim();
-  clean = clean.replace(/\s*(?:Garçons|Garcons|Banin|بنين|اولاد|أولاد|Filles|Fille|Banat|بنات|Section\s*Garçons|Section\s*Garcons|Section\s*Filles|Primaire|ابتدائي|Maternelle|روضة|روضه)\s*$/i, '').trim();
-  clean = clean.replace(/^(?:Classe\s*(?:de)?|الصف|فصل)\s*/i, '').trim();
-
-  const peiM = clean.match(/^PEI\s*([1-5])$/i);
-  if (peiM) return `PEI${peiM[1]}`;
-  const dpM = clean.match(/^DP\s*([1-2])$/i);
-  if (dpM) return `DP${dpM[1]}`;
-  const ppM = clean.match(/^PP\s*([1-5])$/i);
-  if (ppM) return `PP${ppM[1]}`;
-  const matM = clean.match(/^(PS|MS|GS)\s*[1-2]?$/i);
-  if (matM) return matM[1].toUpperCase();
-
-  const sLow = clean.toLowerCase();
-  if (sLow === '6eme' || sLow === '6' || sLow.includes('سادس')) return 'PEI1';
-  if (sLow === '7eme' || sLow === '7' || sLow === '1am' || sLow.includes('اول متوسط')) return 'PEI2';
-  if (sLow === '8eme' || sLow === '8' || sLow === '2am' || sLow.includes('ثاني متوسط')) return 'PEI3';
-  if (sLow === '9eme' || sLow === '9' || sLow === '3am' || sLow.includes('ثالث متوسط')) return 'PEI4';
-  if (sLow === '10eme' || sLow === '10' || sLow === '1as' || sLow === 'seconde' || sLow.includes('اول ثانوي')) return 'PEI5';
-  if (sLow === '11eme' || sLow === '11' || sLow === '2as' || sLow === 'premiere' || sLow.includes('ثاني ثانوي')) return 'DP1';
-  if (sLow === '12eme' || sLow === '12' || sLow === '3as' || sLow === 'terminale' || sLow.includes('ثالث ثانوي')) return 'DP2';
-  if (sLow === 'cp' || sLow === 'primaire 1' || sLow.includes('ابتدائي 1')) return 'PP1';
-  if (sLow === 'ce1' || sLow === 'primaire 2' || sLow.includes('ابتدائي 2')) return 'PP2';
-  if (sLow === 'ce2' || sLow === 'primaire 3' || sLow.includes('ابتدائي 3')) return 'PP3';
-  if (sLow === 'cm1' || sLow === 'primaire 4' || sLow.includes('ابتدائي 4')) return 'PP4';
-  if (sLow === 'cm2' || sLow === 'primaire 5' || sLow.includes('ابتدائي 5')) return 'PP5';
-  if (sLow.includes('petite section') || sLow.includes('روضه اولى') || sLow.includes('روضة أولى')) return 'PS';
-  if (sLow.includes('moyenne section') || sLow.includes('روضه متوسطه') || sLow.includes('روضة متوسطة')) return 'MS';
-  if (sLow.includes('grande section') || sLow.includes('روضه كبرى') || sLow.includes('روضة كبرى')) return 'GS';
-
-  return clean;
-}
-
 // Fonction de correspondance tolérante et sécurisée pour les lignes d'un plan
 function matchPlanRow(elem, criteria) {
   if (!elem || !criteria) return false;
@@ -6109,50 +6016,37 @@ function matchPlanRow(elem, criteria) {
 
   const getF = (obj, field) => {
     const k = findKey(obj, field);
-    return k ? String(obj[k] || '').trim() : '';
+    return k ? String(obj[k] || '').trim().toLowerCase() : '';
   };
 
+  const ensE = getF(elem, 'Enseignant');
+  const ensC = getF(criteria, 'Enseignant');
   const clsE = getF(elem, 'Classe');
   const clsC = getF(criteria, 'Classe');
   const jourE = getF(elem, 'Jour');
   const jourC = getF(criteria, 'Jour');
   const perE = getF(elem, 'Période');
   const perC = getF(criteria, 'Période');
-  const ensE = getF(elem, 'Enseignant');
-  const ensC = getF(criteria, 'Enseignant');
   const matE = getF(elem, 'Matière');
   const matC = getF(criteria, 'Matière');
 
-  // 2. Correspondance stricte par créneau scolaire unique : (Classe, Jour, Période)
-  // Dans un établissement, chaque créneau (Classe + Jour + Période) est unique.
-  // Une modification d'enseignant, de leçon ou de matière sur ce créneau doit le mettre à jour sans jamais créer de doublon.
-  if (clsE && clsC && jourE && jourC && perE && perC) {
-    const canonE = resolveClassCanonicalGlobal(clsE);
-    const canonC = resolveClassCanonicalGlobal(clsC);
-    const dayE = (typeof extractDayNameFromString === 'function') ? (extractDayNameFromString(jourE) || jourE) : jourE;
-    const dayC = (typeof extractDayNameFromString === 'function') ? (extractDayNameFromString(jourC) || jourC) : jourC;
-    const pE = parseInt(String(perE).replace(/[^0-9]/g, ''), 10);
-    const pC = parseInt(String(perC).replace(/[^0-9]/g, ''), 10);
-    
-    const isSameDay = (dayE && dayC && dayE.toLowerCase() === dayC.toLowerCase()) || (jourE.toLowerCase() === jourC.toLowerCase());
-    const isSamePeriod = (!isNaN(pE) && !isNaN(pC) && pE === pC) || (String(perE).trim() === String(perC).trim());
-    const isSameClass = (canonE.toLowerCase() === canonC.toLowerCase()) || (typeof isClassMatchServer === 'function' && isClassMatchServer(clsE, clsC));
-
-    if (isSameClass && isSameDay && isSamePeriod) {
-      return true;
-    }
-  }
-
   // Correspondance exacte des 5 critères principaux
   if (ensE && clsE && jourE && perE && matE) {
-    if (ensE.toLowerCase() === ensC.toLowerCase() && clsE.toLowerCase() === clsC.toLowerCase() && jourE.toLowerCase() === jourC.toLowerCase() && perE === perC && matE.toLowerCase() === matC.toLowerCase()) {
+    if (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC && matE === matC) {
       return true;
     }
   }
 
-  // Correspondance 4 critères (Enseignant, Classe, Jour, Période)
+  // Correspondance 4 critères (Enseignant, Classe, Jour, Période) - protège contre les modifications d'intitulé de matière
   if (ensE && clsE && jourE && perE) {
-    if (ensE.toLowerCase() === ensC.toLowerCase() && clsE.toLowerCase() === clsC.toLowerCase() && jourE.toLowerCase() === jourC.toLowerCase() && perE === perC) {
+    if (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC) {
+      return true;
+    }
+  }
+
+  // Correspondance alternative (Classe, Jour, Période, Matière)
+  if (clsE && jourE && perE && matE) {
+    if (clsE === clsC && jourE === jourC && perE === perC && matE === matC) {
       return true;
     }
   }
@@ -6164,8 +6058,7 @@ app.post('/api/save-row', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const rowData = req.body.data;
   const originalData = req.body.originalData;
-  const rawSection = String(req.body.section || 'garcons').toLowerCase().trim();
-  const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSection) ? rawSection : 'garcons';
+  const section = req.body.section || 'garcons';
   if (isNaN(weekNumber) || typeof rowData !== 'object') {
     return res.status(400).json({ message: 'Données invalides.' });
   }
@@ -6194,29 +6087,19 @@ app.post('/api/save-row', async (req, res) => {
         targetIdx = planDoc.data.findIndex(elem => matchPlanRow(elem, rowData));
       }
 
-      // Canonicaliser le nom de la classe pour éviter tout doublon
-      const clsKey = findKey(rowData, 'Classe') || 'Classe';
-      if (rowData[clsKey]) {
-        rowData[clsKey] = resolveClassCanonicalGlobal(rowData[clsKey]);
-      }
-
       if (targetIdx !== -1) {
         planDoc.data[targetIdx] = {
           ...planDoc.data[targetIdx],
           ...rowData,
-          _section: section,
           updatedAt: now
         };
       } else {
+        // Si la ligne n'existait pas encore, l'ajouter directement pour ne jamais perdre de saisie
         planDoc.data.push({
           ...rowData,
-          _section: section,
           updatedAt: now
         });
       }
-
-      // Garantie absolue de déduplication et de 8 périodes
-      planDoc.data = ensureAllPeriods1To8ForPlan(planDoc.data, section, weekNumber);
 
       await db.collection('plans').updateOne(
         { _id: docId },
@@ -6241,8 +6124,7 @@ app.post('/api/save-row', async (req, res) => {
 app.post('/api/save-rows-batch', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const rows = req.body.rows;
-  const rawSection = String(req.body.section || 'garcons').toLowerCase().trim();
-  const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSection) ? rawSection : 'garcons';
+  const section = req.body.section || 'garcons';
 
   if (isNaN(weekNumber) || !Array.isArray(rows)) {
     return res.status(400).json({ message: 'Données ou liste de lignes invalides.' });
@@ -6269,12 +6151,6 @@ app.post('/api/save-rows-batch', async (req, res) => {
         const rowData = item.data || item;
         const originalData = item.originalData || null;
 
-        // Canonicaliser le nom de la classe
-        const clsKey = findKey(rowData, 'Classe') || 'Classe';
-        if (rowData[clsKey]) {
-          rowData[clsKey] = resolveClassCanonicalGlobal(rowData[clsKey]);
-        }
-
         let targetIdx = -1;
         if (originalData) {
           targetIdx = planDoc.data.findIndex(elem => matchPlanRow(elem, originalData));
@@ -6287,22 +6163,17 @@ app.post('/api/save-rows-batch', async (req, res) => {
           planDoc.data[targetIdx] = {
             ...planDoc.data[targetIdx],
             ...rowData,
-            _section: section,
             updatedAt: now
           };
           updatedCount++;
         } else {
           planDoc.data.push({
             ...rowData,
-            _section: section,
             updatedAt: now
           });
           insertedCount++;
         }
       });
-
-      // Garantie absolue de déduplication et de 8 périodes
-      planDoc.data = ensureAllPeriods1To8ForPlan(planDoc.data, section, weekNumber);
 
       await db.collection('plans').updateOne(
         { _id: docId },
@@ -7669,8 +7540,8 @@ app.get('/api/admin/classes', async (req, res) => {
       section,
       classes: classItems,
       duplicatesFound: duplicates,
-      visibleClasses: classItems.filter(c => c.visible && !c.isDuplicate).map(c => c.name),
-      hiddenClasses: classItems.filter(c => !c.visible || c.isDuplicate).map(c => c.name)
+      visibleClasses: classItems.filter(c => c.visible).map(c => c.name),
+      hiddenClasses: classItems.filter(c => !c.visible).map(c => c.name)
     });
   } catch (error) {
     console.error('Erreur /api/admin/classes:', error);
@@ -9135,49 +9006,6 @@ app.post('/api/generate-word', async (req, res) => {
 	      });
 	      if (classMatches.length > 0) {
 	        planData = classMatches;
-	      }
-
-	      // Dédupliquer les séances de cette classe par (Jour, Période) en conservant en priorité absolue le contenu rempli
-	      const dayPeriodMap = new Map();
-	      planData.forEach(r => {
-	        if (!r || typeof r !== 'object') return;
-	        const j = String(r['Jour'] || r.jour || (typeof findKey === 'function' ? r[findKey(r, 'Jour')] : '') || '').trim().toLowerCase();
-	        const p = String(r['Période'] || r.periode || (typeof findKey === 'function' ? r[findKey(r, 'Période')] : '') || '').replace(/[^0-9]/g, '');
-	        if (!j || !p) return;
-	        const k = `${j}___${p}`;
-	        if (!dayPeriodMap.has(k)) {
-	          dayPeriodMap.set(k, { ...r });
-	        } else {
-	          const prev = dayPeriodMap.get(k);
-	          const scorePrev = typeof getRowScore === 'function' ? getRowScore(prev) : 0;
-	          const scoreNew = typeof getRowScore === 'function' ? getRowScore(r) : 0;
-	          if (scoreNew > scorePrev) {
-	            const merged = { ...prev, ...r };
-	            ['Leçon', 'Travaux de classe', 'Support', 'Devoirs', 'Objectifs', 'Matière', 'Enseignant'].forEach(f => {
-	              const fk = typeof findKey === 'function' ? findKey(merged, f) || f : f;
-	              const prevFk = typeof findKey === 'function' ? findKey(prev, f) || f : f;
-	              const vNew = String(r[fk] || '').trim();
-	              const vOld = String(prev[prevFk] || '').trim();
-	              if ((!vNew || vNew === '—' || vNew === '-') && vOld && vOld !== '—' && vOld !== '-') {
-	                merged[fk] = prev[prevFk];
-	              }
-	            });
-	            dayPeriodMap.set(k, merged);
-	          } else {
-	            ['Leçon', 'Travaux de classe', 'Support', 'Devoirs', 'Objectifs', 'Matière', 'Enseignant'].forEach(f => {
-	              const fk = typeof findKey === 'function' ? findKey(prev, f) || f : f;
-	              const newFk = typeof findKey === 'function' ? findKey(r, f) || f : f;
-	              const vPrev = String(prev[fk] || '').trim();
-	              const vNew = String(r[newFk] || '').trim();
-	              if ((!vPrev || vPrev === '—' || vPrev === '-') && vNew && vNew !== '—' && vNew !== '-') {
-	                prev[fk] = r[newFk];
-	              }
-	            });
-	          }
-	        }
-	      });
-	      if (dayPeriodMap.size > 0) {
-	        planData = Array.from(dayPeriodMap.values());
 	      }
 	    }
 
@@ -11578,7 +11406,7 @@ app.use((err, req, res, next) => {
 });
 
 // Configuration Port et Host — Port 3000 requis pour l'environnement AI Studio
-const PORT = parseInt(process.env.PORT, 10) || 3000;
+const PORT = 3000;
 const HOST = '0.0.0.0';
 
 // Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel
