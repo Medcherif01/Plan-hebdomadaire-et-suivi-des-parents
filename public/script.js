@@ -1114,8 +1114,11 @@
             const normB = normalizeClassString(b);
             if (!normA || !normB) return false;
             if (normA === normB) return true;
-
-            if (normA.includes(normB) || normB.includes(normA)) return true;
+            const codeA = getCanonicalClassCode(a);
+            const codeB = getCanonicalClassCode(b);
+            if (codeA && codeB && codeA.toLowerCase() === codeB.toLowerCase()) return true;
+            const cleanNorm = (s) => s.replace(/(?:garcons?|filles?|banin|banat|section|primaire|maternelle|g|f|b)$/i, '');
+            if (cleanNorm(normA) === cleanNorm(normB) && cleanNorm(normA).length > 1) return true;
 
             for (const group of canonicalClassEquivalents) {
                 const matchA = (normA === group.code) || group.names.some(n => {
@@ -3326,26 +3329,21 @@
                     th.style.cursor = 'pointer';
                     th.title = (currentUserLanguage === 'en') ? 'Click to sort by this column' : ((currentUserLanguage === 'ar') ? 'انقر للترتيب بهذا العمود' : 'Cliquer pour trier par cette colonne');
                     
-                    const isMetaCol = (col) => {
-                        const c = String(col).trim().toLowerCase();
-                        return c.includes('enseign') || c.includes('teacher') || c.includes('معلم') ||
-                               c.includes('class') || c.includes('صف') || c.includes('فصل') ||
-                               c.includes('mati') || c.includes('subject') || c.includes('مادة') ||
-                               c.includes('périod') || c.includes('period') || c.includes('حصة') ||
-                               c.includes('jour') || c.includes('day') || c.includes('يوم');
-                    };
-                    
-                    if (isMetaCol(h)) {
-                        th.classList.add('col-meta-compact');
-                        th.style.width = '1%';
-                        th.style.maxWidth = '72px';
-                        th.style.padding = '6px 4px';
-                        th.style.fontSize = '0.76rem';
-                        th.style.whiteSpace = 'nowrap';
+                    const cNorm = String(h).trim().toLowerCase();
+                    if (cNorm.includes('class') || cNorm.includes('صف') || cNorm.includes('grade')) {
+                        th.classList.add('col-meta-classe');
+                    } else if (cNorm.includes('jour') || cNorm.includes('يوم') || cNorm.includes('day')) {
+                        th.classList.add('col-meta-jour');
+                    } else if (cNorm.includes('périod') || cNorm.includes('period') || cNorm.includes('حصة')) {
+                        th.classList.add('col-meta-periode');
+                    } else if (cNorm.includes('enseign') || cNorm.includes('معلم') || cNorm.includes('teacher')) {
+                        th.classList.add('col-meta-enseignant');
+                    } else if (cNorm.includes('mati') || cNorm.includes('مادة') || cNorm.includes('subject')) {
+                        th.classList.add('col-meta-matiere');
                     } else {
                         th.classList.add('col-editable-header');
                         th.style.width = 'auto';
-                        th.style.minWidth = '240px';
+                        th.style.minWidth = '200px';
                     }
                     
                     const getColIcon = (col) => {
@@ -3635,34 +3633,43 @@
                     return false;
                 } 
                 
-                // Séparation stricte et définitive des sections
-                if (i.isReadOnlyCrossSection || (i._section && currentSection && i._section !== currentSection)) {
+                // Séparation stricte des sections
+                if (i.isReadOnlyCrossSection) {
                     return false;
                 }
-                if (currentSection === 'garcons') {
-                    if (/fille|filles|banat|بنات/i.test(iC) || /\bf\b/i.test(iC)) return false;
-                    const fLow = ['amina', 'fatima', 'khadija', 'mariam', 'salma', 'zainab', 'nour', 'houda', 'leila', 'sarah', 'zohra', 'nadia', 'samira', 'imane', 'mouna', 'siham', 'hajar', 'meriem', 'aicha', 'hanane', 'أمينة', 'فاطمة', 'خديجة', 'مريم', 'سلمى', 'زينب', 'نور', 'هدى', 'ليلى', 'سارة', 'زهرة'];
-                    if (fLow.some(f => iE.toLowerCase().includes(f)) && !iE.toLowerCase().includes('farah') && !iE.toLowerCase().includes('musique') && !iE.toLowerCase().includes('music')) return false;
-                } else if (currentSection === 'filles') {
-                    if (/garcon|garçons|garcons|banin|بنين|اولاد/i.test(iC) || /\bg\b|\bb\b/i.test(iC)) return false;
-                    const mLow = ['mohamed', 'abas', 'jaber', 'imad', 'kamel', 'majed', 'mohamed ali', 'morched', 'saeed', 'sami', 'sylvano', 'tonga', 'oumarou', 'zine', 'youssouf', 'محمد', 'عباس', 'جابر', 'عماد', 'كامل', 'ماجد', 'مرشد', 'سعيد', 'سامي', 'زين', 'يوسف'];
-                    if (mLow.some(m => iE.toLowerCase().includes(m))) return false;
+                const rowSec = String(i._section || '').toLowerCase().trim();
+                const curSec = String(currentSection || '').toLowerCase().trim();
+                if (rowSec && curSec && rowSec !== curSec) {
+                    return false;
+                }
+                if (curSec === 'garcons') {
+                    if (/fille|filles|banat|بنات/i.test(iC)) return false;
+                } else if (curSec === 'filles') {
+                    if (/garcon|garçons|garcons|banin|بنين|اولاد/i.test(iC)) return false;
                 }
                 
                 // Si enseignant connecté (non admin)
                 if (isTeacherOnly) {
                     if (hasAnyTeacherAssignedRows) {
                         if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
-                            return false;
+                            // Si la ligne n'est pas assignée à un autre enseignant (créneau disponible/vierge),
+                            // on l'affiche pour permettre à l'enseignant de saisir ses cours !
+                            if (iE && iE.trim() !== '' && iE !== '—' && iE !== '-') {
+                                return false;
+                            }
                         }
-                    } else {
-                        // S'il n'y a pas encore de créneaux assignés à cet enseignant dans cette semaine,
-                        // on n'exclut pas les créneaux vierges pour qu'il puisse voir le tableau et renseigner ses cours
                     }
                 }
                 
                 // Filtre Enseignant :
-                const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF) || (!hasAnyTeacherAssignedRows && !iE);
+                let pE = true;
+                if (ensF) {
+                    pE = (iE === ensF) || isTeacherMatch(iE, ensF);
+                    // Autoriser la saisie sur les créneaux disponibles si l'enseignant cherche ses cours
+                    if (!pE && (!iE || iE.trim() === '' || iE === '—' || iE === '-')) {
+                        pE = isTeacherOnly ? isTeacherMatch(loggedInUser, ensF) : true;
+                    }
+                }
 
                 const pC = !clsF || (iC === clsF) || isClassMatch(iC, clsF); 
                 const pM = !matF || (iM === matF) || (iM.toLowerCase() === matF.toLowerCase()) || isEquivalentSubject(iM, matF); 
@@ -3671,6 +3678,24 @@
                 const pJ = !jF || dayNameFromData === jF || (iJ && iJ.includes(jF)); 
                 return pE && pC && pM && pP && pJ; 
             }); 
+
+            // SÉCURITÉ ANTI-TABLEAU VIDE : Si le filtrage aboutit à 0 cours alors que planData contient des cours,
+            // replier automatiquement sur les créneaux disponibles pour que les enseignants puissent TOUJOURS remplir !
+            if (filteredAndSortedData.length === 0 && Array.isArray(planData) && planData.length > 0) {
+                console.log('[Tableau] Repli de sécurité : affichage des créneaux pour saisie des enseignants.');
+                const curSec = String(currentSection || '').toLowerCase().trim();
+                filteredAndSortedData = planData.filter(i => {
+                    if (!i) return false;
+                    if (i.isReadOnlyCrossSection) return false;
+                    const rowSec = String(i._section || '').toLowerCase().trim();
+                    if (rowSec && curSec && rowSec !== curSec) return false;
+                    if (clsF && !isClassMatch(getRowField(i, 'Classe') || '', clsF)) return false;
+                    return true;
+                });
+                if (filteredAndSortedData.length === 0) {
+                    filteredAndSortedData = planData.slice();
+                }
+            } 
             
             const dayValuesFr = { "Dimanche": 1, "Lundi": 2, "Mardi": 3, "Mercredi": 4, "Jeudi": 5 }; 
             
@@ -4091,45 +4116,24 @@ function displayPlanTable(data) {
                                c.includes('périod') || c.includes('period') || c.includes('حصة') ||
                                c.includes('jour') || c.includes('day') || c.includes('يوم');
                     };
-                    if (isMetaColHeader(header)) {
-                        td.classList.add('col-meta-compact');
-                        td.style.padding = '5px 4px';
-                        td.style.fontSize = '0.78rem';
-                        if (header === matK) {
-                            td.classList.add('col-matiere-cell');
-                            td.style.width = '72px';
-                            td.style.maxWidth = '86px';
-                            td.style.whiteSpace = 'normal';
-                            td.style.wordBreak = 'break-word';
-                            td.style.overflowWrap = 'break-word';
-                            td.style.lineHeight = '1.25';
-                            const isArabicSubjectName = (typeof containsArabic === 'function' && containsArabic(content)) ||
-                                /[\u0600-\u06FF]/.test(String(content || '')) ||
-                                /arabe|coran|islam|quran|hadith|fiqh|tarbiya|tajweed|civique|charia/i.test(String(content || ''));
-                            if (isArabicSubjectName) {
-                                td.classList.add('matiere-arabic');
-                                td.style.textAlign = 'center';
-                                td.style.direction = 'rtl';
-                            }
-                        } else if (header === perK) {
-                            td.style.width = '36px';
-                            td.style.maxWidth = '42px';
-                            td.style.whiteSpace = 'nowrap';
-                        } else if (header === clsK) {
-                            td.style.width = '52px';
-                            td.style.maxWidth = '62px';
-                            td.style.whiteSpace = 'normal';
-                            td.style.lineHeight = '1.2';
-                        } else if (header === jK) {
-                            td.style.width = '58px';
-                            td.style.maxWidth = '68px';
-                            td.style.whiteSpace = 'normal';
-                            td.style.lineHeight = '1.2';
-                        } else {
-                            td.style.width = '62px';
-                            td.style.maxWidth = '72px';
-                            td.style.whiteSpace = 'normal';
-                            td.style.lineHeight = '1.2';
+                    const cNorm = String(header).trim().toLowerCase();
+                    if (cNorm.includes('class') || cNorm.includes('صف') || cNorm.includes('grade')) {
+                        td.classList.add('col-meta-classe');
+                    } else if (cNorm.includes('jour') || cNorm.includes('يوم') || cNorm.includes('day')) {
+                        td.classList.add('col-meta-jour');
+                    } else if (cNorm.includes('périod') || cNorm.includes('period') || cNorm.includes('حصة')) {
+                        td.classList.add('col-meta-periode');
+                    } else if (cNorm.includes('enseign') || cNorm.includes('معلم') || cNorm.includes('teacher')) {
+                        td.classList.add('col-meta-enseignant');
+                    } else if (cNorm.includes('mati') || cNorm.includes('مادة') || cNorm.includes('subject')) {
+                        td.classList.add('col-meta-matiere');
+                        const isArabicSubjectName = (typeof containsArabic === 'function' && containsArabic(content)) ||
+                            /[\u0600-\u06FF]/.test(String(content || '')) ||
+                            /arabe|coran|islam|quran|hadith|fiqh|tarbiya|tajweed|civique|charia/i.test(String(content || ''));
+                        if (isArabicSubjectName) {
+                            td.classList.add('matiere-arabic');
+                            td.style.textAlign = 'center';
+                            td.style.direction = 'rtl';
                         }
                     }
                     
@@ -4442,11 +4446,17 @@ function displayPlanTable(data) {
             const selMatiere = document.getElementById('filterMatiere');
             const selPeriode = document.getElementById('filterPeriode');
             const selJour = document.getElementById('filterJour');
-            if (selEns && !selEns.disabled) selEns.value = '';
+            if (selEns) {
+                selEns.disabled = false;
+                selEns.value = '';
+            }
             if (selClasse) selClasse.value = '';
             if (selMatiere) selMatiere.value = '';
             if (selPeriode) selPeriode.value = '';
             if (selJour) selJour.value = '';
+            if (window.sectionHiddenClassesMap && currentSection) {
+                window.sectionHiddenClassesMap[currentSection] = [];
+            }
             sortAndDisplay();
             showToastNotification(currentUserLanguage === 'en' ? 'Filters reset, all classes displayed.' : (currentUserLanguage === 'ar' ? 'تمت إعادة ضبط جميع التصفِيات وعرض جميع الفصول' : 'Filtres réinitialisés, tous les cours sont affichés.'), 'success');
         }
@@ -18358,28 +18368,37 @@ function isClassVisibleOnTable(classe, section) {
     if (!classe) return true;
     const sec = section || currentSection || 'garcons';
     const rawClass = String(classe).trim();
-    const lowerClass = rawClass.toLowerCase();
+    const canon = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(classe) : String(classe).trim();
+    const lowerClass = canon.toLowerCase();
 
     // 1. Vérifier si explicitement masquée
     if (window.sectionHiddenClassesMap && Array.isArray(window.sectionHiddenClassesMap[sec])) {
-        if (window.sectionHiddenClassesMap[sec].some(h => String(h).trim().toLowerCase() === lowerClass)) {
+        if (window.sectionHiddenClassesMap[sec].some(h => {
+            const hCanon = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(h) : String(h).trim();
+            return hCanon.toLowerCase() === lowerClass;
+        })) {
             return false;
         }
     }
 
     // 2. Vérifier si un ensemble restreint de classes visibles est défini
     if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[sec]) && window.sectionVisibleClassesMap[sec].length > 0) {
-        const matchesExplicit = window.sectionVisibleClassesMap[sec].some(v => 
-            String(v).trim().toLowerCase() === lowerClass || (typeof isClassMatch === 'function' && isClassMatch(v, rawClass))
-        );
+        const matchesExplicit = window.sectionVisibleClassesMap[sec].some(v => {
+            const vCanon = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(v) : String(v).trim();
+            return vCanon.toLowerCase() === lowerClass || (typeof isClassMatch === 'function' && isClassMatch(v, classe));
+        });
         if (matchesExplicit) return true;
 
         // Sécurité anti-blocage : si aucune classe du planData actuel ne correspond à sectionVisibleClassesMap,
         // c'est que la configuration en cache local est obsolète ou désynchronisée. On ne bloque jamais l'affichage global.
         const currentDataClasses = Array.isArray(planData) ? planData.map(r => r && (r[findHKey('Classe')] || r.Classe)).filter(Boolean) : [];
-        const hasOverlap = currentDataClasses.some(c => 
-            window.sectionVisibleClassesMap[sec].some(v => String(v).trim().toLowerCase() === String(c).trim().toLowerCase() || (typeof isClassMatch === 'function' && isClassMatch(v, String(c).trim())))
-        );
+        const hasOverlap = currentDataClasses.some(c => {
+            const cCanon = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(c) : String(c).trim();
+            return window.sectionVisibleClassesMap[sec].some(v => {
+                const vCanon = (typeof getCanonicalClassCode === 'function') ? getCanonicalClassCode(v) : String(v).trim();
+                return vCanon.toLowerCase() === cCanon.toLowerCase() || (typeof isClassMatch === 'function' && isClassMatch(v, c));
+            });
+        });
         if (!hasOverlap && currentDataClasses.length > 0) {
             return true;
         }

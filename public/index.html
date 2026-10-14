@@ -40,29 +40,63 @@
             max-width: 100%;
         }
         
-        /* Largeur des colonnes fixes (Enseignant, Classe, Matière, Période, Jour) réduite au maximum au profit des colonnes de saisie */
-        #planTable th:nth-child(1),
-        #planTable td:nth-child(1) { width: 62px; max-width: 72px; } /* Enseignant */
-        
-        #planTable th:nth-child(2),
-        #planTable td:nth-child(2) { width: 52px; max-width: 62px; } /* Classe */
-        
-        #planTable th:nth-child(3),
-        #planTable td:nth-child(3) {
-            width: 72px;
-            max-width: 86px;
+        /* Largeurs optimisées et lisibles des colonnes du tableau de saisie des plans */
+        #planTable th.col-meta-classe,
+        #planTable td.col-meta-classe {
+            width: 75px !important;
+            min-width: 65px !important;
+            max-width: 90px !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+            font-weight: 700 !important;
+        }
+        #planTable th.col-meta-jour,
+        #planTable td.col-meta-jour {
+            width: 105px !important;
+            min-width: 90px !important;
+            max-width: 125px !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
+        #planTable th.col-meta-periode,
+        #planTable td.col-meta-periode {
+            width: 55px !important;
+            min-width: 48px !important;
+            max-width: 65px !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
+        #planTable th.col-meta-enseignant,
+        #planTable td.col-meta-enseignant {
+            width: 110px !important;
+            min-width: 95px !important;
+            max-width: 140px !important;
+            text-align: center !important;
             white-space: normal !important;
-            word-wrap: break-word !important;
-            overflow-wrap: break-word !important;
             word-break: break-word !important;
-            hyphens: auto;
-        } /* Matière */
-        
-        #planTable th:nth-child(4),
-        #planTable td:nth-child(4) { width: 38px; max-width: 44px; } /* Période */
-        
-        #planTable th:nth-child(5),
-        #planTable td:nth-child(5) { width: 58px; max-width: 68px; } /* Jour */
+        }
+        #planTable th.col-meta-matiere,
+        #planTable td.col-meta-matiere {
+            width: 110px !important;
+            min-width: 95px !important;
+            max-width: 140px !important;
+            text-align: center !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+        }
+        #planTable th.col-editable-header,
+        #planTable td.col-editable-content,
+        #planTable td.editable {
+            min-width: 200px !important;
+            width: auto !important;
+        }
+        #planTable th.actions-column,
+        #planTable td.actions-column {
+            width: 85px !important;
+            min-width: 75px !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
 
         /* Centrage et direction Droite-à-Gauche (RTL) de l'écriture arabe pour TOUTES les cases */
         #planTable td.arabic-content,

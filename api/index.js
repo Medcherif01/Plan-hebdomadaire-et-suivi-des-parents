@@ -537,7 +537,37 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
 
   const resolveClassCanonical = (rawName) => {
     if (!rawName) return '';
-    const clean = String(rawName).trim();
+    let clean = String(rawName).trim();
+    // Supprimer les suffixes de section et de genre redondants
+    clean = clean.replace(/\s*(?:Garçons|Garcons|Banin|بنين|اولاد|أولاد|Filles|Fille|Banat|بنات|Section\s*Garçons|Section\s*Garcons|Section\s*Filles|Primaire|ابتدائي|Maternelle|روضة|روضه)\s*$/i, '').trim();
+    clean = clean.replace(/^(?:Classe\s*(?:de)?|الصف|فصل)\s*/i, '').trim();
+
+    const peiM = clean.match(/^PEI\s*([1-5])$/i);
+    if (peiM) clean = `PEI${peiM[1]}`;
+    const dpM = clean.match(/^DP\s*([1-2])$/i);
+    if (dpM) clean = `DP${dpM[1]}`;
+    const ppM = clean.match(/^PP\s*([1-5])$/i);
+    if (ppM) clean = `PP${ppM[1]}`;
+    const matM = clean.match(/^(PS|MS|GS)\s*[1-2]?$/i);
+    if (matM) clean = matM[1].toUpperCase();
+
+    const sLow = clean.toLowerCase();
+    if (sLow === '6eme' || sLow === '6' || sLow.includes('سادس')) clean = 'PEI1';
+    else if (sLow === '7eme' || sLow === '7' || sLow === '1am' || sLow.includes('اول متوسط')) clean = 'PEI2';
+    else if (sLow === '8eme' || sLow === '8' || sLow === '2am' || sLow.includes('ثاني متوسط')) clean = 'PEI3';
+    else if (sLow === '9eme' || sLow === '9' || sLow === '3am' || sLow.includes('ثالث متوسط')) clean = 'PEI4';
+    else if (sLow === '10eme' || sLow === '10' || sLow === '1as' || sLow === 'seconde' || sLow.includes('اول ثانوي')) clean = 'PEI5';
+    else if (sLow === '11eme' || sLow === '11' || sLow === '2as' || sLow === 'premiere' || sLow.includes('ثاني ثانوي')) clean = 'DP1';
+    else if (sLow === '12eme' || sLow === '12' || sLow === '3as' || sLow === 'terminale' || sLow.includes('ثالث ثانوي')) clean = 'DP2';
+    else if (sLow === 'cp' || sLow === 'primaire 1' || sLow.includes('ابتدائي 1')) clean = 'PP1';
+    else if (sLow === 'ce1' || sLow === 'primaire 2' || sLow.includes('ابتدائي 2')) clean = 'PP2';
+    else if (sLow === 'ce2' || sLow === 'primaire 3' || sLow.includes('ابتدائي 3')) clean = 'PP3';
+    else if (sLow === 'cm1' || sLow === 'primaire 4' || sLow.includes('ابتدائي 4')) clean = 'PP4';
+    else if (sLow === 'cm2' || sLow === 'primaire 5' || sLow.includes('ابتدائي 5')) clean = 'PP5';
+    else if (sLow.includes('petite section') || sLow.includes('روضه اولى') || sLow.includes('روضة أولى')) clean = 'PS';
+    else if (sLow.includes('moyenne section') || sLow.includes('روضه متوسطه') || sLow.includes('روضة متوسطة')) clean = 'MS';
+    else if (sLow.includes('grande section') || sLow.includes('روضه كبرى') || sLow.includes('روضة كبرى')) clean = 'GS';
+
     if (canonicalClassMap.has(clean.toLowerCase())) {
       return canonicalClassMap.get(clean.toLowerCase());
     }
@@ -547,14 +577,6 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
         return canon;
       }
     }
-    for (const [k, canon] of Array.from(canonicalClassMap.entries())) {
-      if (typeof isClassMatchServer === 'function' && isClassMatchServer(clean, canon)) {
-        canonicalClassMap.set(clean.toLowerCase(), canon);
-        return canon;
-      }
-    }
-    canonicalClassMap.set(clean.toLowerCase(), clean);
-    canonicalList.push(clean);
     return clean;
   };
 
@@ -662,7 +684,7 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
 
   // 4. Construire la liste garantie avec exactement 1 ligne par créneau (1 à maxPeriodDetected) pour chaque jour et chaque classe
   const result = [];
-  const sortedClasses = Array.from(new Set(canonicalClassMap.values())).sort();
+  const sortedClasses = canonicalList.slice();
 
   sortedClasses.forEach(cls => {
     schoolDays.forEach(day => {
@@ -1350,8 +1372,8 @@ function isClassMatchServer(classA, classB) {
   const normB = normalizeClassStringServer(b);
   if (!normA || !normB) return false;
   if (normA === normB) return true;
-
-  if (normA.includes(normB) || normB.includes(normA)) return true;
+  const cleanNorm = (s) => s.replace(/(?:garcons?|filles?|banin|banat|section|primaire|maternelle|g|f|b)$/i, '');
+  if (cleanNorm(normA) === cleanNorm(normB) && cleanNorm(normA).length > 1) return true;
 
   for (const group of canonicalClassEquivalentsServer) {
     const matchA = (normA === group.code) || group.names.some(n => {
@@ -6029,6 +6051,41 @@ function withPlanLock(docId, asyncFn) {
   return currentPromise;
 }
 
+function resolveClassCanonicalGlobal(rawName) {
+  if (!rawName) return '';
+  let clean = String(rawName).trim();
+  clean = clean.replace(/\s*(?:Garçons|Garcons|Banin|بنين|اولاد|أولاد|Filles|Fille|Banat|بنات|Section\s*Garçons|Section\s*Garcons|Section\s*Filles|Primaire|ابتدائي|Maternelle|روضة|روضه)\s*$/i, '').trim();
+  clean = clean.replace(/^(?:Classe\s*(?:de)?|الصف|فصل)\s*/i, '').trim();
+
+  const peiM = clean.match(/^PEI\s*([1-5])$/i);
+  if (peiM) return `PEI${peiM[1]}`;
+  const dpM = clean.match(/^DP\s*([1-2])$/i);
+  if (dpM) return `DP${dpM[1]}`;
+  const ppM = clean.match(/^PP\s*([1-5])$/i);
+  if (ppM) return `PP${ppM[1]}`;
+  const matM = clean.match(/^(PS|MS|GS)\s*[1-2]?$/i);
+  if (matM) return matM[1].toUpperCase();
+
+  const sLow = clean.toLowerCase();
+  if (sLow === '6eme' || sLow === '6' || sLow.includes('سادس')) return 'PEI1';
+  if (sLow === '7eme' || sLow === '7' || sLow === '1am' || sLow.includes('اول متوسط')) return 'PEI2';
+  if (sLow === '8eme' || sLow === '8' || sLow === '2am' || sLow.includes('ثاني متوسط')) return 'PEI3';
+  if (sLow === '9eme' || sLow === '9' || sLow === '3am' || sLow.includes('ثالث متوسط')) return 'PEI4';
+  if (sLow === '10eme' || sLow === '10' || sLow === '1as' || sLow === 'seconde' || sLow.includes('اول ثانوي')) return 'PEI5';
+  if (sLow === '11eme' || sLow === '11' || sLow === '2as' || sLow === 'premiere' || sLow.includes('ثاني ثانوي')) return 'DP1';
+  if (sLow === '12eme' || sLow === '12' || sLow === '3as' || sLow === 'terminale' || sLow.includes('ثالث ثانوي')) return 'DP2';
+  if (sLow === 'cp' || sLow === 'primaire 1' || sLow.includes('ابتدائي 1')) return 'PP1';
+  if (sLow === 'ce1' || sLow === 'primaire 2' || sLow.includes('ابتدائي 2')) return 'PP2';
+  if (sLow === 'ce2' || sLow === 'primaire 3' || sLow.includes('ابتدائي 3')) return 'PP3';
+  if (sLow === 'cm1' || sLow === 'primaire 4' || sLow.includes('ابتدائي 4')) return 'PP4';
+  if (sLow === 'cm2' || sLow === 'primaire 5' || sLow.includes('ابتدائي 5')) return 'PP5';
+  if (sLow.includes('petite section') || sLow.includes('روضه اولى') || sLow.includes('روضة أولى')) return 'PS';
+  if (sLow.includes('moyenne section') || sLow.includes('روضه متوسطه') || sLow.includes('روضة متوسطة')) return 'MS';
+  if (sLow.includes('grande section') || sLow.includes('روضه كبرى') || sLow.includes('روضة كبرى')) return 'GS';
+
+  return clean;
+}
+
 // Fonction de correspondance tolérante et sécurisée pour les lignes d'un plan
 function matchPlanRow(elem, criteria) {
   if (!elem || !criteria) return false;
@@ -6040,37 +6097,50 @@ function matchPlanRow(elem, criteria) {
 
   const getF = (obj, field) => {
     const k = findKey(obj, field);
-    return k ? String(obj[k] || '').trim().toLowerCase() : '';
+    return k ? String(obj[k] || '').trim() : '';
   };
 
-  const ensE = getF(elem, 'Enseignant');
-  const ensC = getF(criteria, 'Enseignant');
   const clsE = getF(elem, 'Classe');
   const clsC = getF(criteria, 'Classe');
   const jourE = getF(elem, 'Jour');
   const jourC = getF(criteria, 'Jour');
   const perE = getF(elem, 'Période');
   const perC = getF(criteria, 'Période');
+  const ensE = getF(elem, 'Enseignant');
+  const ensC = getF(criteria, 'Enseignant');
   const matE = getF(elem, 'Matière');
   const matC = getF(criteria, 'Matière');
 
+  // 2. Correspondance stricte par créneau scolaire unique : (Classe, Jour, Période)
+  // Dans un établissement, chaque créneau (Classe + Jour + Période) est unique.
+  // Une modification d'enseignant, de leçon ou de matière sur ce créneau doit le mettre à jour sans jamais créer de doublon.
+  if (clsE && clsC && jourE && jourC && perE && perC) {
+    const canonE = resolveClassCanonicalGlobal(clsE);
+    const canonC = resolveClassCanonicalGlobal(clsC);
+    const dayE = (typeof extractDayNameFromString === 'function') ? (extractDayNameFromString(jourE) || jourE) : jourE;
+    const dayC = (typeof extractDayNameFromString === 'function') ? (extractDayNameFromString(jourC) || jourC) : jourC;
+    const pE = parseInt(String(perE).replace(/[^0-9]/g, ''), 10);
+    const pC = parseInt(String(perC).replace(/[^0-9]/g, ''), 10);
+    
+    const isSameDay = (dayE && dayC && dayE.toLowerCase() === dayC.toLowerCase()) || (jourE.toLowerCase() === jourC.toLowerCase());
+    const isSamePeriod = (!isNaN(pE) && !isNaN(pC) && pE === pC) || (String(perE).trim() === String(perC).trim());
+    const isSameClass = (canonE.toLowerCase() === canonC.toLowerCase()) || (typeof isClassMatchServer === 'function' && isClassMatchServer(clsE, clsC));
+
+    if (isSameClass && isSameDay && isSamePeriod) {
+      return true;
+    }
+  }
+
   // Correspondance exacte des 5 critères principaux
   if (ensE && clsE && jourE && perE && matE) {
-    if (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC && matE === matC) {
+    if (ensE.toLowerCase() === ensC.toLowerCase() && clsE.toLowerCase() === clsC.toLowerCase() && jourE.toLowerCase() === jourC.toLowerCase() && perE === perC && matE.toLowerCase() === matC.toLowerCase()) {
       return true;
     }
   }
 
-  // Correspondance 4 critères (Enseignant, Classe, Jour, Période) - protège contre les modifications d'intitulé de matière
+  // Correspondance 4 critères (Enseignant, Classe, Jour, Période)
   if (ensE && clsE && jourE && perE) {
-    if (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC) {
-      return true;
-    }
-  }
-
-  // Correspondance alternative (Classe, Jour, Période, Matière)
-  if (clsE && jourE && perE && matE) {
-    if (clsE === clsC && jourE === jourC && perE === perC && matE === matC) {
+    if (ensE.toLowerCase() === ensC.toLowerCase() && clsE.toLowerCase() === clsC.toLowerCase() && jourE.toLowerCase() === jourC.toLowerCase() && perE === perC) {
       return true;
     }
   }
@@ -6082,7 +6152,8 @@ app.post('/api/save-row', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const rowData = req.body.data;
   const originalData = req.body.originalData;
-  const section = req.body.section || 'garcons';
+  const rawSection = String(req.body.section || 'garcons').toLowerCase().trim();
+  const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSection) ? rawSection : 'garcons';
   if (isNaN(weekNumber) || typeof rowData !== 'object') {
     return res.status(400).json({ message: 'Données invalides.' });
   }
@@ -6111,19 +6182,29 @@ app.post('/api/save-row', async (req, res) => {
         targetIdx = planDoc.data.findIndex(elem => matchPlanRow(elem, rowData));
       }
 
+      // Canonicaliser le nom de la classe pour éviter tout doublon
+      const clsKey = findKey(rowData, 'Classe') || 'Classe';
+      if (rowData[clsKey]) {
+        rowData[clsKey] = resolveClassCanonicalGlobal(rowData[clsKey]);
+      }
+
       if (targetIdx !== -1) {
         planDoc.data[targetIdx] = {
           ...planDoc.data[targetIdx],
           ...rowData,
+          _section: section,
           updatedAt: now
         };
       } else {
-        // Si la ligne n'existait pas encore, l'ajouter directement pour ne jamais perdre de saisie
         planDoc.data.push({
           ...rowData,
+          _section: section,
           updatedAt: now
         });
       }
+
+      // Garantie absolue de déduplication et de 8 périodes
+      planDoc.data = ensureAllPeriods1To8ForPlan(planDoc.data, section, weekNumber);
 
       await db.collection('plans').updateOne(
         { _id: docId },
@@ -6148,7 +6229,8 @@ app.post('/api/save-row', async (req, res) => {
 app.post('/api/save-rows-batch', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const rows = req.body.rows;
-  const section = req.body.section || 'garcons';
+  const rawSection = String(req.body.section || 'garcons').toLowerCase().trim();
+  const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSection) ? rawSection : 'garcons';
 
   if (isNaN(weekNumber) || !Array.isArray(rows)) {
     return res.status(400).json({ message: 'Données ou liste de lignes invalides.' });
@@ -6175,6 +6257,12 @@ app.post('/api/save-rows-batch', async (req, res) => {
         const rowData = item.data || item;
         const originalData = item.originalData || null;
 
+        // Canonicaliser le nom de la classe
+        const clsKey = findKey(rowData, 'Classe') || 'Classe';
+        if (rowData[clsKey]) {
+          rowData[clsKey] = resolveClassCanonicalGlobal(rowData[clsKey]);
+        }
+
         let targetIdx = -1;
         if (originalData) {
           targetIdx = planDoc.data.findIndex(elem => matchPlanRow(elem, originalData));
@@ -6187,17 +6275,22 @@ app.post('/api/save-rows-batch', async (req, res) => {
           planDoc.data[targetIdx] = {
             ...planDoc.data[targetIdx],
             ...rowData,
+            _section: section,
             updatedAt: now
           };
           updatedCount++;
         } else {
           planDoc.data.push({
             ...rowData,
+            _section: section,
             updatedAt: now
           });
           insertedCount++;
         }
       });
+
+      // Garantie absolue de déduplication et de 8 périodes
+      planDoc.data = ensureAllPeriods1To8ForPlan(planDoc.data, section, weekNumber);
 
       await db.collection('plans').updateOne(
         { _id: docId },
@@ -7564,8 +7657,8 @@ app.get('/api/admin/classes', async (req, res) => {
       section,
       classes: classItems,
       duplicatesFound: duplicates,
-      visibleClasses: classItems.filter(c => c.visible).map(c => c.name),
-      hiddenClasses: classItems.filter(c => !c.visible).map(c => c.name)
+      visibleClasses: classItems.filter(c => c.visible && !c.isDuplicate).map(c => c.name),
+      hiddenClasses: classItems.filter(c => !c.visible || c.isDuplicate).map(c => c.name)
     });
   } catch (error) {
     console.error('Erreur /api/admin/classes:', error);
