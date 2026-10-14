@@ -14621,44 +14621,6 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
                 const targetClean = String(className).toLowerCase().replace(/[\s\-_]+/g, '');
                 return cClean === targetClean || cClean.includes(targetClean) || targetClean.includes(cClean);
             });
-
-            // Dédupliquer les séances pour cette classe en conservant le contenu le plus rempli
-            if (targetClassRows.length > 0) {
-                const mapByDayPeriod = new Map();
-                const getScore = (r) => {
-                    let s = 0;
-                    const mat = (r['Matière'] || r.matiere || '').trim();
-                    const ens = (r['Enseignant'] || r.enseignant || '').trim();
-                    const lec = (r['Leçon'] || r.lecon || '').trim();
-                    const tra = (r['Travaux de classe'] || r.travaux || '').trim();
-                    const dev = (r['Devoirs'] || r.devoirs || '').trim();
-                    if (mat && mat !== '—' && mat !== '-') s += 20;
-                    if (ens && ens !== '—' && ens !== '-') s += 15;
-                    if (lec && lec !== '—' && lec !== '-') s += 30;
-                    if (tra && tra !== '—' && tra !== '-') s += 25;
-                    if (dev && dev !== '—' && dev !== '-' && !dev.toLowerCase().includes('aucun')) s += 20;
-                    return s;
-                };
-
-                targetClassRows.forEach(r => {
-                    const rawJ = String(r['Jour'] || r.jour || '').trim().toLowerCase();
-                    const rawP = String(r['Période'] || r.periode || '').replace(/[^0-9]/g, '');
-                    if (!rawJ || !rawP) return;
-                    const k = `${rawJ}___${rawP}`;
-                    if (!mapByDayPeriod.has(k)) {
-                        mapByDayPeriod.set(k, { ...r });
-                    } else {
-                        const prev = mapByDayPeriod.get(k);
-                        if (getScore(r) > getScore(prev)) {
-                            mapByDayPeriod.set(k, { ...prev, ...r });
-                        }
-                    }
-                });
-
-                if (mapByDayPeriod.size > 0) {
-                    targetClassRows = Array.from(mapByDayPeriod.values());
-                }
-            }
         }
 
         const payload = {
