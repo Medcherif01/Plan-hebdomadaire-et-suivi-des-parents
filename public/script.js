@@ -3057,7 +3057,122 @@
             }
         }
 
-        function checkAndDisplayIncompleteTeachers() { console.log("checkIncomplete"); incompleteTeachersInfo={}; const list=document.getElementById('incompleteList'); list.innerHTML=''; if(!planData||planData.length===0){list.innerHTML=`<li>${t('no_data')}</li>`; return;} const teacherKey=findHKey('Enseignant'); const classKey=findHKey('Classe'); const leconKey=findHKey('Leçon'); const taskKey=findHKey('Travaux de classe'); const supportKey=findHKey('Support'); const devoirsKey=findHKey('Devoirs'); if(!teacherKey||!classKey){console.warn("Manque cols Ens/Cls"); list.innerHTML=`<li>${t('error_config_columns')}</li>`; return;} planData.forEach(item=>{const teacher=item[teacherKey]; const clsName=item[classKey]; if(!teacher||!clsName) return; const leconVal=item[leconKey]; const taskVal=item[taskKey]; const supportVal=item[supportKey]; const devoirsVal=item[devoirsKey]; const isLeconEmpty=(leconVal==null||String(leconVal).trim()===''); const isTaskEmpty=(taskVal==null||String(taskVal).trim()===''); const isSupportEmpty=(supportVal==null||String(supportVal).trim()===''); const isDevoirsEmpty=(devoirsVal==null||String(devoirsVal).trim()===''); if(isLeconEmpty&&isTaskEmpty&&isSupportEmpty&&isDevoirsEmpty){if(!incompleteTeachersInfo[teacher]){incompleteTeachersInfo[teacher]=new Set();} incompleteTeachersInfo[teacher].add(clsName);}}); let teachers=Object.keys(incompleteTeachersInfo); const isAdmin=(isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser==='Mohamed'||loggedInUser==='Zohra'||loggedInUser==='Imad'); if(!isAdmin&&loggedInUser){teachers=teachers.filter(t=>t===loggedInUser);} if(teachers.length===0){list.innerHTML=`<li>${t('all_complete')}</li>`;} else { teachers.sort().forEach(teacher=>{ const classes=[...incompleteTeachersInfo[teacher]].sort().join(', '); const li=document.createElement('li'); li.innerHTML = `<span class="incomplete-teacher-name">${teacher}</span> (<span class="incomplete-class-list">${classes}</span>)`; list.appendChild(li); }); } }
+        function checkAndDisplayIncompleteTeachers() { 
+            console.log("checkIncomplete"); 
+            incompleteTeachersInfo={}; 
+            const list=document.getElementById('incompleteList'); 
+            list.innerHTML=''; 
+            if(!planData||planData.length===0){
+                list.innerHTML=`<li>${t('no_data')}</li>`; 
+                return;
+            } 
+            const teacherKey=findHKey('Enseignant'); 
+            const classKey=findHKey('Classe'); 
+            const leconKey=findHKey('Leçon'); 
+            const taskKey=findHKey('Travaux de classe'); 
+            const supportKey=findHKey('Support'); 
+            const devoirsKey=findHKey('Devoirs'); 
+            if(!teacherKey||!classKey){
+                console.warn("Manque cols Ens/Cls"); 
+                list.innerHTML=`<li>${t('error_config_columns')}</li>`; 
+                return;
+            } 
+            planData.forEach(item=>{
+                const teacher=item[teacherKey]; 
+                const clsName=item[classKey]; 
+                if(!teacher||!clsName) return; 
+                const leconVal=item[leconKey]; 
+                const taskVal=item[taskKey]; 
+                const supportVal=item[supportKey]; 
+                const devoirsVal=item[devoirsKey]; 
+                const isLeconEmpty=(leconVal==null||String(leconVal).trim()===''); 
+                const isTaskEmpty=(taskVal==null||String(taskVal).trim()===''); 
+                const isSupportEmpty=(supportVal==null||String(supportVal).trim()===''); 
+                const isDevoirsEmpty=(devoirsVal==null||String(devoirsVal).trim()===''); 
+                if(isLeconEmpty&&isTaskEmpty&&isSupportEmpty&&isDevoirsEmpty){
+                    if(!incompleteTeachersInfo[teacher]){
+                        incompleteTeachersInfo[teacher]=new Set();
+                    } 
+                    incompleteTeachersInfo[teacher].add(clsName);
+                }
+            }); 
+            let teachers=Object.keys(incompleteTeachersInfo); 
+            const isAdmin=(isUserAdminOrSupervisor(loggedInUser, currentUserRole) || loggedInUser==='Mohamed'||loggedInUser==='Zohra'||loggedInUser==='Imad'); 
+            if(!isAdmin&&loggedInUser){
+                teachers=teachers.filter(t=>t===loggedInUser);
+            } 
+            if(teachers.length===0){
+                list.innerHTML=`<li>${t('all_complete')}</li>`;
+            } else { 
+                teachers.sort().forEach(teacher=>{ 
+                    const classes=[...incompleteTeachersInfo[teacher]].sort().join(', '); 
+                    const li=document.createElement('li'); 
+                    li.style.cursor = 'pointer';
+                    li.title = "Cliquer pour afficher directement les cases incomplètes de cet enseignant sur le tableau";
+                    li.innerHTML = `<span class="incomplete-teacher-name">${teacher}</span> (<span class="incomplete-class-list">${classes}</span>) <i class="fas fa-hand-pointer" style="font-size:0.72rem; color:#2563EB; margin-left:4px;" title="Cliquer pour voir sur le tableau"></i>`; 
+                    
+                    li.onclick = () => {
+                        const tRows = document.querySelectorAll('#planTable tbody tr');
+                        let firstIncompleteTr = null;
+                        tRows.forEach(tr => {
+                            const teacherCell = tr.querySelector(`td[data-header="${teacherKey}"]`);
+                            const teacherNameText = teacherCell ? teacherCell.textContent.trim() : '';
+                            if (teacherNameText.toLowerCase().includes(teacher.toLowerCase())) {
+                                const leconVal = tr.querySelector(`td[data-header="${leconKey}"]`)?.textContent.trim() || '';
+                                const taskVal = tr.querySelector(`td[data-header="${taskKey}"]`)?.textContent.trim() || '';
+                                const supportVal = tr.querySelector(`td[data-header="${supportKey}"]`)?.textContent.trim() || '';
+                                const devoirsVal = tr.querySelector(`td[data-header="${devoirsKey}"]`)?.textContent.trim() || '';
+                                const isEmpty = (!leconVal || leconVal === '-' || leconVal === '—') && (!taskVal || taskVal === '-' || taskVal === '—') && (!supportVal || supportVal === '-' || supportVal === '—') && (!devoirsVal || devoirsVal === '-' || devoirsVal === '—');
+                                
+                                if (isEmpty) {
+                                    tr.style.display = '';
+                                    tr.style.backgroundColor = '#FEF2F2';
+                                    tr.style.border = '2px solid #EF4444';
+                                    if (!firstIncompleteTr) firstIncompleteTr = tr;
+                                } else {
+                                    tr.style.display = 'none';
+                                }
+                            } else {
+                                tr.style.display = 'none';
+                            }
+                        });
+
+                        if (firstIncompleteTr) {
+                            firstIncompleteTr.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+
+                        let resetNotice = document.getElementById('resetIncompleteFilterNotice');
+                        if (!resetNotice) {
+                            const listDiv = document.getElementById('incompleteTeachersDisplay');
+                            if (listDiv) {
+                                resetNotice = document.createElement('div');
+                                resetNotice.id = 'resetIncompleteFilterNotice';
+                                resetNotice.style.cssText = 'margin-top: 8px; padding: 6px; background: #EFF6FF; border: 1px solid #3B82F6; border-radius: 6px; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center;';
+                                resetNotice.innerHTML = `<span>🔍 Filtre actif : Incomplets de <b>${teacher}</b></span> <button class="btn-action" style="padding: 2px 8px; font-size: 0.75rem; background: #EF4444; color:white; border:none; border-radius:4px; cursor:pointer;" onclick="resetTableFilter()">Afficher tout</button>`;
+                                listDiv.appendChild(resetNotice);
+                            }
+                        } else {
+                            resetNotice.innerHTML = `<span>🔍 Filtre actif : Incomplets de <b>${teacher}</b></span> <button class="btn-action" style="padding: 2px 8px; font-size: 0.75rem; background: #EF4444; color:white; border:none; border-radius:4px; cursor:pointer;" onclick="resetTableFilter()">Afficher tout</button>`;
+                        }
+                    };
+
+                    list.appendChild(li); 
+                }); 
+            } 
+        }
+
+        function resetTableFilter() {
+            const tRows = document.querySelectorAll('#planTable tbody tr');
+            tRows.forEach(tr => {
+                tr.style.display = '';
+                tr.style.backgroundColor = '';
+                tr.style.border = '';
+            });
+            const resetNotice = document.getElementById('resetIncompleteFilterNotice');
+            if (resetNotice) resetNotice.remove();
+        }
+        window.resetTableFilter = resetTableFilter;
+
         function toggleIncompleteList() { const listDiv=document.getElementById('incompleteTeachersDisplay'); const btn=document.getElementById('toggleIncompleteBtn'); const btnTextSpan = btn.querySelector('.btn-text'); if(listDiv.style.display==='none'||listDiv.style.display===''){ listDiv.style.display='block'; btn.querySelector('i').className = 'fas fa-xmark'; if(btnTextSpan) btnTextSpan.textContent = t('hide_incomplete'); } else { listDiv.style.display='none'; btn.querySelector('i').className = 'fas fa-list-check'; if(btnTextSpan) btnTextSpan.textContent = t('display_incomplete'); } }
         async function fetchPlanData(week) { 
             if (!week || isNaN(parseInt(week, 10))) { 
