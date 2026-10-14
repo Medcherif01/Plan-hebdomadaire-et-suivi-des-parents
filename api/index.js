@@ -523,22 +523,45 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
     return score;
   };
 
-  // Canonicaliser le nom de la classe pour éviter les doublons de casse
+  // Canonicaliser le nom de la classe pour éviter les doublons de casse et de suffixes ("DP2 Garçons" -> "DP2")
   const canonicalClassMap = new Map();
+  const canonicalList = [];
   if (section === 'garcons' || section === 'filles') {
-    ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
+    canonicalList.push('PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2');
   } else if (section === 'primaire') {
-    ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
+    canonicalList.push('PP1', 'PP2', 'PP3', 'PP4', 'PP5');
   } else if (section === 'maternelle') {
-    ['PS', 'MS', 'GS'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
+    canonicalList.push('PS', 'MS', 'GS');
   }
+  canonicalList.forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
+
+  const resolveClassCanonical = (rawName) => {
+    if (!rawName) return '';
+    const clean = String(rawName).trim();
+    if (canonicalClassMap.has(clean.toLowerCase())) {
+      return canonicalClassMap.get(clean.toLowerCase());
+    }
+    for (const canon of canonicalList) {
+      if (typeof isClassMatchServer === 'function' && isClassMatchServer(clean, canon)) {
+        canonicalClassMap.set(clean.toLowerCase(), canon);
+        return canon;
+      }
+    }
+    for (const [k, canon] of Array.from(canonicalClassMap.entries())) {
+      if (typeof isClassMatchServer === 'function' && isClassMatchServer(clean, canon)) {
+        canonicalClassMap.set(clean.toLowerCase(), canon);
+        return canon;
+      }
+    }
+    canonicalClassMap.set(clean.toLowerCase(), clean);
+    canonicalList.push(clean);
+    return clean;
+  };
 
   data.forEach(r => {
     if (!r) return;
     const c = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
-    if (c && !canonicalClassMap.has(c.toLowerCase())) {
-      canonicalClassMap.set(c.toLowerCase(), c);
-    }
+    if (c) resolveClassCanonical(c);
   });
 
   // 2. Déterminer les libellés de jours avec date pour cette semaine
@@ -595,7 +618,7 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
 
     if (rawC && matchedDay && !isNaN(pVal) && pVal >= 1 && pVal <= 10) {
       if (pVal > maxPeriodDetected) maxPeriodDetected = pVal;
-      const clsCanonical = canonicalClassMap.get(rawC.toLowerCase()) || rawC;
+      const clsCanonical = resolveClassCanonical(rawC);
       const k = `${clsCanonical.toLowerCase()}___${matchedDay.toLowerCase()}___${pVal}`;
 
       if (!existingMap.has(k)) {
@@ -639,7 +662,7 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
 
   // 4. Construire la liste garantie avec exactement 1 ligne par créneau (1 à maxPeriodDetected) pour chaque jour et chaque classe
   const result = [];
-  const sortedClasses = Array.from(canonicalClassMap.values()).sort();
+  const sortedClasses = Array.from(new Set(canonicalClassMap.values())).sort();
 
   sortedClasses.forEach(cls => {
     schoolDays.forEach(day => {
@@ -9006,6 +9029,49 @@ app.post('/api/generate-word', async (req, res) => {
 	      });
 	      if (classMatches.length > 0) {
 	        planData = classMatches;
+	      }
+
+	      // Dédupliquer les séances de cette classe par (Jour, Période) en conservant en priorité absolue le contenu rempli
+	      const dayPeriodMap = new Map();
+	      planData.forEach(r => {
+	        if (!r || typeof r !== 'object') return;
+	        const j = String(r['Jour'] || r.jour || (typeof findKey === 'function' ? r[findKey(r, 'Jour')] : '') || '').trim().toLowerCase();
+	        const p = String(r['Période'] || r.periode || (typeof findKey === 'function' ? r[findKey(r, 'Période')] : '') || '').replace(/[^0-9]/g, '');
+	        if (!j || !p) return;
+	        const k = `${j}___${p}`;
+	        if (!dayPeriodMap.has(k)) {
+	          dayPeriodMap.set(k, { ...r });
+	        } else {
+	          const prev = dayPeriodMap.get(k);
+	          const scorePrev = typeof getRowScore === 'function' ? getRowScore(prev) : 0;
+	          const scoreNew = typeof getRowScore === 'function' ? getRowScore(r) : 0;
+	          if (scoreNew > scorePrev) {
+	            const merged = { ...prev, ...r };
+	            ['Leçon', 'Travaux de classe', 'Support', 'Devoirs', 'Objectifs', 'Matière', 'Enseignant'].forEach(f => {
+	              const fk = typeof findKey === 'function' ? findKey(merged, f) || f : f;
+	              const prevFk = typeof findKey === 'function' ? findKey(prev, f) || f : f;
+	              const vNew = String(r[fk] || '').trim();
+	              const vOld = String(prev[prevFk] || '').trim();
+	              if ((!vNew || vNew === '—' || vNew === '-') && vOld && vOld !== '—' && vOld !== '-') {
+	                merged[fk] = prev[prevFk];
+	              }
+	            });
+	            dayPeriodMap.set(k, merged);
+	          } else {
+	            ['Leçon', 'Travaux de classe', 'Support', 'Devoirs', 'Objectifs', 'Matière', 'Enseignant'].forEach(f => {
+	              const fk = typeof findKey === 'function' ? findKey(prev, f) || f : f;
+	              const newFk = typeof findKey === 'function' ? findKey(r, f) || f : f;
+	              const vPrev = String(prev[fk] || '').trim();
+	              const vNew = String(r[newFk] || '').trim();
+	              if ((!vPrev || vPrev === '—' || vPrev === '-') && vNew && vNew !== '—' && vNew !== '-') {
+	                prev[fk] = r[newFk];
+	              }
+	            });
+	          }
+	        }
+	      });
+	      if (dayPeriodMap.size > 0) {
+	        planData = Array.from(dayPeriodMap.values());
 	      }
 	    }
 

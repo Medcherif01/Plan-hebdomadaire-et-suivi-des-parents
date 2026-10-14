@@ -227,6 +227,7 @@ function getFieldValue(obj, fieldName, fallback = '') {
 }
 
 function extractPeriodNum(row) {
+  if (!row || typeof row !== 'object') return null;
   const rawP = getFieldValue(row, 'periode', '');
   if (typeof rawP === 'number' && !isNaN(rawP)) return rawP;
   const str = String(rawP || '').trim();
@@ -235,8 +236,116 @@ function extractPeriodNum(row) {
     const n = parseInt(match[0], 10);
     if (!isNaN(n)) return n;
   }
+  if (row._id && typeof row._id === 'string') {
+    const idMatch = row._id.match(/_P(\d+)(?:_|$)/i);
+    if (idMatch) {
+      const n = parseInt(idMatch[1], 10);
+      if (!isNaN(n)) return n;
+    }
+  }
   return null;
 }
+
+function isFilledValue(v) {
+  if (v === undefined || v === null) return false;
+  const s = String(v).trim();
+  return s !== '' && s !== '—' && s !== '-' && s !== '–' && s !== 'None' && s !== 'null';
+}
+
+function calculateRowContentScore(r) {
+  if (!r || typeof r !== 'object') return -1;
+  let score = 0;
+  const mat = getFieldValue(r, 'matiere', '');
+  const ens = getFieldValue(r, 'enseignant', '');
+  const lec = getFieldValue(r, 'lecon', '');
+  const tra = getFieldValue(r, 'travaux', '');
+  const dev = getFieldValue(r, 'devoirs', '');
+  const sup = getFieldValue(r, 'support', '');
+  
+  if (isFilledValue(mat)) score += 20;
+  if (isFilledValue(ens)) score += 15;
+  if (isFilledValue(lec)) score += 30;
+  if (isFilledValue(tra)) score += 25;
+  if (isFilledValue(dev)) {
+    score += 20;
+    const devLower = dev.toLowerCase();
+    if (!devLower.includes('aucun') && !devLower.includes('لا يوجد')) score += 10;
+  }
+  if (isFilledValue(sup)) score += 15;
+  if (Array.isArray(r.photos) && r.photos.length > 0) score += 15;
+  if (Array.isArray(r.images) && r.images.length > 0) score += 15;
+  return score;
+}
+
+function mergeTwoRows(rowA, rowB) {
+  if (!rowA) return rowB;
+  if (!rowB) return rowA;
+  const scoreA = calculateRowContentScore(rowA);
+  const scoreB = calculateRowContentScore(rowB);
+  
+  const base = scoreB > scoreA ? { ...rowB } : { ...rowA };
+  const secondary = scoreB > scoreA ? rowA : rowB;
+  
+  const fields = ['Matière', 'matiere', 'Enseignant', 'enseignant', 'Leçon', 'lecon', 
+                  'Travaux de classe', 'travaux', 'Support', 'support', 'Devoirs', 'devoirs',
+                  'photos', 'images', 'Objectifs', 'objectifs', '_section', 'Classe', 'classe'];
+  fields.forEach(f => {
+    const bVal = base[f];
+    const sVal = secondary[f];
+    if (!isFilledValue(bVal) && isFilledValue(sVal)) {
+      base[f] = sVal;
+    }
+  });
+  return base;
+}
+
+function cleanAndDeduplicateDayRows(rawRows) {
+  const periodMap = new Map();
+  const unassignedRows = [];
+
+  (rawRows || []).forEach(r => {
+    if (!r) return;
+    const pVal = extractPeriodNum(r);
+    if (pVal !== null && pVal >= 1 && pVal <= 8) {
+      if (!periodMap.has(pVal)) {
+        periodMap.set(pVal, { ...r });
+      } else {
+        const merged = mergeTwoRows(periodMap.get(pVal), r);
+        periodMap.set(pVal, merged);
+      }
+    } else {
+      if (calculateRowContentScore(r) > 0) {
+        unassignedRows.push(r);
+      }
+    }
+  });
+
+  const dayRows = [];
+  for (let p = 1; p <= 8; p++) {
+    if (periodMap.has(p)) {
+      let pRow = { ...periodMap.get(p) };
+      if (calculateRowContentScore(pRow) <= 0 && unassignedRows.length > 0) {
+        pRow = mergeTwoRows(pRow, { ...unassignedRows.shift(), 'Période': String(p) });
+      }
+      pRow['Période'] = String(p);
+      dayRows.push(pRow);
+    } else if (unassignedRows.length > 0) {
+      dayRows.push({ ...unassignedRows.shift(), 'Période': String(p) });
+    } else {
+      dayRows.push({
+        'Période': String(p),
+        'Matière': '—',
+        'Enseignant': '',
+        'Leçon': '',
+        'Travaux de classe': '—',
+        'Support': '',
+        'Devoirs': ''
+      });
+    }
+  }
+  return dayRows;
+}
+
 
 function getDateForDayName(weekStartDate, dayName) {
   if (!weekStartDate || isNaN(weekStartDate.getTime())) return null;
@@ -305,14 +414,40 @@ function generateDesignPlanHtml(options = {}) {
     "Jeudi": "الخميس"
   };
 
+  // 1. Filtrer les lignes strictement pour la classe demandée (si les données contiennent plusieurs classes)
+  let filteredData = (data || []).filter(item => {
+    if (!item || typeof item !== 'object') return false;
+    if (!classe || ['toutes', 'all', 'classe'].includes(String(classe).trim().toLowerCase())) return true;
+    const itemCls = getFieldValue(item, 'classe', item['Classe'] || item.classe || item['class'] || item['الفصل'] || '');
+    if (!itemCls) return true;
+    const cleanA = String(itemCls).trim().toLowerCase().replace(/[\s\-_()[\]{}:/.,]/g, '');
+    const cleanB = String(classe).trim().toLowerCase().replace(/[\s\-_()[\]{}:/.,]/g, '');
+    if (cleanA === cleanB) return true;
+    const stripSec = s => s.replace(/(garcons|garçons|filles|primaire|maternelle|boys|girls)/g, '');
+    const baseA = stripSec(cleanA);
+    const baseB = stripSec(cleanB);
+    if (baseA && baseB && baseA === baseB) return true;
+    return cleanA.includes(cleanB) || cleanB.includes(cleanA);
+  });
+  if (filteredData.length === 0 && Array.isArray(data) && data.length > 0) {
+    filteredData = data;
+  }
+
   const groupedByDay = {};
-  (data || []).forEach(item => {
+  filteredData.forEach(item => {
     if (!item) return;
     const rawDay = getFieldValue(item, 'jour', item['Jour'] || item.jour || item['jour'] || '');
     const resolvedDay = resolveDayName(rawDay);
     if (resolvedDay) {
       if (!groupedByDay[resolvedDay]) groupedByDay[resolvedDay] = [];
       groupedByDay[resolvedDay].push(item);
+    }
+  });
+
+  // Dédupliquer et garantir strictement les 8 périodes (1 à 8) avec leur contenu rempli pour chaque jour
+  dayOrder.forEach(dayName => {
+    if (groupedByDay[dayName] && groupedByDay[dayName].length > 0) {
+      groupedByDay[dayName] = cleanAndDeduplicateDayRows(groupedByDay[dayName]);
     }
   });
 
@@ -1890,47 +2025,7 @@ function generateDesignPlanHtml(options = {}) {
                     </td>
                   </tr>
                 ` : (() => {
-                  const periodMap = new Map();
-                  const unassignedRows = [];
-                  (rows || []).forEach(r => {
-                    if (!r) return;
-                    const pVal = extractPeriodNum(r);
-                    if (pVal !== null && pVal >= 1 && pVal <= 8 && !periodMap.has(pVal)) {
-                      periodMap.set(pVal, r);
-                    } else {
-                      const mat = getFieldValue(r, 'matiere', '');
-                      const lec = getFieldValue(r, 'lecon', '');
-                      const tra = getFieldValue(r, 'travaux', '');
-                      const dev = getFieldValue(r, 'devoirs', '');
-                      if (mat || lec || tra || dev) {
-                        unassignedRows.push(r);
-                      }
-                    }
-                  });
-
-                  // Garantir que toutes les périodes de 1 à 8 sont strictement présentes sans rien perdre
-                  const dayRows = [];
-                  for (let p = 1; p <= 8; p++) {
-                    if (periodMap.has(p)) {
-                      dayRows.push(periodMap.get(p));
-                    } else if (unassignedRows.length > 0) {
-                      const unassigned = unassignedRows.shift();
-                      dayRows.push({ ...unassigned, 'Période': String(p) });
-                    } else {
-                      dayRows.push({
-                        'Période': String(p),
-                        'Matière': '—',
-                        'Enseignant': '',
-                        'Leçon': '',
-                        'Travaux de classe': '—',
-                        'Support': '',
-                        'Devoirs': ''
-                      });
-                    }
-                  }
-                  while (unassignedRows.length > 0) {
-                    dayRows.push(unassignedRows.shift());
-                  }
+                  const dayRows = cleanAndDeduplicateDayRows(rows);
 
                   return dayRows.map((row, rIdx) => {
                     const rowPhotos = Array.isArray(row.photos) ? row.photos : (Array.isArray(row.images) ? row.images : []);
