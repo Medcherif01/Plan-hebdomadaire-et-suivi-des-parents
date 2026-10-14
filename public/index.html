@@ -542,28 +542,8 @@
                      🧸 Section Maternelle
                  </button>
              </div>
-         </div>
-
-         <div class="filter-container week-selector-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:white; border:1.5px solid #E2E8F0; border-radius:14px; padding:12px 18px; margin-bottom:14px; box-shadow:0 4px 14px rgba(15,23,42,0.04);">
-             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:260px;">
-                 <label for="weekSelector" style="margin:0; font-weight:800; color:#1E293B; white-space:nowrap;"><i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine :</label>
-                 <select id="weekSelector" onchange="loadPlanForWeek()" style="flex:1; max-width:440px; padding:9px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-weight:700; color:#0F172A; background:#F8FAFC;">
-                      <option value="">-- Sélectionnez une semaine --</option>
-                 </select>
-             </div>
-             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                 <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px;">
-                     <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
-                 </button>
-             </div>
-         </div>
-         <div id="incompleteTeachersDisplay" style="display: none; margin-bottom:14px;">
-             <h4>Enseignants Incomplets</h4>
-             <ul id="incompleteList">
-                 <li>Chargement...</li>
-             </ul>
-         </div>
-        <div id="admin-actions" class="filter-container admin-section" style="display: none;">
+          </div>
+         <div id="admin-actions" class="filter-container admin-section" style="display: none;">
              <div class="admin-header-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                      <h3 id="admin-title" style="margin:0;"><i class="fas fa-user-shield"></i> Espace Administrateur - Gestion Complète</h3>
@@ -1898,25 +1878,55 @@
             </div>
         </div>
         
-        <div class="table-actions-container pro-action-hub-grid" style="margin-bottom: 16px;">
-            <!-- GROUPE A : SAUVEGARDE & SYNCHRONISATION -->
-            <div class="pro-action-group-card">
-                <div class="pro-action-group-header">
-                    <i class="fas fa-save" style="color: #059669;"></i>
-                    <span>Sauvegarde &amp; Synchronisation</span>
-                </div>
-                <div class="pro-action-group-buttons">
-                    <button id="saveAllDisplayedBtn" onclick="saveAllDisplayedRows()" class="action-button save-all-button pro-button success-button" disabled title="Raccourci clavier : Ctrl + S / حفظ الكل">
-                        <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Lignes Affichées</span>
-                    </button>
-                    <button id="btnAutoFillFromAnnualDist" onclick="autoFillWeeklyPlanFromAnnualDistribution()" class="action-button pro-button" style="background: linear-gradient(135deg, #0284C7, #0369A1); color: white;" title="Remplir automatiquement le plan hebdomadaire depuis la distribution annuelle">
-                        <i class="fas fa-bolt"></i> <span class="btn-text">⚡ Remplir via Distribution</span>
-                    </button>
-                    <button id="btnSyncToAnnualDist" onclick="syncWeeklyPlanToAnnualDistribution()" class="action-button pro-button" style="background: linear-gradient(135deg, #059669, #047857); color: white;" title="Prendre tout ce qui est saisi et enregistré de la Semaine 1 jusqu'au présent et le synchroniser dans la distribution annuelle">
-                        <i class="fas fa-sync-alt"></i> <span class="btn-text">🔁 Sync vers Distribution</span>
-                    </button>
-                </div>
-            </div>
+         <!-- SÉLECTEUR DE SEMAINE & INCOMPLETS (JUSTE AVANT LA BARRE D'ACTIONS ET LE TABLEAU) -->
+         <div class="filter-container week-selector-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:white; border:1.5px solid #E2E8F0; border-radius:14px; padding:12px 18px; margin-bottom:14px; box-shadow:0 4px 14px rgba(15,23,42,0.04);">
+             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:260px;">
+                 <label for="weekSelector" style="margin:0; font-weight:800; color:#1E293B; white-space:nowrap;"><i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine :</label>
+                 <select id="weekSelector" onchange="loadPlanForWeek()" style="flex:1; max-width:440px; padding:9px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-weight:700; color:#0F172A; background:#F8FAFC;">
+                      <option value="">-- Sélectionnez une semaine --</option>
+                 </select>
+             </div>
+             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                 <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px;">
+                     <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
+                 </button>
+             </div>
+         </div>
+         <div id="incompleteTeachersDisplay" style="display: none; margin-bottom:14px;">
+             <h4>Enseignants Incomplets</h4>
+             <ul id="incompleteList">
+                 <li>Chargement...</li>
+             </ul>
+         </div>
+
+         <div class="table-actions-container pro-action-hub-grid" style="margin-bottom: 16px;">
+             <!-- GROUPE A : SAUVEGARDE & SYNCHRONISATION -->
+             <div class="pro-action-group-card">
+                 <div class="pro-action-group-header">
+                     <i class="fas fa-save" style="color: #059669;"></i>
+                     <span>Sauvegarde &amp; Synchro</span>
+                 </div>
+                 <div class="pro-action-group-buttons" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                     <button id="saveAllDisplayedBtn" onclick="saveAllDisplayedRows()" class="action-button save-all-button pro-button success-button" disabled title="Raccourci clavier : Ctrl + S / حفظ الكل">
+                         <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Lignes</span>
+                     </button>
+                     
+                     <div style="position:relative; display:inline-block; flex:1; min-width:180px;">
+                         <button type="button" class="action-button pro-button" onclick="toggleSyncDropdown(event)" style="background: linear-gradient(135deg, #0284C7, #0369A1); color: white; width:100%; justify-content:space-between;">
+                             <span style="display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-sync-alt"></i> <span>Distribution ▾</span></span>
+                             <i class="fas fa-chevron-down" style="font-size:0.75rem;"></i>
+                         </button>
+                         <div id="syncDropdownMenu" class="action-dropdown-menu">
+                             <button id="btnAutoFillFromAnnualDist" onclick="autoFillWeeklyPlanFromAnnualDistribution(); closeSyncDropdown();">
+                                 <i class="fas fa-bolt" style="color:#0284C7;"></i> Remplir via Distribution
+                             </button>
+                             <button id="btnSyncToAnnualDist" onclick="syncWeeklyPlanToAnnualDistribution(); closeSyncDropdown();">
+                                 <i class="fas fa-sync-alt" style="color:#059669;"></i> Sync vers Distribution
+                             </button>
+                         </div>
+                     </div>
+                 </div>
+             </div>
 
             <!-- GROUPE B : FICHES DE LEÇONS IA & GESTION LIGNES -->
             <div class="pro-action-group-card">

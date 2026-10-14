@@ -3181,16 +3181,36 @@
             if (menu) {
                 menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
             }
+            const syncMenu = document.getElementById('syncDropdownMenu');
+            if (syncMenu) syncMenu.style.display = 'none';
         }
         function closeActionDropdown() {
             const menu = document.getElementById('actionDropdownMenu');
             if (menu) menu.style.display = 'none';
         }
+
+        function toggleSyncDropdown(e) {
+            if (e) e.stopPropagation();
+            const menu = document.getElementById('syncDropdownMenu');
+            if (menu) {
+                menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+            }
+            const actionMenu = document.getElementById('actionDropdownMenu');
+            if (actionMenu) actionMenu.style.display = 'none';
+        }
+        function closeSyncDropdown() {
+            const menu = document.getElementById('syncDropdownMenu');
+            if (menu) menu.style.display = 'none';
+        }
+
         window.addEventListener('click', () => {
             closeActionDropdown();
+            closeSyncDropdown();
         });
         window.toggleActionDropdown = toggleActionDropdown;
         window.closeActionDropdown = closeActionDropdown;
+        window.toggleSyncDropdown = toggleSyncDropdown;
+        window.closeSyncDropdown = closeSyncDropdown;
         async function fetchPlanData(week) { 
             if (!week || isNaN(parseInt(week, 10))) { 
                 console.warn("fetchPlanData sans semaine valide."); 
