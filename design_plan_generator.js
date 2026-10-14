@@ -965,7 +965,7 @@ function generateDesignPlanHtml(options = {}) {
 
     .lessons-table-a4 tbody td {
       padding: 3px 6px;
-      vertical-align: top;
+      vertical-align: middle !important;
       border-right: 1px solid #CBD5E1;
     }
 
@@ -1892,11 +1892,39 @@ function generateDesignPlanHtml(options = {}) {
                 ` : (() => {
                   const periodMap = new Map();
                   const unassignedRows = [];
+                  const getRowScore = (r) => {
+                    if (!r || typeof r !== 'object') return -1;
+                    let score = 0;
+                    const mat = String(getFieldValue(r, 'matiere', '')).trim();
+                    const ens = String(getFieldValue(r, 'enseignant', '')).trim();
+                    const lec = String(getFieldValue(r, 'lecon', '')).trim();
+                    const tra = String(getFieldValue(r, 'travaux', '')).trim();
+                    const dev = String(getFieldValue(r, 'devoirs', '')).trim();
+                    const sup = String(getFieldValue(r, 'support', '')).trim();
+                    if (mat && mat !== '—' && mat !== '-') score += 10;
+                    if (ens && ens !== '—' && ens !== '-') score += 5;
+                    if (lec && lec !== '—' && lec !== '-') score += 20;
+                    if (tra && tra !== '—' && tra !== '-') score += 15;
+                    if (dev && dev !== '—' && dev !== '-') score += 20;
+                    if (sup && sup !== '—' && sup !== '-') score += 10;
+                    return score;
+                  };
+
                   (rows || []).forEach(r => {
                     if (!r) return;
                     const pVal = extractPeriodNum(r);
-                    if (pVal !== null && pVal >= 1 && pVal <= 8 && !periodMap.has(pVal)) {
-                      periodMap.set(pVal, r);
+                    if (pVal !== null && pVal >= 1 && pVal <= 8) {
+                      if (!periodMap.has(pVal)) {
+                        periodMap.set(pVal, r);
+                      } else {
+                        const existing = periodMap.get(pVal);
+                        if (getRowScore(r) > getRowScore(existing)) {
+                          periodMap.set(pVal, r);
+                          unassignedRows.push(existing);
+                        } else {
+                          unassignedRows.push(r);
+                        }
+                      }
                     } else {
                       const mat = getFieldValue(r, 'matiere', '');
                       const lec = getFieldValue(r, 'lecon', '');
@@ -1908,7 +1936,7 @@ function generateDesignPlanHtml(options = {}) {
                     }
                   });
 
-                  // Garantir que toutes les périodes de 1 à 8 sont strictement présentes sans rien perdre
+                  // Garantir que toutes les périodes de 1 à 8 sont strictement présentes exactement une fois sans doublons
                   const dayRows = [];
                   for (let p = 1; p <= 8; p++) {
                     if (periodMap.has(p)) {
@@ -1927,9 +1955,6 @@ function generateDesignPlanHtml(options = {}) {
                         'Devoirs': ''
                       });
                     }
-                  }
-                  while (unassignedRows.length > 0) {
-                    dayRows.push(unassignedRows.shift());
                   }
 
                   return dayRows.map((row, rIdx) => {
