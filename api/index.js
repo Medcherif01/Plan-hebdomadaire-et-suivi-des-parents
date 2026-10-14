@@ -533,6 +533,18 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
   } else if (section === 'maternelle') {
     canonicalList.push('PS', 'MS', 'GS');
   }
+
+  // Collect any other / custom classes present in incoming data
+  if (Array.isArray(data)) {
+    data.forEach(r => {
+      if (!r) return;
+      const c = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
+      if (c && !canonicalList.includes(c)) {
+        canonicalList.push(c);
+      }
+    });
+  }
+
   canonicalList.forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
 
   const resolveClassCanonical = (rawName) => {
@@ -542,11 +554,11 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
     clean = clean.replace(/\s*(?:Garçons|Garcons|Banin|بنين|اولاد|أولاد|Filles|Fille|Banat|بنات|Section\s*Garçons|Section\s*Garcons|Section\s*Filles|Primaire|ابتدائي|Maternelle|روضة|روضه)\s*$/i, '').trim();
     clean = clean.replace(/^(?:Classe\s*(?:de)?|الصف|فصل)\s*/i, '').trim();
 
-    const peiM = clean.match(/^PEI\s*([1-5])$/i);
+    const peiM = clean.match(/^PEI\s*([1-6])$/i);
     if (peiM) clean = `PEI${peiM[1]}`;
-    const dpM = clean.match(/^DP\s*([1-2])$/i);
+    const dpM = clean.match(/^DP\s*([1-3])$/i);
     if (dpM) clean = `DP${dpM[1]}`;
-    const ppM = clean.match(/^PP\s*([1-5])$/i);
+    const ppM = clean.match(/^PP\s*([1-6])$/i);
     if (ppM) clean = `PP${ppM[1]}`;
     const matM = clean.match(/^(PS|MS|GS)\s*[1-2]?$/i);
     if (matM) clean = matM[1].toUpperCase();
