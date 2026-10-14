@@ -11473,7 +11473,7 @@ app.use((err, req, res, next) => {
 });
 
 // Configuration Port et Host — Port 3000 requis pour l'environnement AI Studio
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = '0.0.0.0';
 
 // Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel
