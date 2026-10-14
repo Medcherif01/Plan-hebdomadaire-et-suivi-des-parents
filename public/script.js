@@ -3174,6 +3174,23 @@
         window.resetTableFilter = resetTableFilter;
 
         function toggleIncompleteList() { const listDiv=document.getElementById('incompleteTeachersDisplay'); const btn=document.getElementById('toggleIncompleteBtn'); const btnTextSpan = btn.querySelector('.btn-text'); if(listDiv.style.display==='none'||listDiv.style.display===''){ listDiv.style.display='block'; btn.querySelector('i').className = 'fas fa-xmark'; if(btnTextSpan) btnTextSpan.textContent = t('hide_incomplete'); } else { listDiv.style.display='none'; btn.querySelector('i').className = 'fas fa-list-check'; if(btnTextSpan) btnTextSpan.textContent = t('display_incomplete'); } }
+
+        function toggleActionDropdown(e) {
+            if (e) e.stopPropagation();
+            const menu = document.getElementById('actionDropdownMenu');
+            if (menu) {
+                menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+            }
+        }
+        function closeActionDropdown() {
+            const menu = document.getElementById('actionDropdownMenu');
+            if (menu) menu.style.display = 'none';
+        }
+        window.addEventListener('click', () => {
+            closeActionDropdown();
+        });
+        window.toggleActionDropdown = toggleActionDropdown;
+        window.closeActionDropdown = closeActionDropdown;
         async function fetchPlanData(week) { 
             if (!week || isNaN(parseInt(week, 10))) { 
                 console.warn("fetchPlanData sans semaine valide."); 

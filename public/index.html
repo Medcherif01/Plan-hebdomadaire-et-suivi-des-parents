@@ -104,6 +104,56 @@
             color: #2563EB !important;
         }
 
+        /* Alternance de couleurs (Zebra striping) pour différencier les lignes du tableau */
+        #planTable tbody tr:nth-child(even) {
+            background-color: #F8FAFC !important;
+        }
+        #planTable tbody tr:nth-child(odd) {
+            background-color: #FFFFFF !important;
+        }
+        #planTable tbody tr:hover {
+            background-color: #EEF2FF !important;
+        }
+
+        /* Liste déroulante compacte pour regrouper les fiches de leçons */
+        .action-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+            z-index: 150;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+        .action-dropdown-menu button {
+            width: 100%;
+            text-align: left;
+            padding: 10px 14px;
+            background: none;
+            border: none;
+            border-bottom: 1px solid #F1F5F9;
+            font-weight: 600;
+            font-size: 0.84rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #1E293B;
+            transition: background 0.15s ease;
+        }
+        .action-dropdown-menu button:hover {
+            background-color: #F8FAFC;
+            color: #2563EB;
+        }
+        .action-dropdown-menu button:last-child {
+            border-bottom: none;
+        }
+
         /* Lignes d'inter-section en lecture seule */
         tr.cross-section-row-filles {
             background-color: #FFF5F7 !important;
@@ -1882,18 +1932,28 @@
                         <span id="teacherModifiedCountTxt" style="color: #059669;">Enregistré ✅</span>
                     </div>
                 </div>
-                <div class="pro-action-group-buttons">
-                    <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans()" class="action-button pro-button" disabled style="background: #7C3AED; color: white;" title="Générer les plans de leçon de toutes les séances affichées">
-                        <i class="fas fa-file-word"></i> <span class="btn-text">Plans de Leçon (Affichés)</span>
-                    </button>
-                    <button id="openLessonPlanModalBtn" onclick="openLessonPlanModal('classes')" class="action-button pro-button" style="background: #2563EB; color: white;" title="Ouvrir la sélection par classes et matières pour générer les plans de leçon IA">
-                        <i class="fas fa-layer-group"></i> <span class="btn-text">Par Classes/Matières</span>
-                    </button>
-                    <button id="openTeachersBulkDownloadBtn" onclick="openLessonPlanModal('teachers')" class="action-button pro-button" style="background: linear-gradient(135deg, #0D9488, #059669); color: white;" title="Sélectionner plusieurs enseignants pour télécharger ou générer leurs plans de leçon (.ZIP)">
-                        <i class="fas fa-users-cog"></i> <span class="btn-text">Par Enseignants (ZIP)</span>
-                    </button>
+                <div class="pro-action-group-buttons" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <!-- LISTE DÉROULANTE (DROPDOWN) POUR LIBÉRER UN MAX D'ESPACE -->
+                    <div style="position:relative; display:inline-block; flex:1; min-width:210px;">
+                        <button type="button" class="action-button pro-button" onclick="toggleActionDropdown(event)" style="background: #7C3AED; color: white; width:100%; justify-content:space-between;">
+                            <span style="display:inline-flex; align-items:center; gap:8px;"><i class="fas fa-file-word"></i> <span>Générer Fiches de Leçon ▾</span></span>
+                            <i class="fas fa-chevron-down" style="font-size:0.75rem;"></i>
+                        </button>
+                        <div id="actionDropdownMenu" class="action-dropdown-menu">
+                            <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans(); closeActionDropdown();" disabled>
+                                <i class="fas fa-file-word" style="color:#7C3AED;"></i> Plans de Leçon (Affichés)
+                            </button>
+                            <button id="openLessonPlanModalBtn" onclick="openLessonPlanModal('classes'); closeActionDropdown();">
+                                <i class="fas fa-layer-group" style="color:#2563EB;"></i> Par Classes / Matières
+                            </button>
+                            <button id="openTeachersBulkDownloadBtn" onclick="openLessonPlanModal('teachers'); closeActionDropdown();">
+                                <i class="fas fa-users-cog" style="color:#059669;"></i> Par Enseignants (ZIP)
+                            </button>
+                        </div>
+                    </div>
+
                     <button id="adminDeleteRowModalBtn" onclick="openAdminDeleteRowModal()" class="action-button pro-button" style="display:none; background: #DC2626; color: white;" title="Supprimer une ligne du tableau en toute sécurité (Admin)">
-                        <i class="fas fa-trash-alt"></i> <span class="btn-text">Supprimer Ligne</span>
+                        <i class="fas fa-trash-alt"></i> <span class="btn-text">Supprimer</span>
                     </button>
                 </div>
             </div>
