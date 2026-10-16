@@ -1959,16 +1959,14 @@
                 element.setAttribute('dir', 'rtl');
                 element.setAttribute('lang', 'ar');
                 element.style.direction = 'rtl';
-                element.style.textAlign = 'center';
+                element.style.textAlign = 'right';
             } else { 
                 element.classList.remove('arabic-content'); 
-                if (element.getAttribute('dir') === 'rtl') {
-                    element.removeAttribute('dir');
-                }
+                element.setAttribute('dir', 'ltr');
                 const isEnglishText = /\b(the|and|read|write|page|workbook|lesson|homework|chapter|exercise|questions|student|students|complete|worksheet|activity|vocabulary|grammar|science|math)\b/i.test(String(content || ''));
                 element.setAttribute('lang', isEnglishText ? 'en' : 'fr');
-                element.style.direction = '';
-                element.style.textAlign = '';
+                element.style.direction = 'ltr';
+                element.style.textAlign = 'left';
             }
             element.setAttribute('spellcheck', 'true');
             element.setAttribute('autocorrect', 'on');
@@ -16725,7 +16723,7 @@ async function handleAnnualDistFilterChange() {
     const teacher = teacherSel ? teacherSel.value.trim() : '';
     let classe = classSel ? classSel.value.trim() : '';
     let matiere = subjectSel ? subjectSel.value.trim() : '';
-    const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
+    const schoolYear = yearSel ? yearSel.value.trim() : '2026-2027';
 
     // Si un enseignant est sélectionné, pré-sélectionner automatiquement sa classe et sa matière si non choisies
     if (teacher && (!classe || classe === 'Toutes' || !matiere || matiere === 'Toutes')) {
@@ -17297,7 +17295,7 @@ async function saveAnnualDistributionToServer() {
     const teacher = teacherSel ? teacherSel.value.trim() : '';
     const classe = classSel ? classSel.value.trim() : '';
     const matiere = subjectSel ? subjectSel.value.trim() : '';
-    const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
+    const schoolYear = yearSel ? yearSel.value.trim() : '2026-2027';
 
     if (!teacher) {
         alert("Veuillez sélectionner un enseignant avant d'enregistrer.");
@@ -17545,7 +17543,7 @@ async function autoFillWeeklyPlanFromAnnualDistribution(targetWeek = null) {
     let teacher = '';
     let classe = '';
     let matiere = '';
-    let schoolYear = '2025-2026';
+    let schoolYear = '2026-2027';
 
     if (isModalOpen) {
         const tSel = document.getElementById('annualDistTeacherSelect');
@@ -17555,7 +17553,7 @@ async function autoFillWeeklyPlanFromAnnualDistribution(targetWeek = null) {
         teacher = tSel ? tSel.value.trim() : '';
         classe = cSel ? cSel.value.trim() : '';
         matiere = mSel ? mSel.value.trim() : '';
-        schoolYear = ySel ? ySel.value.trim() : '2025-2026';
+        schoolYear = ySel ? ySel.value.trim() : '2026-2027';
     }
 
     const ensFilter = document.getElementById('filterEnseignant');
@@ -17617,7 +17615,7 @@ async function syncWeeklyPlanToAnnualDistribution(targetWeek = null) {
     let teacher = '';
     let classe = '';
     let matiere = '';
-    let schoolYear = '2025-2026';
+    let schoolYear = '2026-2027';
 
     if (isModalOpen) {
         const tSel = document.getElementById('annualDistTeacherSelect');
@@ -17627,7 +17625,7 @@ async function syncWeeklyPlanToAnnualDistribution(targetWeek = null) {
         teacher = tSel ? tSel.value.trim() : '';
         classe = cSel ? cSel.value.trim() : '';
         matiere = mSel ? mSel.value.trim() : '';
-        schoolYear = ySel ? ySel.value.trim() : '2025-2026';
+        schoolYear = ySel ? ySel.value.trim() : '2026-2027';
     }
 
     if (!teacher) {
@@ -17793,7 +17791,7 @@ function buildAnnualDistributionLandscapeHTML(semesterFilter = 'all', layoutMode
     const teacher = teacherSel ? teacherSel.value.trim() : (loggedInUser || 'Enseignant');
     const classe = classSel ? classSel.value.trim() : 'Toutes';
     const matiere = subjectSel ? subjectSel.value.trim() : 'Toutes';
-    const schoolYear = yearSel ? yearSel.value.trim() : '2025-2026';
+    const schoolYear = yearSel ? yearSel.value.trim() : '2026-2027';
     const detectedWeeklyQuota = parseInt(perWeekInput?.value, 10) || (currentAnnualDistribution ? currentAnnualDistribution.sessionsPerWeek : 4) || 4;
 
     const sessions = collectAnnualDistributionFromDOM();
