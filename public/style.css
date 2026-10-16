@@ -457,18 +457,19 @@ body::before {
     color: #334155;
 }
 
-/* Colonnes de saisie éditables (Leçon, Travaux de classe, Support, Devoirs) - largeur flexible MAXIMALE */
+/* Colonnes de saisie éditables (Leçon, Travaux de classe, Support, Devoirs) - largeur flexible automatique */
 #planTable th.col-editable-header,
 #planTable td.col-editable-content,
 #planTable td.editable {
     width: auto !important;
-    min-width: 230px !important;
+    min-width: 260px !important;
     max-width: none !important;
-    padding: 10px 14px !important;
-    font-size: 0.92rem !important;
-    line-height: 1.55 !important;
+    padding: 12px 16px !important;
+    font-size: 0.94rem !important;
+    line-height: 1.6 !important;
     white-space: pre-wrap !important;
     word-break: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
 #planTable thead {
