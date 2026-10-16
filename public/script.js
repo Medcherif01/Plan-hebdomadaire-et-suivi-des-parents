@@ -14490,31 +14490,26 @@ function onDesignModalSectionChange() {
 window.onDesignModalSectionChange = onDesignModalSectionChange;
 
 function syncDesignModalClasses(section, preselectedClass, preselectedWeek) {
-    const classSel = document.getElementById('designModalClassSelector');
+    const container = document.getElementById('designModalClassesContainer');
     const weekSel = document.getElementById('designModalWeekSelector');
-    if (!classSel) return;
+    if (!container) return;
     const classes = getSectionClasses(section);
 
-    classSel.innerHTML = '';
+    container.innerHTML = '';
     classes.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c;
-        opt.textContent = c;
-        if (c === preselectedClass) opt.selected = true;
-        classSel.appendChild(opt);
+        const isChecked = preselectedClass ? (c === preselectedClass) : true; // Par défaut, toutes cochées
+        const label = document.createElement('label');
+        label.style.cssText = "display:inline-flex; align-items:center; gap:6px; background:white; padding:6px 10px; border-radius:8px; border:1px solid #CBD5E1; font-size:0.88rem; font-weight:600; color:#334155; cursor:pointer;";
+        label.innerHTML = `<input type="checkbox" class="design-class-chk" value="${c}" ${isChecked ? 'checked' : ''} style="width:16px; height:16px; accent-color:#059669;"> <span>${c}</span>`;
+        container.appendChild(label);
     });
-
-    if (!classSel.value && classes.length > 0) {
-        classSel.value = classes[0];
-    }
-
-    classSel.onchange = () => {
-        if (!preselectedWeek && weekSel) {
-            let w = currentWeek || (typeof getCurrentWeekNumber === 'function' ? getCurrentWeekNumber() : 1) || 1;
-            weekSel.value = w;
-        }
-    };
 }
+
+function toggleAllDesignClasses(selectState) {
+    const checkboxes = document.querySelectorAll('.design-class-chk');
+    checkboxes.forEach(cb => cb.checked = selectState);
+}
+window.toggleAllDesignClasses = toggleAllDesignClasses;
 
 function closeDesignPlanModal() {
     const modal = document.getElementById('designPlanModal');
@@ -14541,29 +14536,45 @@ function selectDesignTheme(theme) {
 }
 
 /**
- * Exécute l'action choisie depuis le modal Design (Aperçu / Imprimer ou Télécharger HTML)
+ * Exécute l'action choisie depuis le modal Design pour une ou plusieurs classes en même temps (chaque classe dans son onglet)
  */
 async function executeDesignPlanAction(action) {
     const secSel = document.getElementById('designModalSectionSelector');
     const weekSel = document.getElementById('designModalWeekSelector');
-    const classSel = document.getElementById('designModalClassSelector');
     const showPhotosCheck = document.getElementById('designOptShowPhotos');
     const highlightHwCheck = document.getElementById('designOptHighlightHomework');
 
     const selectedSection = (secSel ? secSel.value : currentSection) || 'garcons';
     const selectedWeek = weekSel ? weekSel.value : (currentWeek || 1);
-    const selectedClass = classSel ? classSel.value : '';
     const theme = window.currentSelectedDesignTheme || 'indigo';
     const showPhotos = showPhotosCheck ? showPhotosCheck.checked : true;
     const highlightHomework = highlightHwCheck ? highlightHwCheck.checked : true;
 
-    if (!selectedClass) {
-        alert("Veuillez sélectionner une classe.");
+    const checkboxes = document.querySelectorAll('.design-class-chk:checked');
+    const selectedClasses = Array.from(checkboxes).map(cb => cb.value);
+
+    if (selectedClasses.length === 0) {
+        alert("Veuillez sélectionner au moins une classe.");
         return;
     }
 
-    await downloadFullClassDesign(selectedWeek, selectedClass, theme, showPhotos, highlightHomework, action || 'print', false, selectedSection);
     closeDesignPlanModal();
+
+    for (const className of selectedClasses) {
+        let preWin = null;
+        if (action === 'print') {
+            try {
+                preWin = window.open('', '_blank');
+                if (preWin) {
+                    preWin.document.write(`<html><head><title>Chargement Plan - ${className}...</title></head><body style="font-family:sans-serif; text-align:center; padding-top:80px; background:#F8FAFC;"><h2 style="color:#059669;">Génération du Plan Hebdomadaire (Semaine ${selectedWeek}) pour la classe ${className}...</h2><p style="color:#64748B;">Veuillez patienter quelques instants.</p></body></html>`);
+                    preWin.document.close();
+                }
+            } catch (e) {
+                preWin = null;
+            }
+        }
+        await downloadFullClassDesign(selectedWeek, className, theme, showPhotos, highlightHomework, action || 'print', false, selectedSection, preWin);
+    }
 }
 
 /**
@@ -14602,7 +14613,7 @@ async function downloadSelectedClassFullDesign() {
 /**
  * Moteur d'appel et de génération du Plan Hebdomadaire (Design & PDF)
  */
-async function downloadFullClassDesign(weekNum, className, theme, showPhotos, highlightHomework, action, isParent = false, explicitSection = null) {
+async function downloadFullClassDesign(weekNum, className, theme, showPhotos, highlightHomework, action, isParent = false, explicitSection = null, preOpenedWindow = null) {
     if (!className) {
         openDesignPlanModal();
         return;
@@ -14719,14 +14730,16 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
                 URL.revokeObjectURL(url);
                 document.body.removeChild(a);
             }
-            displayAlert(`✅ Fichier Plan Hebdomadaire téléchargé avec succès !`, false);
+            displayAlert(`✅ Fichier Plan Hebdomadaire téléchargé avec succès pour ${className} !`, false);
         } else {
             // Aperçu interactif et boîte d'impression PDF
-            let printWindow = null;
-            try {
-                printWindow = window.open('', '_blank');
-            } catch (e) {
-                printWindow = null;
+            let printWindow = preOpenedWindow;
+            if (!printWindow) {
+                try {
+                    printWindow = window.open('', '_blank');
+                } catch (e) {
+                    printWindow = null;
+                }
             }
             if (printWindow) {
                 try {
@@ -14734,7 +14747,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
                     printWindow.document.write(htmlContent);
                     printWindow.document.close();
                     printWindow.focus();
-                    displayAlert(`✅ Plan Hebdomadaire ouvert dans un nouvel onglet avec aperçu d'impression PDF !`, false);
+                    displayAlert(`✅ Plan Hebdomadaire ouvert pour ${className} (Aperçu & PDF) !`, false);
                 } catch (e) {
                     printWindow = null;
                 }
@@ -14752,7 +14765,7 @@ async function downloadFullClassDesign(weekNum, className, theme, showPhotos, hi
                     document.body.removeChild(a);
                     URL.revokeObjectURL(blobUrl);
                 }, 15000);
-                displayAlert(`✅ Plan Hebdomadaire ouvert avec succès (Aperçu & PDF) !`, false);
+                displayAlert(`✅ Plan Hebdomadaire ouvert avec succès pour ${className} !`, false);
             }
         }
         updateProgressBar(100);
