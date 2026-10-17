@@ -1444,6 +1444,10 @@
                                   <i class="fas fa-exchange-alt" style="color:#0284C7;"></i> Déplacer ou Permuter rapidement deux créneaux :
                               </span>
                               <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                  <label class="pro-button" style="padding:6px 12px; font-size:0.82rem; font-weight:700; background:#ECFDF5; color:#065F46; border:1.5px solid #10B981; cursor:pointer; display:inline-flex; align-items:center; gap:6px;" title="Importer un fichier Excel (Enseignant, Jour, Période, Matière)">
+                                      <i class="fas fa-file-excel"></i> Importer Emploi Excel
+                                      <input type="file" id="scheduleExcelFileInput" accept=".xlsx, .xls" style="display:none;" onchange="handleScheduleExcelImport(event)">
+                                  </label>
                                   <button type="button" class="pro-button" onclick="promptDeleteSubjectFromClassScheduleModal()" style="padding:6px 12px; font-size:0.82rem; font-weight:700; background:#FEF2F2; color:#DC2626; border:1.5px solid #FECACA;">
                                       <i class="fas fa-trash-alt"></i> Supprimer une matière
                                   </button>

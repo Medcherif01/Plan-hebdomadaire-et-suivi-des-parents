@@ -3290,10 +3290,24 @@
 
                 if (planData.length > 0) {
                     const sample = planData.find(r => r && typeof r === 'object') || {};
-                    headers = Object.keys(sample).filter(h => 
+                    let rawHeaders = Object.keys(sample).filter(h => 
                         h !== '_id' && h !== 'id' && h !== '_originalCopy' && h !== 'lessonPlanId' && 
-                        h !== '__v' && h !== '_section' && h !== 'isReadOnlyCrossSection' && !h.startsWith('_')
-                    ); 
+                        h !== '__v' && h !== '_section' && h !== 'isReadOnlyCrossSection' && !h.startsWith('_') &&
+                        h.toLowerCase() !== 'objectifs' && h.toLowerCase() !== 'objectif'
+                    );
+                    const canonical = ['Enseignant', 'Jour', 'Période', 'Classe', 'Matière', 'Leçon', 'Travaux de classe', 'Support', 'Devoirs'];
+                    headers = [];
+                    canonical.forEach(cName => {
+                        const found = rawHeaders.find(h => h.trim().toLowerCase() === cName.toLowerCase() || (typeof findHKey === 'function' && findHKey(cName) === h));
+                        if (found && !headers.includes(found)) {
+                            headers.push(found);
+                        }
+                    });
+                    rawHeaders.forEach(h => {
+                        if (!headers.includes(h)) {
+                            headers.push(h);
+                        }
+                    }); 
                     
                     if (loggedInUser === 'Imad') {
                         const enseignantKey = findHKey('Enseignant');
@@ -16424,6 +16438,101 @@ async function applyDuplicateScheduleToClass() {
         renderAdminScheduleGrid();
         await syncCurrentClassScheduleDirectlyToTable(false);
     }
+}
+
+function handleScheduleExcelImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (!/\.(xlsx|xls)$/i.test(file.name)) {
+        alert("Veuillez sélectionner un fichier Excel valide (.xlsx ou .xls).");
+        event.target.value = '';
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = e.target.result;
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const jsonDataRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false });
+            if (!jsonDataRaw || jsonDataRaw.length < 2) {
+                throw new Error("Le fichier Excel est vide ou ne contient pas de données.");
+            }
+            const headersRaw = jsonDataRaw[0];
+            if (!headersRaw || !Array.isArray(headersRaw)) {
+                throw new Error("En-têtes non trouvés dans le fichier Excel.");
+            }
+            const headerIndices = {};
+            headersRaw.forEach((h, idx) => {
+                if (!h) return;
+                const norm = String(h).trim().toLowerCase();
+                if (norm.includes('enseign') || norm.includes('teacher') || norm.includes('معلم')) headerIndices.enseignant = idx;
+                else if (norm.includes('jour') || norm.includes('day') || norm.includes('يوم')) headerIndices.jour = idx;
+                else if (norm.includes('périod') || norm.includes('period') || norm.includes('periode') || norm.includes('حصة')) headerIndices.periode = idx;
+                else if (norm.includes('matièr') || norm.includes('matiere') || norm.includes('subject') || norm.includes('مادة')) headerIndices.matiere = idx;
+            });
+
+            if (headerIndices.jour === undefined || headerIndices.periode === undefined || headerIndices.matiere === undefined) {
+                throw new Error("Colonnes obligatoires manquantes. Veuillez inclure au moins : Jour, Période, Matière (et Enseignant optionnel).");
+            }
+
+            const rows = jsonDataRaw.slice(1);
+            let importedCount = 0;
+            if (!window.currentAdminScheduleSlots) window.currentAdminScheduleSlots = [];
+
+            rows.forEach(row => {
+                if (!Array.isArray(row)) return;
+                const jourVal = row[headerIndices.jour] ? String(row[headerIndices.jour]).trim() : '';
+                const periodeVal = row[headerIndices.periode] !== undefined && row[headerIndices.periode] !== null ? String(row[headerIndices.periode]).replace(/[^0-9]/g, '') : '';
+                const matiereVal = headerIndices.matiere !== undefined && row[headerIndices.matiere] ? String(row[headerIndices.matiere]).trim() : '';
+                const enseignantVal = headerIndices.enseignant !== undefined && row[headerIndices.enseignant] ? String(row[headerIndices.enseignant]).trim() : '';
+
+                if (!jourVal || !periodeVal || !matiereVal) return;
+
+                let existingSlot = window.currentAdminScheduleSlots.find(s => {
+                    const sDay = (s.jour || '').trim().toLowerCase();
+                    const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
+                    return sDay.startsWith(jourVal.toLowerCase()) && sPer === periodeVal;
+                });
+
+                if (existingSlot) {
+                    existingSlot.matiere = matiereVal;
+                    if (enseignantVal) existingSlot.enseignant = enseignantVal;
+                } else {
+                    window.currentAdminScheduleSlots.push({
+                        jour: jourVal,
+                        periode: periodeVal,
+                        matiere: matiereVal,
+                        enseignant: enseignantVal || ''
+                    });
+                }
+                importedCount++;
+            });
+
+            if (importedCount === 0) {
+                throw new Error("Aucun créneau valide n'a pu être extrait du fichier Excel.");
+            }
+
+            renderAdminScheduleGrid();
+            if (typeof showToastNotification === 'function') {
+                showToastNotification(`Emploi du temps importé avec succès (${importedCount} créneaux) ! Cliquez sur 'Enregistrer & Réorganiser' pour appliquer.`, 'success');
+            } else {
+                alert(`Emploi du temps importé avec succès (${importedCount} créneaux) !`);
+            }
+        } catch (err) {
+            console.error("Erreur import Excel emploi du temps:", err);
+            alert("❌ Erreur lors de l'importation Excel : " + err.message);
+        } finally {
+            event.target.value = '';
+        }
+    };
+    reader.onerror = function(e) {
+        console.error("Erreur lecture fichier:", e);
+        alert("❌ Erreur de lecture du fichier.");
+        event.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
 }
 
 async function saveAndReorganizeSchedule() {
