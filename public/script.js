@@ -4034,22 +4034,25 @@ function handleCellTablePaste(e, targetTd) {
         if (!targetCell) return;
 
         const cleanVal = String(val ?? '').trim();
-        targetCell.textContent = cleanVal;
-        applyRTLToElement(targetCell, cleanVal);
+        const existing = (targetCell.textContent || '').trim();
+        const finalVal = (parsedColumns.length === 1 && existing) ? (existing + '\n' + cleanVal) : cleanVal;
+
+        targetCell.textContent = finalVal;
+        applyRTLToElement(targetCell, finalVal);
 
         const colHeader = targetCell.dataset.header;
         if (rowObj && colHeader) {
-            rowObj[colHeader] = cleanVal;
+            rowObj[colHeader] = finalVal;
             if (startTr.dataset.id && planData) {
                 const pdMatch = planData.find(r => String(r._id) === String(startTr.dataset.id));
                 if (pdMatch && pdMatch !== rowObj) {
-                    pdMatch[colHeader] = cleanVal;
+                    pdMatch[colHeader] = finalVal;
                 }
             }
             if (startTr.dataset.id && window.rawPlanData) {
                 const rawMatch = window.rawPlanData.find(r => String(r._id) === String(startTr.dataset.id));
                 if (rawMatch) {
-                    rawMatch[colHeader] = cleanVal;
+                    rawMatch[colHeader] = finalVal;
                 }
             }
             rowChanged = true;
@@ -4266,9 +4269,11 @@ function displayPlanTable(data) {
                             if (!handled) {
                                 e.preventDefault();
                                 const text = (e.clipboardData || window.clipboardData).getData('text') || '';
-                                // Conserver impérativement les sauts de ligne (\n) dans la même case
-                                const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-                                document.execCommand('insertText', false, normalizedText);
+                                const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+                                if (!normalizedText) return;
+                                const existing = (td.textContent || '').trim();
+                                const newText = existing ? (existing + '\n' + normalizedText) : normalizedText;
+                                td.textContent = newText;
                                 if (rowObj) {
                                     rowObj[header] = td.textContent;
                                     applyRTLToElement(td, td.textContent);
@@ -17344,7 +17349,12 @@ function handleAnnualTablePaste(e, targetTd) {
     parsedColumns.forEach((val, cOffset) => {
         const cell = startRowEditables[startColIdx + cOffset];
         if (cell) {
-            cell.textContent = val;
+            const cleanVal = String(val ?? '').trim();
+            const existing = (cell.textContent || '').trim();
+            const finalVal = (parsedColumns.length === 1 && existing) ? (existing + '\n' + cleanVal) : cleanVal;
+
+            cell.textContent = finalVal;
+            applyRTLToElement(cell, finalVal);
             cell.style.whiteSpace = 'pre-wrap';
             cellsFilled++;
         }
