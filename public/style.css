@@ -568,7 +568,19 @@ tr.modified > td.editable {
     }
 }
 
-/* Support RTL pour l'écriture arabe : droite à gauche et centré dans TOUTES les cases */
+/* Alignement et direction : de gauche à droite pour le français et l'anglais */
+td.ltr-content,
+td.editable:not(.arabic-content),
+td[dir="ltr"],
+th.ltr-content,
+th[dir="ltr"],
+.ltr-content,
+[dir="ltr"] {
+    direction: ltr !important;
+    text-align: left !important;
+}
+
+/* Support RTL pour l'écriture arabe : droite à gauche et alignement à droite */
 td.arabic-content,
 td.editable.arabic-content,
 td[dir="rtl"],
@@ -578,7 +590,7 @@ th[dir="rtl"],
 .arabic-content,
 [dir="rtl"] {
     direction: rtl !important;
-    text-align: center !important;
+    text-align: right !important;
     font-family: 'Cairo', 'Amiri', 'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif !important;
 }
 
@@ -589,7 +601,7 @@ textarea[dir="rtl"],
 input.arabic-content,
 input[dir="rtl"] {
     direction: rtl !important;
-    text-align: center !important;
+    text-align: right !important;
     font-family: 'Cairo', 'Amiri', 'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif !important;
 }
 

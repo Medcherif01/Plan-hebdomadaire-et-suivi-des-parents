@@ -64,22 +64,44 @@
         #planTable th:nth-child(5),
         #planTable td:nth-child(5) { width: 58px; max-width: 68px; } /* Jour */
 
-        /* Centrage et direction Droite-à-Gauche (RTL) de l'écriture arabe pour TOUTES les cases */
+        /* Alignement et direction : de gauche à droite (LTR) pour le français et l'anglais */
+        #planTable td.editable:not(.arabic-content),
+        #planTable td.editable[dir="ltr"],
+        #planTable td.ltr-content,
+        td.ltr-content,
+        td[dir="ltr"],
+        #planTable td.col-editable-content:not(.arabic-content) {
+            direction: ltr !important;
+            text-align: left !important;
+        }
+
+        /* Direction Droite-à-Gauche (RTL) et alignement de droite à gauche pour l'écriture arabe */
         #planTable td.arabic-content,
         #planTable td.matiere-arabic,
         #planTable td[dir="rtl"],
         #planTable td.editable.arabic-content,
+        #planTable td.editable[dir="rtl"],
         td.arabic-content,
         td[dir="rtl"],
         .matiere-arabic-cell,
         .arabic-cell,
         .arabic-content {
-            text-align: center !important;
+            text-align: right !important;
             direction: rtl !important;
             font-family: 'Cairo', 'Amiri', 'Traditional Arabic', 'Segoe UI', Tahoma, sans-serif !important;
             white-space: normal !important;
             word-wrap: break-word !important;
             overflow-wrap: break-word !important;
+            word-break: break-word !important;
+        }
+
+        /* Colonnes éditables (Leçon, Travaux de classe, Support, Devoirs) : élargissement automatique fluide */
+        #planTable th.col-editable-header,
+        #planTable td.col-editable-content,
+        #planTable td.editable {
+            width: auto !important;
+            min-width: 220px !important;
+            max-width: none !important;
             word-break: break-word !important;
         }
 

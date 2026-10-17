@@ -1956,12 +1956,14 @@
             const hasAr = containsArabic(content);
             if (hasAr) { 
                 element.classList.add('arabic-content'); 
+                element.classList.remove('ltr-content');
                 element.setAttribute('dir', 'rtl');
                 element.setAttribute('lang', 'ar');
                 element.style.direction = 'rtl';
                 element.style.textAlign = 'right';
             } else { 
                 element.classList.remove('arabic-content'); 
+                element.classList.add('ltr-content');
                 element.setAttribute('dir', 'ltr');
                 const isEnglishText = /\b(the|and|read|write|page|workbook|lesson|homework|chapter|exercise|questions|student|students|complete|worksheet|activity|vocabulary|grammar|science|math)\b/i.test(String(content || ''));
                 element.setAttribute('lang', isEnglishText ? 'en' : 'fr');
@@ -3482,8 +3484,14 @@
                     
                     const isMetaCol = (col) => {
                         const c = String(col).trim().toLowerCase();
+                        // Colonnes éditables de saisie (Travaux de classe, Leçon, Support, Devoirs) : JAMAIS compactes
+                        if (c.includes('trav') || c.includes('work') || c.includes('صفي') || c.includes('أعمال') || c.includes('اعمال')) return false;
+                        if (c.includes('leçon') || c.includes('lecon') || c.includes('درس') || c.includes('lesson')) return false;
+                        if (c.includes('support') || c.includes('سند') || c.includes('وسائل')) return false;
+                        if (c.includes('devoir') || c.includes('واجب') || c.includes('homework')) return false;
+
                         return c.includes('enseign') || c.includes('teacher') || c.includes('معلم') ||
-                               c.includes('class') || c.includes('صف') || c.includes('فصل') ||
+                               c === 'classe' || c === 'class' || c === 'classes' || c === 'صف' || c === 'فصل' || c === 'الفصل' || c === 'الصف' ||
                                c.includes('mati') || c.includes('subject') || c.includes('مادة') ||
                                c.includes('périod') || c.includes('period') || c.includes('حصة') ||
                                c.includes('jour') || c.includes('day') || c.includes('يوم');
@@ -4009,6 +4017,11 @@ function handleCellTablePaste(e, targetTd) {
         }
     }
 
+    // Nettoyer les colonnes vides en fin de tableau pour ne pas écraser les cases suivantes
+    while (parsedColumns.length > 1 && !parsedColumns[parsedColumns.length - 1].trim()) {
+        parsedColumns.pop();
+    }
+
     if (!parsedColumns || parsedColumns.length === 0) {
         return false;
     }
@@ -4027,38 +4040,102 @@ function handleCellTablePaste(e, targetTd) {
     let cellsFilledCount = 0;
     let rowChanged = false;
 
-    // Remplir UNIQUEMENT sur la ligne courante (horizontalement pour chaque colonne)
-    // Ne JAMAIS toucher ni déborder sur la ligne ou case du dessous !
-    parsedColumns.forEach((val, cOffset) => {
-        const targetCell = startRowEditables[startColIdx + cOffset];
-        if (!targetCell) return;
+    // Déterminer s'il s'agit d'un collage dans une SEULE case ou dans PLUSIEURS cases
+    const populatedCols = parsedColumns.filter(c => c && c.trim().length > 0);
+    const isSingleCellPaste = (populatedCols.length <= 1);
 
-        const cleanVal = String(val ?? '').trim();
-        const existing = (targetCell.textContent || '').trim();
-        const finalVal = (parsedColumns.length === 1 && existing) ? (existing + '\n' + cleanVal) : cleanVal;
+    if (isSingleCellPaste) {
+        // =========================================================================
+        // COLLAGE DANS UNE CASE SEULE :
+        // NE JAMAIS EFFACER CE QUI EXISTE DÉJÀ OU EST DÉJÀ SAISI DANS LA CASE !
+        // =========================================================================
+        const cleanVal = String((populatedCols.length === 1 ? populatedCols[0] : parsedColumns[0]) ?? '').trim();
+        if (!cleanVal) return false;
 
-        targetCell.textContent = finalVal;
-        applyRTLToElement(targetCell, finalVal);
+        const existing = (targetTd.textContent || '').trim();
+        let finalVal = cleanVal;
 
-        const colHeader = targetCell.dataset.header;
+        if (existing) {
+            // Si la case contient déjà du texte saisi : insérer à la position du curseur ou ajouter à la fin
+            const sel = window.getSelection();
+            let insertedAtCaret = false;
+            if (sel && sel.rangeCount > 0 && targetTd.contains(sel.anchorNode)) {
+                try {
+                    const range = sel.getRangeAt(0);
+                    range.deleteContents();
+                    const textNode = document.createTextNode(cleanVal);
+                    range.insertNode(textNode);
+                    range.setStartAfter(textNode);
+                    range.setEndAfter(textNode);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    finalVal = targetTd.textContent;
+                    insertedAtCaret = true;
+                } catch (err) {
+                    insertedAtCaret = false;
+                }
+            }
+
+            if (!insertedAtCaret) {
+                // Si pas de curseur actif précis dans le texte, concaténer sans effacer l'existant
+                const sep = (existing.endsWith('\n') || existing.endsWith(' ')) ? '' : '\n';
+                finalVal = existing + sep + cleanVal;
+                targetTd.textContent = finalVal;
+            }
+        } else {
+            // Case vide : insérer le texte collé
+            targetTd.textContent = finalVal;
+        }
+
+        applyRTLToElement(targetTd, finalVal);
+
+        const colHeader = targetTd.dataset.header;
         if (rowObj && colHeader) {
             rowObj[colHeader] = finalVal;
             if (startTr.dataset.id && planData) {
                 const pdMatch = planData.find(r => String(r._id) === String(startTr.dataset.id));
-                if (pdMatch && pdMatch !== rowObj) {
-                    pdMatch[colHeader] = finalVal;
-                }
+                if (pdMatch && pdMatch !== rowObj) pdMatch[colHeader] = finalVal;
             }
             if (startTr.dataset.id && window.rawPlanData) {
                 const rawMatch = window.rawPlanData.find(r => String(r._id) === String(startTr.dataset.id));
-                if (rawMatch) {
-                    rawMatch[colHeader] = finalVal;
-                }
+                if (rawMatch) rawMatch[colHeader] = finalVal;
             }
             rowChanged = true;
-            cellsFilledCount++;
+            cellsFilledCount = 1;
         }
-    });
+    } else {
+        // =========================================================================
+        // COLLAGE DANS PLUSIEURS CASES ENSEMBLE :
+        // On remplace le contenu des cases de destination correspondantes (écrasement autorisé)
+        // =========================================================================
+        parsedColumns.forEach((val, cOffset) => {
+            const targetCell = startRowEditables[startColIdx + cOffset];
+            if (!targetCell) return;
+
+            const cleanVal = String(val ?? '').trim();
+            targetCell.textContent = cleanVal;
+            applyRTLToElement(targetCell, cleanVal);
+
+            const colHeader = targetCell.dataset.header;
+            if (rowObj && colHeader) {
+                rowObj[colHeader] = cleanVal;
+                if (startTr.dataset.id && planData) {
+                    const pdMatch = planData.find(r => String(r._id) === String(startTr.dataset.id));
+                    if (pdMatch && pdMatch !== rowObj) {
+                        pdMatch[colHeader] = cleanVal;
+                    }
+                }
+                if (startTr.dataset.id && window.rawPlanData) {
+                    const rawMatch = window.rawPlanData.find(r => String(r._id) === String(startTr.dataset.id));
+                    if (rawMatch) {
+                        rawMatch[colHeader] = cleanVal;
+                    }
+                }
+                rowChanged = true;
+                cellsFilledCount++;
+            }
+        });
+    }
 
     if (rowChanged) {
         startTr.classList.add('modified');
@@ -4072,8 +4149,8 @@ function handleCellTablePaste(e, targetTd) {
         if (saveAllBtn) saveAllBtn.disabled = false;
 
         const msg = (cellsFilledCount > 1)
-            ? `Collage réussi sur la ligne (${cellsFilledCount} colonnes). Saut(s) de ligne conservé(s) dans la même case.`
-            : `Collage réussi. Saut(s) de ligne conservé(s) dans la même case.`;
+            ? `Collage réussi sur la ligne (${cellsFilledCount} colonnes).`
+            : `Collage réussi sans écraser le contenu existant de la case.`;
         showToastNotification(msg, 'success');
     }
 
@@ -4168,8 +4245,14 @@ function displayPlanTable(data) {
                     
                     const isMetaColHeader = (col) => {
                         const c = String(col).trim().toLowerCase();
+                        // Colonnes éditables de saisie (Travaux de classe, Leçon, Support, Devoirs) : JAMAIS compactes
+                        if (c.includes('trav') || c.includes('work') || c.includes('صفي') || c.includes('أعمال') || c.includes('اعمال')) return false;
+                        if (c.includes('leçon') || c.includes('lecon') || c.includes('درس') || c.includes('lesson')) return false;
+                        if (c.includes('support') || c.includes('سند') || c.includes('وسائل')) return false;
+                        if (c.includes('devoir') || c.includes('واجب') || c.includes('homework')) return false;
+
                         return c.includes('enseign') || c.includes('teacher') || c.includes('معلم') ||
-                               c.includes('class') || c.includes('صف') || c.includes('فصل') ||
+                               c === 'classe' || c === 'class' || c === 'classes' || c === 'صف' || c === 'فصل' || c === 'الفصل' || c === 'الصف' ||
                                c.includes('mati') || c.includes('subject') || c.includes('مادة') ||
                                c.includes('périod') || c.includes('period') || c.includes('حصة') ||
                                c.includes('jour') || c.includes('day') || c.includes('يوم');
@@ -4272,8 +4355,34 @@ function displayPlanTable(data) {
                                 const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
                                 if (!normalizedText) return;
                                 const existing = (td.textContent || '').trim();
-                                const newText = existing ? (existing + '\n' + normalizedText) : normalizedText;
-                                td.textContent = newText;
+                                let newText = normalizedText;
+                                if (existing) {
+                                    const sel = window.getSelection();
+                                    let insertedCaret = false;
+                                    if (sel && sel.rangeCount > 0 && td.contains(sel.anchorNode)) {
+                                        try {
+                                            const range = sel.getRangeAt(0);
+                                            range.deleteContents();
+                                            const textNode = document.createTextNode(normalizedText);
+                                            range.insertNode(textNode);
+                                            range.setStartAfter(textNode);
+                                            range.setEndAfter(textNode);
+                                            sel.removeAllRanges();
+                                            sel.addRange(range);
+                                            newText = td.textContent;
+                                            insertedCaret = true;
+                                        } catch (err) {
+                                            insertedCaret = false;
+                                        }
+                                    }
+                                    if (!insertedCaret) {
+                                        const sep = (existing.endsWith('\n') || existing.endsWith(' ')) ? '' : '\n';
+                                        newText = existing + sep + normalizedText;
+                                        td.textContent = newText;
+                                    }
+                                } else {
+                                    td.textContent = newText;
+                                }
                                 if (rowObj) {
                                     rowObj[header] = td.textContent;
                                     applyRTLToElement(td, td.textContent);
@@ -17342,27 +17451,69 @@ function handleAnnualTablePaste(e, targetTd) {
         }
     }
 
+    // Nettoyer les colonnes vides en fin de tableau
+    while (parsedColumns.length > 1 && !parsedColumns[parsedColumns.length - 1].trim()) {
+        parsedColumns.pop();
+    }
+
     if (parsedColumns.length === 0) return;
 
     let cellsFilled = 0;
-    // Remplir UNIQUEMENT sur la ligne courante, case par case horizontalement, sans déborder dessous
-    parsedColumns.forEach((val, cOffset) => {
-        const cell = startRowEditables[startColIdx + cOffset];
-        if (cell) {
-            const cleanVal = String(val ?? '').trim();
-            const existing = (cell.textContent || '').trim();
-            const finalVal = (parsedColumns.length === 1 && existing) ? (existing + '\n' + cleanVal) : cleanVal;
+    const populatedCols = parsedColumns.filter(c => c && c.trim().length > 0);
+    const isSingleCell = (populatedCols.length <= 1);
 
+    if (isSingleCell) {
+        const cleanVal = String((populatedCols.length === 1 ? populatedCols[0] : parsedColumns[0]) ?? '').trim();
+        if (!cleanVal) return;
+        const cell = targetTd;
+        const existing = (cell.textContent || '').trim();
+        let finalVal = cleanVal;
+        if (existing) {
+            const sel = window.getSelection();
+            let insertedAtCaret = false;
+            if (sel && sel.rangeCount > 0 && cell.contains(sel.anchorNode)) {
+                try {
+                    const range = sel.getRangeAt(0);
+                    range.deleteContents();
+                    const textNode = document.createTextNode(cleanVal);
+                    range.insertNode(textNode);
+                    range.setStartAfter(textNode);
+                    range.setEndAfter(textNode);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    finalVal = cell.textContent;
+                    insertedAtCaret = true;
+                } catch (e) {
+                    insertedAtCaret = false;
+                }
+            }
+            if (!insertedAtCaret) {
+                const sep = (existing.endsWith('\n') || existing.endsWith(' ')) ? '' : '\n';
+                finalVal = existing + sep + cleanVal;
+                cell.textContent = finalVal;
+            }
+        } else {
             cell.textContent = finalVal;
-            applyRTLToElement(cell, finalVal);
-            cell.style.whiteSpace = 'pre-wrap';
-            cellsFilled++;
         }
-    });
+        applyRTLToElement(cell, finalVal);
+        cell.style.whiteSpace = 'pre-wrap';
+        cellsFilled = 1;
+    } else {
+        parsedColumns.forEach((val, cOffset) => {
+            const cell = startRowEditables[startColIdx + cOffset];
+            if (cell) {
+                const cleanVal = String(val ?? '').trim();
+                cell.textContent = cleanVal;
+                applyRTLToElement(cell, cleanVal);
+                cell.style.whiteSpace = 'pre-wrap';
+                cellsFilled++;
+            }
+        });
+    }
 
     collectAnnualDistributionFromDOM();
     recalculateAnnualStats();
-    showToastNotification(`Collage réussi : ${cellsFilled} case(s) renseignée(s). Saut(s) de ligne conservé(s) dans la même case.`, 'success');
+    showToastNotification(`Collage réussi : ${cellsFilled} case(s) renseignée(s).`, 'success');
 }
 
 function collectAnnualDistributionFromDOM() {
