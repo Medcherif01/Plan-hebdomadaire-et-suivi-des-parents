@@ -7476,8 +7476,44 @@ function renderParentPlanCards(rows) {
         </div>
     `;
     
-    // Récupérer et trier les cours du jour sélectionné
-    const currentDayRows = grouped[parentActiveDay] || [];
+    // Récupérer et filtrer les cours du jour sélectionné pour éliminer les lignes entièrement vides
+    const rawDayRows = grouped[parentActiveDay] || [];
+    const filteredRowsMap = new Map();
+    rawDayRows.forEach(row => {
+        const period = String(getRowField(row, 'Période') || '1').trim();
+        const matiere = String(getRowField(row, 'Matière') || '').trim();
+        const enseignant = String(getRowField(row, 'Enseignant') || '').trim();
+        const lecon = String(getRowField(row, 'Leçon') || '').trim();
+        const travaux = String(getRowField(row, 'Travaux de classe') || '').trim();
+        const devoirs = String(getRowField(row, 'Devoirs') || '').trim();
+
+        const isEmpty = !matiere && !enseignant && (!lecon || lecon === 'غير مسجل' || lecon === 'non renseigné') && !travaux && !devoirs;
+        
+        if (!filteredRowsMap.has(period)) {
+            filteredRowsMap.set(period, row);
+        } else {
+            const existing = filteredRowsMap.get(period);
+            const exMat = String(getRowField(existing, 'Matière') || '').trim();
+            const exEns = String(getRowField(existing, 'Enseignant') || '').trim();
+            const exLec = String(getRowField(existing, 'Leçon') || '').trim();
+            const exIsolEmpty = !exMat && !exEns && (!exLec || exLec === 'غير مسجل' || exLec === 'non renseigné');
+            
+            if (exIsolEmpty && !isEmpty) {
+                filteredRowsMap.set(period, row);
+            }
+        }
+    });
+
+    let currentDayRows = Array.from(filteredRowsMap.values()).filter(row => {
+        const matiere = String(getRowField(row, 'Matière') || '').trim();
+        const enseignant = String(getRowField(row, 'Enseignant') || '').trim();
+        const lecon = String(getRowField(row, 'Leçon') || '').trim();
+        const travaux = String(getRowField(row, 'Travaux de classe') || '').trim();
+        const devoirs = String(getRowField(row, 'Devoirs') || '').trim();
+        const isEmpty = !matiere && !enseignant && (!lecon || lecon === 'غير مسجل' || lecon === 'non renseigné') && !travaux && !devoirs;
+        return !isEmpty;
+    });
+
     currentDayRows.sort((a, b) => {
         const pA = parseInt(getRowField(a, 'Période'), 10) || 0;
         const pB = parseInt(getRowField(b, 'Période'), 10) || 0;
