@@ -6033,7 +6033,6 @@ function withPlanLock(docId, asyncFn) {
   return currentPromise;
 }
 
-// Fonction de correspondance tolérante et sécurisée pour les lignes d'un plan
 function matchPlanRow(elem, criteria) {
   if (!elem || !criteria) return false;
   
@@ -6044,42 +6043,47 @@ function matchPlanRow(elem, criteria) {
 
   const getF = (obj, field) => {
     const k = findKey(obj, field);
-    return k ? String(obj[k] || '').trim().toLowerCase() : '';
+    return k ? String(obj[k] || '').trim() : '';
   };
 
-  const ensE = getF(elem, 'Enseignant');
-  const ensC = getF(criteria, 'Enseignant');
-  const clsE = getF(elem, 'Classe');
-  const clsC = getF(criteria, 'Classe');
-  const jourE = getF(elem, 'Jour');
-  const jourC = getF(criteria, 'Jour');
-  const perE = getF(elem, 'Période');
-  const perC = getF(criteria, 'Période');
+  const ensE = getF(elem, 'Enseignant').toLowerCase();
+  const ensC = getF(criteria, 'Enseignant').toLowerCase();
+  const clsE_raw = getF(elem, 'Classe');
+  const clsC_raw = getF(criteria, 'Classe');
+  const jourE_raw = getF(elem, 'Jour');
+  const jourC_raw = getF(criteria, 'Jour');
+  const perE = String(getF(elem, 'Période')).replace(/[^0-9]/g, '');
+  const perC = String(getF(criteria, 'Période')).replace(/[^0-9]/g, '');
   const matE = getF(elem, 'Matière');
   const matC = getF(criteria, 'Matière');
 
-  // Correspondance par slot unique (Classe, Jour, Période) - extrêmement robuste pour les modifications en cours de saisie
+  const normCls = (c) => {
+    if (!c) return '';
+    const upper = String(c).trim().toUpperCase();
+    const match = upper.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/);
+    return match ? match[1] : upper.replace(/\b(GARÇONS|GARCONS|FILLES|PRIMAIRE|MATERNELLE)\b/g, '').trim();
+  };
+
+  const clsE = normCls(clsE_raw);
+  const clsC = normCls(clsC_raw);
+
+  const normDay = (d) => {
+    if (!d) return '';
+    const dayName = extractDayNameFromString(d);
+    return dayName ? dayName.toLowerCase() : String(d).trim().toLowerCase();
+  };
+
+  const jourE = normDay(jourE_raw);
+  const jourC = normDay(jourC_raw);
+
+  // Correspondance par slot unique normalisé (Classe, Jour, Période)
   if (clsE && jourE && perE && clsE === clsC && jourE === jourC && perE === perC) {
     return true;
   }
 
-  // Correspondance exacte des 5 critères principaux
-  if (ensE && clsE && jourE && perE && matE) {
-    if (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC && matE === matC) {
-      return true;
-    }
-  }
-
-  // Correspondance 4 critères (Enseignant, Classe, Jour, Période) - protège contre les modifications d'intitulé de matière
-  if (ensE && clsE && jourE && perE) {
-    if (ensE === ensC && clsE === clsC && jourE === jourC && perE === perC) {
-      return true;
-    }
-  }
-
-  // Correspondance alternative (Classe, Jour, Période, Matière)
-  if (clsE && jourE && perE && matE) {
-    if (clsE === clsC && jourE === jourC && perE === perC && matE === matC) {
+  // Correspondance élargie incluant l'enseignant ou la matière
+  if (clsE && jourE && perE && clsE === clsC && jourE === jourC && perE === perC) {
+    if (!matE || !matC || matE === '—' || matC === '—' || isEquivalentSubjectServer(matE, matC)) {
       return true;
     }
   }
