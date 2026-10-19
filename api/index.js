@@ -5518,14 +5518,26 @@ app.get('/api/plans/:week', async (req, res) => {
   try {
     const db = await connectToDatabase();
     
-    let planDocument = await db.collection('plans').findOne({
-      $or: [
-        { _id: `${section}_${weekNumber}` },
-        { _id: `${section}_${String(weekNumber)}` },
-        { week: weekNumber, section: section },
-        { week: String(weekNumber), section: section }
-      ]
-    });
+    const docId = `${section}_${weekNumber}`;
+    let planDocument = await db.collection('plans').findOne({ _id: docId });
+    if (!planDocument) {
+      planDocument = await db.collection('plans').findOne({
+        $or: [
+          { week: weekNumber, section: section },
+          { week: String(weekNumber), section: section }
+        ]
+      });
+      if (planDocument) {
+        planDocument._id = docId;
+        planDocument.section = section;
+        planDocument.week = weekNumber;
+        await db.collection('plans').updateOne(
+          { _id: docId },
+          { $set: planDocument },
+          { upsert: true }
+        );
+      }
+    }
     
     if (planDocument) {
       const lessonPlans = await db.collection('lessonPlans')
@@ -6029,6 +6041,11 @@ function matchPlanRow(elem, criteria) {
   const perC = getF(criteria, 'Période');
   const matE = getF(elem, 'Matière');
   const matC = getF(criteria, 'Matière');
+
+  // Correspondance par slot unique (Classe, Jour, Période) - extrêmement robuste pour les modifications en cours de saisie
+  if (clsE && jourE && perE && clsE === clsC && jourE === jourC && perE === perC) {
+    return true;
+  }
 
   // Correspondance exacte des 5 critères principaux
   if (ensE && clsE && jourE && perE && matE) {
