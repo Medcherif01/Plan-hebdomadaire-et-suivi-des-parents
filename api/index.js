@@ -444,6 +444,22 @@ function isRowAllowedForSection(row, targetSection) {
   if (!row || typeof row !== 'object') return false;
   const sec = String(targetSection || 'garcons').toLowerCase().trim();
 
+  // Si la ligne porte une section explicite correspondante, l'autoriser immédiatement
+  if (row._section && String(row._section).toLowerCase().trim() === sec) {
+    return true;
+  }
+
+  // Si la ligne contient du contenu pédagogique saisi par un enseignant, la préserver et l'associer à la section
+  const lecon = String(row['Leçon'] || row.lecon || '').trim();
+  const devoirs = String(row['Devoirs'] || row.devoirs || '').trim();
+  const travaux = String(row['Travaux de classe'] || row.travaux || '').trim();
+  if ((lecon && lecon !== '—' && lecon !== '-') || (devoirs && devoirs !== '—' && devoirs !== '-') || (travaux && travaux !== '—' && travaux !== '-')) {
+    if (!row._section) {
+      row._section = sec;
+    }
+    return true;
+  }
+
   // Si la ligne porte une section explicite différente
   if (row._section && String(row._section).toLowerCase().trim() !== sec) {
     return false;
@@ -6073,9 +6089,11 @@ function matchPlanRow(elem, criteria) {
 
 app.post('/api/save-row', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
-  const rowData = req.body.data;
+  const rowData = req.body.data || {};
   const originalData = req.body.originalData;
-  const section = req.body.section || 'garcons';
+  const rawSec = String(req.body.section || rowData._section || 'garcons').toLowerCase().trim();
+  const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSec) ? rawSec : 'garcons';
+  rowData._section = section;
   if (isNaN(weekNumber) || typeof rowData !== 'object') {
     return res.status(400).json({ message: 'Données invalides.' });
   }
@@ -6108,12 +6126,14 @@ app.post('/api/save-row', async (req, res) => {
         planDoc.data[targetIdx] = {
           ...planDoc.data[targetIdx],
           ...rowData,
+          _section: section,
           updatedAt: now
         };
       } else {
         // Si la ligne n'existait pas encore, l'ajouter directement pour ne jamais perdre de saisie
         planDoc.data.push({
           ...rowData,
+          _section: section,
           updatedAt: now
         });
       }
@@ -6141,7 +6161,8 @@ app.post('/api/save-row', async (req, res) => {
 app.post('/api/save-rows-batch', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const rows = req.body.rows;
-  const section = req.body.section || 'garcons';
+  const rawSec = String(req.body.section || 'garcons').toLowerCase().trim();
+  const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSec) ? rawSec : 'garcons';
 
   if (isNaN(weekNumber) || !Array.isArray(rows)) {
     return res.status(400).json({ message: 'Données ou liste de lignes invalides.' });
@@ -6167,6 +6188,7 @@ app.post('/api/save-rows-batch', async (req, res) => {
       rows.forEach(item => {
         const rowData = item.data || item;
         const originalData = item.originalData || null;
+        rowData._section = section;
 
         let targetIdx = -1;
         if (originalData) {
@@ -6180,12 +6202,14 @@ app.post('/api/save-rows-batch', async (req, res) => {
           planDoc.data[targetIdx] = {
             ...planDoc.data[targetIdx],
             ...rowData,
+            _section: section,
             updatedAt: now
           };
           updatedCount++;
         } else {
           planDoc.data.push({
             ...rowData,
+            _section: section,
             updatedAt: now
           });
           insertedCount++;
