@@ -183,24 +183,25 @@
             const u = String(user).trim().toLowerCase();
             const tT = tableTeacher ? String(tableTeacher).trim().toLowerCase() : '';
             
-            // 1. Enseignante Musique (Farah)
+            // 1. Enseignante Musique (Farah / Musique / Music)
             if (isMusicTeacher(u) || (tT && isMusicTeacher(tT))) {
                 return isMusicTeacher(rT) || rT === u || (tT && rT === tT);
             }
 
-            // 2. Amal (Seule / non arabe)
-            if (isAmalSoleTeacher(u) || (tT && isAmalSoleTeacher(tT))) {
-                return isAmalSoleTeacher(rT);
-            }
+            // 2. Égalité stricte sur le nom d'enseignant
+            if (rT === u || (tT && rT === tT)) return true;
 
-            // 3. Amal Arabe
-            if (isAmalArabeTeacher(u) || (tT && isAmalArabeTeacher(tT))) {
+            // 3. Cas spécifiques Amal Arabe / Amal Soltani / Amal
+            if (u === 'amal arabe' || tT === 'amal arabe') {
                 return isAmalArabeTeacher(rT);
             }
-            
-            if (rT === u || (tT && rT === tT)) return true;
-            if (u && (rT.includes(u) || u.includes(rT))) return true;
-            if (tT && (rT.includes(tT) || tT.includes(rT))) return true;
+            if (u.includes('soltani') || tT.includes('soltani')) {
+                return rT.includes('soltani');
+            }
+            if (u === 'amal' || tT === 'amal') {
+                return rT === 'amal';
+            }
+
             return false;
         }
 
@@ -211,9 +212,10 @@
             const f = String(filterTeacher).trim().toLowerCase();
             if (r === f) return true;
             if (isMusicTeacher(f)) return isMusicTeacher(r);
-            if (isAmalArabeTeacher(f)) return isAmalArabeTeacher(r);
-            if (isAmalSoleTeacher(f)) return isAmalSoleTeacher(r);
-            return r.includes(f) || f.includes(r);
+            if (f === 'amal arabe') return isAmalArabeTeacher(r);
+            if (f.includes('soltani')) return r.includes('soltani');
+            if (f === 'amal') return r === 'amal';
+            return r === f;
         }
 
         function setSortColumn(colName) {
@@ -3286,8 +3288,30 @@
                     }
                 });
 
-                // Séparation stricte et définitive des sections : aucune donnée d'une autre section n'est fusionnée
-                planData = primaryRows;
+                // Charger les données de la section opposée si la consultation inter-section est activée
+                let crossSectionRows = [];
+                if (showCrossSectionView) {
+                    let oppSection = (currentSection === 'garcons') ? 'filles' : (currentSection === 'filles' ? 'garcons' : (currentSection === 'primaire' ? 'maternelle' : 'primaire'));
+                    if (oppSection) {
+                        try {
+                            const rOpp = await fetch(`/api/plans/${week}?section=${oppSection}`);
+                            if (rOpp.ok) {
+                                const fetchedOpp = await rOpp.json();
+                                crossSectionRows = (fetchedOpp && fetchedOpp.planData) || [];
+                                crossSectionRows.forEach(row => {
+                                    if (row) {
+                                        row._section = oppSection;
+                                        row.isReadOnlyCrossSection = true;
+                                    }
+                                });
+                            }
+                        } catch (eOpp) {
+                            console.warn('Erreur chargement cross section:', eOpp);
+                        }
+                    }
+                }
+
+                planData = [...primaryRows, ...crossSectionRows];
                 updateProgressBar(90); 
 
                 if (planData.length > 0) {
@@ -3760,28 +3784,37 @@
                 const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]).trim() : ''; 
                 
                 // Filtre de visibilité des classes (masquer les doublons ou classes non souhaitées)
-                if (iC && typeof isClassVisibleOnTable === 'function' && !isClassVisibleOnTable(iC, currentSection)) {
+                if (iC && typeof isClassVisibleOnTable === 'function' && !isClassVisibleOnTable(iC, i._section || currentSection)) {
                     return false;
                 } 
                 
-                // Séparation stricte et définitive des sections
-                if (i.isReadOnlyCrossSection || (i._section && i._section !== currentSection)) {
-                    return false;
-                }
-                if (currentSection === 'garcons') {
-                    if (/fille|filles|banat|بنات/i.test(iC) || /\bf\b/i.test(iC)) return false;
-                    const fLow = ['amina', 'fatima', 'khadija', 'mariam', 'salma', 'zainab', 'nour', 'houda', 'leila', 'sarah', 'zohra', 'nadia', 'samira', 'imane', 'mouna', 'siham', 'hajar', 'meriem', 'aicha', 'hanane', 'أمينة', 'فاطمة', 'خديجة', 'مريم', 'سلمى', 'زينب', 'نور', 'هدى', 'ليلى', 'سارة', 'زهرة'];
-                    if (fLow.some(f => iE.toLowerCase().includes(f)) && !iE.toLowerCase().includes('farah') && !iE.toLowerCase().includes('musique') && !iE.toLowerCase().includes('music')) return false;
-                } else if (currentSection === 'filles') {
-                    if (/garcon|garçons|garcons|banin|بنين|اولاد/i.test(iC) || /\bg\b|\bb\b/i.test(iC)) return false;
-                    const mLow = ['mohamed', 'abas', 'jaber', 'imad', 'kamel', 'majed', 'mohamed ali', 'morched', 'saeed', 'sami', 'sylvano', 'tonga', 'oumarou', 'zine', 'youssouf', 'محمد', 'عباس', 'جابر', 'عماد', 'كامل', 'ماجد', 'مرشد', 'سعيد', 'سامي', 'زين', 'يوسف'];
-                    if (mLow.some(m => iE.toLowerCase().includes(m))) return false;
-                }
-                
-                // Si enseignant connecté (non admin)
-                if (isTeacherOnly) {
-                    if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
-                        return false;
+                const isCrossSectionRow = !!(i.isReadOnlyCrossSection || (i._section && i._section !== currentSection));
+
+                if (isCrossSectionRow) {
+                    if (!showCrossSectionView) return false;
+
+                    // Si enseignant connecté (non admin) : n'afficher QUE les lignes de l'autre section pour les matières qu'il enseigne
+                    if (isTeacherOnly) {
+                        if (!myAssignments || myAssignments.length === 0) return false;
+                        const matchesMyMatiere = myAssignments.some(assign => isEquivalentSubject(iM, assign.matiere) || isEquivalentSubject(iM, assign.subject));
+                        if (!matchesMyMatiere) return false;
+                    }
+                } else {
+                    if (currentSection === 'garcons') {
+                        if (/fille|filles|banat|بنات/i.test(iC) || /\bf\b/i.test(iC)) return false;
+                        const fLow = ['amina', 'fatima', 'khadija', 'mariam', 'salma', 'zainab', 'nour', 'houda', 'leila', 'sarah', 'zohra', 'nadia', 'samira', 'imane', 'mouna', 'siham', 'hajar', 'meriem', 'aicha', 'hanane', 'أمينة', 'فاطمة', 'خديجة', 'مريم', 'سلمى', 'زينب', 'نور', 'هدى', 'ليلى', 'سارة', 'زهرة'];
+                        if (fLow.some(f => iE.toLowerCase().includes(f)) && !iE.toLowerCase().includes('farah') && !iE.toLowerCase().includes('musique') && !iE.toLowerCase().includes('music')) return false;
+                    } else if (currentSection === 'filles') {
+                        if (/garcon|garçons|garcons|banin|بنين|اولاد/i.test(iC) || /\bg\b|\bb\b/i.test(iC)) return false;
+                        const mLow = ['mohamed', 'abas', 'jaber', 'imad', 'kamel', 'majed', 'mohamed ali', 'morched', 'saeed', 'sami', 'sylvano', 'tonga', 'oumarou', 'zine', 'youssouf', 'محمد', 'عباس', 'جابر', 'عماد', 'كامل', 'ماجد', 'مرشد', 'سعيد', 'سامي', 'زين', 'يوسف'];
+                        if (mLow.some(m => iE.toLowerCase().includes(m))) return false;
+                    }
+                    
+                    // Si enseignant connecté (non admin)
+                    if (isTeacherOnly) {
+                        if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
+                            return false;
+                        }
                     }
                 }
                 
@@ -19107,6 +19140,40 @@ function quickDeleteSelectedScheduleClass() {
     deleteClassFromDb(selectedClass);
 }
 
+function toggleCrossSectionViewMode() {
+    showCrossSectionView = !showCrossSectionView;
+    const checkbox = document.getElementById('toggleCrossSectionView');
+    if (checkbox) checkbox.checked = showCrossSectionView;
+    updateCrossSectionToggleUI();
+    if (currentWeek) {
+        fetchPlanData(currentWeek);
+    }
+}
+
+function handleCrossSectionToggle(checked) {
+    showCrossSectionView = !!checked;
+    updateCrossSectionToggleUI();
+    if (currentWeek) {
+        fetchPlanData(currentWeek);
+    }
+}
+
+function updateCrossSectionToggleUI() {
+    const btn = document.getElementById('btnCrossSectionToggle');
+    const txt = document.getElementById('btnCrossSectionToggleTxt');
+    const oppSecLabel = (currentSection === 'garcons') ? 'Filles 👧' : (currentSection === 'filles' ? 'Garçons 👦' : (currentSection === 'primaire' ? 'Maternelle 🧸' : 'Primaire 🎒'));
+    
+    if (btn) {
+        if (showCrossSectionView) {
+            btn.style.background = 'linear-gradient(135deg, #059669, #10B981)';
+            if (txt) txt.textContent = `👁️ Masquer saisie ${oppSecLabel}`;
+        } else {
+            btn.style.background = 'linear-gradient(135deg, #EC4899, #8B5CF6)';
+            if (txt) txt.textContent = `👁️ Voir saisie ${oppSecLabel}`;
+        }
+    }
+}
+
 // Exposer globalement
 window.isClassVisibleOnTable = isClassVisibleOnTable;
 window.openClassManagementModal = openClassManagementModal;
@@ -19121,4 +19188,8 @@ window.executeAutoCleanDuplicates = executeAutoCleanDuplicates;
 window.addNewClassToSection = addNewClassToSection;
 window.quickDeleteSelectedScheduleClass = quickDeleteSelectedScheduleClass;
 window.syncClassVisibilityFromServer = syncClassVisibilityFromServer;
+window.toggleCrossSectionViewMode = toggleCrossSectionViewMode;
+window.handleCrossSectionToggle = handleCrossSectionToggle;
+window.updateCrossSectionToggleUI = updateCrossSectionToggleUI;
+
 

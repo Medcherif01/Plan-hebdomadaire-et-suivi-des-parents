@@ -1688,44 +1688,6 @@
             </div>
             <a id="downloadLink" style="display:none;"></a>
         </div>
-        <div class="filter-container data-filters-container">
-             <label for="filterEnseignant" id="filter-enseignant-label"><i class="fas fa-user-tie"></i> Enseignant:</label>
-             <select id="filterEnseignant" onchange="sortAndDisplay()"> <option value="">Tous</option> </select>
-             
-             <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
-             <div style="display:inline-flex; align-items:center; gap:4px;">
-                 <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
-                 <button type="button" onclick="openClassManagementModal()" class="pro-button" style="background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; padding:5px 9px; font-size:0.78rem; font-weight:700; border-radius:8px; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:5px;" title="Choisir les classes à afficher sur le tableau ou supprimer des classes">
-                     <i class="fas fa-sliders-h"></i> <span>Gérer Classes</span>
-                 </button>
-             </div>
-
-             <label for="filterMatiere" id="filter-matiere-label"><i class="fas fa-book"></i> Matière:</label>
-             <select id="filterMatiere" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
-             <label for="filterPeriode" id="filter-periode-label"><i class="fas fa-clock"></i> Période:</label>
-             <select id="filterPeriode" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
-             <label for="filterJour" id="filter-jour-label"><i class="fas fa-calendar-day"></i> Jour:</label>
-             <select id="filterJour" onchange="sortAndDisplay()">
-                 <option value="">Tous</option>
-                 <option value="Dimanche">Dimanche</option>
-                 <option value="Lundi">Lundi</option>
-                 <option value="Mardi">Mardi</option>
-                 <option value="Mercredi">Mercredi</option>
-                 <option value="Jeudi">Jeudi</option>
-            </select>
-
-            <button type="button" id="btnResetFilters" onclick="resetTeacherFilters()" class="pro-button secondary-button" style="padding: 7px 12px; font-size: 0.84rem; font-weight: 700; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;" title="Réinitialiser tous les filtres pour afficher l'ensemble des cours">
-                <i class="fas fa-undo"></i> <span id="btnResetFiltersTxt">Effacer filtres</span>
-            </button>
-
-            <!-- OPTION DE CONSULTATION INTER-SECTIONS (DÉSACTIVÉE POUR SÉPARATION STRICTE DES SECTIONS) -->
-            <div id="crossSectionToggleWrapper" style="display: none !important;">
-                <input type="checkbox" id="toggleCrossSectionView" onchange="handleCrossSectionToggle(this.checked)" style="display: none;">
-                <label for="toggleCrossSectionView" id="crossSectionToggleLabel" style="display: none;">
-                    <i class="fas fa-eye"></i> <span></span>
-                </label>
-            </div>
-        </div>
         <div id="message-alerte" style="display: none;"></div>
         <div id="progress-bar-container" style="display: none;">
             <div id="progress-bar">0%</div>
@@ -1916,6 +1878,9 @@
                  <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px;">
                      <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
                  </button>
+                 <button type="button" id="btnCrossSectionToggle" onclick="toggleCrossSectionViewMode()" class="pro-button" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px; background: linear-gradient(135deg, #EC4899, #8B5CF6); color: white; border: none; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(236,72,153,0.3);" title="Consulter la saisie de l'autre section (Filles / Garçons) pour votre matière en lecture seule">
+                     <i class="fas fa-eye"></i> <span id="btnCrossSectionToggleTxt">Voir saisie autre section</span>
+                 </button>
              </div>
          </div>
          <div id="incompleteTeachersDisplay" style="display: none; margin-bottom:14px;">
@@ -1923,6 +1888,42 @@
              <ul id="incompleteList">
                  <li>Chargement...</li>
              </ul>
+         </div>
+
+         <!-- FILTRES DE TRI ET DE RECHERCHE (PLACÉS DIRECTEMENT SOUS LE CHOIX DE LA SEMAINE ET AU-DESSUS DU TABLEAU) -->
+         <div class="filter-container data-filters-container" style="margin-bottom: 16px;">
+             <label for="filterEnseignant" id="filter-enseignant-label"><i class="fas fa-user-tie"></i> Enseignant:</label>
+             <select id="filterEnseignant" onchange="sortAndDisplay()"> <option value="">Tous</option> </select>
+             
+             <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
+             <div style="display:inline-flex; align-items:center; gap:4px;">
+                 <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
+                 <button type="button" onclick="openClassManagementModal()" class="pro-button" style="background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; padding:5px 9px; font-size:0.78rem; font-weight:700; border-radius:8px; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:5px;" title="Choisir les classes à afficher sur le tableau ou supprimer des classes">
+                     <i class="fas fa-sliders-h"></i> <span>Gérer Classes</span>
+                 </button>
+             </div>
+
+             <label for="filterMatiere" id="filter-matiere-label"><i class="fas fa-book"></i> Matière:</label>
+             <select id="filterMatiere" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
+             <label for="filterPeriode" id="filter-periode-label"><i class="fas fa-clock"></i> Période:</label>
+             <select id="filterPeriode" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
+             <label for="filterJour" id="filter-jour-label"><i class="fas fa-calendar-day"></i> Jour:</label>
+             <select id="filterJour" onchange="sortAndDisplay()">
+                 <option value="">Tous</option>
+                 <option value="Dimanche">Dimanche</option>
+                 <option value="Lundi">Lundi</option>
+                 <option value="Mardi">Mardi</option>
+                 <option value="Mercredi">Mercredi</option>
+                 <option value="Jeudi">Jeudi</option>
+            </select>
+
+            <button type="button" id="btnResetFilters" onclick="resetTeacherFilters()" class="pro-button secondary-button" style="padding: 7px 12px; font-size: 0.84rem; font-weight: 700; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;" title="Réinitialiser tous les filtres pour afficher l'ensemble des cours">
+                <i class="fas fa-undo"></i> <span id="btnResetFiltersTxt">Effacer filtres</span>
+            </button>
+
+            <div id="crossSectionToggleWrapper" style="display: none;">
+                <input type="checkbox" id="toggleCrossSectionView" onchange="handleCrossSectionToggle(this.checked)" style="display: none;">
+            </div>
          </div>
 
          <div class="table-actions-container pro-action-hub-grid" style="margin-bottom: 16px;">
