@@ -11435,6 +11435,60 @@ app.post('/api/notify-incomplete-teachers', async (req, res) => {
   }
 });
 
+// ============================================================================
+// GESTION DES NOTES DES ÉLÈVES (Semestre 1 & Semestre 2)
+// ============================================================================
+app.get('/api/student-grades', async (req, res) => {
+  try {
+    const { section, classe, subject, semester } = req.query;
+    const db = await connectToDatabase();
+    const query = {};
+    if (section) query.section = section;
+    if (classe) query.classe = classe;
+    if (subject) query.subject = subject;
+    if (semester) query.semester = semester;
+    const grades = await db.collection('studentGrades').find(query).toArray();
+    res.json({ grades });
+  } catch (error) {
+    console.error('Erreur GET /api/student-grades:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/student-grades', async (req, res) => {
+  try {
+    const { section, classe, subject, teacher, semester, studentGrades } = req.body;
+    if (!section || !classe || !subject || !semester || !Array.isArray(studentGrades)) {
+      return res.status(400).json({ message: 'Paramètres manquants ou invalides.' });
+    }
+    const db = await connectToDatabase();
+    const col = db.collection('studentGrades');
+    const now = new Date();
+
+    for (const sg of studentGrades) {
+      const studentName = sg.studentName;
+      if (!studentName) continue;
+      const filter = { section, classe, subject, semester, studentName };
+      const update = {
+        $set: {
+          teacher: teacher || '',
+          hw: Number(sg.hw) || 0,
+          cw: Number(sg.cw) || 0,
+          evaluation: Number(sg.evaluation) || 0,
+          examen: Number(sg.examen) || 0,
+          total: Number(sg.total) || 0,
+          updatedAt: now.toISOString()
+        }
+      };
+      await col.updateOne(filter, update, { upsert: true });
+    }
+    res.json({ success: true, message: 'Notes enregistrées avec succès.' });
+  } catch (error) {
+    console.error('Erreur POST /api/student-grades:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Middleware de gestion d'erreur global et fallback si base de données déconnectée
 app.use((err, req, res, next) => {
   if (err.name === 'MongooseError' || err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError' || (err.message && err.message.includes('buffering timed out'))) {

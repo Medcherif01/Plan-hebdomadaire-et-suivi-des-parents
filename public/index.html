@@ -539,7 +539,13 @@
             <button type="button" class="app-nav-tab" id="tab-devoirs-btn" onclick="switchMainTab('devoirs')">
                 <i class="fas fa-book-reader"></i> Portail Suivi des Devoirs
             </button>
+            <button type="button" class="app-nav-tab" id="tab-grades-btn" onclick="switchMainTab('grades')">
+                <i class="fas fa-chart-bar"></i> Saisie des Notes (Sem. 1 & 2)
+            </button>
         </div>
+
+        <!-- ONGLET 3: SAISIE DES NOTES -->
+        <div id="grades-tab-content" style="display:none;"></div>
 
         <!-- ONGLET 1: PLANS HEBDOMADAIRES -->
         <div id="plans-tab-content">
@@ -1139,6 +1145,16 @@
                              </button>
                          </div>
                      </div>
+
+                      <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:18px; margin-top:15px;">
+                          <h5 style="margin:0 0 8px 0; color:#1E293B; font-weight:800; font-size:1rem; display:flex; align-items:center; gap:8px;">
+                              <i class="fas fa-print" style="color:#2563EB;"></i> Impression des Notes de Classe sur une Page A4
+                          </h5>
+                          <p style="margin:0 0 12px 0; font-size:0.88rem; color:#64748B;">Imprimez la feuille récapitulative officielle de toutes les notes (S1 & S2) pour une classe complète sur une page A4.</p>
+                          <button type="button" class="pro-button primary-button" onclick="adminOpenClassGradesPrintA4()" style="background:#2563EB; color:white; font-weight:700; padding:10px 20px; border-radius:8px;">
+                              <i class="fas fa-print"></i> 🖨️ Imprimer Feuille de Notes Classe (A4)
+                          </button>
+                      </div>
                      
                      <div style="margin-top:20px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px; padding:15px;">
                          <div style="font-weight:700; color:#1E40AF; margin-bottom:6px;">

@@ -19192,4 +19192,538 @@ window.toggleCrossSectionViewMode = toggleCrossSectionViewMode;
 window.handleCrossSectionToggle = handleCrossSectionToggle;
 window.updateCrossSectionToggleUI = updateCrossSectionToggleUI;
 
+// ============================================================================
+// MODULE SAISIE DES NOTES ÉLÈVES (Semestre 1 & Semestre 2) & IMPRESSION A4
+// ============================================================================
+let activeGradeFilters = {
+    class: '',
+    subject: '',
+    semester: 'S1'
+};
+
+function switchMainTab(tabName) {
+    const tabPlansBtn = document.getElementById('tab-plans-btn');
+    const tabDevoirsBtn = document.getElementById('tab-devoirs-btn');
+    const tabGradesBtn = document.getElementById('tab-grades-btn');
+
+    const plansContent = document.getElementById('plans-tab-content');
+    const devoirsContent = document.getElementById('devoirs-tab-content');
+    const gradesContent = document.getElementById('grades-tab-content');
+
+    if (tabPlansBtn) tabPlansBtn.classList.remove('active');
+    if (tabDevoirsBtn) tabDevoirsBtn.classList.remove('active');
+    if (tabGradesBtn) tabGradesBtn.classList.remove('active');
+
+    if (plansContent) plansContent.style.display = 'none';
+    if (devoirsContent) devoirsContent.style.display = 'none';
+    if (gradesContent) gradesContent.style.display = 'none';
+
+    if (tabName === 'devoirs') {
+        if (tabDevoirsBtn) tabDevoirsBtn.classList.add('active');
+        if (devoirsContent) devoirsContent.style.display = 'block';
+        if (typeof loadTeacherHomeworksDashboard === 'function') loadTeacherHomeworksDashboard();
+    } else if (tabName === 'grades') {
+        if (tabGradesBtn) tabGradesBtn.classList.add('active');
+        if (gradesContent) gradesContent.style.display = 'block';
+        initTeacherGradesInterface();
+    } else {
+        if (tabPlansBtn) tabPlansBtn.classList.add('active');
+        if (plansContent) plansContent.style.display = 'block';
+    }
+}
+window.switchMainTab = switchMainTab;
+
+function initTeacherGradesInterface() {
+    const container = document.getElementById('grades-tab-content');
+    if (!container) return;
+
+    if (!document.getElementById('teacherGradesMainContainer')) {
+        container.innerHTML = `
+            <div id="teacherGradesMainContainer" style="background:white; border-radius:16px; padding:25px; box-shadow:0 6px 20px rgba(0,0,0,0.06); border:1px solid #E2E8F0; margin-top:15px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:20px; border-bottom:2px solid #F1F5F9; padding-bottom:15px;">
+                    <div>
+                        <h2 style="margin:0; color:#1E293B; font-size:1.35rem; display:flex; align-items:center; gap:10px;">
+                            <i class="fas fa-chart-bar" style="color:#2563EB;"></i> Saisie des Notes des Élèves (Semestre 1 & 2)
+                        </h2>
+                        <p style="margin:4px 0 0 0; color:#64748B; font-size:0.92rem;">
+                            Saisissez les notes de Classwork, Homework, Évaluation et Examen pour vos classes et matières assignées.
+                        </p>
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <button type="button" class="pro-button" onclick="loadTeacherGradesInterfaceData()" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; font-weight:700;">
+                            <i class="fas fa-sync-alt"></i> Actualiser
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px; background:#F8FAFC; padding:15px; border-radius:12px; border:1px solid #E2E8F0;">
+                    <div>
+                        <label style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                            <i class="fas fa-graduation-cap" style="color:#2563EB;"></i> Classe :
+                        </label>
+                        <select id="gradeFilterClassSelect" onchange="onGradeClassChange()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;">
+                            <option value="">-- Sélectionnez une classe --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                            <i class="fas fa-book" style="color:#7C3AED;"></i> Matière :
+                        </label>
+                        <select id="gradeFilterSubjectSelect" onchange="renderTeacherGradesTable()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;">
+                            <option value="">-- Sélectionnez d'abord une classe --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                            <i class="fas fa-calendar-alt" style="color:#059669;"></i> Semestre :
+                        </label>
+                        <select id="gradeFilterSemesterSelect" onchange="renderTeacherGradesTable()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;">
+                            <option value="S1">Semestre 1 (S1)</option>
+                            <option value="S2">Semestre 2 (S2)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="teacherGradesTableWrapper">
+                    <div style="text-align:center; padding:40px; color:#64748B;">
+                        <i class="fas fa-info-circle fa-2x" style="color:#3B82F6; margin-bottom:10px;"></i>
+                        <p style="font-weight:600;">Veuillez sélectionner une classe et une matière pour afficher les élèves et saisir leurs notes.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    loadTeacherGradesInterfaceData();
+}
+
+let teacherAssignedPairs = [];
+
+async function loadTeacherGradesInterfaceData() {
+    try {
+        const user = loggedInUser || '';
+        const tableTeacher = loggedInTeacherTable || '';
+        const section = currentSection || 'garcons';
+
+        teacherAssignedPairs = getTeacherTeachingAssignments(planData || [], user, tableTeacher);
+        
+        if (isUserAdminOrSupervisor(user, currentUserRole)) {
+            const classes = getSectionClasses(section);
+            classes.forEach(c => {
+                ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique', 'Sport'].forEach(s => {
+                    if (!teacherAssignedPairs.some(p => p.classe === c && p.subject === s)) {
+                        teacherAssignedPairs.push({ classe: c, subject: s });
+                    }
+                });
+            });
+        }
+
+        const classSelect = document.getElementById('gradeFilterClassSelect');
+        if (!classSelect) return;
+
+        const uniqueClasses = Array.from(new Set(teacherAssignedPairs.map(p => p.classe))).sort(compareClasses);
+        
+        let html = '<option value="">-- Sélectionnez une classe --</option>';
+        uniqueClasses.forEach(c => {
+            html += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
+        });
+        classSelect.innerHTML = html;
+
+        if (uniqueClasses.length > 0 && !classSelect.value) {
+            classSelect.value = uniqueClasses[0];
+            onGradeClassChange();
+        }
+    } catch (e) {
+        console.error("Erreur loadTeacherGradesInterfaceData:", e);
+    }
+}
+
+function onGradeClassChange() {
+    const classSelect = document.getElementById('gradeFilterClassSelect');
+    const subjSelect = document.getElementById('gradeFilterSubjectSelect');
+    if (!classSelect || !subjSelect) return;
+
+    const selectedClass = classSelect.value;
+    const matchingSubjects = teacherAssignedPairs.filter(p => p.classe === selectedClass).map(p => p.subject);
+    const uniqueSubjects = Array.from(new Set(matchingSubjects)).sort();
+
+    let html = '<option value="">-- Sélectionnez une matière --</option>';
+    uniqueSubjects.forEach(s => {
+        html += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`;
+    });
+    subjSelect.innerHTML = html;
+
+    if (uniqueSubjects.length > 0) {
+        subjSelect.value = uniqueSubjects[0];
+    }
+    renderTeacherGradesTable();
+}
+
+async function renderTeacherGradesTable() {
+    const classSelect = document.getElementById('gradeFilterClassSelect');
+    const subjSelect = document.getElementById('gradeFilterSubjectSelect');
+    const semSelect = document.getElementById('gradeFilterSemesterSelect');
+    const wrapper = document.getElementById('teacherGradesTableWrapper');
+    if (!classSelect || !subjSelect || !semSelect || !wrapper) return;
+
+    const classe = classSelect.value;
+    const subject = subjSelect.value;
+    const semester = semSelect.value;
+    const section = currentSection || 'garcons';
+
+    if (!classe || !subject) {
+        wrapper.innerHTML = `
+            <div style="text-align:center; padding:40px; color:#64748B;">
+                <i class="fas fa-info-circle fa-2x" style="color:#3B82F6; margin-bottom:10px;"></i>
+                <p style="font-weight:600;">Veuillez sélectionner une classe et une matière pour afficher la grille de notes.</p>
+            </div>
+        `;
+        return;
+    }
+
+    wrapper.innerHTML = `
+        <div style="text-align:center; padding:30px; color:#64748B;">
+            <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB;"></i>
+            <p style="margin-top:10px; font-weight:600;">Chargement des élèves et des notes (${classe} - ${subject})...</p>
+        </div>
+    `;
+
+    try {
+        const studentsRes = await fetch(`/api/students?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(classe)}`);
+        let students = [];
+        if (studentsRes.ok) {
+            const stData = await studentsRes.json();
+            students = Array.isArray(stData.students) ? stData.students : (Array.isArray(stData) ? stData : []);
+        }
+
+        if (students.length === 0) {
+            students = [
+                { name: "Élève 1 (Exemple)" },
+                { name: "Élève 2 (Exemple)" },
+                { name: "Élève 3 (Exemple)" }
+            ];
+        }
+
+        const gradesRes = await fetch(`/api/student-grades?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(classe)}&subject=${encodeURIComponent(subject)}&semester=${encodeURIComponent(semester)}`);
+        let existingGrades = [];
+        if (gradesRes.ok) {
+            const gData = await gradesRes.json();
+            existingGrades = Array.isArray(gData.grades) ? gData.grades : [];
+        }
+
+        const isPei1 = (classe.toUpperCase() === 'PEI1');
+        const maxCw = isPei1 ? 30 : 20;
+        const maxEval = isPei1 ? 20 : 30;
+        const maxHw = 20;
+        const maxExam = 30;
+
+        let tableHtml = `
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                <div style="font-weight:800; color:#1E293B; font-size:1.05rem;">
+                    Grille de notes : <span style="color:#2563EB;">${escapeHtml(classe)}</span> — <span style="color:#7C3AED;">${escapeHtml(subject)}</span> (${semester})
+                </div>
+                <div style="font-size:0.85rem; background:#EFF6FF; color:#1E40AF; padding:6px 12px; border-radius:8px; border:1px solid #BFDBFE; font-weight:700;">
+                    Pondération (${isPei1 ? 'PEI1' : 'Standard'}) : HW /${maxHw} | CW /${maxCw} | Éval /${maxEval} | Examen /${maxExam}
+                </div>
+            </div>
+
+            <div style="overflow-x:auto; border:1px solid #E2E8F0; border-radius:12px;">
+                <table style="width:100%; border-collapse:collapse; min-width:800px; text-align:left; background:white;">
+                    <thead>
+                        <tr style="background:#F8FAFC; color:#334155; font-size:0.85rem; border-bottom:2px solid #E2E8F0;">
+                            <th style="padding:12px 16px; width:60px; text-align:center;">#</th>
+                            <th style="padding:12px 16px;">Nom de l'Élève</th>
+                            <th style="padding:12px 12px; width:130px; text-align:center;">Homework (/${maxHw})</th>
+                            <th style="padding:12px 12px; width:130px; text-align:center;">Classwork (/${maxCw})</th>
+                            <th style="padding:12px 12px; width:130px; text-align:center;">Évaluation (/${maxEval})</th>
+                            <th style="padding:12px 12px; width:130px; text-align:center;">Examen (/${maxExam})</th>
+                            <th style="padding:12px 16px; width:110px; text-align:center; background:#EFF6FF; color:#1E40AF;">Total (/100)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        students.forEach((st, idx) => {
+            const stName = st.name || st.fullName || st;
+            const foundGrade = existingGrades.find(g => String(g.studentName).trim().toLowerCase() === String(stName).trim().toLowerCase()) || {};
+            
+            const hwVal = foundGrade.hw !== undefined ? foundGrade.hw : 18;
+            const cwVal = foundGrade.cw !== undefined ? foundGrade.cw : (isPei1 ? 27 : 18);
+            const evalVal = foundGrade.evaluation !== undefined ? foundGrade.evaluation : (isPei1 ? 18 : 27);
+            const examVal = foundGrade.examen !== undefined ? foundGrade.examen : 27;
+            const totalVal = Number(hwVal) + Number(cwVal) + Number(evalVal) + Number(examVal);
+
+            tableHtml += `
+                <tr style="border-bottom:1px solid #F1F5F9;" data-student-row="${escapeHtml(stName)}">
+                    <td style="padding:12px 16px; text-align:center; font-weight:700; color:#64748B;">${idx + 1}</td>
+                    <td style="padding:12px 16px; font-weight:700; color:#1E293B; display:flex; align-items:center; gap:8px;">
+                        <span style="width:30px; height:30px; border-radius:50%; background:#EEF2FF; color:#4F46E5; display:inline-flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:800;">${stName.charAt(0)}</span>
+                        ${escapeHtml(stName)}
+                    </td>
+                    <td style="padding:8px 12px; text-align:center;">
+                        <input type="number" min="0" max="${maxHw}" step="0.5" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:80px; padding:6px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;">
+                    </td>
+                    <td style="padding:8px 12px; text-align:center;">
+                        <input type="number" min="0" max="${maxCw}" step="0.5" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:80px; padding:6px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;">
+                    </td>
+                    <td style="padding:8px 12px; text-align:center;">
+                        <input type="number" min="0" max="${maxEval}" step="0.5" class="grade-input-eval" value="${evalVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:80px; padding:6px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;">
+                    </td>
+                    <td style="padding:8px 12px; text-align:center;">
+                        <input type="number" min="0" max="${maxExam}" step="0.5" class="grade-input-exam" value="${examVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:80px; padding:6px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;">
+                    </td>
+                    <td style="padding:12px 16px; text-align:center; font-weight:900; color:#1E40AF; background:#F8FAFC;" class="grade-cell-total">
+                        ${totalVal}/100
+                    </td>
+                </tr>
+            `;
+        });
+
+        tableHtml += `
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <span id="gradesSaveStatus" style="font-weight:700; font-size:0.9rem;"></span>
+                <button type="button" class="pro-button success-button" onclick="saveTeacherGradesData()" style="padding:11px 24px; font-weight:800; font-size:0.95rem; border-radius:10px; display:inline-flex; align-items:center; gap:8px;">
+                    <i class="fas fa-save"></i> Enregistrer toutes les notes
+                </button>
+            </div>
+        `;
+
+        wrapper.innerHTML = tableHtml;
+    } catch (err) {
+        console.error("Erreur renderTeacherGradesTable:", err);
+        wrapper.innerHTML = `<div style="color:#DC2626; padding:20px; text-align:center; font-weight:700;">Erreur de chargement: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+function recalcStudentRowTotal(inputEl, maxHw, maxCw, maxEval, maxExam) {
+    const tr = inputEl.closest('tr');
+    if (!tr) return;
+    const hw = parseFloat(tr.querySelector('.grade-input-hw')?.value) || 0;
+    const cw = parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0;
+    const evaluation = parseFloat(tr.querySelector('.grade-input-eval')?.value) || 0;
+    const examen = parseFloat(tr.querySelector('.grade-input-exam')?.value) || 0;
+    const total = Math.min(100, Math.max(0, hw + cw + evaluation + examen));
+    const totalCell = tr.querySelector('.grade-cell-total');
+    if (totalCell) {
+        totalCell.textContent = `${Math.round(total * 10) / 10}/100`;
+    }
+}
+
+async function saveTeacherGradesData() {
+    const classSelect = document.getElementById('gradeFilterClassSelect');
+    const subjSelect = document.getElementById('gradeFilterSubjectSelect');
+    const semSelect = document.getElementById('gradeFilterSemesterSelect');
+    const statusEl = document.getElementById('gradesSaveStatus');
+    if (!classSelect || !subjSelect || !semSelect) return;
+
+    const classe = classSelect.value;
+    const subject = subjSelect.value;
+    const semester = semSelect.value;
+    const section = currentSection || 'garcons';
+    const teacher = loggedInTeacherTable || loggedInUser || 'Enseignant';
+
+    const rows = document.querySelectorAll('tr[data-student-row]');
+    const studentGrades = [];
+
+    rows.forEach(tr => {
+        const studentName = tr.getAttribute('data-student-row');
+        const hw = parseFloat(tr.querySelector('.grade-input-hw')?.value) || 0;
+        const cw = parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0;
+        const evaluation = parseFloat(tr.querySelector('.grade-input-eval')?.value) || 0;
+        const examen = parseFloat(tr.querySelector('.grade-input-exam')?.value) || 0;
+        const total = hw + cw + evaluation + examen;
+
+        studentGrades.push({ studentName, hw, cw, evaluation, examen, total });
+    });
+
+    if (statusEl) statusEl.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement en cours...</span>';
+
+    try {
+        const res = await fetch('/api/student-grades', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                section,
+                classe,
+                subject,
+                teacher,
+                semester,
+                studentGrades
+            })
+        });
+        const result = await res.json();
+        if (res.ok && result.success) {
+            if (statusEl) statusEl.innerHTML = '<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Notes enregistrées avec succès !</span>';
+            showToastNotification("Notes enregistrées avec succès !", "success");
+            setTimeout(() => { if (statusEl) statusEl.innerHTML = ''; }, 4000);
+        } else {
+            throw new Error(result.message || "Erreur lors de l'enregistrement");
+        }
+    } catch (err) {
+        console.error("Erreur saveTeacherGradesData:", err);
+        if (statusEl) statusEl.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${err.message}</span>`;
+        showToastNotification("Erreur: " + err.message, "error");
+    }
+}
+
+async function adminOpenClassGradesPrintA4() {
+    const chosenClass = prompt("Entrez la classe à imprimer sur une page A4 (ex: PEI1, PEI2, PP1, PS...) :", "PEI1");
+    if (!chosenClass) return;
+
+    const section = currentSection || 'garcons';
+    showProgressBar();
+    updateProgressBar(20);
+
+    try {
+        const stRes = await fetch(`/api/students?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(chosenClass)}`);
+        let students = [];
+        if (stRes.ok) {
+            const stData = await stRes.json();
+            students = Array.isArray(stData.students) ? stData.students : (Array.isArray(stData) ? stData : []);
+        }
+        if (students.length === 0) {
+            students = [{ name: "Élève 1" }, { name: "Élève 2" }, { name: "Élève 3" }];
+        }
+
+        let allGrades = [];
+        for (const sem of ['S1', 'S2']) {
+            const gRes = await fetch(`/api/student-grades?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(chosenClass)}&semester=${sem}`);
+            if (gRes.ok) {
+                const gData = await gRes.json();
+                if (Array.isArray(gData.grades)) {
+                    gData.grades.forEach(g => allGrades.push({ ...g, semester: sem }));
+                }
+            }
+        }
+
+        updateProgressBar(70);
+
+        const printWin = window.open('', '_blank');
+        if (!printWin) {
+            alert("Veuillez autoriser les fenêtres popup pour imprimer.");
+            hideProgressBar();
+            return;
+        }
+
+        let html = `
+            <!DOCTYPE html>
+            <html lang="fr">
+            <head>
+                <meta charset="UTF-8">
+                <title>Feuille de Notes - Classe ${chosenClass}</title>
+                <style>
+                    @page { size: A4 portrait; margin: 15mm; }
+                    body { font-family: 'Poppins', 'Segoe UI', Tahoma, sans-serif; color: #1E293B; margin: 0; padding: 20px; font-size: 13px; background: white; }
+                    .header { text-align: center; border-bottom: 2px solid #1E3A8A; padding-bottom: 12px; margin-bottom: 20px; }
+                    .header h1 { margin: 0 0 5px 0; color: #1E3A8A; font-size: 20px; }
+                    .header p { margin: 0; color: #64748B; font-size: 13px; font-weight: 600; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                    th, td { border: 1px solid #CBD5E1; padding: 8px 10px; text-align: center; }
+                    th { background: #F1F5F9; color: #1E293B; font-weight: 700; font-size: 12px; }
+                    td:nth-child(2) { text-align: left; font-weight: 600; }
+                    .footer { margin-top: 30px; display: flex; justify-content: space-between; font-weight: 600; font-size: 12px; }
+                    @media print {
+                        .no-print { display: none !important; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="no-print" style="text-align: right; margin-bottom: 15px;">
+                    <button onclick="window.print()" style="background: #2563EB; color: white; border: none; padding: 10px 20px; font-weight: 700; border-radius: 8px; cursor: pointer;">
+                        🖨️ Imprimer cette page A4
+                    </button>
+                </div>
+
+                <div class="header">
+                    <h1>ÉCOLES INTERNATIONALES AL-KAWTHAR</h1>
+                    <p>Feuille Récapitulative Officielle des Notes — Classe : <strong>${chosenClass}</strong> (${section.toUpperCase()})</p>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th rowspan="2">N°</th>
+                            <th rowspan="2">Nom de l'Élève</th>
+                            <th colspan="5">Semestre 1 (S1)</th>
+                            <th colspan="5">Semestre 2 (S2)</th>
+                        </tr>
+                        <tr>
+                            <th>HW</th>
+                            <th>CW</th>
+                            <th>Éval</th>
+                            <th>Exam</th>
+                            <th>Total</th>
+                            <th>HW</th>
+                            <th>CW</th>
+                            <th>Éval</th>
+                            <th>Exam</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        students.forEach((st, idx) => {
+            const stName = st.name || st.fullName || st;
+            const s1Grades = allGrades.filter(g => g.semester === 'S1' && String(g.studentName).trim().toLowerCase() === String(stName).trim().toLowerCase());
+            const s2Grades = allGrades.filter(g => g.semester === 'S2' && String(g.studentName).trim().toLowerCase() === String(stName).trim().toLowerCase());
+
+            const avgS1 = s1Grades.length > 0 ? Math.round(s1Grades.reduce((acc, curr) => acc + (curr.total || 0), 0) / s1Grades.length) : '-';
+            const avgS2 = s2Grades.length > 0 ? Math.round(s2Grades.reduce((acc, curr) => acc + (curr.total || 0), 0) / s2Grades.length) : '-';
+
+            html += `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td>${escapeHtml(stName)}</td>
+                    <td>${s1Grades.length > 0 ? Math.round(s1Grades.reduce((a,c)=>a+(c.hw||0),0)/s1Grades.length) : '-'}</td>
+                    <td>${s1Grades.length > 0 ? Math.round(s1Grades.reduce((a,c)=>a+(c.cw||0),0)/s1Grades.length) : '-'}</td>
+                    <td>${s1Grades.length > 0 ? Math.round(s1Grades.reduce((a,c)=>a+(c.evaluation||0),0)/s1Grades.length) : '-'}</td>
+                    <td>${s1Grades.length > 0 ? Math.round(s1Grades.reduce((a,c)=>a+(c.examen||0),0)/s1Grades.length) : '-'}</td>
+                    <td style="font-weight:bold; background:#F8FAFC;">${avgS1}/100</td>
+
+                    <td>${s2Grades.length > 0 ? Math.round(s2Grades.reduce((a,c)=>a+(c.hw||0),0)/s2Grades.length) : '-'}</td>
+                    <td>${s2Grades.length > 0 ? Math.round(s2Grades.reduce((a,c)=>a+(c.cw||0),0)/s2Grades.length) : '-'}</td>
+                    <td>${s2Grades.length > 0 ? Math.round(s2Grades.reduce((a,c)=>a+(c.evaluation||0),0)/s2Grades.length) : '-'}</td>
+                    <td>${s2Grades.length > 0 ? Math.round(s2Grades.reduce((a,c)=>a+(c.examen||0),0)/s2Grades.length) : '-'}</td>
+                    <td style="font-weight:bold; background:#F8FAFC;">${avgS2}/100</td>
+                </tr>
+            `;
+        });
+
+        html += `
+                    </tbody>
+                </table>
+
+                <div class="footer">
+                    <div>Visa de l'Enseignant / Professeur Principal</div>
+                    <div>Cachet de la Direction de l'Établissement</div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        printWin.document.write(html);
+        printWin.document.close();
+        hideProgressBar();
+        displayAlert(`Feuille A4 générée avec succès pour la classe ${chosenClass} !`, false);
+    } catch (err) {
+        console.error("Erreur adminOpenClassGradesPrintA4:", err);
+        hideProgressBar();
+        alert("Erreur génération impression A4: " + err.message);
+    }
+}
+window.adminOpenClassGradesPrintA4 = adminOpenClassGradesPrintA4;
+window.switchMainTab = switchMainTab;
+window.initTeacherGradesInterface = initTeacherGradesInterface;
+window.loadTeacherGradesInterfaceData = loadTeacherGradesInterfaceData;
+window.onGradeClassChange = onGradeClassChange;
+window.renderTeacherGradesTable = renderTeacherGradesTable;
+window.recalcStudentRowTotal = recalcStudentRowTotal;
+window.saveTeacherGradesData = saveTeacherGradesData;
+
+
 
