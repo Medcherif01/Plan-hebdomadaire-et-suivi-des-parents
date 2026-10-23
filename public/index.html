@@ -4122,14 +4122,14 @@
                         <i class="fas fa-print"></i>
                     </div>
                     <div>
-                        <h3 style="margin:0; font-size:1.2rem; color:#1E293B; font-weight:800;">Bulletins Scolaires A4 de la Classe</h3>
-                        <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748B;">Toutes les matières &amp; tous les élèves de la classe — Impression officielle A4</p>
+                        <h3 style="margin:0; font-size:1.2rem; color:#1E293B; font-weight:800;">Procès-Verbaux &amp; Bulletins de Notes A4 de la Classe</h3>
+                        <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748B;">Feuille de notes par matière (tous les élèves sur 1 page A4) &amp; Bulletins officiels</p>
                     </div>
                 </div>
                 <button type="button" onclick="closeClassGradesPrintModal()" style="border:none; background:none; font-size:1.5rem; color:#94A3B8; cursor:pointer;">&times;</button>
             </div>
 
-            <!-- Paramètres de sélection : Section, Classe, Semestre -->
+            <!-- Paramètres de sélection : Section, Classe, Matière, Semestre, Format -->
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:18px;">
                 <div>
                     <label for="bulletinModalSectionSelect" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.85rem;">
@@ -4147,7 +4147,7 @@
                     <label for="bulletinModalClassSelect" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.85rem;">
                         <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i> Classe :
                     </label>
-                    <select id="bulletinModalClassSelect" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
+                    <select id="bulletinModalClassSelect" onchange="onBulletinsModalClassChanged()" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
                         <option value="PEI1">PEI1</option>
                         <option value="PEI2">PEI2</option>
                         <option value="PEI3">PEI3</option>
@@ -4155,6 +4155,15 @@
                         <option value="PEI5">PEI5</option>
                         <option value="DP1">DP1</option>
                         <option value="DP2">DP2</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="bulletinModalSubjectSelect" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.85rem;">
+                        <i class="fas fa-book" style="color:#7C3AED;"></i> Matière :
+                    </label>
+                    <select id="bulletinModalSubjectSelect" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
+                        <option value="all">📚 Toutes les matières (1 page par matière)</option>
                     </select>
                 </div>
 
@@ -4167,17 +4176,27 @@
                         <option value="S2">Semestre 2 (S2)</option>
                     </select>
                 </div>
+
+                <div style="grid-column: 1 / -1;">
+                    <label for="bulletinModalFormatSelect" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.85rem;">
+                        <i class="fas fa-file-contract" style="color:#D97706;"></i> Format d'édition A4 :
+                    </label>
+                    <select id="bulletinModalFormatSelect" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:700; color:#1E3A8A; background:#F8FAFC;">
+                        <option value="by_subject" selected>📑 Feuille / Bulletin par Matière (Tous les élèves de la classe sur 1 page A4 par classe)</option>
+                        <option value="by_student">👤 Bulletins individuels (Toutes les matières de l'élève par page)</option>
+                    </select>
+                </div>
             </div>
 
-            <!-- Encadré explicatif bienveillant des règles de calcul & pondération -->
+            <!-- Encadré explicatif des règles de calcul strictes & barèmes officiels -->
             <div style="background:#F8FAFC; border:1.5px solid #E2E8F0; border-radius:12px; padding:14px 16px; margin-bottom:20px;">
                 <div style="font-weight:700; color:#1E293B; font-size:0.88rem; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                    <i class="fas fa-info-circle" style="color:#2563EB;"></i> Système de pondération &amp; barèmes officiels :
+                    <i class="fas fa-info-circle" style="color:#2563EB;"></i> Système de pondération &amp; barèmes officiels Al-Kawthar :
                 </div>
                 <div style="font-size:0.82rem; color:#475569; line-height:1.6;">
-                    • <strong>PEI1 :</strong> Devoirs (HW /20) + Travaux de classe (CW /30) + Évaluation (/20) + Examen (/30) = <strong>Total /100</strong><br>
-                    • <strong>Autres classes :</strong> Devoirs (HW /20) + Travaux de classe (CW /20) + Évaluation (/30) + Examen (/30) = <strong>Total /100</strong><br>
-                    • <strong>Notes bienveillantes :</strong> HW et CW calculées automatiquement avec bienveillance selon l'assiduité, participation et faisabilité des devoirs.
+                    • <strong>Barème PEI1 :</strong> Devoirs (HW /20) + Travaux de classe (CW /30) + Évaluation (/20) + Examen (/30) = <strong>Total /100</strong><br>
+                    • <strong>Barème autres classes (PEI2-5, DP1-2) :</strong> Devoirs (HW /20) + Travaux de classe (CW /20) + Évaluation (/30) + Examen (/30) = <strong>Total /100</strong><br>
+                    • <strong>Calcul strict de HW &amp; CW :</strong> Estimation stricte calculée mathématiquement à partir des devoirs attribués/remis et des notes réelles de participation et assiduité.
                 </div>
             </div>
 

@@ -19474,8 +19474,8 @@ async function renderTeacherGradesTable() {
                     <span style="margin-left:8px; background:#EEF2FF; color:#4338CA; padding:3px 9px; border-radius:6px; font-weight:800; font-size:0.8rem;">${escapeHtml(semester)}</span>
                 </div>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="pro-button" onclick="adminOpenClassGradesPrintA4('${escapeHtml(classe)}', '${escapeHtml(semester)}')" style="background: linear-gradient(135deg, #1D4ED8, #2563EB); color: white; border: none; font-weight: 800; padding: 7px 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(37,99,235,0.2); font-size: 0.85rem; cursor: pointer;">
-                        <i class="fas fa-print"></i> Imprimer Bulletins Classe A4
+                    <button type="button" class="pro-button" onclick="adminOpenClassGradesPrintA4('${escapeHtml(classe)}', '${escapeHtml(semester)}', '${escapeHtml(subject)}')" style="background: linear-gradient(135deg, #1D4ED8, #2563EB); color: white; border: none; font-weight: 800; padding: 7px 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(37,99,235,0.2); font-size: 0.85rem; cursor: pointer;">
+                        <i class="fas fa-print"></i> Imprimer Feuille A4 (${escapeHtml(subject)})
                     </button>
                     <div style="font-size:0.85rem; background:#F0FDF4; color:#166534; padding:6px 14px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700;">
                         <i class="fas fa-calculator" style="margin-right:4px;"></i> Barème ${isPei1 ? 'PEI1' : 'Général'} : HW /${maxHw} | CW /${maxCw} | Éval /${maxEval} | Examen /${maxExam}
@@ -19658,7 +19658,7 @@ async function saveTeacherGradesData() {
 let lastGeneratedBulletinsHTML = '';
 let lastGeneratedBulletinsFilename = 'Bulletins_Notes_Classe_A4.html';
 
-function openClassGradesPrintModal(presetClass, presetSemester) {
+function openClassGradesPrintModal(presetClass, presetSemester, presetSubject) {
     const modal = document.getElementById('classBulletinsModal');
     if (!modal) return;
 
@@ -19667,19 +19667,30 @@ function openClassGradesPrintModal(presetClass, presetSemester) {
         secSelect.value = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
     }
 
-    onBulletinsModalSectionChanged();
+    onBulletinsModalSectionChanged(presetClass, presetSubject);
 
     const classSelect = document.getElementById('bulletinModalClassSelect');
-    if (classSelect) {
-        const targetClass = presetClass || (document.getElementById('gradeFilterClassSelect')?.value) || 'PEI1';
-        if (Array.from(classSelect.options).some(o => o.value === targetClass)) {
-            classSelect.value = targetClass;
+    if (classSelect && presetClass) {
+        if (Array.from(classSelect.options).some(o => o.value === presetClass)) {
+            classSelect.value = presetClass;
         }
     }
 
     const semSelect = document.getElementById('bulletinModalSemesterSelect');
     if (semSelect) {
         semSelect.value = presetSemester || (document.getElementById('gradeFilterSemesterSelect')?.value) || 'S1';
+    }
+
+    const subjSelect = document.getElementById('bulletinModalSubjectSelect');
+    if (subjSelect && presetSubject) {
+        if (Array.from(subjSelect.options).some(o => o.value === presetSubject)) {
+            subjSelect.value = presetSubject;
+        }
+    }
+
+    const formatSelect = document.getElementById('bulletinModalFormatSelect');
+    if (formatSelect) {
+        formatSelect.value = 'by_subject';
     }
 
     const statusEl = document.getElementById('bulletinModalStatus');
@@ -19696,7 +19707,7 @@ function closeClassGradesPrintModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function onBulletinsModalSectionChanged() {
+function onBulletinsModalSectionChanged(presetClass, presetSubject) {
     const secSelect = document.getElementById('bulletinModalSectionSelect');
     const classSelect = document.getElementById('bulletinModalClassSelect');
     if (!secSelect || !classSelect) return;
@@ -19718,25 +19729,63 @@ function onBulletinsModalSectionChanged() {
         opt.textContent = c;
         classSelect.appendChild(opt);
     });
+
+    if (presetClass && classOptions.includes(presetClass)) {
+        classSelect.value = presetClass;
+    }
+
+    populateBulletinModalSubjects(presetSubject);
 }
 
-function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section) {
+function onBulletinsModalClassChanged() {
+    populateBulletinModalSubjects();
+}
+
+function populateBulletinModalSubjects(presetSubject) {
+    const secSelect = document.getElementById('bulletinModalSectionSelect');
+    const subjSelect = document.getElementById('bulletinModalSubjectSelect');
+    if (!subjSelect) return;
+
+    const sec = (secSelect?.value || 'garcons').toLowerCase();
+    const standardSubjects = (sec === 'garcons' || sec === 'filles')
+      ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique']
+      : (sec === 'primaire' ? ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques'] : ['Activités Graphiques', 'Langage & Communication', 'Éveil Scientifique', 'Activités Physiques']);
+
+    let html = '<option value="all">📚 Toutes les matières (1 page par matière)</option>';
+    standardSubjects.forEach(s => {
+        html += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`;
+    });
+    subjSelect.innerHTML = html;
+
+    if (presetSubject && (standardSubjects.includes(presetSubject) || presetSubject === 'all')) {
+        subjSelect.value = presetSubject;
+    }
+}
+
+function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, chosenSubject, format) {
     const isPei1 = Boolean(data.isPei1);
     const maxCw = data.maxCw || (isPei1 ? 30 : 20);
     const maxEval = data.maxEval || (isPei1 ? 20 : 30);
     const maxHw = 20;
     const maxExam = 30;
-    const students = Array.isArray(data.students) ? data.students : [];
-    const stats = data.classStats || {};
-
     const semTitle = chosenSemester === 'S1' ? 'PREMIER SEMESTRE' : 'DEUXIÈME SEMESTRE';
     const sectionTitle = section === 'garcons' ? 'Section Garçons' : (section === 'filles' ? 'Section Filles' : (section === 'primaire' ? 'Section Primaire' : 'Section Maternelle'));
 
-    let html = `<!DOCTYPE html>
+    // FORMAT PRINCIPAL DEMANDÉ PAR L'UTILISATEUR :
+    // "le bultin sera par matiere tous les eleves et chaque classe dans une page"
+    if (format === 'by_subject') {
+        const subjectSheets = Array.isArray(data.subjectSheets) ? data.subjectSheets : [];
+        const sheetsToRender = (chosenSubject && chosenSubject !== 'all')
+          ? subjectSheets.filter(s => s.subject.toLowerCase() === chosenSubject.toLowerCase() || isEquivalentSubject(s.subject, chosenSubject))
+          : subjectSheets;
+
+        const effectiveSheets = sheetsToRender.length > 0 ? sheetsToRender : subjectSheets;
+
+        let html = `<!DOCTYPE html>
 <html lang="fr" dir="ltr">
 <head>
     <meta charset="UTF-8">
-    <title>Bulletins Scolaires Officiels A4 - Classe ${chosenClass} (${chosenSemester})</title>
+    <title>Procès-Verbal des Notes par Matière - Classe ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
@@ -19747,7 +19796,423 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section) {
         }
         * { box-sizing: border-box; }
         body {
-            font-family: 'Poppins', 'Segoe UI', Tahoma, sans-serif;
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #0F172A;
+            background: #F1F5F9;
+            margin: 0;
+            padding: 16px;
+            font-size: 10px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .no-print-bar {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 22px;
+            border: 1px solid #CBD5E1;
+        }
+        .btn-action-print {
+            background: linear-gradient(135deg, #1D4ED8, #2563EB);
+            color: white;
+            border: none;
+            padding: 9px 18px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            box-shadow: 0 2px 8px rgba(29,78,216,0.3);
+        }
+        .btn-action-download {
+            background: #059669;
+            color: white;
+            border: none;
+            padding: 9px 18px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            box-shadow: 0 2px 8px rgba(5,150,105,0.3);
+        }
+        .sheet-page {
+            background: white;
+            border: 1.5px solid #CBD5E1;
+            border-radius: 8px;
+            padding: 10mm 12mm;
+            margin: 0 auto 26px auto;
+            max-width: 210mm;
+            min-height: 282mm;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            page-break-after: always !important;
+            break-after: page !important;
+        }
+        .sheet-page:last-child {
+            margin-bottom: 0;
+            page-break-after: auto !important;
+            break-after: auto !important;
+        }
+        .school-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #1E3A8A;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+        }
+        .school-header-center {
+            text-align: center;
+            flex: 1;
+        }
+        .school-title-fr {
+            font-size: 15px;
+            font-weight: 800;
+            color: #1E3A8A;
+            margin: 0;
+            letter-spacing: 0.5px;
+        }
+        .school-title-ar {
+            font-family: 'Amiri', serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: #1E3A8A;
+            direction: rtl;
+            margin-top: 2px;
+        }
+        .doc-title-badge {
+            font-size: 11px;
+            font-weight: 800;
+            color: #1E40AF;
+            margin-top: 3px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .doc-sub {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: #64748B;
+            margin-top: 2px;
+        }
+        .subject-banner {
+            background: #F8FAFC;
+            border: 1.5px solid #CBD5E1;
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .banner-grid {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            font-size: 10.5px;
+        }
+        .banner-grid .label {
+            color: #64748B;
+            font-weight: 600;
+        }
+        .bareme-pill {
+            font-size: 9px;
+            font-weight: 700;
+            background: #EFF6FF;
+            color: #1E40AF;
+            padding: 3px 8px;
+            border-radius: 5px;
+            border: 1px solid #BFDBFE;
+        }
+        .grades-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9.5px;
+            margin-bottom: 10px;
+        }
+        .grades-table th {
+            background: #1E3A8A;
+            color: white;
+            font-weight: 700;
+            padding: 5px 6px;
+            border: 1px solid #1E3A8A;
+            text-align: center;
+        }
+        .grades-table th:nth-child(2) { text-align: left; }
+        .grades-table td {
+            border: 1px solid #CBD5E1;
+            padding: 4.5px 6px;
+            text-align: center;
+        }
+        .grades-table td:nth-child(2) {
+            text-align: left;
+            font-weight: 700;
+            color: #1E293B;
+        }
+        .grades-table tr:nth-child(even) td:not(.total-col) {
+            background: #F8FAFC;
+        }
+        .grades-table td.total-col {
+            font-weight: 800;
+            color: #1D4ED8;
+            background: #EEF2FF;
+            font-size: 10.5px;
+        }
+        .grades-table td.apprec-col {
+            text-align: left;
+            font-size: 9px;
+            color: #475569;
+        }
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .stat-card {
+            background: #F8FAFC;
+            border: 1px solid #CBD5E1;
+            border-radius: 6px;
+            padding: 5px 10px;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 8.5px;
+            font-weight: 700;
+            color: #64748B;
+            text-transform: uppercase;
+        }
+        .stat-val {
+            font-size: 12.5px;
+            font-weight: 800;
+            margin-top: 2px;
+        }
+        .signatures-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding-top: 8px;
+            border-top: 1.5px solid #CBD5E1;
+        }
+        .sig-box {
+            border: 1px dashed #94A3B8;
+            border-radius: 6px;
+            padding: 6px 10px;
+            height: 56px;
+            font-size: 9px;
+            font-weight: 700;
+            color: #475569;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        @media print {
+            body {
+                background: white !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .no-print-bar { display: none !important; }
+            .sheet-page {
+                box-shadow: none !important;
+                border: none !important;
+                margin: 0 !important;
+                padding: 6mm 8mm !important;
+                width: 100% !important;
+                max-width: none !important;
+                min-height: 282mm !important;
+                page-break-after: always !important;
+                break-after: page !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print-bar">
+        <div>
+            <strong style="font-size:14px; color:#1E3A8A;">Feuilles de Notes A4 par Matière — Classe : ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</strong>
+            <span style="color:#64748B; font-size:12px; margin-left:10px;">${effectiveSheets.length} Matière(s) | Chaque classe &amp; matière sur 1 page A4</span>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <button type="button" class="btn-action-download" onclick="downloadBulletinsStandalone()">
+                📥 Télécharger Fichier HTML (A4)
+            </button>
+            <button type="button" class="btn-action-print" onclick="window.print()">
+                🖨️ Imprimer les Feuilles (A4 PDF)
+            </button>
+        </div>
+    </div>
+`;
+
+        effectiveSheets.forEach(sheet => {
+            const stList = Array.isArray(sheet.students) ? sheet.students : [];
+            const sheetStats = sheet.stats || {};
+            const tName = sheet.teacher || '—';
+
+            html += `
+    <div class="sheet-page">
+        <div>
+            <div class="school-header">
+                <div style="width:75px; text-align:left;">
+                    <img src="/logo-alkawthar.svg" alt="Logo" style="height:55px;" onerror="this.style.display='none'">
+                </div>
+                <div class="school-header-center">
+                    <h1 class="school-title-fr">ÉCOLES INTERNATIONALES AL-KAWTHAR</h1>
+                    <div class="school-title-ar">مدارس الكوثر العالمية</div>
+                    <div class="doc-title-badge">PROCÈS-VERBAL &amp; BULLETIN DES NOTES PAR MATIÈRE</div>
+                    <div class="doc-sub">Année Scolaire 2025 - 2026 — ${semTitle}</div>
+                </div>
+                <div style="width:85px; text-align:right;">
+                    <span style="display:inline-block; border:1.5px solid #1E3A8A; color:#1E3A8A; padding:3px 7px; border-radius:5px; font-weight:800; font-size:9.5px;">
+                        ${section.toUpperCase()}
+                    </span>
+                </div>
+            </div>
+
+            <div class="subject-banner">
+                <div class="banner-grid">
+                    <div><span class="label">Classe :</span> <strong>${escapeHtml(chosenClass)}</strong></div>
+                    <div><span class="label">Matière :</span> <strong style="color:#1D4ED8; font-size:11.5px;">${escapeHtml(sheet.subject)}</strong></div>
+                    <div><span class="label">Enseignant :</span> <strong>${escapeHtml(tName)}</strong></div>
+                    <div><span class="label">Effectif :</span> <strong>${stList.length} Élève(s)</strong></div>
+                </div>
+                <div class="bareme-pill">
+                    Barème officiel : HW /${maxHw} + CW /${maxCw} + Éval /${maxEval} + Exam /${maxExam} = Total /100
+                </div>
+            </div>
+
+            <table class="grades-table">
+                <thead>
+                    <tr>
+                        <th style="width:34px;">N°</th>
+                        <th>Nom et Prénom de l'Élève</th>
+                        <th style="width:75px;">Devoirs (/${maxHw})</th>
+                        <th style="width:75px;">Classe (/${maxCw})</th>
+                        <th style="width:75px;">Évaluation (/${maxEval})</th>
+                        <th style="width:75px;">Examen (/${maxExam})</th>
+                        <th style="width:85px; background:#EEF2FF; color:#1E40AF;">Total (/100)</th>
+                        <th style="width:50px;">Rang</th>
+                        <th style="width:130px; text-align:left;">Appréciation / Mention</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+
+            stList.forEach((st, idx) => {
+                html += `
+                    <tr>
+                        <td style="font-weight:700; color:#64748B;">${idx + 1}</td>
+                        <td>${escapeHtml(st.studentName)}</td>
+                        <td>${st.hw}</td>
+                        <td>${st.cw}</td>
+                        <td>${st.evaluation}</td>
+                        <td>${st.examen}</td>
+                        <td class="total-col">${st.total}</td>
+                        <td style="font-weight:800; color:#1E3A8A;">${st.rank}e</td>
+                        <td class="apprec-col">
+                            <strong>${escapeHtml(st.mention)}</strong> — ${escapeHtml(st.appreciation)}
+                        </td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                </tbody>
+            </table>
+        </div>
+
+        <div>
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-label">Moyenne de Classe</div>
+                    <div class="stat-val" style="color:#1D4ED8;">${sheetStats.classAverage || '—'} / 100</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Note Maximale</div>
+                    <div class="stat-val" style="color:#059669;">${sheetStats.maxGrade || '—'} / 100</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Note Minimale</div>
+                    <div class="stat-val" style="color:#DC2626;">${sheetStats.minGrade || '—'} / 100</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Taux de Réussite (≥50)</div>
+                    <div class="stat-val" style="color:#7C3AED;">${sheetStats.successRate !== undefined ? sheetStats.successRate + '%' : '—'}</div>
+                </div>
+            </div>
+
+            <div class="signatures-row">
+                <div class="sig-box">
+                    <span>Signature de l'Enseignant de la Matière :</span>
+                    <strong style="color:#1E3A8A;">M. / Mme ${escapeHtml(tName)}</strong>
+                </div>
+                <div class="sig-box">
+                    <span>Superviseur Pédagogique :</span>
+                    <span style="font-size:8.5px; color:#64748B;">Visa et validation de conformité</span>
+                </div>
+                <div class="sig-box">
+                    <span>Direction des Études :</span>
+                    <span style="font-size:8.5px; color:#64748B;">(Cachet officiel de l'établissement &amp; Signature)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+            `;
+        });
+
+        html += `
+    <script>
+        function downloadBulletinsStandalone() {
+            const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'Proces_Verbal_Notes_${chosenClass}_${chosenSemester}.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+</html>`;
+        return html;
+    }
+
+    // FORMAT SECONDAIRE : Bulletins individuels par élève (Toutes les matières de chaque élève)
+    const students = Array.isArray(data.students) ? data.students : [];
+    const stats = data.classStats || {};
+
+    let html = `<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <title>Bulletins Scolaires Individuels A4 - Classe ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 8mm 10mm;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             color: #0F172A;
             background: #F8FAFC;
             margin: 0;
@@ -19888,7 +20353,6 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section) {
             text-align: center;
         }
         .grades-table th:first-child { text-align: left; }
-        .grades-table th:last-child { text-align: left; }
         .grades-table td {
             border: 1px solid #CBD5E1;
             padding: 5.5px 8px;
@@ -19988,7 +20452,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section) {
 <body>
     <div class="no-print-bar">
         <div>
-            <strong style="font-size:14px; color:#1E3A8A;">Bulletins Scolaires Officiels A4 — Classe : ${chosenClass} (${chosenSemester})</strong>
+            <strong style="font-size:14px; color:#1E3A8A;">Bulletins Scolaires Individuels A4 — Classe : ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</strong>
             <span style="color:#64748B; font-size:12px; margin-left:10px;">${students.length} Élève(s) — ${sectionTitle}</span>
         </div>
         <div style="display:flex; gap:10px;">
@@ -20096,7 +20560,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section) {
                 </div>
 
                 <div style="background:#FAF5FF; border:1px solid #E9D5FF; border-radius:6px; padding:7px 10px; font-size:10px; color:#581C87; margin-bottom:10px;">
-                    <strong>Avis de l'Équipe Pédagogique :</strong> ${escapeHtml(st.mention)} — Travail sérieux, assiduité et implication exemplaire durant le semestre.
+                    <strong>Avis de l'Équipe Pédagogique :</strong> ${escapeHtml(st.mention)} — Travail assidu et implication régulière tout au long du semestre.
                 </div>
 
                 <div class="signatures-container">
@@ -20122,7 +20586,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section) {
             const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = 'Bulletins_Scolaires_A4_${chosenClass}_${chosenSemester}.html';
+            a.download = 'Bulletins_Individuels_A4_${chosenClass}_${chosenSemester}.html';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -20138,22 +20602,35 @@ async function generateClassBulletins(mode) {
     const secSelect = document.getElementById('bulletinModalSectionSelect');
     const classSelect = document.getElementById('bulletinModalClassSelect');
     const semSelect = document.getElementById('bulletinModalSemesterSelect');
+    const subjSelect = document.getElementById('bulletinModalSubjectSelect');
+    const formatSelect = document.getElementById('bulletinModalFormatSelect');
     const statusEl = document.getElementById('bulletinModalStatus');
 
     const section = (secSelect?.value || currentSection || 'garcons').trim();
     const chosenClass = (classSelect?.value || 'PEI1').trim();
     const chosenSemester = (semSelect?.value || 'S1').trim();
+    const chosenSubject = (subjSelect?.value || 'all').trim();
+    const chosenFormat = (formatSelect?.value || 'by_subject').trim();
 
     if (statusEl) {
         statusEl.style.display = 'block';
         statusEl.style.background = '#EFF6FF';
         statusEl.style.color = '#1D4ED8';
         statusEl.style.border = '1px solid #BFDBFE';
-        statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Récupération des données et préparation des bulletins scolaires A4...';
+        statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Récupération des données et préparation des procès-verbaux & bulletins A4...';
     }
 
     try {
-        const res = await fetch(`/api/class-bulletins-data?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(chosenClass)}&semester=${encodeURIComponent(chosenSemester)}`);
+        const queryParams = new URLSearchParams({
+            section,
+            classe: chosenClass,
+            semester: chosenSemester
+        });
+        if (chosenSubject && chosenSubject !== 'all') {
+            queryParams.append('subject', chosenSubject);
+        }
+
+        const res = await fetch(`/api/class-bulletins-data?${queryParams.toString()}`);
         if (!res.ok) throw new Error("Erreur de récupération des données des bulletins.");
         const data = await res.json();
 
@@ -20168,15 +20645,19 @@ async function generateClassBulletins(mode) {
             return;
         }
 
-        const fullHTML = buildClassBulletinsHTML(data, chosenClass, chosenSemester, section);
+        const fullHTML = buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, chosenSubject, chosenFormat);
         lastGeneratedBulletinsHTML = fullHTML;
-        lastGeneratedBulletinsFilename = `Bulletins_Scolaires_A4_${chosenClass}_${chosenSemester}.html`.replace(/\s+/g, '_');
+        const subjTag = (chosenSubject && chosenSubject !== 'all') ? `_${chosenSubject}` : '';
+        lastGeneratedBulletinsFilename = `${chosenFormat === 'by_subject' ? 'Proces_Verbal_Notes' : 'Bulletins_Scolaires'}_A4_${chosenClass}${subjTag}_${chosenSemester}.html`.replace(/[\s\/]+/g, '_');
 
         if (statusEl) {
             statusEl.style.background = '#F0FDF4';
             statusEl.style.color = '#15803D';
             statusEl.style.border = '1px solid #BBF7D0';
-            statusEl.innerHTML = `✅ ${students.length} bulletin(s) officiel(s) généré(s) pour la classe ${chosenClass} !`;
+            const countLabel = chosenFormat === 'by_subject' 
+              ? `${(data.subjectSheets || []).length} feuille(s) par matière générée(s) (1 page A4 par matière)` 
+              : `${students.length} bulletin(s) individuel(s) généré(s)`;
+            statusEl.innerHTML = `✅ ${countLabel} pour la classe ${chosenClass} !`;
         }
 
         if (mode === 'download') {
@@ -20193,13 +20674,13 @@ async function generateClassBulletins(mode) {
                 URL.revokeObjectURL(url);
                 document.body.removeChild(a);
             }
-            displayAlert(`Bulletins A4 téléchargés avec succès pour la classe ${chosenClass} !`, false);
+            displayAlert(`Document A4 téléchargé avec succès pour la classe ${chosenClass} !`, false);
         } else if (mode === 'preview') {
             const previewModal = document.getElementById('classBulletinsPreviewModal');
             const previewIframe = document.getElementById('classBulletinsPreviewIframe');
             const previewTitle = document.getElementById('classBulletinsPreviewTitle');
             if (previewTitle) {
-                previewTitle.textContent = `Aperçu des Bulletins A4 — Classe ${chosenClass} (${chosenSemester})`;
+                previewTitle.textContent = `${chosenFormat === 'by_subject' ? 'Procès-Verbal par Matière' : 'Bulletins Individuels'} A4 — Classe ${chosenClass} (${chosenSemester})`;
             }
             if (previewModal && previewIframe) {
                 previewModal.style.display = 'flex';
@@ -20253,7 +20734,7 @@ async function generateClassBulletins(mode) {
             statusEl.style.background = '#FEF2F2';
             statusEl.style.color = '#991B1B';
             statusEl.style.border = '1px solid #FECDD3';
-            statusEl.textContent = "Erreur lors de la génération des bulletins : " + err.message;
+            statusEl.textContent = "Erreur lors de la génération : " + err.message;
         }
     }
 }
@@ -20290,13 +20771,15 @@ function executePreviewDownload() {
     }
 }
 
-async function adminOpenClassGradesPrintA4(presetClass, presetSemester) {
-    openClassGradesPrintModal(presetClass, presetSemester);
+async function adminOpenClassGradesPrintA4(presetClass, presetSemester, presetSubject) {
+    openClassGradesPrintModal(presetClass, presetSemester, presetSubject);
 }
 
 window.openClassGradesPrintModal = openClassGradesPrintModal;
 window.closeClassGradesPrintModal = closeClassGradesPrintModal;
 window.onBulletinsModalSectionChanged = onBulletinsModalSectionChanged;
+window.onBulletinsModalClassChanged = onBulletinsModalClassChanged;
+window.populateBulletinModalSubjects = populateBulletinModalSubjects;
 window.generateClassBulletins = generateClassBulletins;
 window.closeClassBulletinsPreviewModal = closeClassBulletinsPreviewModal;
 window.executePreviewPrint = executePreviewPrint;

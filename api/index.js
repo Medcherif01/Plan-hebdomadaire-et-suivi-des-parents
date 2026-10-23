@@ -11584,21 +11584,24 @@ app.get('/api/student-grades-data', async (req, res) => {
         if (ev.status) statuses.push(ev.status);
       });
 
-      // 1. Calcul bienveillant de la participation et comportement (Classwork CW)
-      const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : 9.0;
-      const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : 9.0;
-      const score10 = Math.min(10, Math.max(8.0, (avgP * 0.6 + avgB * 0.4)));
-      const autoCw = Math.min(maxCw, Math.max(isPei1 ? 24 : 16, parseFloat(((score10 / 10) * maxCw).toFixed(1))));
+      // 1. Calcul strict de la participation et comportement (Classwork CW)
+      let autoCw = isPei1 ? 21.0 : 14.0; // 70% estimation stricte si aucune évaluation
+      if (participations.length > 0 || behaviors.length > 0) {
+        const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : (behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : 7.0);
+        const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : avgP;
+        const strictScore10 = Math.min(10, Math.max(0, (avgP * 0.7 + avgB * 0.3)));
+        autoCw = parseFloat(((strictScore10 / 10) * maxCw).toFixed(1));
+      }
 
-      // 2. Faisabilité bienveillante des devoirs (Homework HW sur 20)
+      // 2. Calcul strict des devoirs (Homework HW sur 20)
+      let autoHw = 14.0; // 70% estimation stricte si aucun devoir
       const totalHw = statuses.length;
-      const doneCount = statuses.filter(s => s === 'Fait').length;
-      const partialCount = statuses.filter(s => s === 'Partiellement Fait').length;
-      let autoHw = 18.5;
       if (totalHw > 0) {
-        const weightedRate = (doneCount * 1.0 + partialCount * 0.85 + (totalHw - doneCount - partialCount) * 0.60) / totalHw;
-        const hwRate = 0.72 + (weightedRate * 0.28);
-        autoHw = Math.min(20, Math.max(15, parseFloat((hwRate * 20).toFixed(1))));
+        const doneCount = statuses.filter(s => s === 'Fait').length;
+        const partialCount = statuses.filter(s => s === 'Partiellement Fait').length;
+        // Fait = 100% (20 pts), Partiellement Fait = 50% (10 pts), Non Fait = 0 pt
+        const hwPoints = (doneCount * 20.0) + (partialCount * 10.0);
+        autoHw = parseFloat((hwPoints / totalHw).toFixed(1));
       }
 
       // Vérifier si une note a déjà été saisie manuellement par l'enseignant
@@ -11760,7 +11763,7 @@ app.get('/api/teacher-assignments', async (req, res) => {
 // ============================================================================
 app.get('/api/class-bulletins-data', async (req, res) => {
   try {
-    const { section = 'garcons', classe = 'PEI1', semester = 'S1' } = req.query;
+    const { section = 'garcons', classe = 'PEI1', semester = 'S1', subject = '' } = req.query;
     const db = await connectToDatabase();
 
     const targetClassNorm = (normalizeStudentClass(classe) || classe).trim().toUpperCase();
@@ -11817,82 +11820,169 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       semester: { $in: semesterVariants }
     }).toArray();
 
-    // 4. Récupérer les évaluations pour calcul bienveillant
+    // 4. Récupérer les évaluations pour calcul strict
     const allEvaluations = await db.collection('evaluations').find({
       $or: [{ section: section }, { section: { $exists: false } }]
     }).toArray();
 
-    // 5. Construire le bulletin pour chaque élève
+    // 5. Récupérer les liaisons enseignants-matières
+    const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
+
+    // Fonction de calcul strict pour un élève et une matière
+    const computeStudentSubjectGrade = (stName, subj) => {
+      const normStName = normalizeStudentName(stName);
+      const saved = savedGrades.find(g => 
+        normalizeStudentName(g.studentName || '') === normStName &&
+        isEquivalentSubjectServer(g.subject, subj)
+      );
+
+      let hw = 14.0;
+      let cw = isPei1 ? 21.0 : 14.0;
+      let evaluation = 0;
+      let examen = 0;
+
+      if (saved) {
+        hw = saved.hw !== undefined ? Number(saved.hw) : hw;
+        cw = saved.cw !== undefined ? Number(saved.cw) : cw;
+        evaluation = saved.evaluation !== undefined ? Number(saved.evaluation) : 0;
+        examen = saved.examen !== undefined ? Number(saved.examen) : 0;
+      } else {
+        const stEvals = allEvaluations.filter(ev => {
+          const evNorm = normalizeStudentName(ev.studentName || '');
+          return (evNorm === normStName || evNorm.includes(normStName)) && isEquivalentSubjectServer(ev.subject, subj);
+        });
+
+        if (stEvals.length > 0) {
+          const participations = [];
+          const behaviors = [];
+          const statuses = [];
+          stEvals.forEach(ev => {
+            const p = parseInt(ev.participation, 10);
+            const b = parseInt(ev.behavior, 10);
+            if (!isNaN(p)) participations.push(p);
+            if (!isNaN(b)) behaviors.push(b);
+            if (ev.status) statuses.push(ev.status);
+          });
+
+          // Calcul strict de CW (Participation 70% + Comportement 30%)
+          if (participations.length > 0 || behaviors.length > 0) {
+            const avgP = participations.length > 0 ? (participations.reduce((a, b) => a + b, 0) / participations.length) : 7.0;
+            const avgB = behaviors.length > 0 ? (behaviors.reduce((a, b) => a + b, 0) / behaviors.length) : avgP;
+            const score10 = Math.min(10, Math.max(0, (avgP * 0.7 + avgB * 0.3)));
+            cw = parseFloat(((score10 / 10) * maxCw).toFixed(1));
+          }
+
+          // Calcul strict de HW (Fait = 100%, Partiellement Fait = 50%, Non Fait = 0%)
+          if (statuses.length > 0) {
+            const done = statuses.filter(s => s === 'Fait').length;
+            const partial = statuses.filter(s => s === 'Partiellement Fait').length;
+            const hwPts = (done * 20.0) + (partial * 10.0);
+            hw = parseFloat((hwPts / statuses.length).toFixed(1));
+          }
+        }
+      }
+
+      const totalSubj = Math.round((hw + cw + evaluation + examen) * 10) / 10;
+      let appreciation = 'Bon travail dans l\'ensemble.';
+      let mention = 'Passable';
+      if (totalSubj >= 90) { appreciation = 'Excellent travail, élève brillant et régulier.'; mention = 'Excellent'; }
+      else if (totalSubj >= 80) { appreciation = 'Très bon travail, résultats très satisfaisants.'; mention = 'Très Bien'; }
+      else if (totalSubj >= 70) { appreciation = 'Bon travail, implication constante.'; mention = 'Bien'; }
+      else if (totalSubj >= 60) { appreciation = 'Ensemble satisfaisant, poursuivez vos efforts.'; mention = 'Assez Bien'; }
+      else if (totalSubj >= 50) { appreciation = 'Résultats passables, intensifiez les révisions.'; mention = 'Passable'; }
+      else { appreciation = 'Insuffisant, un travail plus soutenu est requis.'; mention = 'Insuffisant'; }
+
+      const teacherName = (saved && saved.teacher) ? saved.teacher : resolveSectionTeacher(section, classe, subj, '', subTeacherDocs);
+
+      return {
+        subject: subj,
+        teacher: teacherName,
+        hw,
+        cw,
+        evaluation,
+        examen,
+        total: totalSubj,
+        appreciation,
+        mention
+      };
+    };
+
+    // 6. Construire les fiches de notes par matière (Procès-Verbaux de classe par matière)
+    const targetSubjects = (subject && subject !== 'all') 
+      ? standardSubjects.filter(s => isEquivalentSubjectServer(s, subject))
+      : standardSubjects;
+    const subjectsToBuild = targetSubjects.length > 0 ? targetSubjects : standardSubjects;
+
+    const subjectSheets = subjectsToBuild.map(subj => {
+      const teacherName = resolveSectionTeacher(section, classe, subj, '', subTeacherDocs);
+
+      const subjStudents = classStudents.map(st => {
+        const stName = (st.name || '').trim();
+        const res = computeStudentSubjectGrade(stName, subj);
+        return {
+          studentName: stName,
+          photo: st.photo || '',
+          hw: res.hw,
+          cw: res.cw,
+          evaluation: res.evaluation,
+          examen: res.examen,
+          total: res.total,
+          appreciation: res.appreciation,
+          mention: res.mention
+        };
+      });
+
+      // Tri par note décroissante pour le rang
+      subjStudents.sort((a, b) => b.total - a.total);
+      subjStudents.forEach((s, idx) => {
+        s.rank = idx + 1;
+      });
+
+      const totals = subjStudents.map(s => s.total);
+      const subjAvg = totals.length > 0 ? Math.round((totals.reduce((a, b) => a + b, 0) / totals.length) * 10) / 10 : 0;
+      const subjMax = totals.length > 0 ? Math.max(...totals) : 0;
+      const subjMin = totals.length > 0 ? Math.min(...totals) : 0;
+      const passCount = subjStudents.filter(s => s.total >= 50).length;
+      const successRate = totals.length > 0 ? Math.round((passCount / totals.length) * 100) : 0;
+
+      return {
+        subject: subj,
+        teacher: teacherName,
+        classe,
+        section,
+        semester,
+        isPei1,
+        maxHw,
+        maxCw,
+        maxEval,
+        maxExam,
+        students: subjStudents,
+        stats: {
+          totalStudents: subjStudents.length,
+          classAverage: subjAvg,
+          maxGrade: subjMax,
+          minGrade: subjMin,
+          successRate
+        }
+      };
+    });
+
+    // 7. Construire les bulletins récapitulatifs par élève
     const studentsBulletins = classStudents.map(st => {
       const stName = (st.name || '').trim();
-      const normStName = normalizeStudentName(stName);
-
       const subjectResults = [];
       let totalPoints = 0;
       let totalMaxPoints = 0;
 
       standardSubjects.forEach(subj => {
-        const saved = savedGrades.find(g => 
-          normalizeStudentName(g.studentName || '') === normStName &&
-          isEquivalentSubjectServer(g.subject, subj)
-        );
-
-        let hw = 18.5;
-        let cw = isPei1 ? 27 : 18;
-        let evaluation = 0;
-        let examen = 0;
-
-        if (saved) {
-          hw = saved.hw !== undefined ? Number(saved.hw) : hw;
-          cw = saved.cw !== undefined ? Number(saved.cw) : cw;
-          evaluation = saved.evaluation !== undefined ? Number(saved.evaluation) : 0;
-          examen = saved.examen !== undefined ? Number(saved.examen) : 0;
-        } else {
-          const stEvals = allEvaluations.filter(ev => {
-            const evNorm = normalizeStudentName(ev.studentName || '');
-            return (evNorm === normStName || evNorm.includes(normStName)) && isEquivalentSubjectServer(ev.subject, subj);
-          });
-
-          if (stEvals.length > 0) {
-            const avgP = stEvals.reduce((a, b) => a + (parseInt(b.participation, 10) || 8.5), 0) / stEvals.length;
-            const avgB = stEvals.reduce((a, b) => a + (parseInt(b.behavior, 10) || 8.5), 0) / stEvals.length;
-            const score10 = Math.min(10, Math.max(8.0, (avgP * 0.6 + avgB * 0.4)));
-            cw = Math.min(maxCw, Math.max(isPei1 ? 24 : 16, parseFloat(((score10 / 10) * maxCw).toFixed(1))));
-
-            const done = stEvals.filter(e => e.status === 'Fait').length;
-            const partial = stEvals.filter(e => e.status === 'Partiellement Fait').length;
-            const rate = 0.72 + (((done * 1.0 + partial * 0.85 + (stEvals.length - done - partial) * 0.60) / stEvals.length) * 0.28);
-            hw = Math.min(20, Math.max(15, parseFloat((rate * 20).toFixed(1))));
-          }
-        }
-
-        const totalSubj = Math.round((hw + cw + evaluation + examen) * 10) / 10;
-        totalPoints += totalSubj;
+        const res = computeStudentSubjectGrade(stName, subj);
+        totalPoints += res.total;
         totalMaxPoints += 100;
-
-        const teacherName = saved && saved.teacher ? saved.teacher : resolveSectionTeacher(section, classe, subj, '');
-
-        let appreciation = 'Très bon travail, continuez ainsi !';
-        if (totalSubj >= 85) appreciation = 'Excellent travail, élève appliqué et rigoureux.';
-        else if (totalSubj >= 70) appreciation = 'Bon travail dans l\'ensemble, résultats satisfaisants.';
-        else if (totalSubj >= 50) appreciation = 'Ensemble convenable, intensifiez les efforts.';
-        else appreciation = 'Des efforts sont nécessaires pour progresser.';
-
-        subjectResults.push({
-          subject: subj,
-          teacher: teacherName,
-          hw,
-          cw,
-          evaluation,
-          examen,
-          total: totalSubj,
-          appreciation
-        });
+        subjectResults.push(res);
       });
 
       const generalAverage = totalMaxPoints > 0 ? Math.round((totalPoints / standardSubjects.length) * 10) / 10 : 0;
-      
-      let mention = 'Félicitations';
+      let mention = 'Passable';
       if (generalAverage >= 85) mention = 'Très Bien (Félicitations)';
       else if (generalAverage >= 75) mention = 'Bien (Compliments)';
       else if (generalAverage >= 65) mention = 'Assez Bien (Encouragements)';
@@ -11923,12 +12013,14 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       classe,
       section,
       semester,
+      subject,
       isPei1,
       maxHw,
       maxCw,
       maxEval,
       maxExam,
       subjects: standardSubjects,
+      subjectSheets,
       students: studentsBulletins,
       classStats: {
         totalStudents: studentsBulletins.length,
@@ -11939,7 +12031,7 @@ app.get('/api/class-bulletins-data', async (req, res) => {
     });
   } catch (err) {
     console.error('Erreur GET /api/class-bulletins-data:', err);
-    res.status(500).json({ success: false, error: err.message, students: [] });
+    res.status(500).json({ success: false, error: err.message, students: [], subjectSheets: [] });
   }
 });
 
