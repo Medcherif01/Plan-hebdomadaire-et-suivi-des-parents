@@ -487,7 +487,7 @@ function isRowAllowedForSection(row, targetSection) {
 
   if (sec === 'garcons') {
     if (isFemaleClass || isMatClass || isPrimClass) return false;
-    if (isFemaleTeacher && !isDualMusicTeacher(ens)) return false;
+    if (isFemaleTeacher) return false;
     return true;
   } else if (sec === 'filles') {
     if (isMaleClass || isMatClass || isPrimClass) return false;
@@ -504,6 +504,49 @@ function isRowAllowedForSection(row, targetSection) {
     return true;
   }
   return true;
+}
+
+function resolveSectionTeacher(section, classe, subject, candidateTeacher, subTeacherDocs = []) {
+  const sec = String(section || 'garcons').toLowerCase().trim();
+  const cNorm = String(classe || '').toLowerCase().trim();
+  const isGarcons = (sec === 'garcons' || cNorm.includes('garcon') || cNorm.includes('garçon') || cNorm.includes('بنين'));
+
+  const cand = String(candidateTeacher || '').trim();
+  const candNorm = cand.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  if (isGarcons) {
+    const isFemale = femaleTeachers.some(f => {
+      const fLow = f.toLowerCase();
+      return candNorm === fLow || candNorm.includes(fLow) || cand.toLowerCase().includes(fLow);
+    }) || candNorm.includes('soltani') || candNorm.includes('amal') || candNorm.includes('souha');
+
+    if (cand && !isFemale && maleTeachers.some(m => m.toLowerCase() === cand.toLowerCase() || candNorm.includes(m.toLowerCase()))) {
+      return cand;
+    }
+
+    if (Array.isArray(subTeacherDocs) && subTeacherDocs.length > 0) {
+      const match = subTeacherDocs.find(d => 
+        (d.section === 'garcons' || !d.section) &&
+        (isClassMatchServer(d.classe, classe) || d.classe === 'all' || !d.classe) &&
+        isEquivalentSubjectServer(d.matiere, subject) &&
+        d.enseignant && !femaleTeachers.some(f => f.toLowerCase() === d.enseignant.trim().toLowerCase())
+      );
+      if (match && match.enseignant) return match.enseignant.trim();
+    }
+
+    const sLow = String(subject || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (sLow.includes('math')) return 'Mohamed';
+    if (sLow.includes('angl') || sLow.includes('eng')) return 'Kamel';
+    if (sLow.includes('arab') || sLow.includes('islam') || sLow.includes('coran') || sLow.includes('tarbiya') || /[\u0600-\u06FF]/.test(subject || '')) return 'Majed';
+    if (sLow.includes('scienc') || sLow.includes('svt') || sLow.includes('physiq') || sLow.includes('chim')) return 'Sylvano';
+    if (sLow.includes('franc') || sLow.includes('fren')) return 'Abas';
+    if (sLow.includes('hist') || sLow.includes('geo')) return 'Zine';
+    if (sLow.includes('sport') || sLow.includes('eps')) return 'Tonga';
+    if (sLow.includes('info') || sLow.includes('tech')) return 'Oumarou';
+    return 'Mohamed';
+  }
+
+  return cand || 'Enseignant';
 }
 
 function filterPlanDataBySection(rows, section) {
@@ -4191,6 +4234,9 @@ app.get('/api/evaluations', async (req, res) => {
 
     // Parcourir les documents de plans de la section (en commençant par la semaine cible)
     const docsToProcess = targetPlanDoc ? [targetPlanDoc, ...planDocs.filter(d => d !== targetPlanDoc)] : planDocs;
+    const subTeacherDocs = await db.collection('class_subject_teachers').find({
+      $or: [{ section: section }, { section: { $exists: false } }]
+    }).toArray().catch(() => []);
 
     docsToProcess.forEach(doc => {
       if (Array.isArray(doc.data)) {
@@ -4213,6 +4259,7 @@ app.get('/api/evaluations', async (req, res) => {
           if (rowClass && hasExplicitDevoir) {
             if (section === 'maternelle' && typeof isMaternelleClassServer === 'function' && !isMaternelleClassServer(rowClass)) return;
             if (section === 'primaire' && typeof isMaternelleClassServer === 'function' && isMaternelleClassServer(rowClass)) return;
+            if (typeof isRowAllowedForSection === 'function' && !isRowAllowedForSection(row, section)) return;
             const rNorm = normClass(rowClass);
             const classMatch = (rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm) || (typeof isClassMatchServer === 'function' && isClassMatchServer(rowClass, className)));
 
@@ -4256,18 +4303,20 @@ app.get('/api/evaluations', async (req, res) => {
               }
 
               const effectiveAssignment = rowDevoirsClean;
+              const resolvedTeacher = resolveSectionTeacher(section, rowClass, rowMatiere, rowEnseignant, subTeacherDocs);
 
               const hwItem = {
                 week: doc.week,
                 subject: rowMatiere || 'Matière',
                 assignment: effectiveAssignment,
-                teacher: rowEnseignant || 'Enseignant',
+                teacher: resolvedTeacher,
                 period: rowPeriode || '',
                 lesson: rowLecon || '',
                 classWork: rowTravaux || '',
                 day: stdDay || rowDay || '',
                 exactDate: exactRowDate,
-                formattedDateFr: formattedDateFr
+                formattedDateFr: formattedDateFr,
+                section: section
               };
 
               const uniqueKey = `${doc.week}_${rowMatiere}_${effectiveAssignment}_${stdDay}`;
@@ -11438,6 +11487,150 @@ app.post('/api/notify-incomplete-teachers', async (req, res) => {
 // ============================================================================
 // GESTION DES NOTES DES ÉLÈVES (Semestre 1 & Semestre 2)
 // ============================================================================
+app.get('/api/student-grades-data', async (req, res) => {
+  try {
+    const { section = 'garcons', classe, subject, semester = 'S1' } = req.query;
+    if (!classe) {
+      return res.status(400).json({ error: 'Classe requise' });
+    }
+
+    const db = await connectToDatabase();
+    const authoritativeList = await getAuthoritativeStudents(db, section);
+    const targetClassNorm = (normalizeStudentClass(classe) || classe).trim().toUpperCase();
+
+    // 1. Récupérer UNIQUEMENT les élèves réels de cette classe dans la base de données
+    let classStudents = authoritativeList.filter(s => {
+      const scNorm = (normalizeStudentClass(s.class) || s.class || '').trim().toUpperCase();
+      return scNorm === targetClassNorm || scNorm.includes(targetClassNorm) || targetClassNorm.includes(scNorm);
+    });
+
+    if (classStudents.length === 0) {
+      const rawSt = await db.collection('students').find({ section }).toArray();
+      classStudents = rawSt.filter(s => {
+        const scNorm = (normalizeStudentClass(s.class) || s.class || '').trim().toUpperCase();
+        return scNorm === targetClassNorm || scNorm.includes(targetClassNorm) || targetClassNorm.includes(scNorm);
+      }).map(s => ({
+        _id: s._id,
+        name: s.name,
+        class: s.class,
+        section: s.section || section,
+        photo: s.photo || ''
+      }));
+    }
+
+    if (classStudents.length === 0) {
+      const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'maternelle' ? defaultMaternelleStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents));
+      const foundList = seedDict[targetClassNorm] || seedDict[classe] || [];
+      classStudents = foundList.map(s => ({
+        name: s.name,
+        class: classe,
+        section: section,
+        photo: s.photo || ''
+      }));
+    }
+
+    // 2. Récupérer les notes déjà enregistrées pour cette classe, matière et semestre
+    const query = { section, classe, semester };
+    if (subject) query.subject = subject;
+    const existingGrades = await db.collection('studentGrades').find(query).toArray();
+
+    // 3. Récupérer toutes les évaluations cumulées pour calculer CW et HW
+    const allEvaluations = await db.collection('evaluations').find({
+      $or: [{ section: section }, { section: { $exists: false } }]
+    }).toArray();
+
+    const isPei1 = (targetClassNorm === 'PEI1');
+    const maxCw = isPei1 ? 30 : 20;
+    const maxEval = isPei1 ? 20 : 30;
+    const maxHw = 20;
+    const maxExam = 30;
+
+    // 4. Calcul automatique de CW et HW pour chaque élève officiel
+    const enrichedStudents = classStudents.map(st => {
+      const stName = (st.name || '').trim();
+      const normStName = normalizeStudentName(stName);
+
+      // Trouver toutes les évaluations enregistrées pour cet élève
+      const studentEvals = allEvaluations.filter(ev => {
+        const evNorm = normalizeStudentName(ev.studentName || '');
+        const evClass = (normalizeStudentClass(ev.class) || ev.class || '').trim().toUpperCase();
+        const nameMatch = (evNorm === normStName || evNorm.includes(normStName) || normStName.includes(evNorm));
+        const classMatch = (evClass === targetClassNorm || evClass.includes(targetClassNorm) || targetClassNorm.includes(evClass));
+        return nameMatch && classMatch;
+      });
+
+      const subjectEvals = subject 
+        ? studentEvals.filter(ev => isEquivalentSubjectServer(ev.subject, subject))
+        : studentEvals;
+      const effectiveEvals = subjectEvals.length > 0 ? subjectEvals : studentEvals;
+
+      let participations = [];
+      let behaviors = [];
+      let statuses = [];
+
+      effectiveEvals.forEach(ev => {
+        const p = parseInt(ev.participation, 10);
+        const b = parseInt(ev.behavior, 10);
+        if (!isNaN(p)) participations.push(p);
+        if (!isNaN(b)) behaviors.push(b);
+        if (ev.status) statuses.push(ev.status);
+      });
+
+      // Moyenne participation et comportement (base 10)
+      const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : 8.5;
+      const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : 8.5;
+      const score10 = (avgP * 0.6 + avgB * 0.4);
+      const autoCw = Math.min(maxCw, Math.max(0, parseFloat(((score10 / 10) * maxCw).toFixed(1))));
+
+      // Faisabilité des devoirs (Homework HW) sur 20
+      const totalHw = statuses.length;
+      const doneCount = statuses.filter(s => s === 'Fait').length;
+      const partialCount = statuses.filter(s => s === 'Partiellement Fait').length;
+      const hwRate = totalHw > 0 ? ((doneCount + partialCount * 0.5) / totalHw) : 0.85;
+      const autoHw = Math.min(20, Math.max(0, parseFloat((hwRate * 20).toFixed(1))));
+
+      // Vérifier si une note a déjà été saisie manuellement par l'enseignant
+      const saved = existingGrades.find(g => normalizeStudentName(g.studentName || '') === normStName);
+
+      const hw = saved && saved.hw !== undefined ? Number(saved.hw) : autoHw;
+      const cw = saved && saved.cw !== undefined ? Number(saved.cw) : autoCw;
+      const evaluation = saved && saved.evaluation !== undefined ? Number(saved.evaluation) : 0;
+      const examen = saved && saved.examen !== undefined ? Number(saved.examen) : 0;
+      const total = saved && saved.total !== undefined ? Number(saved.total) : parseFloat((hw + cw + evaluation + examen).toFixed(1));
+
+      return {
+        studentName: stName,
+        photo: st.photo || '',
+        autoHw,
+        autoCw,
+        hw,
+        cw,
+        evaluation,
+        examen,
+        total,
+        isSaved: !!saved,
+        evalCount: effectiveEvals.length
+      };
+    });
+
+    res.json({
+      success: true,
+      classe,
+      subject,
+      semester,
+      isPei1,
+      maxHw,
+      maxCw,
+      maxEval,
+      maxExam,
+      students: enrichedStudents
+    });
+  } catch (err) {
+    console.error('Erreur GET /api/student-grades-data:', err);
+    res.status(500).json({ success: false, error: err.message, students: [] });
+  }
+});
+
 app.get('/api/student-grades', async (req, res) => {
   try {
     const { section, classe, subject, semester } = req.query;

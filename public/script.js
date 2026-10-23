@@ -9338,9 +9338,35 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                 const bVal = ev.behavior || 0;
                 const comment = ev.comment || '';
 
+                const effectiveSection = (typeof selectedStudentObj !== 'undefined' && selectedStudentObj && selectedStudentObj.section) 
+                    || currentSection 
+                    || (className && className.toLowerCase().includes('garçon') ? 'garcons' : 'filles');
+                
+                let displayTeacher = hw.teacher || '';
+                if (effectiveSection === 'garcons') {
+                    const t = String(displayTeacher).trim();
+                    const tNorm = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                    const isFem = (typeof femaleTeachersList !== 'undefined' ? femaleTeachersList : []).some(f => {
+                        const fLow = f.toLowerCase();
+                        return tNorm === fLow || tNorm.includes(fLow) || t.toLowerCase().includes(fLow);
+                    }) || tNorm.includes('soltani') || tNorm.includes('amal') || tNorm.includes('souha');
+
+                    if (isFem || !t || t === 'Enseignant') {
+                        const sLow = String(hw.subject || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                        if (sLow.includes('math')) displayTeacher = 'Mohamed';
+                        else if (sLow.includes('angl') || sLow.includes('eng')) displayTeacher = 'Kamel';
+                        else if (sLow.includes('arab') || sLow.includes('islam') || sLow.includes('coran') || /[\u0600-\u06FF]/.test(hw.subject || '')) displayTeacher = 'Majed';
+                        else if (sLow.includes('scienc') || sLow.includes('svt') || sLow.includes('physiq')) displayTeacher = 'Sylvano';
+                        else if (sLow.includes('franc')) displayTeacher = 'Abas';
+                        else if (sLow.includes('hist') || sLow.includes('geo')) displayTeacher = 'Zine';
+                        else if (sLow.includes('sport')) displayTeacher = 'Tonga';
+                        else displayTeacher = 'Mohamed';
+                    }
+                }
+
                 const dayBadge = hw.day ? `<span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-size:0.75rem; font-weight:700; margin-left:6px;"><i class="fas fa-calendar-day"></i> ${hw.day}</span>` : '';
                 const periodBadge = hw.period ? `<span style="background:#F1F5F9; color:#475569; padding:3px 8px; border-radius:6px; font-size:0.75rem; font-weight:600;"><i class="fas fa-clock"></i> P${hw.period}</span>` : '';
-                const teacherBadge = hw.teacher ? `<span style="font-size:0.8rem; color:#64748B; display:flex; align-items:center; gap:4px;"><i class="fas fa-chalkboard-teacher"></i> ${hw.teacher}</span>` : '';
+                const teacherBadge = displayTeacher ? `<span style="font-size:0.8rem; color:#64748B; display:flex; align-items:center; gap:4px;"><i class="fas fa-chalkboard-teacher"></i> ${displayTeacher}</span>` : '';
 
                 return `
                     <div style="background:white; border-radius:16px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); border:1px solid #E2E8F0; position:relative; display:flex; flex-direction:column; justify-content:space-between;">
@@ -19304,18 +19330,43 @@ async function loadTeacherGradesInterfaceData() {
         const user = loggedInUser || '';
         const tableTeacher = loggedInTeacherTable || '';
         const section = currentSection || 'garcons';
+        const isAdmin = isUserAdminOrSupervisor(user, currentUserRole);
 
-        teacherAssignedPairs = getTeacherTeachingAssignments(planData || [], user, tableTeacher);
-        
-        if (isUserAdminOrSupervisor(user, currentUserRole)) {
+        teacherAssignedPairs = [];
+
+        if (isAdmin) {
             const classes = getSectionClasses(section);
+            const standardSubjects = (section === 'garcons' || section === 'filles')
+                ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique', 'Sport']
+                : ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques', 'Sport'];
+
             classes.forEach(c => {
-                ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique', 'Sport'].forEach(s => {
-                    if (!teacherAssignedPairs.some(p => p.classe === c && p.subject === s)) {
-                        teacherAssignedPairs.push({ classe: c, subject: s });
-                    }
+                standardSubjects.forEach(s => {
+                    teacherAssignedPairs.push({ classe: c, subject: s });
                 });
             });
+        } else {
+            // Enseignant classique : STRICTEMENT ses classes et ses matières assignées
+            const rawPairs = getTeacherTeachingAssignments(planData || [], user, tableTeacher);
+            rawPairs.forEach(p => {
+                if (p.classe && p.subject && !teacherAssignedPairs.some(tp => tp.classe === p.classe && tp.subject === p.subject)) {
+                    teacherAssignedPairs.push(p);
+                }
+            });
+
+            // Si aucune affectation trouvée dans planData, vérifier les matières par défaut de l'enseignant
+            if (teacherAssignedPairs.length === 0) {
+                const uLow = user.toLowerCase();
+                const secClasses = getSectionClasses(section);
+                let detectedSubj = 'Français';
+                if ((typeof arabicTeachers !== 'undefined' ? arabicTeachers : []).some(t => t.toLowerCase() === uLow)) detectedSubj = 'Arabe';
+                else if ((typeof englishTeachers !== 'undefined' ? englishTeachers : []).some(t => t.toLowerCase() === uLow)) detectedSubj = 'Anglais';
+                else if (uLow.includes('mohamed')) detectedSubj = 'Mathématiques';
+
+                secClasses.forEach(c => {
+                    teacherAssignedPairs.push({ classe: c, subject: detectedSubj });
+                });
+            }
         }
 
         const classSelect = document.getElementById('gradeFilterClassSelect');
@@ -19382,98 +19433,122 @@ async function renderTeacherGradesTable() {
     }
 
     wrapper.innerHTML = `
-        <div style="text-align:center; padding:30px; color:#64748B;">
+        <div style="text-align:center; padding:35px; color:#64748B;">
             <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB;"></i>
-            <p style="margin-top:10px; font-weight:600;">Chargement des élèves et des notes (${classe} - ${subject})...</p>
+            <p style="margin-top:10px; font-weight:700; color:#1E293B;">Chargement des données réelles et calcul automatique de HW & CW (${escapeHtml(classe)} - ${escapeHtml(subject)})...</p>
         </div>
     `;
 
     try {
-        const studentsRes = await fetch(`/api/students?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(classe)}`);
-        let students = [];
-        if (studentsRes.ok) {
-            const stData = await studentsRes.json();
-            students = Array.isArray(stData.students) ? stData.students : (Array.isArray(stData) ? stData : []);
-        }
+        const res = await fetch(`/api/student-grades-data?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(classe)}&subject=${encodeURIComponent(subject)}&semester=${encodeURIComponent(semester)}`);
+        if (!res.ok) throw new Error("Erreur serveur lors de la récupération des notes");
+        const data = await res.json();
+
+        const students = Array.isArray(data.students) ? data.students : [];
+        const isPei1 = Boolean(data.isPei1);
+        const maxHw = data.maxHw || 20;
+        const maxCw = data.maxCw || (isPei1 ? 30 : 20);
+        const maxEval = data.maxEval || (isPei1 ? 20 : 30);
+        const maxExam = data.maxExam || 30;
 
         if (students.length === 0) {
-            students = [
-                { name: "Élève 1 (Exemple)" },
-                { name: "Élève 2 (Exemple)" },
-                { name: "Élève 3 (Exemple)" }
-            ];
+            wrapper.innerHTML = `
+                <div style="text-align:center; padding:40px 20px; color:#64748B; background:#F8FAFC; border-radius:12px; border:1px dashed #CBD5E1;">
+                    <i class="fas fa-user-slash fa-2x" style="color:#94A3B8; margin-bottom:12px;"></i>
+                    <p style="font-weight:700; font-size:1.05rem; margin:0 0 6px 0; color:#334155;">Aucun élève trouvé dans la base pour la classe <strong>${escapeHtml(classe)}</strong></p>
+                    <p style="margin:0; font-size:0.9rem; color:#64748B;">Seuls les élèves réels enregistrés par l'administration apparaissent dans cette grille.</p>
+                </div>
+            `;
+            return;
         }
-
-        const gradesRes = await fetch(`/api/student-grades?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(classe)}&subject=${encodeURIComponent(subject)}&semester=${encodeURIComponent(semester)}`);
-        let existingGrades = [];
-        if (gradesRes.ok) {
-            const gData = await gradesRes.json();
-            existingGrades = Array.isArray(gData.grades) ? gData.grades : [];
-        }
-
-        const isPei1 = (classe.toUpperCase() === 'PEI1');
-        const maxCw = isPei1 ? 30 : 20;
-        const maxEval = isPei1 ? 20 : 30;
-        const maxHw = 20;
-        const maxExam = 30;
 
         let tableHtml = `
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
-                <div style="font-weight:800; color:#1E293B; font-size:1.05rem;">
-                    Grille de notes : <span style="color:#2563EB;">${escapeHtml(classe)}</span> — <span style="color:#7C3AED;">${escapeHtml(subject)}</span> (${semester})
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+                <div>
+                    <span style="font-weight:800; color:#1E293B; font-size:1.1rem;">
+                        Grille officielle : <span style="color:#2563EB;">${escapeHtml(classe)}</span> — <span style="color:#7C3AED;">${escapeHtml(subject)}</span>
+                    </span>
+                    <span style="margin-left:8px; background:#EEF2FF; color:#4338CA; padding:3px 9px; border-radius:6px; font-weight:800; font-size:0.8rem;">${escapeHtml(semester)}</span>
                 </div>
-                <div style="font-size:0.85rem; background:#EFF6FF; color:#1E40AF; padding:6px 12px; border-radius:8px; border:1px solid #BFDBFE; font-weight:700;">
-                    Pondération (${isPei1 ? 'PEI1' : 'Standard'}) : HW /${maxHw} | CW /${maxCw} | Éval /${maxEval} | Examen /${maxExam}
+                <div style="font-size:0.85rem; background:#F0FDF4; color:#166534; padding:6px 14px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700;">
+                    <i class="fas fa-calculator" style="margin-right:4px;"></i> Barème ${isPei1 ? 'PEI1' : 'Général'} : HW /${maxHw} | CW /${maxCw} | Éval /${maxEval} | Examen /${maxExam} = Total /100
                 </div>
             </div>
 
-            <div style="overflow-x:auto; border:1px solid #E2E8F0; border-radius:12px;">
-                <table style="width:100%; border-collapse:collapse; min-width:800px; text-align:left; background:white;">
+            <div style="margin-bottom:12px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:10px 14px; font-size:0.85rem; color:#1E40AF; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-info-circle fa-lg" style="color:#3B82F6;"></i>
+                <span><strong>Calcul Automatique :</strong> Les notes de <em>Homework</em> et <em>Classwork</em> sont calculées automatiquement d'après la faisabilité des devoirs et les notes de participation/comportement enregistrées durant ce semestre. Vous pouvez ajuster chaque note si nécessaire.</span>
+            </div>
+
+            <div style="overflow-x:auto; border:1px solid #E2E8F0; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+                <table style="width:100%; border-collapse:collapse; min-width:850px; text-align:left; background:white;">
                     <thead>
                         <tr style="background:#F8FAFC; color:#334155; font-size:0.85rem; border-bottom:2px solid #E2E8F0;">
-                            <th style="padding:12px 16px; width:60px; text-align:center;">#</th>
+                            <th style="padding:12px 14px; width:50px; text-align:center;">#</th>
                             <th style="padding:12px 16px;">Nom de l'Élève</th>
-                            <th style="padding:12px 12px; width:130px; text-align:center;">Homework (/${maxHw})</th>
-                            <th style="padding:12px 12px; width:130px; text-align:center;">Classwork (/${maxCw})</th>
-                            <th style="padding:12px 12px; width:130px; text-align:center;">Évaluation (/${maxEval})</th>
-                            <th style="padding:12px 12px; width:130px; text-align:center;">Examen (/${maxExam})</th>
-                            <th style="padding:12px 16px; width:110px; text-align:center; background:#EFF6FF; color:#1E40AF;">Total (/100)</th>
+                            <th style="padding:12px 12px; width:140px; text-align:center;">
+                                Homework (/${maxHw})
+                                <div style="font-size:0.7rem; font-weight:600; color:#64748B;">Faisabilité devoirs</div>
+                            </th>
+                            <th style="padding:12px 12px; width:140px; text-align:center;">
+                                Classwork (/${maxCw})
+                                <div style="font-size:0.7rem; font-weight:600; color:#64748B;">Participation &amp; Comportement</div>
+                            </th>
+                            <th style="padding:12px 12px; width:140px; text-align:center;">
+                                Évaluation (/${maxEval})
+                                <div style="font-size:0.7rem; font-weight:600; color:#64748B;">Saisie Enseignant</div>
+                            </th>
+                            <th style="padding:12px 12px; width:140px; text-align:center;">
+                                Examen (/${maxExam})
+                                <div style="font-size:0.7rem; font-weight:600; color:#64748B;">Saisie Enseignant</div>
+                            </th>
+                            <th style="padding:12px 16px; width:110px; text-align:center; background:#EFF6FF; color:#1E40AF; font-weight:800;">Total (/100)</th>
                         </tr>
                     </thead>
                     <tbody>
         `;
 
         students.forEach((st, idx) => {
-            const stName = st.name || st.fullName || st;
-            const foundGrade = existingGrades.find(g => String(g.studentName).trim().toLowerCase() === String(stName).trim().toLowerCase()) || {};
-            
-            const hwVal = foundGrade.hw !== undefined ? foundGrade.hw : 18;
-            const cwVal = foundGrade.cw !== undefined ? foundGrade.cw : (isPei1 ? 27 : 18);
-            const evalVal = foundGrade.evaluation !== undefined ? foundGrade.evaluation : (isPei1 ? 18 : 27);
-            const examVal = foundGrade.examen !== undefined ? foundGrade.examen : 27;
-            const totalVal = Number(hwVal) + Number(cwVal) + Number(evalVal) + Number(examVal);
+            const stName = st.studentName || st.name || '';
+            const hwVal = (st.hw !== undefined) ? st.hw : st.autoHw;
+            const cwVal = (st.cw !== undefined) ? st.cw : st.autoCw;
+            const evalVal = (st.evaluation !== undefined) ? st.evaluation : 0;
+            const examVal = (st.examen !== undefined) ? st.examen : 0;
+            const totalVal = Math.round((Number(hwVal) + Number(cwVal) + Number(evalVal) + Number(examVal)) * 10) / 10;
+
+            const totalBadgeColor = totalVal >= 80 ? '#10B981' : (totalVal >= 60 ? '#2563EB' : (totalVal >= 50 ? '#F59E0B' : '#EF4444'));
 
             tableHtml += `
                 <tr style="border-bottom:1px solid #F1F5F9;" data-student-row="${escapeHtml(stName)}">
-                    <td style="padding:12px 16px; text-align:center; font-weight:700; color:#64748B;">${idx + 1}</td>
-                    <td style="padding:12px 16px; font-weight:700; color:#1E293B; display:flex; align-items:center; gap:8px;">
-                        <span style="width:30px; height:30px; border-radius:50%; background:#EEF2FF; color:#4F46E5; display:inline-flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:800;">${stName.charAt(0)}</span>
-                        ${escapeHtml(stName)}
+                    <td style="padding:12px 14px; text-align:center; font-weight:700; color:#64748B;">${idx + 1}</td>
+                    <td style="padding:12px 16px; font-weight:700; color:#1E293B;">
+                        <div style="display:flex; align-items:center; gap:9px;">
+                            <span style="width:32px; height:32px; border-radius:50%; background:#EEF2FF; color:#4F46E5; display:inline-flex; align-items:center; justify-content:center; font-size:0.85rem; font-weight:800; flex-shrink:0;">${stName.charAt(0)}</span>
+                            <span>${escapeHtml(stName)}</span>
+                        </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxHw}" step="0.5" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:80px; padding:6px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;">
+                        <input type="number" min="0" max="${maxHw}" step="0.5" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
+                        <div style="font-size:0.7rem; color:#059669; font-weight:700; margin-top:3px;" title="Calculé d'après les devoirs accomplis">
+                            <i class="fas fa-magic"></i> Auto: ${st.autoHw}/${maxHw}
+                        </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxCw}" step="0.5" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:80px; padding:6px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;">
+                        <input type="number" min="0" max="${maxCw}" step="0.5" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
+                        <div style="font-size:0.7rem; color:#2563EB; font-weight:700; margin-top:3px;" title="Calculé d'après la participation et le comportement">
+                            <i class="fas fa-magic"></i> Auto: ${st.autoCw}/${maxCw}
+                        </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxEval}" step="0.5" class="grade-input-eval" value="${evalVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:80px; padding:6px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;">
+                        <input type="number" min="0" max="${maxEval}" step="0.5" class="grade-input-eval" value="${evalVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1.5px solid #93C5FD; border-radius:6px; font-weight:800; color:#1E3A8A; background:white;">
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxExam}" step="0.5" class="grade-input-exam" value="${examVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:80px; padding:6px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:700;">
+                        <input type="number" min="0" max="${maxExam}" step="0.5" class="grade-input-exam" value="${examVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1.5px solid #C4B5FD; border-radius:6px; font-weight:800; color:#4C1D95; background:white;">
                     </td>
-                    <td style="padding:12px 16px; text-align:center; font-weight:900; color:#1E40AF; background:#F8FAFC;" class="grade-cell-total">
-                        ${totalVal}/100
+                    <td style="padding:12px 16px; text-align:center; background:#F8FAFC;">
+                        <span class="grade-cell-total" style="display:inline-block; padding:4px 10px; border-radius:6px; font-weight:900; font-size:0.95rem; color:white; background:${totalBadgeColor};">
+                            ${totalVal}/100
+                        </span>
                     </td>
                 </tr>
             `;
@@ -19487,7 +19562,7 @@ async function renderTeacherGradesTable() {
             <div style="margin-top:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                 <span id="gradesSaveStatus" style="font-weight:700; font-size:0.9rem;"></span>
                 <button type="button" class="pro-button success-button" onclick="saveTeacherGradesData()" style="padding:11px 24px; font-weight:800; font-size:0.95rem; border-radius:10px; display:inline-flex; align-items:center; gap:8px;">
-                    <i class="fas fa-save"></i> Enregistrer toutes les notes
+                    <i class="fas fa-save"></i> Enregistrer les notes (${classe} - ${subject})
                 </button>
             </div>
         `;
@@ -19506,10 +19581,12 @@ function recalcStudentRowTotal(inputEl, maxHw, maxCw, maxEval, maxExam) {
     const cw = parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0;
     const evaluation = parseFloat(tr.querySelector('.grade-input-eval')?.value) || 0;
     const examen = parseFloat(tr.querySelector('.grade-input-exam')?.value) || 0;
-    const total = Math.min(100, Math.max(0, hw + cw + evaluation + examen));
+    const total = Math.min(100, Math.max(0, Math.round((hw + cw + evaluation + examen) * 10) / 10));
     const totalCell = tr.querySelector('.grade-cell-total');
     if (totalCell) {
-        totalCell.textContent = `${Math.round(total * 10) / 10}/100`;
+        totalCell.textContent = `${total}/100`;
+        const totalBadgeColor = total >= 80 ? '#10B981' : (total >= 60 ? '#2563EB' : (total >= 50 ? '#F59E0B' : '#EF4444'));
+        totalCell.style.background = totalBadgeColor;
     }
 }
 
@@ -19535,7 +19612,7 @@ async function saveTeacherGradesData() {
         const cw = parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0;
         const evaluation = parseFloat(tr.querySelector('.grade-input-eval')?.value) || 0;
         const examen = parseFloat(tr.querySelector('.grade-input-exam')?.value) || 0;
-        const total = hw + cw + evaluation + examen;
+        const total = Math.round((hw + cw + evaluation + examen) * 10) / 10;
 
         studentGrades.push({ studentName, hw, cw, evaluation, examen, total });
     });
@@ -19571,7 +19648,7 @@ async function saveTeacherGradesData() {
 }
 
 async function adminOpenClassGradesPrintA4() {
-    const chosenClass = prompt("Entrez la classe à imprimer sur une page A4 (ex: PEI1, PEI2, PP1, PS...) :", "PEI1");
+    const chosenClass = prompt("Entrez la classe à imprimer sur une page A4 (ex: PEI1, PEI2, PEI3, DP1, PP1...) :", "PEI1");
     if (!chosenClass) return;
 
     const section = currentSection || 'garcons';
@@ -19579,117 +19656,140 @@ async function adminOpenClassGradesPrintA4() {
     updateProgressBar(20);
 
     try {
-        const stRes = await fetch(`/api/students?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(chosenClass)}`);
-        let students = [];
-        if (stRes.ok) {
-            const stData = await stRes.json();
-            students = Array.isArray(stData.students) ? stData.students : (Array.isArray(stData) ? stData : []);
-        }
+        const dataRes = await fetch(`/api/student-grades-data?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(chosenClass)}&semester=S1`);
+        if (!dataRes.ok) throw new Error("Erreur de récupération des données de la classe");
+        const data = await dataRes.json();
+        const students = Array.isArray(data.students) ? data.students : [];
+
         if (students.length === 0) {
-            students = [{ name: "Élève 1" }, { name: "Élève 2" }, { name: "Élève 3" }];
+            hideProgressBar();
+            alert(`Aucun élève trouvé dans la base pour la classe ${chosenClass}.`);
+            return;
         }
 
-        let allGrades = [];
-        for (const sem of ['S1', 'S2']) {
-            const gRes = await fetch(`/api/student-grades?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(chosenClass)}&semester=${sem}`);
-            if (gRes.ok) {
-                const gData = await gRes.json();
-                if (Array.isArray(gData.grades)) {
-                    gData.grades.forEach(g => allGrades.push({ ...g, semester: sem }));
-                }
-            }
+        // Récupérer les notes du Semestre 2 également
+        const s2Res = await fetch(`/api/student-grades?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(chosenClass)}&semester=S2`);
+        let s2Grades = [];
+        if (s2Res.ok) {
+            const s2Data = await s2Res.json();
+            s2Grades = Array.isArray(s2Data.grades) ? s2Data.grades : [];
         }
 
         updateProgressBar(70);
 
         const printWin = window.open('', '_blank');
         if (!printWin) {
-            alert("Veuillez autoriser les fenêtres popup pour imprimer.");
+            alert("Veuillez autoriser les fenêtres popup dans votre navigateur pour imprimer.");
             hideProgressBar();
             return;
         }
+
+        const isPei1 = (chosenClass.toUpperCase() === 'PEI1');
+        const maxCw = isPei1 ? 30 : 20;
+        const maxEval = isPei1 ? 20 : 30;
 
         let html = `
             <!DOCTYPE html>
             <html lang="fr">
             <head>
                 <meta charset="UTF-8">
-                <title>Feuille de Notes - Classe ${chosenClass}</title>
+                <title>Feuille Officielle de Notes A4 - Classe ${chosenClass}</title>
                 <style>
-                    @page { size: A4 portrait; margin: 15mm; }
-                    body { font-family: 'Poppins', 'Segoe UI', Tahoma, sans-serif; color: #1E293B; margin: 0; padding: 20px; font-size: 13px; background: white; }
-                    .header { text-align: center; border-bottom: 2px solid #1E3A8A; padding-bottom: 12px; margin-bottom: 20px; }
-                    .header h1 { margin: 0 0 5px 0; color: #1E3A8A; font-size: 20px; }
-                    .header p { margin: 0; color: #64748B; font-size: 13px; font-weight: 600; }
+                    @page { size: A4 portrait; margin: 12mm 15mm; }
+                    body { font-family: 'Poppins', 'Segoe UI', Tahoma, sans-serif; color: #0F172A; margin: 0; padding: 20px; font-size: 12px; background: white; }
+                    .header { text-align: center; border-bottom: 2.5px solid #1E3A8A; padding-bottom: 12px; margin-bottom: 15px; }
+                    .school-title { margin: 0; color: #1E3A8A; font-size: 20px; font-weight: 800; letter-spacing: 0.5px; }
+                    .school-subtitle { margin: 4px 0 0 0; color: #475569; font-size: 13px; font-weight: 600; }
+                    .doc-meta { display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px; font-weight: 700; color: #1E40AF; background: #F1F5F9; padding: 6px 12px; border-radius: 6px; }
                     table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                    th, td { border: 1px solid #CBD5E1; padding: 8px 10px; text-align: center; }
-                    th { background: #F1F5F9; color: #1E293B; font-weight: 700; font-size: 12px; }
+                    th, td { border: 1px solid #CBD5E1; padding: 7px 8px; text-align: center; }
+                    th { background: #F8FAFC; color: #0F172A; font-weight: 700; font-size: 11px; }
                     td:nth-child(2) { text-align: left; font-weight: 600; }
-                    .footer { margin-top: 30px; display: flex; justify-content: space-between; font-weight: 600; font-size: 12px; }
+                    .total-cell { font-weight: 800; background: #F1F5F9; }
+                    .mention-cell { font-size: 10px; font-weight: 700; }
+                    .footer { margin-top: 35px; display: flex; justify-content: space-between; font-weight: 700; font-size: 12px; page-break-inside: avoid; }
+                    .signature-box { width: 220px; text-align: center; border-top: 1.5px solid #0F172A; padding-top: 8px; }
                     @media print {
                         .no-print { display: none !important; }
+                        body { padding: 0; }
                     }
                 </style>
             </head>
             <body>
                 <div class="no-print" style="text-align: right; margin-bottom: 15px;">
-                    <button onclick="window.print()" style="background: #2563EB; color: white; border: none; padding: 10px 20px; font-weight: 700; border-radius: 8px; cursor: pointer;">
-                        🖨️ Imprimer cette page A4
+                    <button onclick="window.print()" style="background: #2563EB; color: white; border: none; padding: 10px 22px; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 14px;">
+                        🖨️ Lancer l'impression A4
                     </button>
                 </div>
 
                 <div class="header">
-                    <h1>ÉCOLES INTERNATIONALES AL-KAWTHAR</h1>
-                    <p>Feuille Récapitulative Officielle des Notes — Classe : <strong>${chosenClass}</strong> (${section.toUpperCase()})</p>
+                    <h1 class="school-title">ÉCOLES INTERNATIONALES AL-KAWTHAR</h1>
+                    <div class="school-subtitle">BULLETIN RÉCAPITULATIF DES NOTES — ANNÉE SCOLAIRE 2025-2026</div>
+                    <div class="doc-meta">
+                        <span>Classe : <strong>${escapeHtml(chosenClass)}</strong></span>
+                        <span>Section : <strong>${section === 'garcons' ? 'GARÇONS' : section.toUpperCase()}</strong></span>
+                        <span>Barème : HW /20 | CW /${maxCw} | Éval /${maxEval} | Exam /30</span>
+                    </div>
                 </div>
 
                 <table>
                     <thead>
                         <tr>
-                            <th rowspan="2">N°</th>
-                            <th rowspan="2">Nom de l'Élève</th>
+                            <th rowspan="2" style="width:30px;">N°</th>
+                            <th rowspan="2" style="width:160px;">Nom &amp; Prénom de l'Élève</th>
                             <th colspan="5">Semestre 1 (S1)</th>
                             <th colspan="5">Semestre 2 (S2)</th>
+                            <th rowspan="2" style="width:65px;">Moyenne /100</th>
                         </tr>
                         <tr>
-                            <th>HW</th>
-                            <th>CW</th>
-                            <th>Éval</th>
-                            <th>Exam</th>
-                            <th>Total</th>
-                            <th>HW</th>
-                            <th>CW</th>
-                            <th>Éval</th>
-                            <th>Exam</th>
-                            <th>Total</th>
+                            <th style="width:38px;">HW /20</th>
+                            <th style="width:38px;">CW /${maxCw}</th>
+                            <th style="width:38px;">Éval /${maxEval}</th>
+                            <th style="width:38px;">Exam /30</th>
+                            <th style="width:45px; background:#EEF2FF;">Total</th>
+                            <th style="width:38px;">HW /20</th>
+                            <th style="width:38px;">CW /${maxCw}</th>
+                            <th style="width:38px;">Éval /${maxEval}</th>
+                            <th style="width:38px;">Exam /30</th>
+                            <th style="width:45px; background:#EEF2FF;">Total</th>
                         </tr>
                     </thead>
                     <tbody>
         `;
 
         students.forEach((st, idx) => {
-            const stName = st.name || st.fullName || st;
-            const s1Grades = allGrades.filter(g => g.semester === 'S1' && String(g.studentName).trim().toLowerCase() === String(stName).trim().toLowerCase());
-            const s2Grades = allGrades.filter(g => g.semester === 'S2' && String(g.studentName).trim().toLowerCase() === String(stName).trim().toLowerCase());
+            const stName = st.studentName || st.name || '';
+            const s1Total = st.total !== undefined ? st.total : Math.round((st.hw + st.cw + st.evaluation + st.examen) * 10) / 10;
+            
+            const s2Obj = s2Grades.find(g => (g.studentName || '').trim().toLowerCase() === stName.toLowerCase()) || {};
+            const s2Hw = s2Obj.hw !== undefined ? s2Obj.hw : '-';
+            const s2Cw = s2Obj.cw !== undefined ? s2Obj.cw : '-';
+            const s2Eval = s2Obj.evaluation !== undefined ? s2Obj.evaluation : '-';
+            const s2Exam = s2Obj.examen !== undefined ? s2Obj.examen : '-';
+            const s2Total = s2Obj.total !== undefined ? s2Obj.total : '-';
 
-            const avgS1 = s1Grades.length > 0 ? Math.round(s1Grades.reduce((acc, curr) => acc + (curr.total || 0), 0) / s1Grades.length) : '-';
-            const avgS2 = s2Grades.length > 0 ? Math.round(s2Grades.reduce((acc, curr) => acc + (curr.total || 0), 0) / s2Grades.length) : '-';
+            let yearlyAvg = s1Total;
+            if (typeof s2Total === 'number' && !isNaN(s2Total)) {
+                yearlyAvg = Math.round(((s1Total + s2Total) / 2) * 10) / 10;
+            }
 
             html += `
                 <tr>
                     <td>${idx + 1}</td>
                     <td>${escapeHtml(stName)}</td>
-                    <td>${s1Grades.length > 0 ? Math.round(s1Grades.reduce((a,c)=>a+(c.hw||0),0)/s1Grades.length) : '-'}</td>
-                    <td>${s1Grades.length > 0 ? Math.round(s1Grades.reduce((a,c)=>a+(c.cw||0),0)/s1Grades.length) : '-'}</td>
-                    <td>${s1Grades.length > 0 ? Math.round(s1Grades.reduce((a,c)=>a+(c.evaluation||0),0)/s1Grades.length) : '-'}</td>
-                    <td>${s1Grades.length > 0 ? Math.round(s1Grades.reduce((a,c)=>a+(c.examen||0),0)/s1Grades.length) : '-'}</td>
-                    <td style="font-weight:bold; background:#F8FAFC;">${avgS1}/100</td>
+                    <td>${st.hw !== undefined ? st.hw : st.autoHw}</td>
+                    <td>${st.cw !== undefined ? st.cw : st.autoCw}</td>
+                    <td>${st.evaluation || 0}</td>
+                    <td>${st.examen || 0}</td>
+                    <td class="total-cell">${s1Total}</td>
 
-                    <td>${s2Grades.length > 0 ? Math.round(s2Grades.reduce((a,c)=>a+(c.hw||0),0)/s2Grades.length) : '-'}</td>
-                    <td>${s2Grades.length > 0 ? Math.round(s2Grades.reduce((a,c)=>a+(c.cw||0),0)/s2Grades.length) : '-'}</td>
-                    <td>${s2Grades.length > 0 ? Math.round(s2Grades.reduce((a,c)=>a+(c.evaluation||0),0)/s2Grades.length) : '-'}</td>
-                    <td>${s2Grades.length > 0 ? Math.round(s2Grades.reduce((a,c)=>a+(c.examen||0),0)/s2Grades.length) : '-'}</td>
-                    <td style="font-weight:bold; background:#F8FAFC;">${avgS2}/100</td>
+                    <td>${s2Hw}</td>
+                    <td>${s2Cw}</td>
+                    <td>${s2Eval}</td>
+                    <td>${s2Exam}</td>
+                    <td class="total-cell">${s2Total}</td>
+
+                    <td style="font-weight:800; color:#1E3A8A; background:#EFF6FF;">${yearlyAvg}</td>
                 </tr>
             `;
         });
@@ -19699,8 +19799,12 @@ async function adminOpenClassGradesPrintA4() {
                 </table>
 
                 <div class="footer">
-                    <div>Visa de l'Enseignant / Professeur Principal</div>
-                    <div>Cachet de la Direction de l'Établissement</div>
+                    <div class="signature-box">
+                        Visa du Professeur Principal
+                    </div>
+                    <div class="signature-box">
+                        Cachet de la Direction Générale
+                    </div>
                 </div>
             </body>
             </html>
@@ -19709,13 +19813,14 @@ async function adminOpenClassGradesPrintA4() {
         printWin.document.write(html);
         printWin.document.close();
         hideProgressBar();
-        displayAlert(`Feuille A4 générée avec succès pour la classe ${chosenClass} !`, false);
+        displayAlert(`Feuille A4 officielle générée avec succès pour la classe ${chosenClass} !`, false);
     } catch (err) {
         console.error("Erreur adminOpenClassGradesPrintA4:", err);
         hideProgressBar();
         alert("Erreur génération impression A4: " + err.message);
     }
 }
+
 window.adminOpenClassGradesPrintA4 = adminOpenClassGradesPrintA4;
 window.switchMainTab = switchMainTab;
 window.initTeacherGradesInterface = initTeacherGradesInterface;
