@@ -542,6 +542,9 @@
             <button type="button" class="app-nav-tab" id="tab-grades-btn" onclick="switchMainTab('grades')">
                 <i class="fas fa-chart-bar"></i> Saisie des Notes (Sem. 1 & 2)
             </button>
+            <button type="button" class="app-nav-tab" id="tab-bulletins-btn" onclick="openClassGradesPrintModal()" style="background:#EEF2FF; color:#1D4ED8; font-weight:800; border:1.5px solid #BFDBFE;">
+                <i class="fas fa-print"></i> 🖨️ Bulletins Classe (A4 PDF)
+            </button>
         </div>
 
         <!-- ONGLET 3: SAISIE DES NOTES -->
@@ -608,6 +611,9 @@
                      </div>
                  </div>
                  <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                     <button type="button" id="btnAdminPrintBulletins" class="pro-button" onclick="openClassGradesPrintModal()" style="background: linear-gradient(135deg, #4F46E5, #3730A3); color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(79,70,229,0.35);" title="Imprimer ou télécharger les bulletins de notes de toute la classe (toutes les matières)">
+                         <i class="fas fa-print"></i> <span>🖨️ Bulletins Classe (A4 PDF)</span>
+                     </button>
                      <button type="button" id="btnAdminManageClasses" class="pro-button" onclick="openClassManagementModal()" style="background: #6366F1; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(99,102,241,0.3);" title="Gérer, masquer ou supprimer des classes et fusionner les doublons">
                          <i class="fas fa-chalkboard"></i> <span>Gérer Classes &amp; Doublons</span>
                      </button>
@@ -654,6 +660,9 @@
                   </button>
                   <button type="button" class="admin-tab-btn" onclick="switchAdminTab('teachers_photos')" id="tabBtn_teachers_photos">
                       <i class="fab fa-google-drive" style="color:#0EA5E9;"></i> <span>10. Photos Enseignants (Drive)</span>
+                  </button>
+                  <button type="button" class="admin-tab-btn" onclick="openClassGradesPrintModal()" id="tabBtn_bulletins_a4" style="background:#4338CA; color:white; font-weight:700;">
+                      <i class="fas fa-print" style="color:#A5B4FC;"></i> <span>11. 🖨️ Bulletins Classe (A4 PDF)</span>
                   </button>
              </div>
 
@@ -4100,6 +4109,126 @@
                 <button type="button" id="btnSaveStudentProfileModal" onclick="saveEditedStudentProfile()" class="pro-button success-button" style="background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; border:none; padding:10px 22px; border-radius:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 4px 14px rgba(37,99,235,0.3);">
                     <i class="fas fa-save"></i> <span>Enregistrer sans perdre le suivi</span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL OFFICIELLE : IMPRESSION & TÉLÉCHARGEMENT DES BULLETINS DE NOTES DE LA CLASSE (A4) -->
+    <div id="classBulletinsModal" class="hw-modal" style="display:none; z-index:99999;">
+        <div class="hw-modal-content" style="max-width:680px; border-radius:20px; padding:26px; background:white; box-shadow:0 24px 60px rgba(15,23,42,0.3); border:1px solid #CBD5E1;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #E2E8F0; padding-bottom:14px; margin-bottom:18px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:44px; height:44px; border-radius:12px; background:#EEF2FF; border:1px solid #C7D2FE; display:flex; align-items:center; justify-content:center; color:#4338CA; font-size:1.3rem;">
+                        <i class="fas fa-print"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:1.2rem; color:#1E293B; font-weight:800;">Bulletins Scolaires A4 de la Classe</h3>
+                        <p style="margin:2px 0 0 0; font-size:0.82rem; color:#64748B;">Toutes les matières &amp; tous les élèves de la classe — Impression officielle A4</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeClassGradesPrintModal()" style="border:none; background:none; font-size:1.5rem; color:#94A3B8; cursor:pointer;">&times;</button>
+            </div>
+
+            <!-- Paramètres de sélection : Section, Classe, Semestre -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:18px;">
+                <div>
+                    <label for="bulletinModalSectionSelect" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.85rem;">
+                        <i class="fas fa-users" style="color:#2563EB;"></i> Section :
+                    </label>
+                    <select id="bulletinModalSectionSelect" onchange="onBulletinsModalSectionChanged()" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
+                        <option value="garcons">👦 Section Garçons</option>
+                        <option value="filles">👧 Section Filles</option>
+                        <option value="primaire">🎒 Section Primaire</option>
+                        <option value="maternelle">🧸 Section Maternelle</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="bulletinModalClassSelect" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.85rem;">
+                        <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i> Classe :
+                    </label>
+                    <select id="bulletinModalClassSelect" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
+                        <option value="PEI1">PEI1</option>
+                        <option value="PEI2">PEI2</option>
+                        <option value="PEI3">PEI3</option>
+                        <option value="PEI4">PEI4</option>
+                        <option value="PEI5">PEI5</option>
+                        <option value="DP1">DP1</option>
+                        <option value="DP2">DP2</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="bulletinModalSemesterSelect" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.85rem;">
+                        <i class="fas fa-calendar-alt" style="color:#059669;"></i> Semestre :
+                    </label>
+                    <select id="bulletinModalSemesterSelect" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
+                        <option value="S1">Semestre 1 (S1)</option>
+                        <option value="S2">Semestre 2 (S2)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Encadré explicatif bienveillant des règles de calcul & pondération -->
+            <div style="background:#F8FAFC; border:1.5px solid #E2E8F0; border-radius:12px; padding:14px 16px; margin-bottom:20px;">
+                <div style="font-weight:700; color:#1E293B; font-size:0.88rem; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                    <i class="fas fa-info-circle" style="color:#2563EB;"></i> Système de pondération &amp; barèmes officiels :
+                </div>
+                <div style="font-size:0.82rem; color:#475569; line-height:1.6;">
+                    • <strong>PEI1 :</strong> Devoirs (HW /20) + Travaux de classe (CW /30) + Évaluation (/20) + Examen (/30) = <strong>Total /100</strong><br>
+                    • <strong>Autres classes :</strong> Devoirs (HW /20) + Travaux de classe (CW /20) + Évaluation (/30) + Examen (/30) = <strong>Total /100</strong><br>
+                    • <strong>Notes bienveillantes :</strong> HW et CW calculées automatiquement avec bienveillance selon l'assiduité, participation et faisabilité des devoirs.
+                </div>
+            </div>
+
+            <div id="bulletinModalStatus" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:0.88rem; font-weight:700;"></div>
+
+            <!-- Boutons d'action : Télécharger HTML, Imprimer A4, Aperçu -->
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1.5px solid #F1F5F9; padding-top:16px;">
+                <button type="button" onclick="closeClassGradesPrintModal()" class="pro-button" style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer;">
+                    Fermer
+                </button>
+
+                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <button type="button" onclick="generateClassBulletins('preview')" class="pro-button" style="background:#4F46E5; color:white; border:none; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 3px 10px rgba(79,70,229,0.3);">
+                        <i class="fas fa-eye"></i> <span>Aperçu</span>
+                    </button>
+                    <button type="button" onclick="generateClassBulletins('download')" class="pro-button" style="background:#059669; color:white; border:none; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 3px 10px rgba(5,150,105,0.3);" title="Télécharger le fichier HTML complet imprimable">
+                        <i class="fas fa-file-download"></i> <span>Télécharger HTML (A4)</span>
+                    </button>
+                    <button type="button" onclick="generateClassBulletins('print')" class="pro-button" style="background:linear-gradient(135deg, #1D4ED8, #2563EB); color:white; border:none; padding:10px 22px; border-radius:10px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 14px rgba(29,78,216,0.35);" title="Ouvrir la boîte d'impression pour enregistrer en PDF A4">
+                        <i class="fas fa-print"></i> <span>Imprimer en PDF A4</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL D'APERÇU DIRECT PLEIN ÉCRAN DES BULLETINS A4 -->
+    <div id="classBulletinsPreviewModal" class="hw-modal" style="display:none; z-index:100000;">
+        <div class="hw-modal-content" style="max-width:96vw; width:1100px; height:92vh; border-radius:18px; padding:20px; background:white; display:flex; flex-direction:column; box-shadow:0 24px 60px rgba(0,0,0,0.35);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #CBD5E1; padding-bottom:12px; margin-bottom:12px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:38px; height:38px; border-radius:10px; background:#EEF2FF; display:flex; align-items:center; justify-content:center; color:#2563EB; font-size:1.15rem;">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div>
+                        <h3 id="classBulletinsPreviewTitle" style="margin:0; font-size:1.1rem; color:#0F172A; font-weight:800;">Aperçu des Bulletins Scolaires A4</h3>
+                        <p style="margin:0; font-size:0.8rem; color:#64748B;">Vérification avant impression ou exportation PDF</p>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button type="button" onclick="executePreviewPrint()" class="pro-button" style="background:#1D4ED8; color:white; border:none; padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fas fa-print"></i> <span>Imprimer / PDF</span>
+                    </button>
+                    <button type="button" onclick="executePreviewDownload()" class="pro-button" style="background:#059669; color:white; border:none; padding:8px 18px; border-radius:8px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fas fa-download"></i> <span>Télécharger HTML</span>
+                    </button>
+                    <button type="button" onclick="closeClassBulletinsPreviewModal()" style="border:none; background:none; font-size:1.5rem; color:#94A3B8; cursor:pointer;">&times;</button>
+                </div>
+            </div>
+            <div style="flex:1; overflow-y:auto; background:#F8FAFC; border-radius:10px; border:1px solid #E2E8F0; padding:15px;" id="classBulletinsPreviewFrameContainer">
+                <iframe id="classBulletinsPreviewIframe" style="width:100%; height:100%; border:none; background:white; border-radius:8px; box-shadow:0 4px 15px rgba(0,0,0,0.08);"></iframe>
             </div>
         </div>
     </div>

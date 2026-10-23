@@ -965,6 +965,11 @@ class InMemoryCollection {
       return { modifiedCount: 1, matchedCount: 1 };
     } else if (options.upsert) {
       const newItem = { _id: filter._id || filter.endpoint || filter.week || String(Date.now()) };
+      for (const [k, v] of Object.entries(filter)) {
+        if (!k.startsWith('$') && (typeof v !== 'object' || v === null)) {
+          newItem[k] = v;
+        }
+      }
       if (update.$setOnInsert) {
         for (const [k, v] of Object.entries(update.$setOnInsert)) {
           this._setDeep(newItem, k, v);
@@ -11530,7 +11535,10 @@ app.get('/api/student-grades-data', async (req, res) => {
     }
 
     // 2. Récupérer les notes déjà enregistrées pour cette classe, matière et semestre
-    const query = { section, classe, semester };
+    const semClean = String(semester || '1').trim();
+    const semNum = semClean.replace(/^s/i, '');
+    const semesterVariants = [semClean, semNum, `S${semNum}`, `Semestre ${semNum}`];
+    const query = { section, classe, semester: { $in: semesterVariants } };
     if (subject) query.subject = subject;
     const existingGrades = await db.collection('studentGrades').find(query).toArray();
 
@@ -11576,18 +11584,22 @@ app.get('/api/student-grades-data', async (req, res) => {
         if (ev.status) statuses.push(ev.status);
       });
 
-      // Moyenne participation et comportement (base 10)
-      const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : 8.5;
-      const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : 8.5;
-      const score10 = (avgP * 0.6 + avgB * 0.4);
-      const autoCw = Math.min(maxCw, Math.max(0, parseFloat(((score10 / 10) * maxCw).toFixed(1))));
+      // 1. Calcul bienveillant de la participation et comportement (Classwork CW)
+      const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : 9.0;
+      const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : 9.0;
+      const score10 = Math.min(10, Math.max(8.0, (avgP * 0.6 + avgB * 0.4)));
+      const autoCw = Math.min(maxCw, Math.max(isPei1 ? 24 : 16, parseFloat(((score10 / 10) * maxCw).toFixed(1))));
 
-      // Faisabilité des devoirs (Homework HW) sur 20
+      // 2. Faisabilité bienveillante des devoirs (Homework HW sur 20)
       const totalHw = statuses.length;
       const doneCount = statuses.filter(s => s === 'Fait').length;
       const partialCount = statuses.filter(s => s === 'Partiellement Fait').length;
-      const hwRate = totalHw > 0 ? ((doneCount + partialCount * 0.5) / totalHw) : 0.85;
-      const autoHw = Math.min(20, Math.max(0, parseFloat((hwRate * 20).toFixed(1))));
+      let autoHw = 18.5;
+      if (totalHw > 0) {
+        const weightedRate = (doneCount * 1.0 + partialCount * 0.85 + (totalHw - doneCount - partialCount) * 0.60) / totalHw;
+        const hwRate = 0.72 + (weightedRate * 0.28);
+        autoHw = Math.min(20, Math.max(15, parseFloat((hwRate * 20).toFixed(1))));
+      }
 
       // Vérifier si une note a déjà été saisie manuellement par l'enseignant
       const saved = existingGrades.find(g => normalizeStudentName(g.studentName || '') === normStName);
@@ -11631,6 +11643,306 @@ app.get('/api/student-grades-data', async (req, res) => {
   }
 });
 
+// ============================================================================
+// ASSIGNATION STRICTE DES MATIÈRES ET CLASSES PAR ENSEIGNANT (Depuis les Plans)
+// ============================================================================
+app.get('/api/teacher-assignments', async (req, res) => {
+  try {
+    const { teacher, section = 'garcons' } = req.query;
+    const db = await connectToDatabase();
+
+    const tRaw = String(teacher || '').trim();
+    const tNorm = tRaw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const isAdmin = !tRaw || ['med01', 'racha', 'admin', 'supervisor', 'superviseur'].includes(tNorm);
+
+    const sectionClasses = (section === 'garcons' || section === 'filles')
+      ? ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2']
+      : (section === 'primaire' ? ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'] : ['PS', 'MS', 'GS']);
+
+    const standardSubjects = (section === 'garcons' || section === 'filles')
+      ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique', 'Sport']
+      : ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques', 'Sport'];
+
+    if (isAdmin) {
+      const allPairs = [];
+      sectionClasses.forEach(c => {
+        standardSubjects.forEach(s => {
+          allPairs.push({ classe: c, subject: s });
+        });
+      });
+      return res.json({
+        isAdmin: true,
+        pairs: allPairs,
+        classes: sectionClasses,
+        subjects: standardSubjects
+      });
+    }
+
+    const plans = await db.collection('plans').find({
+      $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }, { _id: section }]
+    }).toArray();
+
+    const pairSet = new Set();
+    const assignedPairs = [];
+
+    const addPair = (c, s) => {
+      if (!c || !s) return;
+      const cleanC = c.trim();
+      const cleanS = s.trim();
+      if (!cleanC || !cleanS || cleanS === '—' || cleanS === '-') return;
+      const key = `${cleanC.toLowerCase()}|||${cleanS.toLowerCase()}`;
+      if (!pairSet.has(key)) {
+        pairSet.add(key);
+        assignedPairs.push({ classe: cleanC, subject: cleanS });
+      }
+    };
+
+    // 1. Recherche dans les lignes des plans hebdomadaires où Enseignant === nom de l'enseignant
+    plans.forEach(p => {
+      const rows = Array.isArray(p.data) ? p.data : [];
+      rows.forEach(r => {
+        const ens = String(r['Enseignant'] || r.enseignant || (typeof findKey === 'function' ? r[findKey(r, 'Enseignant')] : '') || '').trim();
+        const ensNorm = ens.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (ensNorm === tNorm || ensNorm.includes(tNorm) || tNorm.includes(ensNorm)) {
+          const cls = r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : '');
+          const mat = r['Matière'] || r.matiere || (typeof findKey === 'function' ? r[findKey(r, 'Matière')] : '');
+          if (cls && mat) addPair(cls, mat);
+        }
+      });
+    });
+
+    // 2. Recherche dans les liaisons administratives class_subject_teachers
+    const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
+    subTeacherDocs.forEach(d => {
+      const ens = String(d.enseignant || '').trim();
+      const ensNorm = ens.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (ensNorm === tNorm || ensNorm.includes(tNorm) || tNorm.includes(ensNorm)) {
+        if (d.classe && d.classe !== 'all') {
+          addPair(d.classe, d.matiere);
+        } else {
+          sectionClasses.forEach(c => addPair(c, d.matiere));
+        }
+      }
+    });
+
+    // 3. Spécificités par profil enseignant si rien trouvé dans les plans
+    if (assignedPairs.length === 0) {
+      if ((typeof arabicTeachers !== 'undefined' ? arabicTeachers : []).some(t => t.toLowerCase() === tNorm)) {
+        sectionClasses.forEach(c => { addPair(c, 'Arabe'); addPair(c, 'Éducation Islamique'); });
+      } else if ((typeof englishTeachers !== 'undefined' ? englishTeachers : []).some(t => t.toLowerCase() === tNorm)) {
+        sectionClasses.forEach(c => addPair(c, 'Anglais'));
+      } else if (tNorm.includes('mohamed')) {
+        sectionClasses.forEach(c => addPair(c, 'Mathématiques'));
+      } else if (tNorm.includes('sylvano') || tNorm.includes('tonga') || tNorm.includes('oumarou')) {
+        sectionClasses.forEach(c => { addPair(c, 'SVT'); addPair(c, 'Physique-Chimie'); });
+      } else {
+        sectionClasses.forEach(c => addPair(c, 'Français'));
+      }
+    }
+
+    const assignedClasses = Array.from(new Set(assignedPairs.map(p => p.classe))).sort();
+    const assignedSubjects = Array.from(new Set(assignedPairs.map(p => p.subject))).sort();
+
+    res.json({
+      isAdmin: false,
+      pairs: assignedPairs,
+      classes: assignedClasses,
+      subjects: assignedSubjects
+    });
+  } catch (err) {
+    console.error('Erreur GET /api/teacher-assignments:', err);
+    res.status(500).json({ pairs: [], classes: [], subjects: [] });
+  }
+});
+
+// ============================================================================
+// DONNÉES COMPLÈTES POUR BULLETINS SCOLAIRES DE TOUTE LA CLASSE (A4)
+// ============================================================================
+app.get('/api/class-bulletins-data', async (req, res) => {
+  try {
+    const { section = 'garcons', classe = 'PEI1', semester = 'S1' } = req.query;
+    const db = await connectToDatabase();
+
+    const targetClassNorm = (normalizeStudentClass(classe) || classe).trim().toUpperCase();
+    const isPei1 = (targetClassNorm === 'PEI1');
+    const maxCw = isPei1 ? 30 : 20;
+    const maxEval = isPei1 ? 20 : 30;
+    const maxHw = 20;
+    const maxExam = 30;
+
+    // 1. Récupérer les élèves réels de cette classe
+    const authoritativeList = await getAuthoritativeStudents(db, section);
+    let classStudents = authoritativeList.filter(s => {
+      const scNorm = (normalizeStudentClass(s.class) || s.class || '').trim().toUpperCase();
+      return scNorm === targetClassNorm || scNorm.includes(targetClassNorm) || targetClassNorm.includes(scNorm);
+    });
+
+    if (classStudents.length === 0) {
+      const rawSt = await db.collection('students').find({ section }).toArray();
+      classStudents = rawSt.filter(s => {
+        const scNorm = (normalizeStudentClass(s.class) || s.class || '').trim().toUpperCase();
+        return scNorm === targetClassNorm || scNorm.includes(targetClassNorm) || targetClassNorm.includes(scNorm);
+      }).map(s => ({
+        _id: s._id,
+        name: s.name,
+        class: s.class,
+        section: s.section || section,
+        photo: s.photo || ''
+      }));
+    }
+
+    if (classStudents.length === 0) {
+      const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'maternelle' ? defaultMaternelleStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents));
+      const foundList = seedDict[targetClassNorm] || seedDict[classe] || [];
+      classStudents = foundList.map(s => ({
+        name: s.name,
+        class: classe,
+        section: section,
+        photo: s.photo || ''
+      }));
+    }
+
+    // 2. Déterminer la liste des matières de la classe
+    const standardSubjects = (section === 'garcons' || section === 'filles')
+      ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique']
+      : ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques'];
+
+    // 3. Récupérer toutes les notes enregistrées pour cette classe et ce semestre
+    const semClean = String(semester || '1').trim();
+    const semNum = semClean.replace(/^s/i, '');
+    const semesterVariants = [semClean, semNum, `S${semNum}`, `Semestre ${semNum}`];
+    const savedGrades = await db.collection('studentGrades').find({
+      section,
+      classe,
+      semester: { $in: semesterVariants }
+    }).toArray();
+
+    // 4. Récupérer les évaluations pour calcul bienveillant
+    const allEvaluations = await db.collection('evaluations').find({
+      $or: [{ section: section }, { section: { $exists: false } }]
+    }).toArray();
+
+    // 5. Construire le bulletin pour chaque élève
+    const studentsBulletins = classStudents.map(st => {
+      const stName = (st.name || '').trim();
+      const normStName = normalizeStudentName(stName);
+
+      const subjectResults = [];
+      let totalPoints = 0;
+      let totalMaxPoints = 0;
+
+      standardSubjects.forEach(subj => {
+        const saved = savedGrades.find(g => 
+          normalizeStudentName(g.studentName || '') === normStName &&
+          isEquivalentSubjectServer(g.subject, subj)
+        );
+
+        let hw = 18.5;
+        let cw = isPei1 ? 27 : 18;
+        let evaluation = 0;
+        let examen = 0;
+
+        if (saved) {
+          hw = saved.hw !== undefined ? Number(saved.hw) : hw;
+          cw = saved.cw !== undefined ? Number(saved.cw) : cw;
+          evaluation = saved.evaluation !== undefined ? Number(saved.evaluation) : 0;
+          examen = saved.examen !== undefined ? Number(saved.examen) : 0;
+        } else {
+          const stEvals = allEvaluations.filter(ev => {
+            const evNorm = normalizeStudentName(ev.studentName || '');
+            return (evNorm === normStName || evNorm.includes(normStName)) && isEquivalentSubjectServer(ev.subject, subj);
+          });
+
+          if (stEvals.length > 0) {
+            const avgP = stEvals.reduce((a, b) => a + (parseInt(b.participation, 10) || 8.5), 0) / stEvals.length;
+            const avgB = stEvals.reduce((a, b) => a + (parseInt(b.behavior, 10) || 8.5), 0) / stEvals.length;
+            const score10 = Math.min(10, Math.max(8.0, (avgP * 0.6 + avgB * 0.4)));
+            cw = Math.min(maxCw, Math.max(isPei1 ? 24 : 16, parseFloat(((score10 / 10) * maxCw).toFixed(1))));
+
+            const done = stEvals.filter(e => e.status === 'Fait').length;
+            const partial = stEvals.filter(e => e.status === 'Partiellement Fait').length;
+            const rate = 0.72 + (((done * 1.0 + partial * 0.85 + (stEvals.length - done - partial) * 0.60) / stEvals.length) * 0.28);
+            hw = Math.min(20, Math.max(15, parseFloat((rate * 20).toFixed(1))));
+          }
+        }
+
+        const totalSubj = Math.round((hw + cw + evaluation + examen) * 10) / 10;
+        totalPoints += totalSubj;
+        totalMaxPoints += 100;
+
+        const teacherName = saved && saved.teacher ? saved.teacher : resolveSectionTeacher(section, classe, subj, '');
+
+        let appreciation = 'Très bon travail, continuez ainsi !';
+        if (totalSubj >= 85) appreciation = 'Excellent travail, élève appliqué et rigoureux.';
+        else if (totalSubj >= 70) appreciation = 'Bon travail dans l\'ensemble, résultats satisfaisants.';
+        else if (totalSubj >= 50) appreciation = 'Ensemble convenable, intensifiez les efforts.';
+        else appreciation = 'Des efforts sont nécessaires pour progresser.';
+
+        subjectResults.push({
+          subject: subj,
+          teacher: teacherName,
+          hw,
+          cw,
+          evaluation,
+          examen,
+          total: totalSubj,
+          appreciation
+        });
+      });
+
+      const generalAverage = totalMaxPoints > 0 ? Math.round((totalPoints / standardSubjects.length) * 10) / 10 : 0;
+      
+      let mention = 'Félicitations';
+      if (generalAverage >= 85) mention = 'Très Bien (Félicitations)';
+      else if (generalAverage >= 75) mention = 'Bien (Compliments)';
+      else if (generalAverage >= 65) mention = 'Assez Bien (Encouragements)';
+      else if (generalAverage >= 50) mention = 'Passable / Satisfaisant';
+      else mention = 'Doit fournir des efforts';
+
+      return {
+        studentName: stName,
+        photo: st.photo || '',
+        subjects: subjectResults,
+        generalAverage,
+        mention
+      };
+    });
+
+    studentsBulletins.sort((a, b) => b.generalAverage - a.generalAverage);
+    studentsBulletins.forEach((st, idx) => {
+      st.rank = idx + 1;
+    });
+
+    const averagesList = studentsBulletins.map(s => s.generalAverage).filter(a => a > 0);
+    const classAvg = averagesList.length > 0 ? Math.round((averagesList.reduce((a, b) => a + b, 0) / averagesList.length) * 10) / 10 : 0;
+    const maxAvg = averagesList.length > 0 ? Math.max(...averagesList) : 0;
+    const minAvg = averagesList.length > 0 ? Math.min(...averagesList) : 0;
+
+    res.json({
+      success: true,
+      classe,
+      section,
+      semester,
+      isPei1,
+      maxHw,
+      maxCw,
+      maxEval,
+      maxExam,
+      subjects: standardSubjects,
+      students: studentsBulletins,
+      classStats: {
+        totalStudents: studentsBulletins.length,
+        classAverage: classAvg,
+        maxAverage: maxAvg,
+        minAverage: minAvg
+      }
+    });
+  } catch (err) {
+    console.error('Erreur GET /api/class-bulletins-data:', err);
+    res.status(500).json({ success: false, error: err.message, students: [] });
+  }
+});
+
 app.get('/api/student-grades', async (req, res) => {
   try {
     const { section, classe, subject, semester } = req.query;
@@ -11639,7 +11951,11 @@ app.get('/api/student-grades', async (req, res) => {
     if (section) query.section = section;
     if (classe) query.classe = classe;
     if (subject) query.subject = subject;
-    if (semester) query.semester = semester;
+    if (semester) {
+      const semClean = String(semester).trim();
+      const semNum = semClean.replace(/^s/i, '');
+      query.semester = { $in: [semClean, semNum, `S${semNum}`, `Semestre ${semNum}`] };
+    }
     const grades = await db.collection('studentGrades').find(query).toArray();
     res.json({ grades });
   } catch (error) {
@@ -11664,6 +11980,11 @@ app.post('/api/student-grades', async (req, res) => {
       const filter = { section, classe, subject, semester, studentName };
       const update = {
         $set: {
+          section,
+          classe,
+          subject,
+          semester,
+          studentName,
           teacher: teacher || '',
           hw: Number(sg.hw) || 0,
           cw: Number(sg.cw) || 0,
