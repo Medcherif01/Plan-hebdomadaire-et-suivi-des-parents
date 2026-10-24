@@ -129,7 +129,7 @@
 
         // Listes strictes des enseignants par section
         const maleTeachersList = [
-            'Mohamed', 'Abas', 'Jaber', 'Imad', 'Kamel', 'Majed', 'Mohamed Ali', 'Morched', 
+            'Mohamed', 'Abas', 'Jaber', 'Imad', 'Kamel', 'Kenneh', 'Majed', 'Mohamed Ali', 'Morched', 
             'Saeed', 'Sami', 'Sylvano', 'Tonga', 'Oumarou', 'Zine', 'Youssouf'
         ];
 
@@ -400,7 +400,7 @@
         };
 
         const sectionClassesMap = {
-            garcons: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
+            garcons: ["PEI1 Garçons", "PEI2 Garçon", "PEI3 Garçon", "PEI4 Garçon", "PEI5 Garçon", "DP2 Garçons"],
             filles: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
             primaire: ["PP1", "PP2", "PP3", "PP4", "PP5"],
             maternelle: ["PS", "MS", "GS"]
@@ -409,7 +409,12 @@
         function getSectionClasses(sec) {
             const s = sec || currentSection || 'garcons';
             if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[s]) && window.sectionVisibleClassesMap[s].length > 0) {
-                return window.sectionVisibleClassesMap[s];
+                let list = window.sectionVisibleClassesMap[s];
+                if (s === 'garcons') {
+                    list = list.filter(c => !['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'].includes(String(c).trim().toUpperCase()));
+                    if (list.length === 0) list = sectionClassesMap.garcons;
+                }
+                return list;
             }
             return sectionClassesMap[s] || sectionClassesMap.garcons;
         }
@@ -7800,7 +7805,7 @@ function updateAdminSpecialDaysClassDropdown() {
     
     let classes = [];
     if (sec === 'garcons') {
-        classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+        classes = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     } else if (sec === 'filles') {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'maternelle') {
@@ -8195,7 +8200,7 @@ function updateQuickSpecialClassesDropdown(targetClass) {
     
     let classes = [];
     if (sec === 'garcons') {
-        classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+        classes = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     } else if (sec === 'filles') {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'maternelle') {
@@ -18956,6 +18961,7 @@ function resetDefaultClassVisibility() {
     let defaultList = [];
     if (sec === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
     else if (sec === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+    else if (sec === 'garcons') defaultList = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
 
     const checkboxes = document.querySelectorAll('.class-visibility-checkbox');
@@ -19822,7 +19828,9 @@ function onBulletinsModalSectionChanged(presetClass, presetSubject) {
 
     const sec = secSelect.value || 'garcons';
     let classOptions = [];
-    if (sec === 'garcons' || sec === 'filles') {
+    if (sec === 'garcons') {
+        classOptions = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
+    } else if (sec === 'filles') {
         classOptions = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'primaire') {
         classOptions = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
@@ -20378,34 +20386,32 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
 }
 
 function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, chosenSubject, format) {
-    const isPei1 = Boolean(data.isPei1);
+    const isPei1 = Boolean(data.isPei1 || String(chosenClass).toUpperCase().includes('PEI1'));
     const maxCw = data.maxCw || (isPei1 ? 30 : 20);
     const maxEval = data.maxEval || (isPei1 ? 20 : 30);
     const maxHw = 20;
     const maxExam = 30;
     const semTitle = chosenSemester === 'S1' ? 'PREMIER SEMESTRE' : 'DEUXIÈME SEMESTRE';
-    const sectionTitle = section === 'garcons' ? 'Section Garçons' : (section === 'filles' ? 'Section Filles' : (section === 'primaire' ? 'Section Primaire' : 'Section Maternelle'));
+    const sectionBadge = section === 'garcons' ? 'GARÇONS' : (section === 'filles' ? 'FILLES' : (section === 'primaire' ? 'PRIMAIRE' : 'MATERNELLE'));
 
-    // FORMAT PRINCIPAL DEMANDÉ PAR L'UTILISATEUR :
-    // "je veux toutes les matiere de la classe dans une seule page et pas chaque matire ds une page"
-    if (format === 'all_subjects_single_page' || !format || (format !== 'by_subject' && format !== 'by_student')) {
-        return buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, section);
-    }
-
-    // FORMAT PAR MATIÈRE DÉTAILLÉE :
-    if (format === 'by_subject') {
+    // FORMAT PAR DÉFAUT & PRINCIPAL : Les matières se suivent les unes après les autres
+    // Conformément au modèle exact de l'exemplaire fourni (image_181cb51b.png)
+    if (format !== 'by_student') {
         const subjectSheets = Array.isArray(data.subjectSheets) ? data.subjectSheets : [];
         const sheetsToRender = (chosenSubject && chosenSubject !== 'all')
-          ? subjectSheets.filter(s => s.subject.toLowerCase() === chosenSubject.toLowerCase() || isEquivalentSubject(s.subject, chosenSubject))
+          ? subjectSheets.filter(s => s.subject.toLowerCase() === chosenSubject.toLowerCase() || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(s.subject, chosenSubject)))
           : subjectSheets;
 
         const effectiveSheets = sheetsToRender.length > 0 ? sheetsToRender : subjectSheets;
+        const totalStudentsCount = (Array.isArray(data.students) && data.students.length > 0) 
+            ? data.students.length 
+            : (effectiveSheets.length > 0 && Array.isArray(effectiveSheets[0].students) ? effectiveSheets[0].students.length : 0);
 
         let html = `<!DOCTYPE html>
 <html lang="fr" dir="ltr">
 <head>
     <meta charset="UTF-8">
-    <title>Procès-Verbal des Notes par Matière - Classe ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</title>
+    <title>Procès-Verbal &amp; Bulletin des Notes par Matière — Classe ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
@@ -20436,11 +20442,14 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 22px;
+            margin-bottom: 20px;
             border: 1px solid #CBD5E1;
+            max-width: 210mm;
+            margin-left: auto;
+            margin-right: auto;
         }
         .btn-action-print {
-            background: linear-gradient(135deg, #1D4ED8, #2563EB);
+            background: linear-gradient(135deg, #102A71, #1D4ED8);
             color: white;
             border: none;
             padding: 9px 18px;
@@ -20451,7 +20460,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
             align-items: center;
             gap: 6px;
             font-size: 12px;
-            box-shadow: 0 2px 8px rgba(29,78,216,0.3);
+            box-shadow: 0 2px 8px rgba(16,42,113,0.3);
         }
         .btn-action-download {
             background: #059669;
@@ -20467,174 +20476,187 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
             font-size: 12px;
             box-shadow: 0 2px 8px rgba(5,150,105,0.3);
         }
-        .sheet-page {
+        .master-doc-container {
             background: white;
             border: 1.5px solid #CBD5E1;
             border-radius: 8px;
             padding: 10mm 12mm;
-            margin: 0 auto 26px auto;
+            margin: 0 auto 20px auto;
             max-width: 210mm;
-            min-height: 282mm;
             box-shadow: 0 4px 15px rgba(0,0,0,0.06);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            page-break-after: always !important;
-            break-after: page !important;
-        }
-        .sheet-page:last-child {
-            margin-bottom: 0;
-            page-break-after: auto !important;
-            break-after: auto !important;
         }
         .school-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 2px solid #1E3A8A;
-            padding-bottom: 8px;
-            margin-bottom: 10px;
+            border-bottom: 2px solid #102A71;
+            padding-bottom: 10px;
+            margin-bottom: 16px;
+        }
+        .school-logo-img {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            object-fit: contain;
         }
         .school-header-center {
             text-align: center;
             flex: 1;
+            padding: 0 12px;
         }
         .school-title-fr {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 800;
-            color: #1E3A8A;
+            color: #102A71;
             margin: 0;
             letter-spacing: 0.5px;
         }
         .school-title-ar {
             font-family: 'Amiri', serif;
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 700;
-            color: #1E3A8A;
+            color: #102A71;
             direction: rtl;
-            margin-top: 2px;
+            margin-top: 1px;
         }
         .doc-title-badge {
-            font-size: 11px;
+            font-size: 11.5px;
             font-weight: 800;
-            color: #1E40AF;
-            margin-top: 3px;
-            letter-spacing: 0.5px;
+            color: #102A71;
+            margin-top: 4px;
+            letter-spacing: 0.4px;
             text-transform: uppercase;
         }
         .doc-sub {
-            font-size: 9.5px;
-            font-weight: 700;
+            font-size: 10px;
+            font-weight: 600;
             color: #64748B;
             margin-top: 2px;
         }
-        .subject-banner {
-            background: #F8FAFC;
-            border: 1.5px solid #CBD5E1;
+        .badge-section-box {
+            border: 2px solid #102A71;
+            color: #102A71;
+            font-weight: 800;
+            font-size: 12px;
+            padding: 6px 14px;
             border-radius: 6px;
-            padding: 8px 12px;
-            margin-bottom: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            display: inline-block;
+            background: #F8FAFC;
+        }
+        .subject-card {
+            background: white;
+            border: 1.5px solid #CBD5E1;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 18px;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+        }
+        .subject-card:last-of-type {
+            margin-bottom: 14px;
+        }
+        .subject-card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 10px;
+            font-size: 11px;
+            color: #1E293B;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #E2E8F0;
         }
-        .banner-grid {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            flex-wrap: wrap;
-            font-size: 10.5px;
+        .subject-card-header strong {
+            color: #0F172A;
         }
-        .banner-grid .label {
-            color: #64748B;
-            font-weight: 600;
+        .subject-card-header .subject-title {
+            color: #1D4ED8;
+            font-size: 12.5px;
+            font-weight: 800;
         }
         .bareme-pill {
-            font-size: 9px;
-            font-weight: 700;
             background: #EFF6FF;
-            color: #1E40AF;
-            padding: 3px 8px;
-            border-radius: 5px;
             border: 1px solid #BFDBFE;
+            border-radius: 5px;
+            padding: 4px 10px;
+            font-size: 9.5px;
+            color: #1E40AF;
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
         .grades-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 9.5px;
-            margin-bottom: 10px;
         }
         .grades-table th {
-            background: #1E3A8A;
+            background: #102A71;
             color: white;
             font-weight: 700;
-            padding: 5px 6px;
-            border: 1px solid #1E3A8A;
+            padding: 6px 4px;
+            border: 1px solid #102A71;
             text-align: center;
         }
-        .grades-table th:nth-child(2) { text-align: left; }
+        .grades-table th.col-name {
+            text-align: left;
+            padding-left: 8px;
+        }
         .grades-table td {
             border: 1px solid #CBD5E1;
-            padding: 4.5px 6px;
+            padding: 5px 4px;
             text-align: center;
         }
-        .grades-table td:nth-child(2) {
+        .grades-table td.col-name {
             text-align: left;
+            padding-left: 8px;
             font-weight: 700;
-            color: #1E293B;
+            color: #0F172A;
         }
-        .grades-table tr:nth-child(even) td:not(.total-col) {
+        .grades-table tr:nth-child(even) td:not(.col-total) {
             background: #F8FAFC;
         }
-        .grades-table td.total-col {
+        .grades-table td.col-total {
             font-weight: 800;
             color: #1D4ED8;
-            background: #EEF2FF;
-            font-size: 10.5px;
+            background: #EFF6FF;
+            font-size: 11px;
         }
-        .grades-table td.apprec-col {
+        .grades-table td.col-rank span {
+            background: #EEF2FF;
+            color: #3730A3;
+            font-weight: 800;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 9.5px;
+        }
+        .grades-table td.col-apprec {
             text-align: left;
+            padding-left: 8px;
             font-size: 9px;
             color: #475569;
-        }
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-        .stat-card {
-            background: #F8FAFC;
-            border: 1px solid #CBD5E1;
-            border-radius: 6px;
-            padding: 5px 10px;
-            text-align: center;
-        }
-        .stat-label {
-            font-size: 8.5px;
-            font-weight: 700;
-            color: #64748B;
-            text-transform: uppercase;
-        }
-        .stat-val {
-            font-size: 12.5px;
-            font-weight: 800;
-            margin-top: 2px;
         }
         .signatures-row {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            padding-top: 8px;
+            gap: 12px;
+            margin-top: 18px;
+            padding-top: 12px;
             border-top: 1.5px solid #CBD5E1;
+            page-break-inside: avoid;
+            break-inside: avoid;
         }
         .sig-box {
             border: 1px dashed #94A3B8;
             border-radius: 6px;
-            padding: 6px 10px;
-            height: 56px;
+            padding: 8px 10px;
+            height: 60px;
             font-size: 9px;
             font-weight: 700;
             color: #475569;
@@ -20649,16 +20671,19 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
                 margin: 0 !important;
             }
             .no-print-bar { display: none !important; }
-            .sheet-page {
+            .master-doc-container {
                 box-shadow: none !important;
                 border: none !important;
                 margin: 0 !important;
-                padding: 6mm 8mm !important;
+                padding: 4mm 6mm !important;
                 width: 100% !important;
                 max-width: none !important;
-                min-height: 282mm !important;
-                page-break-after: always !important;
-                break-after: page !important;
+            }
+            .subject-card {
+                box-shadow: none !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                margin-bottom: 14px !important;
             }
         }
     </style>
@@ -20666,137 +20691,110 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
 <body>
     <div class="no-print-bar">
         <div>
-            <strong style="font-size:14px; color:#1E3A8A;">Feuilles de Notes A4 par Matière — Classe : ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</strong>
-            <span style="color:#64748B; font-size:12px; margin-left:10px;">${effectiveSheets.length} Matière(s) | Chaque classe &amp; matière sur 1 page A4</span>
+            <strong style="font-size:14px; color:#102A71;">Procès-Verbal des Notes — Classe : ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</strong>
+            <span style="color:#64748B; font-size:12px; margin-left:10px;">${effectiveSheets.length} Matière(s) | Toutes les matières se suivent les unes après les autres</span>
         </div>
         <div style="display:flex; gap:10px;">
             <button type="button" class="btn-action-download" onclick="downloadBulletinsStandalone()">
-                📥 Télécharger Fichier HTML (A4)
+                📥 Télécharger HTML
             </button>
             <button type="button" class="btn-action-print" onclick="window.print()">
-                🖨️ Imprimer les Feuilles (A4 PDF)
+                🖨️ Imprimer en PDF A4
             </button>
         </div>
     </div>
-`;
 
-        effectiveSheets.forEach(sheet => {
+    <div class="master-doc-container">
+        <!-- EN-TÊTE OFFICIEL CONFORME À L'EXEMPLAIRE DU CLIENT -->
+        <div class="school-header">
+            <div style="width:75px; text-align:left;">
+                <img src="https://cdn.glitch.global/1c613b14-019c-488a-a856-d55d64d174d0/al-kawthar-international-schools-jeddah-saudi-arabia-modified.png?v=1739565146299" 
+                     alt="Logo Al-Kawthar" class="school-logo-img" 
+                     onerror="this.src='/logo-alkawthar.svg'; this.onerror=null;">
+            </div>
+            <div class="school-header-center">
+                <h1 class="school-title-fr">ÉCOLES INTERNATIONALES AL-KAWTHAR</h1>
+                <div class="school-title-ar">مدارس الكوثر العالمية</div>
+                <div class="doc-title-badge">PROCÈS-VERBAL &amp; BULLETIN DES NOTES PAR MATIÈRE</div>
+                <div class="doc-sub">Année Scolaire 2025 - 2026 — ${semTitle}</div>
+            </div>
+            <div style="width:95px; text-align:right;">
+                <span class="badge-section-box">
+                    ${escapeHtml(sectionBadge)}
+                </span>
+            </div>
+        </div>
+
+        <!-- LISTE CONTINUE DES MATIÈRES SE SUIVANT LES UNES APRÈS LES AUTRES -->
+        ${effectiveSheets.map(sheet => {
             const stList = Array.isArray(sheet.students) ? sheet.students : [];
-            const sheetStats = sheet.stats || {};
             const tName = sheet.teacher || '—';
-
-            html += `
-    <div class="sheet-page">
-        <div>
-            <div class="school-header">
-                <div style="width:75px; text-align:left;">
-                    <img src="/logo-alkawthar.svg" alt="Logo" style="height:55px;" onerror="this.style.display='none'">
-                </div>
-                <div class="school-header-center">
-                    <h1 class="school-title-fr">ÉCOLES INTERNATIONALES AL-KAWTHAR</h1>
-                    <div class="school-title-ar">مدارس الكوثر العالمية</div>
-                    <div class="doc-title-badge">PROCÈS-VERBAL &amp; BULLETIN DES NOTES PAR MATIÈRE</div>
-                    <div class="doc-sub">Année Scolaire 2025 - 2026 — ${semTitle}</div>
-                </div>
-                <div style="width:85px; text-align:right;">
-                    <span style="display:inline-block; border:1.5px solid #1E3A8A; color:#1E3A8A; padding:3px 7px; border-radius:5px; font-weight:800; font-size:9.5px;">
-                        ${section.toUpperCase()}
-                    </span>
-                </div>
+            return `
+        <div class="subject-card">
+            <div class="subject-card-header">
+                <div><strong>Classe :</strong> <span>${escapeHtml(chosenClass)}</span></div>
+                <div><strong>Matière :</strong> <span class="subject-title">${escapeHtml(sheet.subject)}</span></div>
+                <div><strong>Enseignant :</strong> <strong>${escapeHtml(tName)}</strong></div>
+                <div><strong>Effectif :</strong> <strong>${stList.length} Élève(s)</strong></div>
             </div>
 
-            <div class="subject-banner">
-                <div class="banner-grid">
-                    <div><span class="label">Classe :</span> <strong>${escapeHtml(chosenClass)}</strong></div>
-                    <div><span class="label">Matière :</span> <strong style="color:#1D4ED8; font-size:11.5px;">${escapeHtml(sheet.subject)}</strong></div>
-                    <div><span class="label">Enseignant :</span> <strong>${escapeHtml(tName)}</strong></div>
-                    <div><span class="label">Effectif :</span> <strong>${stList.length} Élève(s)</strong></div>
-                </div>
-                <div class="bareme-pill">
-                    Barème officiel : HW /${maxHw} + CW /${maxCw} + Éval /${maxEval} + Exam /${maxExam} = Total /100
-                </div>
+            <div class="bareme-pill">
+                Barème officiel : HW /${maxHw} + CW /${maxCw} + Éval /${maxEval} + Exam /${maxExam} = Total /100
             </div>
 
             <table class="grades-table">
                 <thead>
                     <tr>
                         <th style="width:34px;">N°</th>
-                        <th>Nom et Prénom de l'Élève</th>
+                        <th class="col-name">Nom et Prénom de l'Élève</th>
                         <th style="width:75px;">Devoirs (/${maxHw})</th>
                         <th style="width:75px;">Classe (/${maxCw})</th>
                         <th style="width:75px;">Évaluation (/${maxEval})</th>
                         <th style="width:75px;">Examen (/${maxExam})</th>
-                        <th style="width:85px; background:#EEF2FF; color:#1E40AF;">Total (/100)</th>
-                        <th style="width:50px;">Rang</th>
-                        <th style="width:130px; text-align:left;">Appréciation / Mention</th>
+                        <th style="width:85px; background:#0C2158;">Total (/100)</th>
+                        <th style="width:48px;">Rang</th>
+                        <th class="col-name" style="width:170px;">Appréciation / Mention</th>
                     </tr>
                 </thead>
                 <tbody>
-            `;
-
-            stList.forEach((st, idx) => {
-                html += `
+                    ${stList.map((st, idx) => `
                     <tr>
                         <td style="font-weight:700; color:#64748B;">${idx + 1}</td>
-                        <td>${escapeHtml(st.studentName)}</td>
+                        <td class="col-name">${escapeHtml(st.studentName)}</td>
                         <td>${st.hw}</td>
                         <td>${st.cw}</td>
                         <td>${st.evaluation}</td>
                         <td>${st.examen}</td>
-                        <td class="total-col">${st.total}</td>
-                        <td style="font-weight:800; color:#1E3A8A;">${st.rank}e</td>
-                        <td class="apprec-col">
+                        <td class="col-total">${st.total}</td>
+                        <td class="col-rank"><span>${st.rank}e</span></td>
+                        <td class="col-apprec">
                             <strong>${escapeHtml(st.mention)}</strong> — ${escapeHtml(st.appreciation)}
                         </td>
                     </tr>
-                `;
-            });
-
-            html += `
+                    `).join('')}
                 </tbody>
             </table>
         </div>
+            `;
+        }).join('')}
 
-        <div>
-            <div class="stats-row">
-                <div class="stat-card">
-                    <div class="stat-label">Moyenne de Classe</div>
-                    <div class="stat-val" style="color:#1D4ED8;">${sheetStats.classAverage || '—'} / 100</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Note Maximale</div>
-                    <div class="stat-val" style="color:#059669;">${sheetStats.maxGrade || '—'} / 100</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Note Minimale</div>
-                    <div class="stat-val" style="color:#DC2626;">${sheetStats.minGrade || '—'} / 100</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Taux de Réussite (≥50)</div>
-                    <div class="stat-val" style="color:#7C3AED;">${sheetStats.successRate !== undefined ? sheetStats.successRate + '%' : '—'}</div>
-                </div>
+        <!-- SIGNATURES ET VALIDATION FINALE -->
+        <div class="signatures-row">
+            <div class="sig-box">
+                <span>Enseignants de la Classe :</span>
+                <span style="font-size:8.5px; color:#64748B;">Conformité des notes saisies</span>
             </div>
-
-            <div class="signatures-row">
-                <div class="sig-box">
-                    <span>Signature de l'Enseignant de la Matière :</span>
-                    <strong style="color:#1E3A8A;">M. / Mme ${escapeHtml(tName)}</strong>
-                </div>
-                <div class="sig-box">
-                    <span>Superviseur Pédagogique :</span>
-                    <span style="font-size:8.5px; color:#64748B;">Visa et validation de conformité</span>
-                </div>
-                <div class="sig-box">
-                    <span>Direction des Études :</span>
-                    <span style="font-size:8.5px; color:#64748B;">(Cachet officiel de l'établissement &amp; Signature)</span>
-                </div>
+            <div class="sig-box">
+                <span>Superviseur Pédagogique :</span>
+                <span style="font-size:8.5px; color:#64748B;">Visa et validation de conformité</span>
+            </div>
+            <div class="sig-box">
+                <span>Direction des Études :</span>
+                <span style="font-size:8.5px; color:#64748B;">(Cachet officiel &amp; Signature)</span>
             </div>
         </div>
     </div>
-            `;
-        });
 
-        html += `
     <script>
         function downloadBulletinsStandalone() {
             const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' });

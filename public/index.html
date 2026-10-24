@@ -4157,13 +4157,12 @@
                         <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i> Classe :
                     </label>
                     <select id="bulletinModalClassSelect" onchange="onBulletinsModalClassChanged()" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
-                        <option value="PEI1">PEI1</option>
-                        <option value="PEI2">PEI2</option>
-                        <option value="PEI3">PEI3</option>
-                        <option value="PEI4">PEI4</option>
-                        <option value="PEI5">PEI5</option>
-                        <option value="DP1">DP1</option>
-                        <option value="DP2">DP2</option>
+                        <option value="PEI1 Garçons">PEI1 Garçons</option>
+                        <option value="PEI2 Garçon">PEI2 Garçon</option>
+                        <option value="PEI3 Garçon">PEI3 Garçon</option>
+                        <option value="PEI4 Garçon">PEI4 Garçon</option>
+                        <option value="PEI5 Garçon">PEI5 Garçon</option>
+                        <option value="DP2 Garçons">DP2 Garçons</option>
                     </select>
                 </div>
 
@@ -4172,7 +4171,7 @@
                         <i class="fas fa-book" style="color:#7C3AED;"></i> Matière :
                     </label>
                     <select id="bulletinModalSubjectSelect" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
-                        <option value="all">📚 Toutes les matières (1 page par matière)</option>
+                        <option value="all">📚 Toutes les matières (les matières se suivent les unes après les autres)</option>
                     </select>
                 </div>
 
@@ -4191,9 +4190,8 @@
                         <i class="fas fa-file-contract" style="color:#D97706;"></i> Format d'édition A4 :
                     </label>
                     <select id="bulletinModalFormatSelect" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:700; color:#1E3A8A; background:#F8FAFC;">
-                        <option value="all_subjects_single_page" selected>🌟 Relevé Général de Classe (Toutes les matières sur 1 seule page A4)</option>
-                        <option value="by_subject">📑 Feuille par Matière détaillée (1 page par matière)</option>
-                        <option value="by_student">👤 Bulletins individuels (Toutes les matières de l'élève par page)</option>
+                        <option value="all_subjects_single_page" selected>📄 Toutes les matières se suivent les unes après les autres (Modèle officiel continu)</option>
+                        <option value="by_student">👤 Bulletins individuels par élève (Toutes les matières de l'élève par page)</option>
                     </select>
                 </div>
             </div>
