@@ -400,30 +400,21 @@
         };
 
         const sectionClassesMap = {
-            garcons: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP2"],
+            garcons: ["PEI1 Garçons", "PEI2 Garçon", "PEI3 Garçon", "PEI4 Garçon", "PEI5 Garçon", "DP2 Garçons"],
             filles: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
             primaire: ["PP1", "PP2", "PP3", "PP4", "PP5"],
             maternelle: ["PS", "MS", "GS"]
         };
 
-        function normalizeStandardClassCode(cls) {
-            if (!cls) return '';
-            const raw = String(cls).trim();
-            if (typeof getStandardClassCode === 'function') {
-                const std = getStandardClassCode(raw);
-                if (std) return std;
-            }
-            const up = raw.toUpperCase();
-            const m = up.match(/\b(PEI\s*[1-5]|DP\s*[1-2]|PP\s*[1-5]|PS|MS|GS)\b/);
-            if (m) return m[1].replace(/\s+/g, '');
-            return raw;
-        }
-
         function getSectionClasses(sec) {
             const s = sec || currentSection || 'garcons';
             if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[s]) && window.sectionVisibleClassesMap[s].length > 0) {
-                const normalized = Array.from(new Set(window.sectionVisibleClassesMap[s].map(c => normalizeStandardClassCode(c)).filter(Boolean)));
-                if (normalized.length > 0) return normalized;
+                let list = window.sectionVisibleClassesMap[s];
+                if (s === 'garcons') {
+                    list = list.filter(c => !['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'].includes(String(c).trim().toUpperCase()));
+                    if (list.length === 0) list = sectionClassesMap.garcons;
+                }
+                return list;
             }
             return sectionClassesMap[s] || sectionClassesMap.garcons;
         }
@@ -2969,11 +2960,14 @@
             return sortedWeeks[0] || 1;
         }
 
-        // Synchronisation Enseignants & Parents : ouvre par défaut la SEMAINE COURANTE ACTIVE
+        // Pour les enseignants : sélectionne automatiquement par défaut la SEMAINE PROCHAINE (N+1) pour préparer les cours
         function getTeacherDefaultWeekNumber() {
             const currentW = getCurrentWeekNumber();
+            const maxWeek = (typeof weeksConfig !== 'undefined' && Object.keys(weeksConfig).length > 0)
+                ? Math.max(...Object.keys(weeksConfig).map(Number))
+                : 38;
             if (typeof currentW === 'number' && !isNaN(currentW)) {
-                return currentW;
+                return Math.min(currentW + 1, maxWeek);
             }
             return 1;
         }
@@ -7196,34 +7190,17 @@ let parentRawClassNotes = {};
 let parentActiveDay = (typeof getTodaySchoolDayName === 'function') ? getTodaySchoolDayName() : 'Dimanche';
 const schoolDaysList = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
 
-function isParentPlanRowEmptyPlaceholder(row) {
-    if (!row) return true;
-    const isDash = (v) => {
-        const s = String(v || '').trim();
-        return !s || s === '—' || s === '-' || s === '–';
-    };
-    const matVal = getRowField(row, 'Matière');
-    const leconVal = getRowField(row, 'Leçon');
-    const taskVal = getRowField(row, 'Travaux de classe');
-    const devVal = getRowField(row, 'Devoirs');
-    return isDash(matVal) && isDash(leconVal) && isDash(taskVal) && isDash(devVal);
-}
-
 function setParentActiveDay(dayName) {
     parentActiveDay = dayName;
     const classSelect = document.getElementById('parentClassSelector');
     if (!classSelect || !parentRawPlanData) return;
     
     const selectedClass = classSelect.value || 'PEI1';
-    const targetStd = normalizeStandardClassCode(selectedClass).toLowerCase();
     const norm = (s) => String(s || '').trim().toLowerCase().replace(/[\s\-_]+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const targetNormClass = norm(selectedClass);
     const classRows = parentRawPlanData.filter(row => {
-        if (isParentPlanRowEmptyPlaceholder(row)) return false;
         const classVal = getRowField(row, 'Classe');
         if (!classVal) return false;
-        const rowStd = normalizeStandardClassCode(classVal).toLowerCase();
-        if (targetStd && rowStd && targetStd === rowStd) return true;
         const rNorm = norm(classVal);
         return rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm);
     });
@@ -7377,30 +7354,22 @@ async function loadParentWeeklyPlan() {
             headers = Object.keys(parentRawPlanData[0]);
         }
         
-        // Filtrer les lignes pour la classe sélectionnée (sans les créneaux vides '—')
-        const targetStd = normalizeStandardClassCode(selectedClass).toLowerCase();
+        // Filtrer les lignes pour la classe sélectionnée avec tolérance
         const norm = (s) => String(s || '').trim().toLowerCase().replace(/[\s\-_]+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const targetNormClass = norm(selectedClass);
         const classRows = parentRawPlanData.filter(row => {
-            if (isParentPlanRowEmptyPlaceholder(row)) return false;
             const classVal = getRowField(row, 'Classe');
             if (!classVal) return false;
-            const rowStd = normalizeStandardClassCode(classVal).toLowerCase();
-            if (targetStd && rowStd && targetStd === rowStd) return true;
             const rNorm = norm(classVal);
             return rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm);
         });
         
-        // Vérifier si la saisie est complète pour les séances réelles de cette classe
-        const isDashVal = (v) => {
-            const s = String(v || '').trim();
-            return !s || s === '—' || s === '-' || s === '–';
-        };
+        // Vérifier si la saisie est complète pour cette classe
         let emptyCount = 0;
         classRows.forEach(row => {
             const leconVal = getRowField(row, 'Leçon');
             const taskVal = getRowField(row, 'Travaux de classe');
-            if (isDashVal(leconVal) && isDashVal(taskVal)) {
+            if ((!leconVal || String(leconVal).trim() === '') && (!taskVal || String(taskVal).trim() === '')) {
                 emptyCount++;
             }
         });
@@ -7836,7 +7805,7 @@ function updateAdminSpecialDaysClassDropdown() {
     
     let classes = [];
     if (sec === 'garcons') {
-        classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'];
+        classes = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     } else if (sec === 'filles') {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'maternelle') {
@@ -8231,7 +8200,7 @@ function updateQuickSpecialClassesDropdown(targetClass) {
     
     let classes = [];
     if (sec === 'garcons') {
-        classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'];
+        classes = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     } else if (sec === 'filles') {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'maternelle') {
@@ -15363,7 +15332,7 @@ async function populateAdminScheduleClasses() {
             classSel.appendChild(opt);
         });
 
-        const mainClassFilter = document.getElementById('filterClasse') || document.getElementById('classFilter');
+        const mainClassFilter = document.getElementById('classFilter');
         if (mainClassFilter && mainClassFilter.value && window.adminScheduleClassesCache.includes(mainClassFilter.value)) {
             classSel.value = mainClassFilter.value;
         } else if (window.adminScheduleClassesCache.length > 0) {
@@ -18735,16 +18704,12 @@ function initClassVisibilityFromStorage() {
             const rawVis = localStorage.getItem('visibleClasses_' + sec);
             if (rawVis) {
                 const parsed = JSON.parse(rawVis);
-                if (Array.isArray(parsed)) {
-                    window.sectionVisibleClassesMap[sec] = Array.from(new Set(parsed.map(c => normalizeStandardClassCode(c)).filter(Boolean)));
-                }
+                if (Array.isArray(parsed)) window.sectionVisibleClassesMap[sec] = parsed;
             }
             const rawHid = localStorage.getItem('hiddenClasses_' + sec);
             if (rawHid) {
                 const parsed = JSON.parse(rawHid);
-                if (Array.isArray(parsed)) {
-                    window.sectionHiddenClassesMap[sec] = Array.from(new Set(parsed.map(c => normalizeStandardClassCode(c)).filter(Boolean)));
-                }
+                if (Array.isArray(parsed)) window.sectionHiddenClassesMap[sec] = parsed;
             }
         } catch (e) {}
     });
@@ -18758,14 +18723,12 @@ async function syncClassVisibilityFromServer(sec) {
         if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data.visibleClasses)) {
-                const cleanVis = Array.from(new Set(data.visibleClasses.map(c => normalizeStandardClassCode(c)).filter(Boolean)));
-                window.sectionVisibleClassesMap[targetSection] = cleanVis;
-                localStorage.setItem('visibleClasses_' + targetSection, JSON.stringify(cleanVis));
+                window.sectionVisibleClassesMap[targetSection] = data.visibleClasses;
+                localStorage.setItem('visibleClasses_' + targetSection, JSON.stringify(data.visibleClasses));
             }
             if (Array.isArray(data.hiddenClasses)) {
-                const cleanHid = Array.from(new Set(data.hiddenClasses.map(c => normalizeStandardClassCode(c)).filter(Boolean)));
-                window.sectionHiddenClassesMap[targetSection] = cleanHid;
-                localStorage.setItem('hiddenClasses_' + targetSection, JSON.stringify(cleanHid));
+                window.sectionHiddenClassesMap[targetSection] = data.hiddenClasses;
+                localStorage.setItem('hiddenClasses_' + targetSection, JSON.stringify(data.hiddenClasses));
             }
         }
     } catch (e) {
@@ -18778,27 +18741,20 @@ function isClassVisibleOnTable(classe, section) {
     if (!classe) return true;
     const sec = section || currentSection || 'garcons';
     const rawClass = String(classe).trim();
-    const stdClass = normalizeStandardClassCode(rawClass).toLowerCase();
     const lowerClass = rawClass.toLowerCase();
 
     // 1. Vérifier si explicitement masquée
     if (window.sectionHiddenClassesMap && Array.isArray(window.sectionHiddenClassesMap[sec])) {
-        if (window.sectionHiddenClassesMap[sec].some(h => {
-            const hLow = String(h).trim().toLowerCase();
-            const hStd = normalizeStandardClassCode(h).toLowerCase();
-            return hLow === lowerClass || (stdClass && hStd === stdClass);
-        })) {
+        if (window.sectionHiddenClassesMap[sec].some(h => String(h).trim().toLowerCase() === lowerClass)) {
             return false;
         }
     }
 
     // 2. Vérifier si un ensemble restreint de classes visibles est défini
     if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[sec]) && window.sectionVisibleClassesMap[sec].length > 0) {
-        return window.sectionVisibleClassesMap[sec].some(v => {
-            const vLow = String(v).trim().toLowerCase();
-            const vStd = normalizeStandardClassCode(v).toLowerCase();
-            return vLow === lowerClass || (stdClass && vStd === stdClass) || (typeof isClassMatch === 'function' && isClassMatch(v, rawClass));
-        });
+        return window.sectionVisibleClassesMap[sec].some(v => 
+            String(v).trim().toLowerCase() === lowerClass || (typeof isClassMatch === 'function' && isClassMatch(v, rawClass))
+        );
     }
 
     return true;
@@ -19005,12 +18961,12 @@ function resetDefaultClassVisibility() {
     let defaultList = [];
     if (sec === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
     else if (sec === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-    else if (sec === 'garcons') defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'];
+    else if (sec === 'garcons') defaultList = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
 
     const checkboxes = document.querySelectorAll('.class-visibility-checkbox');
     checkboxes.forEach(cb => {
-        const clsName = normalizeStandardClassCode(cb.getAttribute('data-class'));
+        const clsName = cb.getAttribute('data-class');
         cb.checked = defaultList.includes(clsName);
     });
 }
@@ -19873,7 +19829,7 @@ function onBulletinsModalSectionChanged(presetClass, presetSubject) {
     const sec = secSelect.value || 'garcons';
     let classOptions = [];
     if (sec === 'garcons') {
-        classOptions = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'];
+        classOptions = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     } else if (sec === 'filles') {
         classOptions = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'primaire') {
@@ -21460,84 +21416,5 @@ window.renderTeacherGradesTable = renderTeacherGradesTable;
 window.recalcStudentRowTotal = recalcStudentRowTotal;
 window.saveTeacherGradesData = saveTeacherGradesData;
 
-// Helpers UI pour la barre d'actions unifiée et les panneaux repliables
-document.addEventListener('click', function(e) {
-    const exportWrapper = document.getElementById('exportPlanDropdownWrapper');
-    const exportMenu = document.getElementById('exportPlanDropdownMenu');
-    if (exportWrapper && exportMenu && !exportWrapper.contains(e.target)) {
-        exportMenu.style.display = 'none';
-    }
-    const toolsWrapper = document.getElementById('planToolsDropdownWrapper');
-    const toolsMenu = document.getElementById('planToolsDropdownMenu');
-    if (toolsWrapper && toolsMenu && !toolsWrapper.contains(e.target)) {
-        toolsMenu.style.display = 'none';
-    }
-    const adminToolsWrapper = document.getElementById('adminToolsDropdownWrapper');
-    const adminToolsMenu = document.getElementById('adminToolsDropdownMenu');
-    if (adminToolsWrapper && adminToolsMenu && !adminToolsWrapper.contains(e.target)) {
-        adminToolsMenu.style.display = 'none';
-    }
-});
 
-window.toggleExportDropdown = function(event) {
-    if (event) event.stopPropagation();
-    const menu = document.getElementById('exportPlanDropdownMenu');
-    if (!menu) return;
-    const isHidden = menu.style.display === 'none' || menu.style.display === '';
-    if (typeof closeActionDropdown === 'function') closeActionDropdown();
-    if (typeof closeSyncDropdown === 'function') closeSyncDropdown();
-    if (typeof closePlanToolsDropdown === 'function') closePlanToolsDropdown();
-    menu.style.display = isHidden ? 'flex' : 'none';
-};
 
-window.closeExportDropdown = function() {
-    const menu = document.getElementById('exportPlanDropdownMenu');
-    if (menu) menu.style.display = 'none';
-};
-
-window.togglePlanToolsDropdown = function(event) {
-    if (event) event.stopPropagation();
-    const menu = document.getElementById('planToolsDropdownMenu');
-    if (!menu) return;
-    const isHidden = menu.style.display === 'none' || menu.style.display === '';
-    if (typeof closeActionDropdown === 'function') closeActionDropdown();
-    if (typeof closeSyncDropdown === 'function') closeSyncDropdown();
-    if (typeof closeExportDropdown === 'function') closeExportDropdown();
-    menu.style.display = isHidden ? 'flex' : 'none';
-};
-
-window.closePlanToolsDropdown = function() {
-    const menu = document.getElementById('planToolsDropdownMenu');
-    if (menu) menu.style.display = 'none';
-};
-
-window.toggleAdminToolsDropdown = function(event) {
-    if (event) event.stopPropagation();
-    const menu = document.getElementById('adminToolsDropdownMenu');
-    if (!menu) return;
-    const isHidden = menu.style.display === 'none' || menu.style.display === '';
-    menu.style.display = isHidden ? 'flex' : 'none';
-};
-
-window.closeAdminToolsDropdown = function() {
-    const menu = document.getElementById('adminToolsDropdownMenu');
-    if (menu) menu.style.display = 'none';
-};
-
-window.toggleAdminWorkspacePanel = function() {
-    const body = document.getElementById('adminWorkspaceCollapsibleBody');
-    const icon = document.getElementById('adminWorkspaceToggleIcon');
-    const label = document.getElementById('adminWorkspaceToggleLabel');
-    if (!body) return;
-    const isHidden = body.style.display === 'none';
-    body.style.display = isHidden ? 'block' : 'none';
-    if (icon) icon.className = isHidden ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
-    if (label) label.textContent = isHidden ? 'Réduire le panneau' : 'Ouvrir le panneau';
-};
-
-window.toggleClassNotesDrawer = function() {
-    const drawer = document.getElementById('classNotesDrawerWrapper');
-    if (!drawer) return;
-    const isHidden = drawer.style.display === 'none' || drawer.style.display === '';
-    drawer.style.display = isHidden ? 'block' : 'none';
-};

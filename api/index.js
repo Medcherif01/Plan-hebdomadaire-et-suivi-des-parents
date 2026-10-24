@@ -582,38 +582,30 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
     return score;
   };
 
-  // Canonicaliser le nom de la classe pour éviter tout doublon ("PEI1 Garçons" -> "PEI1", etc.)
+  // Canonicaliser le nom de la classe pour éviter les doublons de casse
   const canonicalClassMap = new Map();
   if (section === 'garcons') {
-    const garconsClasses = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'];
+    const garconsClasses = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     garconsClasses.forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
-    canonicalClassMap.set('pei1 garcons', 'PEI1');
-    canonicalClassMap.set('pei1 garçons', 'PEI1');
-    canonicalClassMap.set('pei1 garcon', 'PEI1');
-    canonicalClassMap.set('pei1 garçon', 'PEI1');
-    canonicalClassMap.set('pei2 garcon', 'PEI2');
-    canonicalClassMap.set('pei2 garçon', 'PEI2');
-    canonicalClassMap.set('pei2 garcons', 'PEI2');
-    canonicalClassMap.set('pei2 garçons', 'PEI2');
-    canonicalClassMap.set('pei3 garcon', 'PEI3');
-    canonicalClassMap.set('pei3 garçon', 'PEI3');
-    canonicalClassMap.set('pei3 garcons', 'PEI3');
-    canonicalClassMap.set('pei3 garçons', 'PEI3');
-    canonicalClassMap.set('pei4 garcon', 'PEI4');
-    canonicalClassMap.set('pei4 garçon', 'PEI4');
-    canonicalClassMap.set('pei4 garcons', 'PEI4');
-    canonicalClassMap.set('pei4 garçons', 'PEI4');
-    canonicalClassMap.set('pei5 garcon', 'PEI5');
-    canonicalClassMap.set('pei5 garçon', 'PEI5');
-    canonicalClassMap.set('pei5 garcons', 'PEI5');
-    canonicalClassMap.set('pei5 garçons', 'PEI5');
-    canonicalClassMap.set('dp1', 'DP1');
-    canonicalClassMap.set('dp1 garcon', 'DP1');
-    canonicalClassMap.set('dp1 garçons', 'DP1');
-    canonicalClassMap.set('dp2 garcon', 'DP2');
-    canonicalClassMap.set('dp2 garçon', 'DP2');
-    canonicalClassMap.set('dp2 garçons', 'DP2');
-    canonicalClassMap.set('dp2 garcons', 'DP2');
+    canonicalClassMap.set('pei1', 'PEI1 Garçons');
+    canonicalClassMap.set('pei1 garcons', 'PEI1 Garçons');
+    canonicalClassMap.set('pei1 garçons', 'PEI1 Garçons');
+    canonicalClassMap.set('pei2', 'PEI2 Garçon');
+    canonicalClassMap.set('pei2 garcon', 'PEI2 Garçon');
+    canonicalClassMap.set('pei2 garçon', 'PEI2 Garçon');
+    canonicalClassMap.set('pei3', 'PEI3 Garçon');
+    canonicalClassMap.set('pei3 garcon', 'PEI3 Garçon');
+    canonicalClassMap.set('pei3 garçon', 'PEI3 Garçon');
+    canonicalClassMap.set('pei4', 'PEI4 Garçon');
+    canonicalClassMap.set('pei4 garcon', 'PEI4 Garçon');
+    canonicalClassMap.set('pei4 garçon', 'PEI4 Garçon');
+    canonicalClassMap.set('pei5', 'PEI5 Garçon');
+    canonicalClassMap.set('pei5 garcon', 'PEI5 Garçon');
+    canonicalClassMap.set('pei5 garçon', 'PEI5 Garçon');
+    canonicalClassMap.set('dp2', 'DP2 Garçons');
+    canonicalClassMap.set('dp2 garcon', 'DP2 Garçons');
+    canonicalClassMap.set('dp2 garçons', 'DP2 Garçons');
+    canonicalClassMap.set('dp2 garcons', 'DP2 Garçons');
   } else if (section === 'filles') {
     ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
   } else if (section === 'primaire') {
@@ -624,15 +616,10 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
 
   data.forEach(r => {
     if (!r) return;
-    const rawC = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
-    if (rawC) {
-      const normC = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(rawC) : '') || rawC;
-      if (section === 'garcons' && normC.toUpperCase() === 'DP1') return;
-      if (!canonicalClassMap.has(rawC.toLowerCase())) {
-        canonicalClassMap.set(rawC.toLowerCase(), normC);
-      }
-      if (!canonicalClassMap.has(normC.toLowerCase())) {
-        canonicalClassMap.set(normC.toLowerCase(), normC);
+    const c = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
+    if (c && !canonicalClassMap.has(c.toLowerCase())) {
+      if (section !== 'garcons') {
+        canonicalClassMap.set(c.toLowerCase(), c);
       }
     }
   });
@@ -1264,136 +1251,6 @@ async function clearAllStoredLessonPlans(db) {
   }
 }
 
-async function harmonizeAllClassNamesInDb(db) {
-  try {
-    if (!db) return;
-    const toCanon = (raw) => {
-      if (!raw) return '';
-      const str = String(raw).trim();
-      const m = str.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/i);
-      if (m) return m[1].toUpperCase();
-      return str.replace(/\s*(?:Garçons|Garcons|Garçon|Garcon|Filles|Fille|Section\s*Garçons|Section\s*Filles)\s*$/i, '').trim();
-    };
-
-    // 1. Harmoniser les plans hebdomadaires
-    const allPlans = await db.collection('plans').find({}).toArray();
-    for (const p of allPlans) {
-      const sec = p.section || (String(p._id || '').split('_')[0]) || 'garcons';
-      const wNum = parseInt(p.week, 10) || parseInt(String(p._id || '').split('_')[1], 10) || 1;
-      let changed = false;
-      if (Array.isArray(p.data)) {
-        p.data.forEach(r => {
-          if (!r || typeof r !== 'object') return;
-          const cKey = r.Classe !== undefined ? 'Classe' : (r.classe !== undefined ? 'classe' : null);
-          if (cKey && r[cKey]) {
-            const canon = toCanon(r[cKey]);
-            if (canon && r[cKey] !== canon) {
-              r[cKey] = canon;
-              changed = true;
-            }
-          }
-        });
-        if (changed) {
-          p.data = ensureAllPeriods1To8ForPlan(p.data, sec, wNum);
-        }
-      }
-      if (p.classNotes && typeof p.classNotes === 'object') {
-        for (const k of Object.keys(p.classNotes)) {
-          const canon = toCanon(k);
-          if (canon && canon !== k) {
-            p.classNotes[canon] = p.classNotes[canon] ? `${p.classNotes[canon]}\n${p.classNotes[k]}` : p.classNotes[k];
-            delete p.classNotes[k];
-            changed = true;
-          }
-        }
-      }
-      if (changed) {
-        await db.collection('plans').updateOne({ _id: p._id }, { $set: { data: p.data, classNotes: p.classNotes || {} } });
-      }
-    }
-
-    // 2. Harmoniser class_schedules
-    const allScheds = await db.collection('class_schedules').find({}).toArray();
-    const schedGroup = new Map();
-    for (const sDoc of allScheds) {
-      const sec = sDoc.section || 'garcons';
-      const canon = toCanon(sDoc.classe);
-      if (!canon) continue;
-      const gKey = `${sec}___${canon}`;
-      if (!schedGroup.has(gKey)) {
-        schedGroup.set(gKey, { section: sec, classe: canon, slotsMap: new Map(), idsToDelete: [] });
-      }
-      const g = schedGroup.get(gKey);
-      if (sDoc.classe !== canon) {
-        g.idsToDelete.push(sDoc._id);
-      }
-      if (Array.isArray(sDoc.slots)) {
-        sDoc.slots.forEach(s => {
-          if (s && s.jour && s.periode && s.matiere && s.matiere !== '—') {
-            const sk = `${String(s.jour).trim().toLowerCase()}_${String(s.periode).replace(/[^0-9]/g, '')}`;
-            if (!g.slotsMap.has(sk) || (!g.slotsMap.get(sk).enseignant && s.enseignant)) {
-              g.slotsMap.set(sk, s);
-            }
-          }
-        });
-      }
-    }
-    for (const g of schedGroup.values()) {
-      if (g.idsToDelete.length > 0) {
-        for (const delId of g.idsToDelete) {
-          await db.collection('class_schedules').deleteOne({ _id: delId });
-        }
-        await db.collection('class_schedules').updateOne(
-          { section: g.section, classe: g.classe },
-          { $set: { section: g.section, classe: g.classe, slots: Array.from(g.slotsMap.values()), updatedAt: new Date() } },
-          { upsert: true }
-        );
-      }
-    }
-
-    // 3. Harmoniser class_subject_teachers
-    const allLinks = await db.collection('class_subject_teachers').find({}).toArray();
-    for (const link of allLinks) {
-      const canon = toCanon(link.classe);
-      if (canon && link.classe && link.classe !== 'all' && link.classe !== canon) {
-        await db.collection('class_subject_teachers').deleteOne({ _id: link._id });
-        await db.collection('class_subject_teachers').updateOne(
-          { section: link.section || 'garcons', classe: canon, matiere: link.matiere },
-          { $set: { section: link.section || 'garcons', classe: canon, matiere: link.matiere, enseignant: link.enseignant, updatedAt: new Date() } },
-          { upsert: true }
-        );
-      }
-    }
-
-    // 4. Réinitialiser proprement la visibilité des classes pour que les classes canoniques ne soient jamais masquées par erreur
-    const sectionDefaults = {
-      garcons: ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'],
-      filles: ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'],
-      primaire: ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'],
-      maternelle: ['PS', 'MS', 'GS']
-    };
-    for (const [sec, defClasses] of Object.entries(sectionDefaults)) {
-      await db.collection('settings').updateOne(
-        { _id: `classes_visibility_${sec}` },
-        {
-          $set: {
-            section: sec,
-            visibleClasses: defClasses,
-            hiddenClasses: ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons', 'PEI1 Garcons', 'DP2 Garcons'],
-            updatedAt: new Date()
-          }
-        },
-        { upsert: true }
-      );
-    }
-
-    if (typeof db.saveToDisk === 'function') db.saveToDisk();
-    console.log('✅ [Harmonisation Classes] Toutes les classes ont été unifiées vers leurs codes canoniques (PEI1..DP2, PP1..PP5, PS/MS/GS).');
-  } catch (err) {
-    console.warn('Note harmonizeAllClassNamesInDb:', err.message);
-  }
-}
-
 let hasCleanedInitialPlans = false;
 
 async function connectToDatabase() {
@@ -1404,7 +1261,6 @@ async function connectToDatabase() {
     if (!hasCleanedInitialPlans) {
       hasCleanedInitialPlans = true;
       clearAllStoredLessonPlans(cachedDb);
-      await harmonizeAllClassNamesInDb(cachedDb);
     }
     return cachedDb;
   }
@@ -1416,7 +1272,6 @@ async function connectToDatabase() {
     if (!hasCleanedInitialPlans) {
       hasCleanedInitialPlans = true;
       clearAllStoredLessonPlans(cachedDb);
-      await harmonizeAllClassNamesInDb(cachedDb);
     }
     return db;
   } catch (err) {
@@ -1424,7 +1279,6 @@ async function connectToDatabase() {
     if (!hasCleanedInitialPlans) {
       hasCleanedInitialPlans = true;
       clearAllStoredLessonPlans(cachedDb);
-      await harmonizeAllClassNamesInDb(cachedDb);
     }
     return cachedDb;
   }
@@ -1780,11 +1634,12 @@ function getCurrentWeekNumber(refDate = new Date(), section = 'garcons') {
   return sortedWeeks[0] || 1;
 }
 
-// Fonction utilitaire pour déterminer la semaine active par défaut pour les enseignants (synchronisée avec les parents)
+// Fonction utilitaire pour déterminer la semaine prochaine pour les enseignants (bascule chaque dimanche)
 function getTeacherDefaultWeekNumber() {
   const currentW = getCurrentWeekNumber();
+  const maxWeek = 38;
   if (typeof currentW === 'number' && !isNaN(currentW)) {
-    return Math.max(1, Math.min(currentW, 38));
+    return Math.min(currentW + 1, maxWeek);
   }
   return 1;
 }
@@ -3056,37 +2911,72 @@ const calculateStarsLegacy = (evaluations) => {
 };
 
 const defaultBoysStudents = {
-  PEI1: [
+  'PEI1 Garçons': [
     { name: "Faris BAHKALI", photo: "https://lh3.googleusercontent.com/d/1IB6BKROX3TRxaIIHVVVWbB7-Ii-V8VrC", birthday: "4/2014" },
     { name: "Ibrahim TULI", photo: "https://lh3.googleusercontent.com/d/1B0QUZJhpSad5Fs3qRTugUe4oyTlUDEVu", birthday: "2/2015" }
   ],
-  PEI2: [
+  'PEI1': [
+    { name: "Faris BAHKALI", photo: "https://lh3.googleusercontent.com/d/1IB6BKROX3TRxaIIHVVVWbB7-Ii-V8VrC", birthday: "4/2014" },
+    { name: "Ibrahim TULI", photo: "https://lh3.googleusercontent.com/d/1B0QUZJhpSad5Fs3qRTugUe4oyTlUDEVu", birthday: "2/2015" }
+  ],
+  'PEI2 Garçon': [
     { name: "Ahmed", photo: "https://lh3.googleusercontent.com/d/1cDF-yegSB2tqsWac0AoNttbi8qAALYT1", birthday: "9/2013" },
     { name: "Yasser", photo: "https://lh3.googleusercontent.com/d/1DthaZcLUhfkkxbvaTr4o4XJENIM6ZNsz", birthday: "8/2013" },
     { name: "Eyad", photo: "https://lh3.googleusercontent.com/d/1HGyWS4cC1jWWD25Ah3WcT_eIbUHqFzJ1", birthday: "4/2013" },
     { name: "Ali", photo: "https://lh3.googleusercontent.com/d/18QAEYQWVI2HgQf9Kl_8eJ91cjE-Rjg40", birthday: "4/2013" }
   ],
-  PEI3: [
+  'PEI2': [
+    { name: "Ahmed", photo: "https://lh3.googleusercontent.com/d/1cDF-yegSB2tqsWac0AoNttbi8qAALYT1", birthday: "9/2013" },
+    { name: "Yasser", photo: "https://lh3.googleusercontent.com/d/1DthaZcLUhfkkxbvaTr4o4XJENIM6ZNsz", birthday: "8/2013" },
+    { name: "Eyad", photo: "https://lh3.googleusercontent.com/d/1HGyWS4cC1jWWD25Ah3WcT_eIbUHqFzJ1", birthday: "4/2013" },
+    { name: "Ali", photo: "https://lh3.googleusercontent.com/d/18QAEYQWVI2HgQf9Kl_8eJ91cjE-Rjg40", birthday: "4/2013" }
+  ],
+  'PEI3 Garçon': [
     { name: "Seifeddine", photo: "https://lh3.googleusercontent.com/d/1tWdPSbtCAsTMB86WzDgqh3Xw01ahm9s6", birthday: "1/2012" },
     { name: "Mohamed", photo: "https://lh3.googleusercontent.com/d/1lB8ObGOvQDVT6FITL2y7C5TYmAGyggFn", birthday: "11/2011" },
     { name: "Wajih", photo: "https://lh3.googleusercontent.com/d/1MH6M05mQamOHevmDffVFNpSFNnxqbxs3", birthday: "6/2012" },
     { name: "Ahmad", photo: "https://lh3.googleusercontent.com/d/1zU-jBuAbYjHanzank9C1BAd00skS1Y5J", birthday: "2/2012" },
     { name: "Adam", photo: "https://lh3.googleusercontent.com/d/15I9p6VSnn1yVmPxRRbGsUkM-fsBKYOWF", birthday: "12/2012" }
   ],
-  PEI4: [
+  'PEI3': [
+    { name: "Seifeddine", photo: "https://lh3.googleusercontent.com/d/1tWdPSbtCAsTMB86WzDgqh3Xw01ahm9s6", birthday: "1/2012" },
+    { name: "Mohamed", photo: "https://lh3.googleusercontent.com/d/1lB8ObGOvQDVT6FITL2y7C5TYmAGyggFn", birthday: "11/2011" },
+    { name: "Wajih", photo: "https://lh3.googleusercontent.com/d/1MH6M05mQamOHevmDffVFNpSFNnxqbxs3", birthday: "6/2012" },
+    { name: "Ahmad", photo: "https://lh3.googleusercontent.com/d/1zU-jBuAbYjHanzank9C1BAd00skS1Y5J", birthday: "2/2012" },
+    { name: "Adam", photo: "https://lh3.googleusercontent.com/d/15I9p6VSnn1yVmPxRRbGsUkM-fsBKYOWF", birthday: "12/2012" }
+  ],
+  'PEI4 Garçon': [
     { name: "Mohamed Younes", photo: "https://lh3.googleusercontent.com/d/1ok8M9EOY71ScKuaW0mHfKUErjKZ4wbe1", birthday: "11/2011" },
     { name: "Mohamed Amine", photo: "https://lh3.googleusercontent.com/d/1UrBw6guz0oBTUy8COGeewIs3XAK773bR", birthday: "12/2012" },
     { name: "Samir", photo: "https://lh3.googleusercontent.com/d/1NdaCH8CU0DJFHXw4D0lItP-QnCswl23b", birthday: "12/2012" },
     { name: "Abdulrahman", photo: "https://lh3.googleusercontent.com/d/1yCTO5StU2tnPY0BEynnWzUveljMIUcLE", birthday: "4/2012" },
     { name: "Youssef", photo: "https://lh3.googleusercontent.com/d/1Bygg5-PYrjjMOZdI5hAe16eZ8ltn772e", birthday: "11/2011" }
   ],
-  PEI5: [
+  'PEI4': [
+    { name: "Mohamed Younes", photo: "https://lh3.googleusercontent.com/d/1ok8M9EOY71ScKuaW0mHfKUErjKZ4wbe1", birthday: "11/2011" },
+    { name: "Mohamed Amine", photo: "https://lh3.googleusercontent.com/d/1UrBw6guz0oBTUy8COGeewIs3XAK773bR", birthday: "12/2012" },
+    { name: "Samir", photo: "https://lh3.googleusercontent.com/d/1NdaCH8CU0DJFHXw4D0lItP-QnCswl23b", birthday: "12/2012" },
+    { name: "Abdulrahman", photo: "https://lh3.googleusercontent.com/d/1yCTO5StU2tnPY0BEynnWzUveljMIUcLE", birthday: "4/2012" },
+    { name: "Youssef", photo: "https://lh3.googleusercontent.com/d/1Bygg5-PYrjjMOZdI5hAe16eZ8ltn772e", birthday: "11/2011" }
+  ],
+  'PEI5 Garçon': [
     { name: "Rayane", photo: "", birthday: "3/2010" },
     { name: "Anis", photo: "", birthday: "5/2010" },
     { name: "Taha", photo: "", birthday: "8/2010" },
     { name: "Hamza", photo: "", birthday: "11/2010" }
   ],
-  DP2: [
+  'PEI5': [
+    { name: "Rayane", photo: "", birthday: "3/2010" },
+    { name: "Anis", photo: "", birthday: "5/2010" },
+    { name: "Taha", photo: "", birthday: "8/2010" },
+    { name: "Hamza", photo: "", birthday: "11/2010" }
+  ],
+  'DP2 Garçons': [
+    { name: "Bilal S.", photo: "", birthday: "1/2008" },
+    { name: "Zaid", photo: "", birthday: "4/2008" },
+    { name: "Walid", photo: "", birthday: "8/2008" }
+  ],
+  'DP2': [
     { name: "Bilal S.", photo: "", birthday: "1/2008" },
     { name: "Zaid", photo: "", birthday: "4/2008" },
     { name: "Walid", photo: "", birthday: "8/2008" }
@@ -4408,7 +4298,7 @@ app.get('/api/evaluations', async (req, res) => {
     docsToProcess.forEach(doc => {
       if (Array.isArray(doc.data)) {
         const isTargetWeek = Number(doc.week) === Number(targetWeekNumber);
-        const docWConfig = (sectionWeekConfig && sectionWeekConfig[doc.week]) || (specificWeekDateRangesNode && specificWeekDateRangesNode[doc.week]) || {};
+        const docWConfig = (specificWeekDateRangesNode && specificWeekDateRangesNode[doc.week]) || {};
         const docStartDate = docWConfig.start ? new Date(docWConfig.start + 'T00:00:00Z') : null;
 
         doc.data.forEach(row => {
@@ -5801,8 +5691,7 @@ app.get('/api/plans/:week', async (req, res) => {
           const normSubj = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
           for (const schedDoc of canonicalSchedules) {
-            const rawTargetCls = String(schedDoc.classe || '').trim();
-            const targetCls = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(rawTargetCls) : '') || rawTargetCls;
+            const targetCls = String(schedDoc.classe || '').trim();
             if (!targetCls || !Array.isArray(schedDoc.slots)) continue;
 
             const canonicalSlots = schedDoc.slots.filter(s => s && !isPlaceholderMat(s.matiere));
@@ -7683,49 +7572,49 @@ app.get('/api/all-classes', async (req, res) => {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
 
-    let defaultList = [];
-    if (section === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
-    else if (section === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-    else if (section === 'garcons') defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'];
-    else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
-
+    // Vérifier les paramètres de visibilité enregistrés
     const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
     const hiddenSet = new Set((visDoc && Array.isArray(visDoc.hiddenClasses)) ? visDoc.hiddenClasses.map(c => String(c).trim().toLowerCase()) : []);
     const explicitVisible = (visDoc && Array.isArray(visDoc.visibleClasses) && visDoc.visibleClasses.length > 0)
-      ? visDoc.visibleClasses
-          .map(c => (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(c) : '') || String(c).trim())
-          .filter(c => c && !hiddenSet.has(c.toLowerCase()))
+      ? visDoc.visibleClasses.filter(c => c && !hiddenSet.has(String(c).trim().toLowerCase()))
       : null;
 
     if (explicitVisible && explicitVisible.length > 0) {
-      return res.status(200).json(Array.from(new Set(explicitVisible)));
+      return res.status(200).json(explicitVisible);
     }
 
     let classes = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
-    classes = (classes || [])
-      .map(c => (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(c) : '') || String(c || '').trim())
-      .filter(c => c.length > 0);
+    classes = (classes || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
     
-    let baseList = [...defaultList];
+    let baseList = [];
     if (section === 'maternelle') {
-      baseList.push(...classes.filter(c => isMaternelleClassServer(c)));
+      const defMat = ['PS', 'MS', 'GS'];
+      baseList = [...defMat, ...classes.filter(c => isMaternelleClassServer(c))];
     } else if (section === 'primaire') {
-      baseList.push(...classes.filter(c => !isMaternelleClassServer(c) && /^PP[1-5]$/i.test(c)));
+      const defPrim = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+      baseList = [...defPrim, ...classes.filter(c => !isMaternelleClassServer(c))];
     } else if (section === 'garcons') {
-      baseList.push(...classes.filter(c => !isMaternelleClassServer(c) && !/^PP[1-5]$/i.test(c) && c.toUpperCase() !== 'DP1'));
+      const defGarcons = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
+      baseList = [...defGarcons];
+    } else if (section === 'filles') {
+      const defSec = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+      baseList = [...defSec, ...classes.filter(c => !isMaternelleClassServer(c) && !['PP1','PP2','PP3','PP4','PP5'].includes(c.toUpperCase()))];
     } else {
-      baseList.push(...classes.filter(c => !isMaternelleClassServer(c) && !/^PP[1-5]$/i.test(c)));
+      baseList = [...classes];
     }
 
     const set = new Set();
     baseList.forEach(c => {
       const trimmed = String(c).trim();
       if (trimmed && !hiddenSet.has(trimmed.toLowerCase())) {
+        if (section === 'garcons' && ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'].includes(trimmed.toUpperCase())) {
+          return; // Ne jamais inclure les classes nues dans la section Garçons
+        }
         set.add(trimmed);
       }
     });
 
-    res.status(200).json(Array.from(set));
+    res.status(200).json(Array.from(set).sort());
   } catch (error) {
     console.error('Erreur MongoDB /api/all-classes:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -7743,12 +7632,13 @@ app.get('/api/admin/classes', async (req, res) => {
     const rawClasses = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
     let distinctInDb = (rawClasses || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
 
-    // Classes canoniques par défaut selon la section
+    // Classes par défaut selon la section
     let defaultList = [];
     if (section === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
     else if (section === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
     else if (section === 'garcons') {
-      defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'];
+      defaultList = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
+      distinctInDb = distinctInDb.filter(c => !['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'].includes(c.toUpperCase()));
     } else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
 
     // 2. Compter le nombre de cours/séances pour chaque classe dans les plans
@@ -8234,11 +8124,11 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       return !s || s === '—' || s === '-' || s === '–';
     };
 
-    // Déterminer les classes canoniques par défaut
+    // Déterminer les classes par défaut
     let defaultSectionClasses = [];
     if (section === 'maternelle') defaultSectionClasses = ['PS', 'MS', 'GS'];
     else if (section === 'primaire') defaultSectionClasses = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-    else if (section === 'garcons') defaultSectionClasses = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2'];
+    else if (section === 'garcons') defaultSectionClasses = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     else defaultSectionClasses = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
 
     // Canonicaliser et regrouper par classe
@@ -8250,10 +8140,23 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       let rawCls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
       if (!rawCls) return;
 
-      const canonMatch = rawCls.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/i);
-      let targetClass = canonMatch ? canonMatch[1].toUpperCase() : rawCls.replace(/\s*(?:Garçons|Garcons|Garçon|Garcon|Filles|Fille|Section\s*Garçons|Section\s*Filles)$/i, '').trim();
-
-      if (section === 'garcons' && targetClass.toUpperCase() === 'DP1') return;
+      let targetClass = rawCls;
+      if (section === 'garcons') {
+        const lower = rawCls.toLowerCase();
+        if (lower.includes('dp1')) return; // Jamais de DP1 dans la section garçons
+        if (lower.includes('pei1')) targetClass = 'PEI1 Garçons';
+        else if (lower.includes('pei2')) targetClass = 'PEI2 Garçon';
+        else if (lower.includes('pei3')) targetClass = 'PEI3 Garçon';
+        else if (lower.includes('pei4')) targetClass = 'PEI4 Garçon';
+        else if (lower.includes('pei5')) targetClass = 'PEI5 Garçon';
+        else if (lower.includes('dp2')) targetClass = 'DP2 Garçons';
+        else if (!defaultSectionClasses.includes(rawCls)) return;
+      } else {
+        const suffixMatch = rawCls.match(/^(.+?)\s*(?:Garçons|Garcons|Filles|Fille|Section\s*Garçons|Section\s*Filles)$/i);
+        if (suffixMatch) rawCls = suffixMatch[1].trim();
+        const canonMatch = rawCls.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/i);
+        targetClass = canonMatch ? canonMatch[1].toUpperCase() : rawCls;
+      }
 
       if (!classSlotsMap.has(targetClass)) {
         if (section === 'garcons' && !defaultSectionClasses.includes(targetClass)) return;
@@ -8302,16 +8205,17 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
     let totalImportedSlots = 0;
     const finalClasses = Array.from(classSlotsMap.keys()).sort();
 
-    // Nettoyer les classes doublons avec suffixes dans la base
-    const suffixAliases = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons', 'PEI1 Garcons', 'DP2 Garcons'];
-    await db.collection('class_schedules').deleteMany({
-      section,
-      classe: { $in: suffixAliases }
-    });
-    await db.collection('class_subject_teachers').deleteMany({
-      section,
-      classe: { $in: suffixAliases }
-    });
+    // Nettoyer les classes obsolètes/doublons dans la base pour la section Garçons
+    if (section === 'garcons') {
+      await db.collection('class_schedules').deleteMany({
+        section: 'garcons',
+        classe: { $in: ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'] }
+      });
+      await db.collection('class_subject_teachers').deleteMany({
+        section: 'garcons',
+        classe: { $in: ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'] }
+      });
+    }
 
     for (const cls of finalClasses) {
       const slots = Array.from(classSlotsMap.get(cls).values());
@@ -8343,8 +8247,12 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
     }
 
     // Mettre à jour la visibilité des classes
-    const currentVisible = defaultSectionClasses;
-    const currentHidden = suffixAliases;
+    let currentVisible = finalClasses;
+    let currentHidden = [];
+    if (section === 'garcons') {
+      currentVisible = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
+      currentHidden = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'];
+    }
 
     await db.collection('settings').updateOne(
       { _id: `classes_visibility_${section}` },
@@ -8359,30 +8267,39 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       { upsert: true }
     );
 
-    // Harmoniser les plans hebdomadaires de la section vers les codes canoniques
+    // Harmoniser les plans hebdomadaires de la section
     for (const p of planDocs) {
       if (Array.isArray(p.data)) {
         let changed = false;
-        const initialLen = p.data.length;
         if (section === 'garcons') {
+          // Filtrer DP1 et mapper vers les noms officiels garçons
+          const initialLen = p.data.length;
           p.data = p.data.filter(r => {
             const c = String(r.Classe || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : '') || '').trim().toLowerCase();
             return !c.includes('dp1');
           });
           if (p.data.length !== initialLen) changed = true;
-        }
 
-        p.data.forEach(r => {
-          const cKey = r.Classe !== undefined ? 'Classe' : (r.classe !== undefined ? 'classe' : null);
-          if (cKey && r[cKey]) {
-            const canon = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(r[cKey]) : '') || String(r[cKey]).trim();
-            if (canon && r[cKey] !== canon) {
-              r[cKey] = canon;
-              changed = true;
+          p.data.forEach(r => {
+            const cKey = r.Classe !== undefined ? 'Classe' : (r.classe !== undefined ? 'classe' : null);
+            if (cKey) {
+              const cur = String(r[cKey] || '').trim();
+              const curLow = cur.toLowerCase();
+              let mapped = null;
+              if (curLow === 'pei1' || curLow === 'pei1 garcons') mapped = 'PEI1 Garçons';
+              else if (curLow === 'pei2' || curLow === 'pei2 garcons' || curLow === 'pei2 garçon') mapped = 'PEI2 Garçon';
+              else if (curLow === 'pei3' || curLow === 'pei3 garcons' || curLow === 'pei3 garçon') mapped = 'PEI3 Garçon';
+              else if (curLow === 'pei4' || curLow === 'pei4 garcons' || curLow === 'pei4 garçon') mapped = 'PEI4 Garçon';
+              else if (curLow === 'pei5' || curLow === 'pei5 garcons' || curLow === 'pei5 garçon') mapped = 'PEI5 Garçon';
+              else if (curLow === 'dp2' || curLow === 'dp2 garcon') mapped = 'DP2 Garçons';
+
+              if (mapped && r[cKey] !== mapped) {
+                r[cKey] = mapped;
+                changed = true;
+              }
             }
-          }
 
-          if (section === 'garcons') {
+            // Vérifier et remplacer tout nom d'enseignante fille dans la section garçons
             const ensKey = r.Enseignant !== undefined ? 'Enseignant' : (r.enseignant !== undefined ? 'enseignant' : null);
             if (ensKey && r[ensKey]) {
               const ensVal = String(r[ensKey]).trim();
@@ -8393,9 +8310,8 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
                 changed = true;
               }
             }
-          }
-        });
-
+          });
+        }
         if (changed) {
           await db.collection('plans').updateOne({ _id: p._id }, { $set: { data: p.data, updatedAt: new Date() } });
         }
@@ -8461,8 +8377,7 @@ app.get('/api/admin/schedule-class', async (req, res) => {
   try {
     const section = req.query.section || 'garcons';
     const week = parseInt(req.query.week, 10) || 1;
-    const rawClasse = req.query.classe || '';
-    const classe = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(rawClasse) : '') || String(rawClasse).trim();
+    const classe = req.query.classe || '';
 
     const db = await connectToDatabase();
     const docId = `${section}_${week}`;
@@ -8905,14 +8820,12 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
 
     const schedulesToApply = {};
     if (targetClasse && Array.isArray(slots)) {
-      const canonCls = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(targetClasse) : '') || String(targetClasse).trim();
-      schedulesToApply[canonCls] = slots;
+      schedulesToApply[String(targetClasse).trim()] = slots;
     }
     if (classSchedules && typeof classSchedules === 'object') {
       for (const [cls, clsSlots] of Object.entries(classSchedules)) {
         if (cls && Array.isArray(clsSlots)) {
-          const canonCls = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(cls) : '') || String(cls).trim();
-          schedulesToApply[canonCls] = clsSlots;
+          schedulesToApply[String(cls).trim()] = clsSlots;
         }
       }
     }
@@ -12156,7 +12069,7 @@ app.get('/api/teacher-assignments', async (req, res) => {
     const isAdmin = !tRaw || ['med01', 'racha', 'admin', 'supervisor', 'superviseur'].includes(tNorm);
 
     const sectionClasses = (section === 'garcons')
-      ? ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP2']
+      ? ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons']
       : (section === 'filles'
         ? ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2']
         : (section === 'primaire' ? ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'] : ['PS', 'MS', 'GS']));
@@ -12189,7 +12102,7 @@ app.get('/api/teacher-assignments', async (req, res) => {
 
     const addPair = (c, s) => {
       if (!c || !s) return;
-      const cleanC = (typeof normalizeStudentClass === 'function' ? normalizeStudentClass(c) : '') || c.trim();
+      const cleanC = c.trim();
       const cleanS = s.trim();
       if (!cleanC || !cleanS || cleanS === '—' || cleanS === '-') return;
       const key = `${cleanC.toLowerCase()}|||${cleanS.toLowerCase()}`;
