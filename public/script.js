@@ -2740,6 +2740,9 @@
                     console.log("[Admin Save] Rechargement automatique de la semaine courante...");
                     await fetchPlanData(currentWeek);
                 }
+                if (typeof populateAdminScheduleClasses === 'function') {
+                    await populateAdminScheduleClasses();
+                }
             } catch (error) {
                 console.error("Erreur enregistrement upload:", error);
                 displayAlert('uploaded_data_error', true, { error: error.message });
@@ -6098,7 +6101,8 @@ function displayPlanTable(data) {
         }
 
         function switchAdminTab(tabName) {
-            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days', 'schedule', 'teachers_photos'];
+            if (tabName === 'schedule') tabName = 'upload';
+            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days', 'teachers_photos'];
             tabs.forEach(t => {
                 const contentEl = document.getElementById(`adminTab_${t}`);
                 const btnEl = document.getElementById(`tabBtn_${t}`);
@@ -6137,8 +6141,6 @@ function displayPlanTable(data) {
             } else if (tabName === 'special_days') {
                 if (typeof populateAdminSpecialDaysForm === 'function') populateAdminSpecialDaysForm();
                 if (typeof loadAdminSpecialDaysList === 'function') loadAdminSpecialDaysList();
-            } else if (tabName === 'schedule') {
-                if (typeof initAdminScheduleTab === 'function') initAdminScheduleTab();
             }
         }
 
@@ -15321,7 +15323,25 @@ async function populateAdminScheduleClasses() {
     try {
         const response = await fetch('/api/all-classes?section=' + encodeURIComponent(targetSection));
         if (!response.ok) throw new Error('Erreur ' + response.status);
-        const classes = await response.json();
+        let classes = await response.json();
+        if (!Array.isArray(classes)) classes = [];
+
+        // Si on est sur la section courante et que planData contient des classes (ex: import Excel), garantir que les classes de l'emploi du temps sont strictement celles du tableau de saisie
+        if (targetSection === currentSection && Array.isArray(window.planData) && window.planData.length > 0) {
+            const clsK = typeof findHKey === 'function' ? findHKey('Classe') : 'Classe';
+            const planClassesMap = new Map();
+            window.planData.forEach(r => {
+                if (!r || r.isReadOnlyCrossSection) return;
+                const c = String(r[clsK] || r.Classe || r.classe || '').trim();
+                if (c && c !== '—' && c !== '-' && !planClassesMap.has(c.toLowerCase())) {
+                    planClassesMap.set(c.toLowerCase(), c);
+                }
+            });
+            if (planClassesMap.size > 0) {
+                classes = Array.from(planClassesMap.values()).sort(typeof compareClasses === 'function' ? compareClasses : undefined);
+            }
+        }
+
         window.adminScheduleClassesCache = classes || [];
 
         classSel.innerHTML = '<option value="">-- Sélectionnez une classe --</option>';
@@ -19140,62 +19160,11 @@ async function executeAutoCleanDuplicates() {
 }
 
 async function addNewClassToSection() {
-    const input = document.getElementById('classMgmtNewClassName');
-    if (!input || !input.value.trim()) {
-        alert('Veuillez saisir un nom de classe.');
-        return;
-    }
-    const newClass = input.value.trim().toUpperCase();
-    const sec = window.currentClassMgmtSection || currentSection || 'garcons';
-
-    if (!window.sectionVisibleClassesMap[sec]) window.sectionVisibleClassesMap[sec] = [];
-    if (!window.sectionVisibleClassesMap[sec].includes(newClass)) {
-        window.sectionVisibleClassesMap[sec].push(newClass);
-    }
-    if (window.sectionHiddenClassesMap[sec]) {
-        window.sectionHiddenClassesMap[sec] = window.sectionHiddenClassesMap[sec].filter(c => c !== newClass);
-    }
-
-    input.value = '';
-    await saveClassVisibilitySettings();
-    await loadClassManagementData(sec);
+    alert("Les classes ne peuvent pas être ajoutées depuis l'emploi du temps. Les classes de l'emploi du temps sont obligatoirement les mêmes que celles du Tableau de Saisie (Plan Hebdomadaire / Import Excel).");
 }
 
 async function quickAddNewScheduleClass() {
-    const sec = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
-    const newClass = prompt(`Saisissez le nom de la nouvelle classe à ajouter pour la section (${sec}) :\nExemples: PEI6, DP3, CM2, CP...`, '');
-    if (!newClass || !newClass.trim()) return;
-
-    const formattedName = newClass.trim().toUpperCase();
-
-    try {
-        const res = await fetch('/api/admin/add-class', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ section: sec, classe: formattedName })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erreur ' + res.status);
-
-        if (typeof showToastNotification === 'function') {
-            showToastNotification(data.message || `Classe "${formattedName}" ajoutée avec succès.`, 'success');
-        } else {
-            alert(data.message || `Classe "${formattedName}" ajoutée avec succès.`);
-        }
-
-        // Rafraîchir les listes de classes
-        if (typeof populateAdminScheduleClasses === 'function') await populateAdminScheduleClasses();
-        const select = document.getElementById('adminScheduleClassSelect');
-        if (select) {
-            select.value = formattedName;
-            if (typeof loadAdminScheduleForClass === 'function') await loadAdminScheduleForClass();
-        }
-        if (typeof updateFilters === 'function') updateFilters();
-        if (typeof sortAndDisplay === 'function') sortAndDisplay();
-    } catch (err) {
-        console.error('Erreur quickAddNewScheduleClass:', err);
-        alert("Erreur lors de l'ajout de la classe : " + err.message);
-    }
+    alert("L'emploi du temps est destiné à organiser les périodes des séances et modifier les enseignants, mais pas à ajouter des classes. Les classes sont obligatoirement celles du Tableau de Saisie (Plan Hebdomadaire / Import Excel).");
 }
 
 async function importScheduleFromWeeklyPlan() {
@@ -19203,14 +19172,13 @@ async function importScheduleFromWeeklyPlan() {
     const weekSel = document.getElementById('adminScheduleWeekSelect');
     const week = weekSel ? weekSel.value : (currentWeek || '1');
 
-    const confirmMsg = `Voulez-vous importer et appliquer les classes et l'emploi du temps depuis le tableau de saisie pour la section (${sec}) ?\n\n` +
-        `✅ Toutes les classes et leurs cours (Jours, Périodes, Matières, Enseignants) qui existent déjà dans le tableau de saisie seront appliqués à l'emploi du temps.\n` +
-        `Les doublons (ex: "PEI1 Garçons") seront automatiquement unifiés dans leurs classes officielles.`;
+    const confirmMsg = `Voulez-vous synchroniser l'emploi du temps avec le Tableau de Saisie pour la section (${sec}) ?\n\n` +
+        `✅ Les classes, matières, périodes et enseignants de l'emploi du temps seront strictement alignés avec ceux du Tableau de Saisie.`;
 
     if (!confirm(confirmMsg)) return;
 
     const noticeEl = document.getElementById('scheduleDataStatsNotice');
-    if (noticeEl) noticeEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importation et application des classes et de l\'emploi du temps en cours...';
+    if (noticeEl) noticeEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Synchronisation des classes, enseignants et séances depuis le Tableau de Saisie...';
 
     try {
         const res = await fetch('/api/admin/import-schedule-from-plan', {
@@ -19449,30 +19417,53 @@ async function loadTeacherGradesInterfaceData() {
         const section = currentSection || 'garcons';
         const isAdmin = isUserAdminOrSupervisor(user, currentUserRole);
 
-        // Récupérer auprès du serveur les classes et matières que cet enseignant remplit sous son nom dans les plans
-        const assignRes = await fetch(`/api/teacher-assignments?teacher=${encodeURIComponent(tableTeacher || user)}&section=${encodeURIComponent(section)}`);
+        // Récupérer auprès du serveur les classes et matières issues du plan hebdomadaire
+        const assignRes = await fetch(`/api/teacher-assignments?teacher=${encodeURIComponent(isAdmin ? 'admin' : (tableTeacher || user))}&section=${encodeURIComponent(section)}`);
         if (assignRes.ok) {
             const assignData = await assignRes.json();
             teacherAssignedPairs = Array.isArray(assignData.pairs) ? assignData.pairs : [];
+            if (assignData.classSubjectsMap && typeof assignData.classSubjectsMap === 'object') {
+                window.sectionClassSubjectsMap = assignData.classSubjectsMap;
+            }
         } else {
             teacherAssignedPairs = [];
         }
 
-        if (isAdmin || teacherAssignedPairs.length === 0) {
+        // Compléter avec les matières réellement présentes dans window.planData pour la section courante
+        if (isAdmin && Array.isArray(window.planData) && window.planData.length > 0) {
+            const clsK = typeof findHKey === 'function' ? findHKey('Classe') : 'Classe';
+            const matK = typeof findHKey === 'function' ? findHKey('Matière') : 'Matière';
+            const localPairs = [];
+            const seenKeys = new Set();
+            window.planData.forEach(r => {
+                if (!r || r.isReadOnlyCrossSection) return;
+                const c = String(r[clsK] || r.Classe || r.classe || '').trim();
+                const m = String(r[matK] || r['Matière'] || r.matiere || '').trim();
+                if (!c || c === '—' || c === '-' || !m || m === '—' || m === '-') return;
+                const k = `${c.toLowerCase()}|||${m.toLowerCase()}`;
+                if (!seenKeys.has(k)) {
+                    seenKeys.add(k);
+                    localPairs.push({ classe: c, subject: m });
+                }
+            });
+            if (localPairs.length > 0) {
+                teacherAssignedPairs = localPairs;
+            }
+        }
+
+        if (teacherAssignedPairs.length === 0) {
             const classes = getSectionClasses(section);
             const standardSubjects = (section === 'garcons' || section === 'filles')
                 ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique', 'Sport']
                 : ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques', 'Sport'];
 
             if (isAdmin) {
-                teacherAssignedPairs = [];
                 classes.forEach(c => {
                     standardSubjects.forEach(s => {
                         teacherAssignedPairs.push({ classe: c, subject: s });
                     });
                 });
             } else {
-                // Détection stricte selon profil
                 const uLow = (tableTeacher || user).toLowerCase();
                 let detectedSubj = 'Français';
                 if ((typeof arabicTeachers !== 'undefined' ? arabicTeachers : []).some(t => t.toLowerCase() === uLow)) detectedSubj = 'Arabe';
@@ -19781,29 +19772,13 @@ function openClassGradesPrintModal(presetClass, presetSemester, presetSubject) {
         secSelect.value = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
     }
 
-    onBulletinsModalSectionChanged(presetClass, presetSubject);
-
-    const classSelect = document.getElementById('bulletinModalClassSelect');
-    if (classSelect && presetClass) {
-        if (Array.from(classSelect.options).some(o => o.value === presetClass)) {
-            classSelect.value = presetClass;
-        }
-    }
-
     const semSelect = document.getElementById('bulletinModalSemesterSelect');
     if (semSelect) {
         semSelect.value = presetSemester || (document.getElementById('gradeFilterSemesterSelect')?.value) || 'S1';
     }
 
-    const subjSelect = document.getElementById('bulletinModalSubjectSelect');
-    if (subjSelect && presetSubject) {
-        if (Array.from(subjSelect.options).some(o => o.value === presetSubject)) {
-            subjSelect.value = presetSubject;
-        }
-    }
-
     const formatSelect = document.getElementById('bulletinModalFormatSelect');
-    if (formatSelect) {
+    if (formatSelect && !formatSelect.value) {
         formatSelect.value = 'by_subject';
     }
 
@@ -19814,6 +19789,7 @@ function openClassGradesPrintModal(presetClass, presetSemester, presetSubject) {
     }
 
     modal.style.display = 'flex';
+    onBulletinsModalSectionChanged(presetClass, presetSubject);
 }
 
 function closeClassGradesPrintModal() {
@@ -19821,21 +19797,50 @@ function closeClassGradesPrintModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function onBulletinsModalSectionChanged(presetClass, presetSubject) {
+async function onBulletinsModalSectionChanged(presetClass, presetSubject) {
     const secSelect = document.getElementById('bulletinModalSectionSelect');
     const classSelect = document.getElementById('bulletinModalClassSelect');
     if (!secSelect || !classSelect) return;
 
     const sec = secSelect.value || 'garcons';
     let classOptions = [];
-    if (sec === 'garcons') {
-        classOptions = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
-    } else if (sec === 'filles') {
-        classOptions = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
-    } else if (sec === 'primaire') {
-        classOptions = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-    } else {
-        classOptions = ['PS', 'MS', 'GS'];
+
+    // 1. Extraire les classes depuis le Plan Hebdomadaire (Tableau de saisie) via l'API ou window.planData
+    try {
+        const res = await fetch('/api/all-classes?section=' + encodeURIComponent(sec));
+        if (res.ok) {
+            const apiClasses = await res.json();
+            if (Array.isArray(apiClasses) && apiClasses.length > 0) {
+                classOptions = apiClasses;
+            }
+        }
+    } catch (e) {}
+
+    if (sec === currentSection && Array.isArray(window.planData) && window.planData.length > 0) {
+        const clsK = typeof findHKey === 'function' ? findHKey('Classe') : 'Classe';
+        const localSet = new Map();
+        window.planData.forEach(r => {
+            if (!r || r.isReadOnlyCrossSection) return;
+            const c = String(r[clsK] || r.Classe || r.classe || '').trim();
+            if (c && c !== '—' && c !== '-' && !localSet.has(c.toLowerCase())) {
+                localSet.set(c.toLowerCase(), c);
+            }
+        });
+        if (localSet.size > 0) {
+            classOptions = Array.from(localSet.values()).sort(typeof compareClasses === 'function' ? compareClasses : undefined);
+        }
+    }
+
+    if (classOptions.length === 0) {
+        if (sec === 'garcons') {
+            classOptions = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
+        } else if (sec === 'filles') {
+            classOptions = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+        } else if (sec === 'primaire') {
+            classOptions = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+        } else {
+            classOptions = ['PS', 'MS', 'GS'];
+        }
     }
 
     classSelect.innerHTML = '';
@@ -19846,35 +19851,169 @@ function onBulletinsModalSectionChanged(presetClass, presetSubject) {
         classSelect.appendChild(opt);
     });
 
-    if (presetClass && classOptions.includes(presetClass)) {
-        classSelect.value = presetClass;
+    if (presetClass) {
+        const matched = classOptions.find(c => c.toLowerCase() === presetClass.toLowerCase() || (typeof isClassMatch === 'function' && isClassMatch(c, presetClass)));
+        if (matched) classSelect.value = matched;
     }
 
-    populateBulletinModalSubjects(presetSubject);
+    await populateBulletinModalSubjects(presetSubject);
 }
 
 function onBulletinsModalClassChanged() {
     populateBulletinModalSubjects();
 }
 
-function populateBulletinModalSubjects(presetSubject) {
-    const secSelect = document.getElementById('bulletinModalSectionSelect');
-    const subjSelect = document.getElementById('bulletinModalSubjectSelect');
-    if (!subjSelect) return;
+function updateBulletinModalSelectedSubjectsCount() {
+    const container = document.getElementById('bulletinModalSubjectsCheckboxes');
+    const countEl = document.getElementById('bulletinModalSelectedSubjectsCount');
+    if (!container || !countEl) return;
 
-    const sec = (secSelect?.value || 'garcons').toLowerCase();
-    const standardSubjects = (sec === 'garcons' || sec === 'filles')
-      ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique']
-      : (sec === 'primaire' ? ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques'] : ['Activités Graphiques', 'Langage & Communication', 'Éveil Scientifique', 'Activités Physiques']);
+    const allCbs = container.querySelectorAll('input.bulletin-subject-cb');
+    const checkedCbs = container.querySelectorAll('input.bulletin-subject-cb:checked');
+    const total = allCbs.length;
+    const checked = checkedCbs.length;
 
-    let html = '<option value="all">📚 Toutes les matières (1 page par matière)</option>';
-    standardSubjects.forEach(s => {
-        html += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`;
+    if (total === 0) {
+        countEl.textContent = 'Aucune matière trouvée dans le plan hebdo pour cette classe.';
+        countEl.style.color = '#DC2626';
+    } else if (checked === 0) {
+        countEl.textContent = `⚠️ 0 / ${total} matière(s) sélectionnée(s) — Veuillez cocher au moins une matière`;
+        countEl.style.color = '#DC2626';
+    } else {
+        countEl.textContent = `✅ ${checked} / ${total} matière(s) du plan hebdo sélectionnée(s) pour le bulletin`;
+        countEl.style.color = '#059669';
+    }
+
+    // Mettre à jour le style visuel des cartes cochées/décochées
+    allCbs.forEach(cb => {
+        const lbl = cb.closest('label');
+        if (lbl) {
+            if (cb.checked) {
+                lbl.style.background = '#EEF2FF';
+                lbl.style.borderColor = '#6366F1';
+                lbl.style.color = '#1E1B4B';
+            } else {
+                lbl.style.background = '#FFFFFF';
+                lbl.style.borderColor = '#CBD5E1';
+                lbl.style.color = '#64748B';
+            }
+        }
     });
-    subjSelect.innerHTML = html;
+}
 
-    if (presetSubject && (standardSubjects.includes(presetSubject) || presetSubject === 'all')) {
-        subjSelect.value = presetSubject;
+function toggleAllBulletinModalSubjects(checked) {
+    const container = document.getElementById('bulletinModalSubjectsCheckboxes');
+    if (!container) return;
+    const allCbs = container.querySelectorAll('input.bulletin-subject-cb');
+    allCbs.forEach(cb => {
+        cb.checked = Boolean(checked);
+    });
+    updateBulletinModalSelectedSubjectsCount();
+}
+
+function getSelectedBulletinModalSubjects() {
+    const container = document.getElementById('bulletinModalSubjectsCheckboxes');
+    if (!container) return [];
+    const checkedCbs = container.querySelectorAll('input.bulletin-subject-cb:checked');
+    return Array.from(checkedCbs).map(cb => cb.value).filter(Boolean);
+}
+
+async function populateBulletinModalSubjects(presetSubject) {
+    const secSelect = document.getElementById('bulletinModalSectionSelect');
+    const classSelect = document.getElementById('bulletinModalClassSelect');
+    const subjSelect = document.getElementById('bulletinModalSubjectSelect');
+    const checkboxesContainer = document.getElementById('bulletinModalSubjectsCheckboxes');
+    const countEl = document.getElementById('bulletinModalSelectedSubjectsCount');
+
+    const sec = (secSelect?.value || currentSection || 'garcons').toLowerCase();
+    const chosenClass = (classSelect?.value || '').trim();
+
+    if (checkboxesContainer) {
+        checkboxesContainer.innerHTML = '<div style="grid-column:1/-1; color:#64748B; font-size:0.82rem; padding:6px;"><i class="fas fa-spinner fa-spin"></i> Extraction des matières de la classe depuis le plan hebdomadaire...</div>';
+    }
+    if (countEl) {
+        countEl.textContent = 'Chargement des matières du plan hebdomadaire...';
+    }
+
+    let classSubjects = [];
+    const isPlaceholderMat = (m) => {
+        const s = String(m || '').trim();
+        return !s || s === '—' || s === '-' || s === '–';
+    };
+
+    // 1. Chercher d'abord dans le plan hebdo en mémoire (window.planData) si c'est la section courante
+    if (sec === (currentSection || 'garcons').toLowerCase() && Array.isArray(window.planData) && window.planData.length > 0 && chosenClass) {
+        const clsK = typeof findHKey === 'function' ? findHKey('Classe') : 'Classe';
+        const matK = typeof findHKey === 'function' ? findHKey('Matière') : 'Matière';
+        const subjMap = new Map();
+        window.planData.forEach(r => {
+            if (!r || r.isReadOnlyCrossSection) return;
+            const c = String(r[clsK] || r.Classe || r.classe || '').trim();
+            if (!c || !(c.toLowerCase() === chosenClass.toLowerCase() || (typeof isClassMatch === 'function' && isClassMatch(c, chosenClass)))) return;
+            const m = String(r[matK] || r['Matière'] || r.matiere || '').trim();
+            if (isPlaceholderMat(m)) return;
+            let exists = false;
+            for (const [k, val] of subjMap.entries()) {
+                if (k === m.toLowerCase() || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(val, m))) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) subjMap.set(m.toLowerCase(), m);
+        });
+        if (subjMap.size > 0) {
+            classSubjects = Array.from(subjMap.values());
+        }
+    }
+
+    // 2. Interroger le serveur (/api/class-bulletins-data) pour récupérer la liste exacte des matières de la classe dans le plan hebdo
+    if (classSubjects.length === 0 && chosenClass) {
+        try {
+            const sem = document.getElementById('bulletinModalSemesterSelect')?.value || 'S1';
+            const res = await fetch(`/api/class-bulletins-data?section=${encodeURIComponent(sec)}&classe=${encodeURIComponent(chosenClass)}&semester=${encodeURIComponent(sem)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.allClassSubjects) && data.allClassSubjects.length > 0) {
+                    classSubjects = data.allClassSubjects;
+                } else if (Array.isArray(data.subjects) && data.subjects.length > 0) {
+                    classSubjects = data.subjects;
+                }
+            }
+        } catch (e) {}
+    }
+
+    // 3. Fallback uniquement si aucune matière n'a été trouvée
+    if (classSubjects.length === 0) {
+        classSubjects = (sec === 'garcons' || sec === 'filles')
+          ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique']
+          : (sec === 'primaire' ? ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques'] : ['Activités Graphiques', 'Langage & Communication', 'Éveil Scientifique', 'Activités Physiques']);
+    }
+
+    if (subjSelect) {
+        let html = '<option value="all">📚 Toutes les matières sélectionnées</option>';
+        classSubjects.forEach(s => {
+            html += `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`;
+        });
+        subjSelect.innerHTML = html;
+        subjSelect.value = 'all';
+    }
+
+    if (checkboxesContainer) {
+        checkboxesContainer.innerHTML = '';
+        classSubjects.forEach((subj, idx) => {
+            const isChecked = (!presetSubject || presetSubject === 'all')
+                ? true
+                : (subj.toLowerCase() === presetSubject.toLowerCase() || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(subj, presetSubject)));
+
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:8px; border:1.5px solid #6366F1; background:#EEF2FF; color:#1E1B4B; font-size:0.83rem; font-weight:700; cursor:pointer; user-select:none; transition:all 0.15s ease;';
+            label.innerHTML = `
+                <input type="checkbox" class="bulletin-subject-cb" value="${escapeHtml(subj)}" ${isChecked ? 'checked' : ''} onchange="updateBulletinModalSelectedSubjectsCount()" style="width:16px; height:16px; accent-color:#4F46E5; cursor:pointer; margin:0;" />
+                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(subj)}">${escapeHtml(subj)}</span>
+            `;
+            checkboxesContainer.appendChild(label);
+        });
+        updateBulletinModalSelectedSubjectsCount();
     }
 }
 
@@ -20394,8 +20533,12 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
     const semTitle = chosenSemester === 'S1' ? 'PREMIER SEMESTRE' : 'DEUXIÈME SEMESTRE';
     const sectionBadge = section === 'garcons' ? 'GARÇONS' : (section === 'filles' ? 'FILLES' : (section === 'primaire' ? 'PRIMAIRE' : 'MATERNELLE'));
 
-    // FORMAT PAR DÉFAUT & PRINCIPAL : Les matières se suivent les unes après les autres
-    // Conformément au modèle exact de l'exemplaire fourni (image_181cb51b.png)
+    // Si l'admin a choisi le Relevé Général sur 1 seule page A4 (toutes les matières cochées en colonnes)
+    if (format === 'all_subjects_single_page') {
+        return buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, section);
+    }
+
+    // FORMAT PAR DÉFAUT & PRINCIPAL : Les matières sélectionnées se suivent les unes après les autres
     if (format !== 'by_student') {
         const subjectSheets = Array.isArray(data.subjectSheets) ? data.subjectSheets : [];
         const sheetsToRender = (chosenSubject && chosenSubject !== 'all')
@@ -21220,33 +21363,46 @@ async function generateClassBulletins(mode) {
     const secSelect = document.getElementById('bulletinModalSectionSelect');
     const classSelect = document.getElementById('bulletinModalClassSelect');
     const semSelect = document.getElementById('bulletinModalSemesterSelect');
-    const subjSelect = document.getElementById('bulletinModalSubjectSelect');
     const formatSelect = document.getElementById('bulletinModalFormatSelect');
     const statusEl = document.getElementById('bulletinModalStatus');
 
     const section = (secSelect?.value || currentSection || 'garcons').trim();
     const chosenClass = (classSelect?.value || 'PEI1').trim();
     const chosenSemester = (semSelect?.value || 'S1').trim();
-    const chosenSubject = (subjSelect?.value || 'all').trim();
-    const chosenFormat = (formatSelect?.value || 'all_subjects_single_page').trim();
+    const chosenFormat = (formatSelect?.value || 'by_subject').trim();
+
+    // Récupérer les matières cochées par l'administrateur
+    const selectedSubjects = getSelectedBulletinModalSubjects();
+    if (selectedSubjects.length === 0) {
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.style.background = '#FEF2F2';
+            statusEl.style.color = '#991B1B';
+            statusEl.style.border = '1px solid #FECDD3';
+            statusEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Veuillez cocher au moins une matière du plan hebdomadaire à inclure dans le bulletin.';
+        } else {
+            alert("Veuillez sélectionner au moins une matière à inclure dans le bulletin.");
+        }
+        return;
+    }
+
+    const chosenSubject = selectedSubjects.length === 1 ? selectedSubjects[0] : 'all';
 
     if (statusEl) {
         statusEl.style.display = 'block';
         statusEl.style.background = '#EFF6FF';
         statusEl.style.color = '#1D4ED8';
         statusEl.style.border = '1px solid #BFDBFE';
-        statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Récupération des données et préparation des procès-verbaux & bulletins A4...';
+        statusEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Génération du bulletin pour ${selectedSubjects.length} matière(s) sélectionnée(s)...`;
     }
 
     try {
         const queryParams = new URLSearchParams({
             section,
             classe: chosenClass,
-            semester: chosenSemester
+            semester: chosenSemester,
+            subjects: JSON.stringify(selectedSubjects)
         });
-        if (chosenSubject && chosenSubject !== 'all') {
-            queryParams.append('subject', chosenSubject);
-        }
 
         const res = await fetch(`/api/class-bulletins-data?${queryParams.toString()}`);
         if (!res.ok) throw new Error("Erreur de récupération des données des bulletins.");
@@ -21265,9 +21421,9 @@ async function generateClassBulletins(mode) {
 
         const fullHTML = buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, chosenSubject, chosenFormat);
         lastGeneratedBulletinsHTML = fullHTML;
-        const subjTag = (chosenSubject && chosenSubject !== 'all') ? `_${chosenSubject}` : '';
+        const subjTag = (selectedSubjects.length === 1) ? `_${selectedSubjects[0]}` : `_${selectedSubjects.length}Matieres`;
         const prefix = chosenFormat === 'all_subjects_single_page'
-            ? 'Releve_General_Toutes_Matieres'
+            ? 'Releve_General_Matieres'
             : (chosenFormat === 'by_subject' ? 'Proces_Verbal_Notes' : 'Bulletins_Scolaires');
         lastGeneratedBulletinsFilename = `${prefix}_A4_${chosenClass}${subjTag}_${chosenSemester}.html`.replace(/[\s\/]+/g, '_');
 
@@ -21276,10 +21432,10 @@ async function generateClassBulletins(mode) {
             statusEl.style.color = '#15803D';
             statusEl.style.border = '1px solid #BBF7D0';
             const countLabel = chosenFormat === 'all_subjects_single_page'
-              ? `Relevé Général A4 généré (Toutes les matières sur 1 seule page A4 pour ${students.length} élèves)`
+              ? `Relevé Général A4 généré (${selectedSubjects.length} matière(s) sélectionnée(s) sur 1 page A4 pour ${students.length} élèves)`
               : (chosenFormat === 'by_subject' 
-                ? `${(data.subjectSheets || []).length} feuille(s) par matière générée(s) (1 page A4 par matière)` 
-                : `${students.length} bulletin(s) individuel(s) généré(s)`);
+                ? `${(data.subjectSheets || []).length} fiche(s) de matière générée(s) (${selectedSubjects.length} matière(s) sélectionnée(s))` 
+                : `${students.length} bulletin(s) individuel(s) généré(s) avec ${selectedSubjects.length} matière(s)`);
             statusEl.innerHTML = `✅ ${countLabel} pour la classe ${chosenClass} !`;
         }
 
@@ -21403,6 +21559,9 @@ window.closeClassGradesPrintModal = closeClassGradesPrintModal;
 window.onBulletinsModalSectionChanged = onBulletinsModalSectionChanged;
 window.onBulletinsModalClassChanged = onBulletinsModalClassChanged;
 window.populateBulletinModalSubjects = populateBulletinModalSubjects;
+window.toggleAllBulletinModalSubjects = toggleAllBulletinModalSubjects;
+window.updateBulletinModalSelectedSubjectsCount = updateBulletinModalSelectedSubjectsCount;
+window.getSelectedBulletinModalSubjects = getSelectedBulletinModalSubjects;
 window.generateClassBulletins = generateClassBulletins;
 window.closeClassBulletinsPreviewModal = closeClassBulletinsPreviewModal;
 window.executePreviewPrint = executePreviewPrint;

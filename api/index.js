@@ -487,20 +487,16 @@ function isRowAllowedForSection(row, targetSection) {
 
   if (sec === 'garcons') {
     if (isFemaleClass || isMatClass || isPrimClass) return false;
-    if (isFemaleTeacher) return false;
     return true;
   } else if (sec === 'filles') {
     if (isMaleClass || isMatClass || isPrimClass) return false;
-    if (isMaleTeacher) return false;
     return true;
   } else if (sec === 'primaire') {
     if (isMatClass || isMaleClass || isFemaleClass) return false;
-    if (isMaleTeacher) return false;
     if (['PEI1','PEI2','PEI3','PEI4','PEI5','DP1','DP2'].includes(clsUpper)) return false;
     return true;
   } else if (sec === 'maternelle') {
     if (cls && !isMatClass) return false;
-    if (isMaleTeacher) return false;
     return true;
   }
   return true;
@@ -512,28 +508,30 @@ function resolveSectionTeacher(section, classe, subject, candidateTeacher, subTe
   const isGarcons = (sec === 'garcons' || cNorm.includes('garcon') || cNorm.includes('garçon') || cNorm.includes('بنين'));
 
   const cand = String(candidateTeacher || '').trim();
-  const candNorm = cand.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // Si un enseignant valide est déjà fourni (ex: import Excel ou tableau de saisie), le conserver strictement
+  if (cand && cand !== '—' && cand !== '-' && cand !== '–') {
+    return cand;
+  }
+
+  if (Array.isArray(subTeacherDocs) && subTeacherDocs.length > 0) {
+    const exactMatch = subTeacherDocs.find(d =>
+      (!d.section || d.section === sec) &&
+      d.classe && isClassMatchServer(d.classe, classe) &&
+      isEquivalentSubjectServer(d.matiere, subject) &&
+      d.enseignant && String(d.enseignant).trim() && String(d.enseignant).trim() !== '—'
+    );
+    if (exactMatch && exactMatch.enseignant) return exactMatch.enseignant.trim();
+
+    const fallbackMatch = subTeacherDocs.find(d =>
+      (!d.section || d.section === sec) &&
+      (d.classe === 'all' || !d.classe) &&
+      isEquivalentSubjectServer(d.matiere, subject) &&
+      d.enseignant && String(d.enseignant).trim() && String(d.enseignant).trim() !== '—'
+    );
+    if (fallbackMatch && fallbackMatch.enseignant) return fallbackMatch.enseignant.trim();
+  }
 
   if (isGarcons) {
-    const isFemale = femaleTeachers.some(f => {
-      const fLow = f.toLowerCase();
-      return candNorm === fLow || candNorm.includes(fLow) || cand.toLowerCase().includes(fLow);
-    }) || candNorm.includes('soltani') || candNorm.includes('amal') || candNorm.includes('souha');
-
-    if (cand && !isFemale && maleTeachers.some(m => m.toLowerCase() === cand.toLowerCase() || candNorm.includes(m.toLowerCase()))) {
-      return cand;
-    }
-
-    if (Array.isArray(subTeacherDocs) && subTeacherDocs.length > 0) {
-      const match = subTeacherDocs.find(d => 
-        (d.section === 'garcons' || !d.section) &&
-        (isClassMatchServer(d.classe, classe) || d.classe === 'all' || !d.classe) &&
-        isEquivalentSubjectServer(d.matiere, subject) &&
-        d.enseignant && !femaleTeachers.some(f => f.toLowerCase() === d.enseignant.trim().toLowerCase())
-      );
-      if (match && match.enseignant) return match.enseignant.trim();
-    }
-
     const sLow = String(subject || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (sLow.includes('math')) return 'Mohamed';
     if (sLow.includes('angl') || sLow.includes('eng')) return 'Kamel';
@@ -556,7 +554,7 @@ function filterPlanDataBySection(rows, section) {
 
 // ========================================================================
 // GARANTIE ABSOLUE DES 8 PÉRIODES (1 À 8) POUR CHAQUE JOUR ET CHAQUE CLASSE
-// Sans jamais générer de doublons ni conserver de cours supprimés
+// Sans jamais générer de doublons ni inventer des classes absentes du plan/Excel
 // ========================================================================
 function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
   if (!Array.isArray(data)) return [];
@@ -582,47 +580,31 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
     return score;
   };
 
-  // Canonicaliser le nom de la classe pour éviter les doublons de casse
+  // Extraire strictement les classes réellement présentes dans data (pour suivre fidèlement tout fichier Excel importé)
   const canonicalClassMap = new Map();
-  if (section === 'garcons') {
-    const garconsClasses = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
-    garconsClasses.forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
-    canonicalClassMap.set('pei1', 'PEI1 Garçons');
-    canonicalClassMap.set('pei1 garcons', 'PEI1 Garçons');
-    canonicalClassMap.set('pei1 garçons', 'PEI1 Garçons');
-    canonicalClassMap.set('pei2', 'PEI2 Garçon');
-    canonicalClassMap.set('pei2 garcon', 'PEI2 Garçon');
-    canonicalClassMap.set('pei2 garçon', 'PEI2 Garçon');
-    canonicalClassMap.set('pei3', 'PEI3 Garçon');
-    canonicalClassMap.set('pei3 garcon', 'PEI3 Garçon');
-    canonicalClassMap.set('pei3 garçon', 'PEI3 Garçon');
-    canonicalClassMap.set('pei4', 'PEI4 Garçon');
-    canonicalClassMap.set('pei4 garcon', 'PEI4 Garçon');
-    canonicalClassMap.set('pei4 garçon', 'PEI4 Garçon');
-    canonicalClassMap.set('pei5', 'PEI5 Garçon');
-    canonicalClassMap.set('pei5 garcon', 'PEI5 Garçon');
-    canonicalClassMap.set('pei5 garçon', 'PEI5 Garçon');
-    canonicalClassMap.set('dp2', 'DP2 Garçons');
-    canonicalClassMap.set('dp2 garcon', 'DP2 Garçons');
-    canonicalClassMap.set('dp2 garçons', 'DP2 Garçons');
-    canonicalClassMap.set('dp2 garcons', 'DP2 Garçons');
-  } else if (section === 'filles') {
-    ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
-  } else if (section === 'primaire') {
-    ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
-  } else if (section === 'maternelle') {
-    ['PS', 'MS', 'GS'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
-  }
-
   data.forEach(r => {
-    if (!r) return;
+    if (!r || typeof r !== 'object') return;
     const c = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
-    if (c && !canonicalClassMap.has(c.toLowerCase())) {
-      if (section !== 'garcons') {
-        canonicalClassMap.set(c.toLowerCase(), c);
+    if (c && c !== '—' && c !== '-') {
+      const cLow = c.toLowerCase();
+      if (!canonicalClassMap.has(cLow)) {
+        canonicalClassMap.set(cLow, c);
       }
     }
   });
+
+  // Uniquement si data ne contient absolument aucune classe, utiliser les classes par défaut de la section
+  if (canonicalClassMap.size === 0) {
+    if (section === 'garcons') {
+      ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
+    } else if (section === 'filles') {
+      ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
+    } else if (section === 'primaire') {
+      ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
+    } else if (section === 'maternelle') {
+      ['PS', 'MS', 'GS'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
+    }
+  }
 
   // 2. Déterminer les libellés de jours avec date pour cette semaine
   const dayStringMap = new Map();
@@ -5679,121 +5661,6 @@ app.get('/api/plans/:week', async (req, res) => {
       // Filtrage strict par section : aucune classe ou enseignant d'une autre section n'est toléré
       let rawData = filterPlanDataBySection(planDocument.data || [], section);
 
-      // Appliquer le modèle d'emploi du temps canonique (class_schedules) s'il a été configuré pour une classe,
-      // afin de garantir qu'aucun cours supprimé ni aucun doublon ne subsiste dans le tableau
-      try {
-        const canonicalSchedules = await db.collection('class_schedules').find({ section }).toArray();
-        if (canonicalSchedules && canonicalSchedules.length > 0) {
-          const isPlaceholderMat = (m) => {
-            const s = String(m || '').trim();
-            return !s || s === '—' || s === '-' || s === '–';
-          };
-          const normSubj = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-          for (const schedDoc of canonicalSchedules) {
-            const targetCls = String(schedDoc.classe || '').trim();
-            if (!targetCls || !Array.isArray(schedDoc.slots)) continue;
-
-            const canonicalSlots = schedDoc.slots.filter(s => s && !isPlaceholderMat(s.matiere));
-            if (canonicalSlots.length === 0) continue;
-
-            const isTargetRow = (row) => {
-              const rCls = row[findKey(row, 'Classe')];
-              return rCls && isClassMatchServer(rCls, targetCls);
-            };
-
-            const oldClassRows = rawData.filter(isTargetRow);
-            const otherRows = rawData.filter(r => !isTargetRow(r));
-            const oldValidRows = oldClassRows.filter(r => !isPlaceholderMat(r[findKey(r, 'Matière')]));
-            const usedOld = new Set();
-            const syncedClassRows = [];
-
-            canonicalSlots.forEach(slot => {
-              const sDay = extractDayNameFromString(slot.jour) || String(slot.jour || '').trim();
-              const sPer = String(slot.periode || '1').replace(/[^0-9]/g, '') || '1';
-              const sMat = String(slot.matiere || '').trim();
-              const sEns = String(slot.enseignant || '').trim();
-
-              // 1. Chercher une correspondance exacte (Jour + Période + Matière équivalente)
-              let matched = oldValidRows.find(o => {
-                if (usedOld.has(o)) return false;
-                const oDay = extractDayNameFromString(o[findKey(o, 'Jour')]) || String(o[findKey(o, 'Jour')] || '').trim();
-                const oPer = String(o[findKey(o, 'Période')] || '').replace(/[^0-9]/g, '');
-                const oMat = String(o[findKey(o, 'Matière')] || '').trim();
-                return oDay.toLowerCase() === sDay.toLowerCase() && oPer === sPer && (normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat));
-              });
-
-              // 2. Sinon chercher une ligne de la même matière ayant du contenu pédagogique saisi
-              if (!matched) {
-                matched = oldValidRows.find(o => {
-                  if (usedOld.has(o)) return false;
-                  const oMat = String(o[findKey(o, 'Matière')] || '').trim();
-                  if (!(normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat))) return false;
-                  const lec = String(o[findKey(o, 'Leçon')] || '').trim();
-                  const dev = String(o[findKey(o, 'Devoirs')] || '').trim();
-                  const tra = String(o[findKey(o, 'Travaux de classe')] || '').trim();
-                  return Boolean((lec && lec !== '—') || (dev && dev !== '—') || (tra && tra !== '—'));
-                });
-              }
-
-              // 3. Sinon chercher n'importe quelle ligne de la même matière non encore utilisée
-              if (!matched) {
-                matched = oldValidRows.find(o => {
-                  if (usedOld.has(o)) return false;
-                  const oMat = String(o[findKey(o, 'Matière')] || '').trim();
-                  return normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat);
-                });
-              }
-
-              if (matched) {
-                usedOld.add(matched);
-                const jourK = findKey(matched, 'Jour') || 'Jour';
-                const perK = findKey(matched, 'Période') || 'Période';
-                const clsK = findKey(matched, 'Classe') || 'Classe';
-                const matK = findKey(matched, 'Matière') || 'Matière';
-                const ensK = findKey(matched, 'Enseignant') || 'Enseignant';
-                syncedClassRows.push({
-                  ...matched,
-                  [clsK]: targetCls,
-                  [jourK]: sDay,
-                  [perK]: sPer,
-                  [matK]: sMat,
-                  [ensK]: sEns || matched[ensK] || '',
-                  _section: section
-                });
-              } else {
-                syncedClassRows.push({
-                  'Enseignant': sEns || '',
-                  'Jour': sDay,
-                  'Période': sPer,
-                  'Classe': targetCls,
-                  'Matière': sMat,
-                  'Leçon': '',
-                  'Travaux de classe': '',
-                  'Support': '',
-                  'Devoirs': '',
-                  '_section': section
-                });
-              }
-            });
-
-            rawData = [...otherRows, ...syncedClassRows];
-          }
-        }
-      } catch (schedSyncErr) {
-        console.warn('Note sync class_schedules dans GET /api/plans/:week:', schedSyncErr.message);
-      }
-
-      // Récupérer les liaisons Matière ➔ Enseignant configurées pour cette section
-      const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
-      const subTeacherMap = new Map();
-      subTeacherDocs.forEach(d => {
-        if (d.classe && d.matiere && d.enseignant) {
-          const k = `${d.classe.trim().toLowerCase()}_${d.matiere.trim().toLowerCase()}`;
-          subTeacherMap.set(k, d.enseignant.trim());
-        }
-      });
-
       const enrichedData = rawData.map(row => {
         const ensKey = findKey(row, 'Enseignant') || 'Enseignant';
         let enseignant = row[ensKey] || '';
@@ -5801,27 +5668,6 @@ app.get('/api/plans/:week', async (req, res) => {
         const matiere = row[findKey(row, 'Matière')] || '';
         const periode = row[findKey(row, 'Période')] || '';
         const jour = row[findKey(row, 'Jour')] || '';
-
-        const isPlaceholderSubj = !matiere || !String(matiere).trim() || String(matiere).trim() === '—' || String(matiere).trim() === '-';
-
-        // Synchroniser automatiquement l'enseignant avec la liaison configurée dans Liaison Automatique Matières ➔ Enseignants
-        if (!isPlaceholderSubj && classe && matiere && subTeacherDocs.length > 0) {
-          const linkedDoc = subTeacherDocs.find(d => 
-            d.enseignant && d.enseignant.trim() &&
-            (isClassMatchServer(d.classe, classe) || d.classe === 'all' || !d.classe) && 
-            isEquivalentSubjectServer(d.matiere, matiere)
-          );
-          if (linkedDoc && linkedDoc.enseignant && linkedDoc.enseignant.trim()) {
-            enseignant = linkedDoc.enseignant.trim();
-            row[ensKey] = enseignant;
-          }
-        } else if (!isPlaceholderSubj && (!enseignant || !enseignant.trim()) && classe && matiere) {
-          const k = `${classe.trim().toLowerCase()}_${matiere.trim().toLowerCase()}`;
-          if (subTeacherMap.has(k)) {
-            enseignant = subTeacherMap.get(k);
-            row[ensKey] = enseignant;
-          }
-        }
         
         const potentialLessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
         const fallbackId = `${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
@@ -5875,32 +5721,7 @@ app.get('/api/plans/:week', async (req, res) => {
           specialDays: specialDays || []
       });
     } else {
-      // Chercher si un emploi du temps canonique existe déjà pour les classes de cette section afin de pré-peupler proprement la semaine
-      const canonicalTemplatesDocs = await db.collection('class_schedules').find({ section }).toArray();
-      const templateRows = [];
-      if (canonicalTemplatesDocs && canonicalTemplatesDocs.length > 0) {
-        canonicalTemplatesDocs.forEach(tDoc => {
-          if (tDoc.classe && Array.isArray(tDoc.slots)) {
-            tDoc.slots.forEach(s => {
-              if (s.matiere && String(s.matiere).trim() && String(s.matiere).trim() !== '—' && String(s.matiere).trim() !== '-') {
-                templateRows.push({
-                  'Enseignant': s.enseignant || '',
-                  'Jour': s.jour,
-                  'Période': String(s.periode),
-                  'Classe': tDoc.classe,
-                  'Matière': s.matiere,
-                  'Leçon': '',
-                  'Travaux de classe': '',
-                  'Support': '',
-                  'Devoirs': '',
-                  '_section': section
-                });
-              }
-            });
-          }
-        });
-      }
-      const defaultEmptyData = ensureAllPeriods1To8ForPlan(templateRows, section, weekNumber);
+      const defaultEmptyData = ensureAllPeriods1To8ForPlan([], section, weekNumber);
       const pubDoc = await db.collection('published_plans').findOne({
         $or: [
           { _id: `${section}_${weekNumber}` },
@@ -5932,6 +5753,40 @@ app.get('/api/plans/:week', async (req, res) => {
   }
 });
 
+// Synchroniser la visibilité des classes à partir des lignes du Tableau de Saisie (ex: import Excel)
+async function syncScheduleAndTeachersFromPlanRows(db, rows, section) {
+  if (!db || !Array.isArray(rows) || rows.length === 0) return;
+  try {
+    const canonicalClassNames = new Map();
+    rows.forEach(row => {
+      if (!row || typeof row !== 'object') return;
+      const rawCls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
+      if (!rawCls || rawCls === '—' || rawCls === '-') return;
+      const clsLow = rawCls.toLowerCase();
+      if (!canonicalClassNames.has(clsLow)) {
+        canonicalClassNames.set(clsLow, rawCls);
+      }
+    });
+    const uploadedClasses = Array.from(canonicalClassNames.values());
+    if (uploadedClasses.length === 0) return;
+    const now = new Date();
+    await db.collection('settings').updateOne(
+      { _id: `classes_visibility_${section}` },
+      {
+        $set: {
+          section,
+          visibleClasses: uploadedClasses.sort(),
+          hiddenClasses: [],
+          updatedAt: now
+        }
+      },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.warn('Note syncScheduleAndTeachersFromPlanRows:', err.message);
+  }
+}
+
 app.post('/api/save-plan', async (req, res) => {
   const weekNumber = parseInt(req.body.week, 10);
   const data = req.body.data;
@@ -5943,7 +5798,7 @@ app.post('/api/save-plan', async (req, res) => {
     const docId = `${section}_${weekNumber}`;
     const now = new Date();
 
-    // Filtrer strictement les données pour exclure les cours et enseignants des autres sections
+    // Filtrer strictement les données pour exclure les cours des autres sections
     const cleanSectionData = filterPlanDataBySection(data, section);
     const completedData = ensureAllPeriods1To8ForPlan(cleanSectionData, section, weekNumber);
 
@@ -5990,10 +5845,15 @@ app.post('/api/save-plan', async (req, res) => {
       },
       { upsert: true }
     );
-    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${mergedData.length} lignes enregistrées (notes enseignants préservées, 8 périodes garanties sans doublons).`);
+
+    // Synchroniser immédiatement l'emploi du temps et les enseignants avec les classes et séances du plan enregistré
+    await syncScheduleAndTeachersFromPlanRows(db, mergedData, section);
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${mergedData.length} lignes enregistrées et synchronisées avec l'emploi du temps.`);
     res.status(200).json({ 
       success: true,
-      message: `Plan S${weekNumber} pour la section ${section} enregistré avec succès.`,
+      message: `Plan S${weekNumber} pour la section ${section} enregistré et synchronisé avec l'emploi du temps.`,
       section: section,
       week: weekNumber
     });
@@ -6072,10 +5932,14 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
     });
 
     await db.collection('plans').bulkWrite(operations);
-    console.log(`[Multi-Weeks Upload] ${cleanSectionData.length} lignes appliquées aux semaines ${validWeeks.join(', ')} (section ${section}, 8 périodes garanties).`);
+    // Synchroniser immédiatement l'emploi du temps et les enseignants avec les classes et séances du fichier Excel importé
+    await syncScheduleAndTeachersFromPlanRows(db, cleanSectionData, section);
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    console.log(`[Multi-Weeks Upload] ${cleanSectionData.length} lignes appliquées aux semaines ${validWeeks.join(', ')} et synchronisées avec l'emploi du temps (${section}).`);
     res.status(200).json({ 
       success: true,
-      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section} avec garantie des 8 périodes.`,
+      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section} et synchronisé avec l'emploi du temps.`,
       savedWeeks: validWeeks,
       section: section
     });
@@ -7575,6 +7439,29 @@ app.get('/api/all-classes', async (req, res) => {
     // Vérifier les paramètres de visibilité enregistrés
     const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
     const hiddenSet = new Set((visDoc && Array.isArray(visDoc.hiddenClasses)) ? visDoc.hiddenClasses.map(c => String(c).trim().toLowerCase()) : []);
+
+    // 1. Extraire les classes réellement présentes dans le Tableau de Saisie (plans hebdomadaires de la section)
+    const planDocs = await db.collection('plans').find({ section }).toArray();
+    const planClassMap = new Map();
+    planDocs.forEach(p => {
+      if (Array.isArray(p.data)) {
+        p.data.forEach(r => {
+          if (!r || typeof r !== 'object') return;
+          const c = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
+          if (c && c !== '—' && c !== '-' && !hiddenSet.has(c.toLowerCase())) {
+            if (!planClassMap.has(c.toLowerCase())) {
+              planClassMap.set(c.toLowerCase(), c);
+            }
+          }
+        });
+      }
+    });
+
+    if (planClassMap.size > 0) {
+      return res.status(200).json(Array.from(planClassMap.values()).sort());
+    }
+
+    // 2. Fallback vers explicitVisible ou classes par défaut uniquement si aucun plan n'existe encore
     const explicitVisible = (visDoc && Array.isArray(visDoc.visibleClasses) && visDoc.visibleClasses.length > 0)
       ? visDoc.visibleClasses.filter(c => c && !hiddenSet.has(String(c).trim().toLowerCase()))
       : null;
@@ -7583,38 +7470,18 @@ app.get('/api/all-classes', async (req, res) => {
       return res.status(200).json(explicitVisible);
     }
 
-    let classes = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
-    classes = (classes || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
-    
     let baseList = [];
     if (section === 'maternelle') {
-      const defMat = ['PS', 'MS', 'GS'];
-      baseList = [...defMat, ...classes.filter(c => isMaternelleClassServer(c))];
+      baseList = ['PS', 'MS', 'GS'];
     } else if (section === 'primaire') {
-      const defPrim = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-      baseList = [...defPrim, ...classes.filter(c => !isMaternelleClassServer(c))];
+      baseList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
     } else if (section === 'garcons') {
-      const defGarcons = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
-      baseList = [...defGarcons];
+      baseList = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
     } else if (section === 'filles') {
-      const defSec = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
-      baseList = [...defSec, ...classes.filter(c => !isMaternelleClassServer(c) && !['PP1','PP2','PP3','PP4','PP5'].includes(c.toUpperCase()))];
-    } else {
-      baseList = [...classes];
+      baseList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     }
 
-    const set = new Set();
-    baseList.forEach(c => {
-      const trimmed = String(c).trim();
-      if (trimmed && !hiddenSet.has(trimmed.toLowerCase())) {
-        if (section === 'garcons' && ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'].includes(trimmed.toUpperCase())) {
-          return; // Ne jamais inclure les classes nues dans la section Garçons
-        }
-        set.add(trimmed);
-      }
-    });
-
-    res.status(200).json(Array.from(set).sort());
+    res.status(200).json(baseList.filter(c => !hiddenSet.has(c.toLowerCase())).sort());
   } catch (error) {
     console.error('Erreur MongoDB /api/all-classes:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -7628,56 +7495,49 @@ app.get('/api/admin/classes', async (req, res) => {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
 
-    // 1. Récupérer toutes les classes distinctes de la base
-    const rawClasses = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
-    let distinctInDb = (rawClasses || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
-
-    // Classes par défaut selon la section
-    let defaultList = [];
-    if (section === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
-    else if (section === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-    else if (section === 'garcons') {
-      defaultList = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
-      distinctInDb = distinctInDb.filter(c => !['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'].includes(c.toUpperCase()));
-    } else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
-
-    // 2. Compter le nombre de cours/séances pour chaque classe dans les plans
+    // 1. Récupérer toutes les classes distinctes réellement présentes dans les plans hebdomadaires (Tableau de saisie)
     const allPlans = await db.collection('plans').find({ section }).toArray();
     const countMap = {};
+    const distinctInPlansMap = new Map();
     allPlans.forEach(p => {
       if (Array.isArray(p.data)) {
         p.data.forEach(r => {
-          const c = String(r.Classe || r.classe || '').trim();
-          if (c) countMap[c] = (countMap[c] || 0) + 1;
+          if (!r || typeof r !== 'object') return;
+          const c = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
+          if (c && c !== '—' && c !== '-') {
+            const cLow = c.toLowerCase();
+            if (!distinctInPlansMap.has(cLow)) {
+              distinctInPlansMap.set(cLow, c);
+            }
+            const canonC = distinctInPlansMap.get(cLow);
+            countMap[canonC] = (countMap[canonC] || 0) + 1;
+          }
         });
       }
     });
 
-    // 3. Lire les paramètres de visibilité enregistrés
+    let allList = Array.from(distinctInPlansMap.values());
+
+    // Uniquement si aucun plan n'a de classes, utiliser la liste par défaut
+    if (allList.length === 0) {
+      if (section === 'maternelle') allList = ['PS', 'MS', 'GS'];
+      else if (section === 'primaire') allList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+      else if (section === 'garcons') allList = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
+      else allList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+    }
+
+    // 2. Lire les paramètres de visibilité enregistrés
     const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
     const hiddenSet = new Set((visDoc && Array.isArray(visDoc.hiddenClasses)) ? visDoc.hiddenClasses.map(c => String(c).trim().toLowerCase()) : []);
-    const explicitVisibleSet = (visDoc && Array.isArray(visDoc.visibleClasses) && visDoc.visibleClasses.length > 0)
-      ? new Set(visDoc.visibleClasses.map(c => String(c).trim().toLowerCase()))
-      : null;
-
-    // Fusion de toutes les classes connues
-    const allSet = new Set([...defaultList, ...distinctInDb]);
-    const allList = Array.from(allSet);
 
     // Détecter les doublons potentiels
     const duplicates = [];
-    const classItems = allList.map(name => {
+    const classItems = allList.sort().map(name => {
       const lower = name.toLowerCase();
       const count = countMap[name] || 0;
       const suggestedMerge = detectClassDuplicateTarget(name, allList);
       const isDuplicate = !!suggestedMerge;
-      
-      let isVisible = true;
-      if (hiddenSet.has(lower)) {
-        isVisible = false;
-      } else if (explicitVisibleSet) {
-        isVisible = explicitVisibleSet.has(lower);
-      }
+      const isVisible = !hiddenSet.has(lower);
 
       if (isDuplicate) {
         duplicates.push({
@@ -8106,13 +7966,15 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
     const { section = 'garcons', week = 1, clientPlanData = [] } = req.body;
     const db = await connectToDatabase();
 
-    // 1. Rassembler toutes les lignes de la section
+    // 1. Rassembler les lignes du plan hebdomadaire (en privilégiant clientPlanData et la semaine demandée, puis les autres plans de la section)
     let candidateRows = [];
     if (Array.isArray(clientPlanData) && clientPlanData.length > 0) {
       candidateRows.push(...clientPlanData);
     }
 
     const planDocs = await db.collection('plans').find({ section }).toArray();
+    // Mettre la semaine demandée en premier
+    planDocs.sort((a, b) => (Number(a.week) === Number(week) ? -1 : (Number(b.week) === Number(week) ? 1 : 0)));
     planDocs.forEach(p => {
       if (Array.isArray(p.data)) {
         candidateRows.push(...p.data);
@@ -8124,42 +7986,21 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       return !s || s === '—' || s === '-' || s === '–';
     };
 
-    // Déterminer les classes par défaut
-    let defaultSectionClasses = [];
-    if (section === 'maternelle') defaultSectionClasses = ['PS', 'MS', 'GS'];
-    else if (section === 'primaire') defaultSectionClasses = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-    else if (section === 'garcons') defaultSectionClasses = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
-    else defaultSectionClasses = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
-
-    // Canonicaliser et regrouper par classe
+    // Extraire strictement les classes présentes dans le Tableau de Saisie (sans inventer de classes absentes)
+    const canonicalClassNames = new Map();
     const classSlotsMap = new Map();
-    defaultSectionClasses.forEach(c => classSlotsMap.set(c, new Map()));
 
     candidateRows.forEach(row => {
       if (!row || typeof row !== 'object') return;
-      let rawCls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
-      if (!rawCls) return;
+      const rawCls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
+      if (!rawCls || rawCls === '—' || rawCls === '-') return;
 
-      let targetClass = rawCls;
-      if (section === 'garcons') {
-        const lower = rawCls.toLowerCase();
-        if (lower.includes('dp1')) return; // Jamais de DP1 dans la section garçons
-        if (lower.includes('pei1')) targetClass = 'PEI1 Garçons';
-        else if (lower.includes('pei2')) targetClass = 'PEI2 Garçon';
-        else if (lower.includes('pei3')) targetClass = 'PEI3 Garçon';
-        else if (lower.includes('pei4')) targetClass = 'PEI4 Garçon';
-        else if (lower.includes('pei5')) targetClass = 'PEI5 Garçon';
-        else if (lower.includes('dp2')) targetClass = 'DP2 Garçons';
-        else if (!defaultSectionClasses.includes(rawCls)) return;
-      } else {
-        const suffixMatch = rawCls.match(/^(.+?)\s*(?:Garçons|Garcons|Filles|Fille|Section\s*Garçons|Section\s*Filles)$/i);
-        if (suffixMatch) rawCls = suffixMatch[1].trim();
-        const canonMatch = rawCls.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/i);
-        targetClass = canonMatch ? canonMatch[1].toUpperCase() : rawCls;
+      const clsLow = rawCls.toLowerCase();
+      if (!canonicalClassNames.has(clsLow)) {
+        canonicalClassNames.set(clsLow, rawCls);
       }
-
+      const targetClass = canonicalClassNames.get(clsLow);
       if (!classSlotsMap.has(targetClass)) {
-        if (section === 'garcons' && !defaultSectionClasses.includes(targetClass)) return;
         classSlotsMap.set(targetClass, new Map());
       }
 
@@ -8170,15 +8011,7 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       const day = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(rawJour) : rawJour) || String(rawJour).trim();
       const rawPer = row[findKey(row, 'Période')] || row['Période'] || row.periode || '1';
       const per = String(rawPer).replace(/[^0-9]/g, '') || '1';
-      let ens = String(row[findKey(row, 'Enseignant')] || row['Enseignant'] || row.enseignant || '').trim();
-
-      // Sécurité stricte pour la section Garçons : JAMAIS d'enseignante fille dans la section Garçons
-      if (section === 'garcons') {
-        const isFem = femaleTeachers.some(f => f.toLowerCase() === ens.toLowerCase() || ens.toLowerCase().includes(f.toLowerCase()));
-        if (isFem) {
-          ens = resolveSectionTeacher('garcons', targetClass, mat, '');
-        }
-      }
+      const ens = String(row[findKey(row, 'Enseignant')] || row['Enseignant'] || row.enseignant || '').trim();
 
       const slotKey = `${day.toLowerCase()}_${per}`;
       const existing = classSlotsMap.get(targetClass).get(slotKey);
@@ -8187,8 +8020,8 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       const dev = String(row[findKey(row, 'Devoirs')] || row['Devoirs'] || '').trim();
       const hasContent = Boolean((lec && lec !== '—' && lec !== '-') || (dev && dev !== '—' && dev !== '-'));
 
-      // CONSERVER EXACTEMENT le nom de l'enseignant qui existe déjà dans le tableau de saisie !
-      if (!existing || (!existing.hasContent && hasContent) || (!existing.enseignant && ens)) {
+      // Conserver strictement le nom de l'enseignant et de la matière tels qu'ils figurent dans le tableau de saisie / Excel
+      if (!existing || (!existing.hasContent && hasContent) || (!existing.enseignant && ens && ens !== '—')) {
         classSlotsMap.get(targetClass).set(slotKey, {
           jour: day,
           periode: per,
@@ -8201,19 +8034,18 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       }
     });
 
-    // Enregistrer chaque classe dans class_schedules
+    // Enregistrer chaque classe dans class_schedules et supprimer les classes qui n'existent pas dans le tableau de saisie
     let totalImportedSlots = 0;
     const finalClasses = Array.from(classSlotsMap.keys()).sort();
 
-    // Nettoyer les classes obsolètes/doublons dans la base pour la section Garçons
-    if (section === 'garcons') {
+    if (finalClasses.length > 0) {
       await db.collection('class_schedules').deleteMany({
-        section: 'garcons',
-        classe: { $in: ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'] }
+        section,
+        classe: { $nin: finalClasses }
       });
       await db.collection('class_subject_teachers').deleteMany({
-        section: 'garcons',
-        classe: { $in: ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'] }
+        section,
+        classe: { $nin: [...finalClasses, 'all'] }
       });
     }
 
@@ -8236,7 +8068,7 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
 
       // Mettre à jour class_subject_teachers en conservant exactement les enseignants saisis
       for (const s of slots) {
-        if (s.matiere && s.enseignant && s.enseignant !== '—') {
+        if (s.matiere && s.enseignant && s.enseignant !== '—' && s.enseignant !== '-') {
           await db.collection('class_subject_teachers').updateOne(
             { section, classe: cls, matiere: s.matiere },
             { $set: { section, classe: cls, matiere: s.matiere, enseignant: s.enseignant, updatedAt: new Date() } },
@@ -8246,87 +8078,29 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       }
     }
 
-    // Mettre à jour la visibilité des classes
-    let currentVisible = finalClasses;
-    let currentHidden = [];
-    if (section === 'garcons') {
-      currentVisible = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
-      currentHidden = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'];
-    }
-
+    // Mettre à jour la visibilité des classes pour que l'Emploi du Temps ait strictement les mêmes classes que le Tableau de Saisie
     await db.collection('settings').updateOne(
       { _id: `classes_visibility_${section}` },
       {
         $set: {
           section,
-          visibleClasses: currentVisible,
-          hiddenClasses: currentHidden,
+          visibleClasses: finalClasses,
+          hiddenClasses: [],
           updatedAt: new Date()
         }
       },
       { upsert: true }
     );
 
-    // Harmoniser les plans hebdomadaires de la section
-    for (const p of planDocs) {
-      if (Array.isArray(p.data)) {
-        let changed = false;
-        if (section === 'garcons') {
-          // Filtrer DP1 et mapper vers les noms officiels garçons
-          const initialLen = p.data.length;
-          p.data = p.data.filter(r => {
-            const c = String(r.Classe || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : '') || '').trim().toLowerCase();
-            return !c.includes('dp1');
-          });
-          if (p.data.length !== initialLen) changed = true;
-
-          p.data.forEach(r => {
-            const cKey = r.Classe !== undefined ? 'Classe' : (r.classe !== undefined ? 'classe' : null);
-            if (cKey) {
-              const cur = String(r[cKey] || '').trim();
-              const curLow = cur.toLowerCase();
-              let mapped = null;
-              if (curLow === 'pei1' || curLow === 'pei1 garcons') mapped = 'PEI1 Garçons';
-              else if (curLow === 'pei2' || curLow === 'pei2 garcons' || curLow === 'pei2 garçon') mapped = 'PEI2 Garçon';
-              else if (curLow === 'pei3' || curLow === 'pei3 garcons' || curLow === 'pei3 garçon') mapped = 'PEI3 Garçon';
-              else if (curLow === 'pei4' || curLow === 'pei4 garcons' || curLow === 'pei4 garçon') mapped = 'PEI4 Garçon';
-              else if (curLow === 'pei5' || curLow === 'pei5 garcons' || curLow === 'pei5 garçon') mapped = 'PEI5 Garçon';
-              else if (curLow === 'dp2' || curLow === 'dp2 garcon') mapped = 'DP2 Garçons';
-
-              if (mapped && r[cKey] !== mapped) {
-                r[cKey] = mapped;
-                changed = true;
-              }
-            }
-
-            // Vérifier et remplacer tout nom d'enseignante fille dans la section garçons
-            const ensKey = r.Enseignant !== undefined ? 'Enseignant' : (r.enseignant !== undefined ? 'enseignant' : null);
-            if (ensKey && r[ensKey]) {
-              const ensVal = String(r[ensKey]).trim();
-              if (femaleTeachers.some(f => f.toLowerCase() === ensVal.toLowerCase())) {
-                const matVal = String(r['Matière'] || r.matiere || '').trim();
-                const clsVal = String(r['Classe'] || r.classe || '').trim();
-                r[ensKey] = resolveSectionTeacher('garcons', clsVal, matVal, '');
-                changed = true;
-              }
-            }
-          });
-        }
-        if (changed) {
-          await db.collection('plans').updateOne({ _id: p._id }, { $set: { data: p.data, updatedAt: new Date() } });
-        }
-      }
-    }
-
     if (typeof db.saveToDisk === 'function') db.saveToDisk();
 
-    console.log(`📥 [Admin] Emploi du temps appliqué depuis le tableau de saisie (${section}): ${finalClasses.length} classes, ${totalImportedSlots} créneaux.`);
+    console.log(`📥 [Admin] Emploi du temps synchronisé depuis le tableau de saisie (${section}): ${finalClasses.length} classes, ${totalImportedSlots} créneaux.`);
     res.status(200).json({
       success: true,
-      message: `Emploi du temps et classes appliqués avec succès depuis le tableau de saisie (${finalClasses.length} classes, ${totalImportedSlots} créneaux).`,
+      message: `Emploi du temps et classes synchronisés avec succès depuis le tableau de saisie (${finalClasses.length} classes, ${totalImportedSlots} créneaux).`,
       classes: finalClasses,
       totalSlots: totalImportedSlots,
-      visibleClasses: Array.from(currentVisible)
+      visibleClasses: finalClasses
     });
   } catch (error) {
     console.error('Erreur /api/admin/import-schedule-from-plan:', error);
@@ -8510,21 +8284,8 @@ app.get('/api/admin/schedule-class', async (req, res) => {
       )
     ).sort();
 
-    // Récupérer les liaisons enregistrées Matière ➔ Enseignant
+    // Récupérer les liaisons enregistrées Matière ➔ Enseignant en donnant priorité aux enseignants du plan de la classe
     const subjectTeachersMap = {};
-    try {
-      const savedMappings = await db.collection('class_subject_teachers').find({
-        section: section,
-        $or: [{ classe: classe }, { classe: 'all' }, { classe: '' }, { classe: { $exists: false } }]
-      }).toArray();
-      savedMappings.forEach(m => {
-        if (!isPlaceholderMat(m.matiere) && m.enseignant && String(m.enseignant).trim() && String(m.enseignant).trim() !== '—') {
-          subjectTeachersMap[m.matiere.trim()] = m.enseignant.trim();
-        }
-      });
-    } catch (e) {}
-
-    // Compléter avec les attributions existantes dans les cours de la classe
     classRows.forEach(r => {
       const m = String(r[findKey(r, 'Matière')] || '').trim();
       const e = String(r[findKey(r, 'Enseignant')] || '').trim();
@@ -8533,7 +8294,23 @@ app.get('/api/admin/schedule-class', async (req, res) => {
       }
     });
 
-    // Attribuer l'enseignant lié de façon prioritaire et automatique à tous les créneaux de la matière
+    try {
+      const savedMappings = await db.collection('class_subject_teachers').find({
+        section: section,
+        $or: [{ classe: classe }, { classe: 'all' }, { classe: '' }, { classe: { $exists: false } }]
+      }).toArray();
+      savedMappings.forEach(m => {
+        if (!isPlaceholderMat(m.matiere) && m.enseignant && String(m.enseignant).trim() && String(m.enseignant).trim() !== '—') {
+          if (m.classe && isClassMatchServer(m.classe, classe)) {
+            subjectTeachersMap[m.matiere.trim()] = m.enseignant.trim();
+          } else if (!subjectTeachersMap[m.matiere.trim()]) {
+            subjectTeachersMap[m.matiere.trim()] = m.enseignant.trim();
+          }
+        }
+      });
+    } catch (e) {}
+
+    // Attribuer l'enseignant lié aux créneaux qui n'en ont pas encore ou selon la liaison de la classe
     slots.forEach(s => {
       if (s.matiere && !isPlaceholderMat(s.matiere)) {
         let linkedTeacher = subjectTeachersMap[s.matiere.trim()];
@@ -8545,33 +8322,32 @@ app.get('/api/admin/schedule-class', async (req, res) => {
             }
           }
         }
-        if (linkedTeacher && linkedTeacher.trim()) {
+        if (linkedTeacher && linkedTeacher.trim() && (!s.enseignant || !s.enseignant.trim() || s.enseignant === '—')) {
           s.enseignant = linkedTeacher.trim();
         }
       }
     });
 
-    let teachers = [];
+    const teachersSet = new Set();
     try {
       const users = await db.collection('users').find({
         role: { $ne: 'admin' },
         $or: [{ section: section }, { section: 'all' }]
       }).toArray();
-      teachers = users.map(u => u.nom || u.username).filter(Boolean);
+      users.forEach(u => {
+        const name = (u.nom || u.username || '').trim();
+        if (name) teachersSet.add(name);
+      });
     } catch (e) {}
 
-    if (teachers.length === 0) {
-      teachers = Array.from(
-        new Set(
-          sourceRows
-            .map(r => String(r[findKey(r, 'Enseignant')] || '').trim())
-            .filter(e => e && e !== '—' && e !== '-')
-        )
-      );
-    }
-    teachers.sort();
+    // Toujours inclure tous les enseignants présents dans le plan hebdomadaire / Excel importé
+    sourceRows.forEach(r => {
+      const e = String(r[findKey(r, 'Enseignant')] || '').trim();
+      if (e && e !== '—' && e !== '-') teachersSet.add(e);
+    });
+    const teachers = Array.from(teachersSet).sort();
 
-    const distinctClasses = Array.from(new Set(sourceRows.map(r => r[findKey(r, 'Classe')]).filter(Boolean))).sort();
+    const distinctClasses = Array.from(new Set(sourceRows.map(r => String(r[findKey(r, 'Classe')] || '').trim()).filter(c => c && c !== '—' && c !== '-'))).sort();
     const filledSlotsCount = slots.filter(s => s.hasContent).length;
 
     res.status(200).json({
@@ -12057,8 +11833,71 @@ app.get('/api/student-grades-data', async (req, res) => {
 });
 
 // ============================================================================
-// ASSIGNATION STRICTE DES MATIÈRES ET CLASSES PAR ENSEIGNANT (Depuis les Plans)
 // ============================================================================
+// EXTRACTION DES MATIÈRES ET ENSEIGNANTS D'UNE CLASSE DEPUIS LE PLAN HEBDOMADAIRE
+// ============================================================================
+async function extractClassSubjectsAndTeachersFromPlan(db, section, targetClasse) {
+  const isPlaceholderMat = (m) => {
+    const s = String(m || '').trim();
+    return !s || s === '—' || s === '-' || s === '–';
+  };
+
+  const plans = await db.collection('plans').find({
+    $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }, { _id: section }]
+  }).toArray();
+
+  // Trier par semaine décroissante pour avoir les enseignants les plus récents en priorité
+  plans.sort((a, b) => (Number(b.week) || 0) - (Number(a.week) || 0));
+
+  const subjectsMap = new Map(); // lowerSubject -> canonicalSubjectName
+  const subjectTeachers = new Map(); // canonicalSubjectName -> teacherName
+  const classesMap = new Map(); // lowerClass -> canonicalClassName
+
+  plans.forEach(p => {
+    const rows = Array.isArray(p.data) ? p.data : [];
+    rows.forEach(r => {
+      if (!r || typeof r !== 'object') return;
+      const cls = String(r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : '') || '').trim();
+      if (!cls || cls === '—' || cls === '-') return;
+
+      if (!classesMap.has(cls.toLowerCase())) {
+        classesMap.set(cls.toLowerCase(), cls);
+      }
+
+      if (targetClasse && !(cls.toLowerCase() === String(targetClasse).trim().toLowerCase() || isClassMatchServer(cls, targetClasse))) {
+        return;
+      }
+
+      const mat = String(r['Matière'] || r.matiere || (typeof findKey === 'function' ? r[findKey(r, 'Matière')] : '') || '').trim();
+      if (isPlaceholderMat(mat)) return;
+
+      // Éviter de dupliquer une matière équivalente déjà présente
+      let existingKey = null;
+      for (const [k, val] of subjectsMap.entries()) {
+        if (k === mat.toLowerCase() || isEquivalentSubjectServer(val, mat)) {
+          existingKey = k;
+          break;
+        }
+      }
+      const canonSubj = existingKey ? subjectsMap.get(existingKey) : mat;
+      if (!existingKey) {
+        subjectsMap.set(mat.toLowerCase(), mat);
+      }
+
+      const ens = String(r['Enseignant'] || r.enseignant || (typeof findKey === 'function' ? r[findKey(r, 'Enseignant')] : '') || '').trim();
+      if (ens && ens !== '—' && ens !== '-' && !subjectTeachers.has(canonSubj)) {
+        subjectTeachers.set(canonSubj, ens);
+      }
+    });
+  });
+
+  return {
+    classes: Array.from(classesMap.values()).sort(),
+    subjects: Array.from(subjectsMap.values()),
+    subjectTeachers
+  };
+}
+
 app.get('/api/teacher-assignments', async (req, res) => {
   try {
     const { teacher, section = 'garcons' } = req.query;
@@ -12068,34 +11907,75 @@ app.get('/api/teacher-assignments', async (req, res) => {
     const tNorm = tRaw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const isAdmin = !tRaw || ['med01', 'racha', 'admin', 'supervisor', 'superviseur'].includes(tNorm);
 
-    const sectionClasses = (section === 'garcons')
+    const defaultSectionClasses = (section === 'garcons')
       ? ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons']
       : (section === 'filles'
         ? ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2']
         : (section === 'primaire' ? ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'] : ['PS', 'MS', 'GS']));
 
-    const standardSubjects = (section === 'garcons' || section === 'filles')
+    const fallbackStandardSubjects = (section === 'garcons' || section === 'filles')
       ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique', 'Sport']
       : ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques', 'Sport'];
 
+    // Extraire les classes et matières réellement présentes dans le plan hebdomadaire de la section
+    const plans = await db.collection('plans').find({
+      $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }, { _id: section }]
+    }).toArray();
+
+    const isPlaceholderMat = (m) => {
+      const s = String(m || '').trim();
+      return !s || s === '—' || s === '-' || s === '–';
+    };
+
+    const planClassesMap = new Map();
+    const classSubjectsMap = {}; // { [classe]: Set of subjects }
+
+    plans.forEach(p => {
+      const rows = Array.isArray(p.data) ? p.data : [];
+      rows.forEach(r => {
+        if (!r || typeof r !== 'object') return;
+        const cls = String(r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : '') || '').trim();
+        if (!cls || cls === '—' || cls === '-') return;
+        const clsLow = cls.toLowerCase();
+        if (!planClassesMap.has(clsLow)) {
+          planClassesMap.set(clsLow, cls);
+        }
+        const canonCls = planClassesMap.get(clsLow);
+        if (!classSubjectsMap[canonCls]) classSubjectsMap[canonCls] = [];
+
+        const mat = String(r['Matière'] || r.matiere || (typeof findKey === 'function' ? r[findKey(r, 'Matière')] : '') || '').trim();
+        if (!isPlaceholderMat(mat)) {
+          const alreadyHas = classSubjectsMap[canonCls].some(s => s.toLowerCase() === mat.toLowerCase() || isEquivalentSubjectServer(s, mat));
+          if (!alreadyHas) {
+            classSubjectsMap[canonCls].push(mat);
+          }
+        }
+      });
+    });
+
+    const sectionClasses = planClassesMap.size > 0 ? Array.from(planClassesMap.values()).sort() : defaultSectionClasses;
+
     if (isAdmin) {
       const allPairs = [];
+      const allSubjectsSet = new Set();
       sectionClasses.forEach(c => {
-        standardSubjects.forEach(s => {
+        const subjsForClass = (classSubjectsMap[c] && classSubjectsMap[c].length > 0)
+          ? classSubjectsMap[c]
+          : fallbackStandardSubjects;
+        classSubjectsMap[c] = subjsForClass;
+        subjsForClass.forEach(s => {
           allPairs.push({ classe: c, subject: s });
+          allSubjectsSet.add(s);
         });
       });
       return res.json({
         isAdmin: true,
         pairs: allPairs,
         classes: sectionClasses,
-        subjects: standardSubjects
+        subjects: Array.from(allSubjectsSet),
+        classSubjectsMap
       });
     }
-
-    const plans = await db.collection('plans').find({
-      $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }, { _id: section }]
-    }).toArray();
 
     const pairSet = new Set();
     const assignedPairs = [];
@@ -12118,7 +11998,7 @@ app.get('/api/teacher-assignments', async (req, res) => {
       rows.forEach(r => {
         const ens = String(r['Enseignant'] || r.enseignant || (typeof findKey === 'function' ? r[findKey(r, 'Enseignant')] : '') || '').trim();
         const ensNorm = ens.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        if (ensNorm === tNorm || ensNorm.includes(tNorm) || tNorm.includes(ensNorm)) {
+        if (ensNorm && (ensNorm === tNorm || ensNorm.includes(tNorm) || tNorm.includes(ensNorm))) {
           const cls = r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : '');
           const mat = r['Matière'] || r.matiere || (typeof findKey === 'function' ? r[findKey(r, 'Matière')] : '');
           if (cls && mat) addPair(cls, mat);
@@ -12131,7 +12011,7 @@ app.get('/api/teacher-assignments', async (req, res) => {
     subTeacherDocs.forEach(d => {
       const ens = String(d.enseignant || '').trim();
       const ensNorm = ens.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      if (ensNorm === tNorm || ensNorm.includes(tNorm) || tNorm.includes(ensNorm)) {
+      if (ensNorm && (ensNorm === tNorm || ensNorm.includes(tNorm) || tNorm.includes(ensNorm))) {
         if (d.classe && d.classe !== 'all') {
           addPair(d.classe, d.matiere);
         } else {
@@ -12162,20 +12042,23 @@ app.get('/api/teacher-assignments', async (req, res) => {
       isAdmin: false,
       pairs: assignedPairs,
       classes: assignedClasses,
-      subjects: assignedSubjects
+      subjects: assignedSubjects,
+      classSubjectsMap
     });
   } catch (err) {
     console.error('Erreur GET /api/teacher-assignments:', err);
-    res.status(500).json({ pairs: [], classes: [], subjects: [] });
+    res.status(500).json({ pairs: [], classes: [], subjects: [], classSubjectsMap: {} });
   }
 });
 
 // ============================================================================
 // DONNÉES COMPLÈTES POUR BULLETINS SCOLAIRES DE TOUTE LA CLASSE (A4)
+// Les matières du bulletin sont strictement celles qui existent pour la classe
+// dans le plan hebdomadaire, avec filtrage selon la sélection de l'admin.
 // ============================================================================
 app.get('/api/class-bulletins-data', async (req, res) => {
   try {
-    const { section = 'garcons', classe = 'PEI1 Garçons', semester = 'S1', subject = '' } = req.query;
+    const { section = 'garcons', classe = 'PEI1 Garçons', semester = 'S1', subject = '', subjects: rawSelectedSubjects = '' } = req.query;
     const db = await connectToDatabase();
 
     const targetClassNorm = (normalizeStudentClass(classe) || classe).trim().toUpperCase();
@@ -12189,14 +12072,14 @@ app.get('/api/class-bulletins-data', async (req, res) => {
     const authoritativeList = await getAuthoritativeStudents(db, section);
     let classStudents = authoritativeList.filter(s => {
       const scNorm = (normalizeStudentClass(s.class) || s.class || '').trim().toUpperCase();
-      return scNorm === targetClassNorm || scNorm.includes(targetClassNorm) || targetClassNorm.includes(scNorm);
+      return scNorm === targetClassNorm || scNorm.includes(targetClassNorm) || targetClassNorm.includes(scNorm) || isClassMatchServer(s.class, classe);
     });
 
     if (classStudents.length === 0) {
       const rawSt = await db.collection('students').find({ section }).toArray();
       classStudents = rawSt.filter(s => {
         const scNorm = (normalizeStudentClass(s.class) || s.class || '').trim().toUpperCase();
-        return scNorm === targetClassNorm || scNorm.includes(targetClassNorm) || targetClassNorm.includes(scNorm);
+        return scNorm === targetClassNorm || scNorm.includes(targetClassNorm) || targetClassNorm.includes(scNorm) || isClassMatchServer(s.class, classe);
       }).map(s => ({
         _id: s._id,
         name: s.name,
@@ -12217,28 +12100,75 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       }));
     }
 
-    // 2. Déterminer la liste des matières de la classe
-    const standardSubjects = (section === 'garcons' || section === 'filles')
+    // 2. Déterminer la liste des matières de la classe directement depuis le Plan Hebdomadaire (Tableau de saisie)
+    const planExtracted = await extractClassSubjectsAndTeachersFromPlan(db, section, classe);
+    const fallbackSubjects = (section === 'garcons' || section === 'filles')
       ? ['Mathématiques', 'Français', 'Anglais', 'Arabe', 'Éducation Islamique', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Informatique']
       : ['Français', 'Mathématiques', 'Anglais', 'Arabe', 'Éducation Islamique', 'Éveil Scientifique', 'Arts Plastiques'];
 
-    // 3. Récupérer toutes les notes enregistrées pour cette classe et ce semestre
+    // Toutes les matières qui existent pour cette classe dans le plan hebdo
+    const allClassSubjects = (planExtracted.subjects && planExtracted.subjects.length > 0)
+      ? planExtracted.subjects
+      : fallbackSubjects;
+    const planSubjectTeachersMap = planExtracted.subjectTeachers || new Map();
+
+    // 3. Filtrer selon les matières sélectionnées par l'administrateur lors du téléchargement / impression
+    let selectedSubjectsList = [];
+    if (rawSelectedSubjects && String(rawSelectedSubjects).trim()) {
+      try {
+        const parsed = JSON.parse(String(rawSelectedSubjects));
+        if (Array.isArray(parsed)) {
+          selectedSubjectsList = parsed.map(s => String(s || '').trim()).filter(Boolean);
+        }
+      } catch (e) {
+        selectedSubjectsList = String(rawSelectedSubjects).split(',').map(s => s.trim()).filter(Boolean);
+      }
+    } else if (subject && subject !== 'all') {
+      selectedSubjectsList = [String(subject).trim()];
+    }
+
+    let subjectsToBuild = allClassSubjects;
+    if (selectedSubjectsList.length > 0) {
+      const filtered = allClassSubjects.filter(s =>
+        selectedSubjectsList.some(sel => sel.toLowerCase() === s.toLowerCase() || isEquivalentSubjectServer(s, sel))
+      );
+      if (filtered.length > 0) {
+        subjectsToBuild = filtered;
+      } else {
+        subjectsToBuild = selectedSubjectsList;
+      }
+    }
+
+    // 4. Récupérer toutes les notes enregistrées pour cette classe et ce semestre
     const semClean = String(semester || '1').trim();
     const semNum = semClean.replace(/^s/i, '');
     const semesterVariants = [semClean, semNum, `S${semNum}`, `Semestre ${semNum}`];
-    const savedGrades = await db.collection('studentGrades').find({
+    const allClassGrades = await db.collection('studentGrades').find({
       section,
-      classe,
       semester: { $in: semesterVariants }
     }).toArray();
+    const savedGrades = allClassGrades.filter(g => g.classe === classe || isClassMatchServer(g.classe, classe));
 
-    // 4. Récupérer les évaluations pour calcul strict
+    // 5. Récupérer les évaluations pour calcul strict
     const allEvaluations = await db.collection('evaluations').find({
       $or: [{ section: section }, { section: { $exists: false } }]
     }).toArray();
 
-    // 5. Récupérer les liaisons enseignants-matières
+    // 6. Récupérer les liaisons enseignants-matières
     const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
+
+    const getTeacherForSubject = (subj, savedGradeDoc) => {
+      if (savedGradeDoc && savedGradeDoc.teacher && String(savedGradeDoc.teacher).trim() && String(savedGradeDoc.teacher).trim() !== '—') {
+        return String(savedGradeDoc.teacher).trim();
+      }
+      if (planSubjectTeachersMap.has(subj)) {
+        return planSubjectTeachersMap.get(subj);
+      }
+      for (const [k, v] of planSubjectTeachersMap.entries()) {
+        if (isEquivalentSubjectServer(k, subj) && v) return v;
+      }
+      return resolveSectionTeacher(section, classe, subj, '', subTeacherDocs);
+    };
 
     // Fonction de calcul strict pour un élève et une matière
     const computeStudentSubjectGrade = (stName, subj) => {
@@ -12304,7 +12234,7 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       else if (totalSubj >= 50) { appreciation = 'Résultats passables, intensifiez les révisions.'; mention = 'Passable'; }
       else { appreciation = 'Insuffisant, un travail plus soutenu est requis.'; mention = 'Insuffisant'; }
 
-      const teacherName = (saved && saved.teacher) ? saved.teacher : resolveSectionTeacher(section, classe, subj, '', subTeacherDocs);
+      const teacherName = getTeacherForSubject(subj, saved);
 
       return {
         subject: subj,
@@ -12319,14 +12249,9 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       };
     };
 
-    // 6. Construire les fiches de notes par matière (Procès-Verbaux de classe par matière)
-    const targetSubjects = (subject && subject !== 'all') 
-      ? standardSubjects.filter(s => isEquivalentSubjectServer(s, subject))
-      : standardSubjects;
-    const subjectsToBuild = targetSubjects.length > 0 ? targetSubjects : standardSubjects;
-
+    // 7. Construire les fiches de notes par matière pour les matières sélectionnées
     const subjectSheets = subjectsToBuild.map(subj => {
-      const teacherName = resolveSectionTeacher(section, classe, subj, '', subTeacherDocs);
+      const teacherName = getTeacherForSubject(subj, null);
 
       const subjStudents = classStudents.map(st => {
         const stName = (st.name || '').trim();
@@ -12379,21 +12304,21 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       };
     });
 
-    // 7. Construire les bulletins récapitulatifs par élève
+    // 8. Construire les bulletins récapitulatifs par élève uniquement avec les matières sélectionnées (issues du plan hebdo)
     const studentsBulletins = classStudents.map(st => {
       const stName = (st.name || '').trim();
       const subjectResults = [];
       let totalPoints = 0;
       let totalMaxPoints = 0;
 
-      standardSubjects.forEach(subj => {
+      subjectsToBuild.forEach(subj => {
         const res = computeStudentSubjectGrade(stName, subj);
         totalPoints += res.total;
         totalMaxPoints += 100;
         subjectResults.push(res);
       });
 
-      const generalAverage = totalMaxPoints > 0 ? Math.round((totalPoints / standardSubjects.length) * 10) / 10 : 0;
+      const generalAverage = subjectsToBuild.length > 0 ? Math.round((totalPoints / subjectsToBuild.length) * 10) / 10 : 0;
       let mention = 'Passable';
       if (generalAverage >= 85) mention = 'Très Bien (Félicitations)';
       else if (generalAverage >= 75) mention = 'Bien (Compliments)';
@@ -12431,7 +12356,8 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       maxCw,
       maxEval,
       maxExam,
-      subjects: standardSubjects,
+      allClassSubjects,
+      subjects: subjectsToBuild,
       subjectSheets,
       students: studentsBulletins,
       classStats: {
