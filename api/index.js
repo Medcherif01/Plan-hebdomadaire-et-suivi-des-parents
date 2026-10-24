@@ -7648,6 +7648,64 @@ app.get('/api/admin/classes', async (req, res) => {
   }
 });
 
+// Ajouter une nouvelle classe à une section
+app.post('/api/admin/add-class', async (req, res) => {
+  try {
+    const { section = 'garcons', classe } = req.body;
+    if (!classe || !String(classe).trim()) {
+      return res.status(400).json({ error: 'Nom de classe manquant.' });
+    }
+    const newClass = String(classe).trim().toUpperCase();
+    const db = await connectToDatabase();
+
+    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
+    const currentHidden = (visDoc && Array.isArray(visDoc.hiddenClasses) ? visDoc.hiddenClasses : [])
+      .filter(c => c.toLowerCase() !== newClass.toLowerCase());
+    const currentVisible = Array.from(new Set([
+      ...(visDoc && Array.isArray(visDoc.visibleClasses) ? visDoc.visibleClasses : []),
+      newClass
+    ]));
+
+    await db.collection('settings').updateOne(
+      { _id: `classes_visibility_${section}` },
+      {
+        $set: {
+          section,
+          visibleClasses: currentVisible,
+          hiddenClasses: currentHidden,
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+
+    // Initialiser une entrée class_schedules si elle n'existe pas
+    const existingSched = await db.collection('class_schedules').findOne({ section, classe: newClass });
+    if (!existingSched) {
+      await db.collection('class_schedules').insertOne({
+        section,
+        classe: newClass,
+        slots: [],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    console.log(`➕ [Admin] Nouvelle classe "${newClass}" ajoutée à la section ${section}.`);
+    res.status(200).json({
+      success: true,
+      message: `Classe "${newClass}" ajoutée avec succès à la section ${section}.`,
+      classe: newClass,
+      visibleClasses: currentVisible
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/add-class:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Supprimer définitivement une classe
 app.post('/api/admin/delete-class', async (req, res) => {
   try {
@@ -7666,7 +7724,7 @@ app.post('/api/admin/delete-class', async (req, res) => {
       if (Array.isArray(p.data)) {
         const initialLen = p.data.length;
         p.data = p.data.filter(r => {
-          const c = String(r.Classe || r.classe || '').trim();
+          const c = String(r.Classe || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : '') || '').trim();
           return c.toLowerCase() !== targetClass.toLowerCase();
         });
         if (p.data.length !== initialLen) {
@@ -7681,13 +7739,19 @@ app.post('/api/admin/delete-class', async (req, res) => {
       }
     }
 
-    // 2. Nettoyer les liaisons de matières
+    // 2. Nettoyer l'emploi du temps canonique (class_schedules)
+    await db.collection('class_schedules').deleteMany({
+      section,
+      classe: { $regex: new RegExp(`^${escapeRegex(targetClass)}$`, 'i') }
+    });
+
+    // 3. Nettoyer les liaisons de matières (class_subject_teachers)
     await db.collection('class_subject_teachers').deleteMany({
       section,
       classe: { $regex: new RegExp(`^${escapeRegex(targetClass)}$`, 'i') }
     });
 
-    // 3. Enregistrer dans les classes masquées pour empêcher sa réapparition
+    // 4. Enregistrer dans les classes masquées pour empêcher sa réapparition
     const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
     const currentHidden = new Set(visDoc && Array.isArray(visDoc.hiddenClasses) ? visDoc.hiddenClasses : []);
     currentHidden.add(targetClass);
@@ -7713,7 +7777,8 @@ app.post('/api/admin/delete-class', async (req, res) => {
     res.status(200).json({
       success: true,
       message: `Classe "${targetClass}" supprimée avec succès (${totalDeletedRows} cours effacés).`,
-      deletedCount: totalDeletedRows
+      deletedCount: totalDeletedRows,
+      visibleClasses: currentVisible
     });
   } catch (error) {
     console.error('Erreur /api/admin/delete-class:', error);
@@ -7815,21 +7880,28 @@ app.post('/api/admin/merge-class', async (req, res) => {
   }
 });
 
-// Nettoyer automatiquement tous les doublons de la section
+// Nettoyer automatiquement tous les doublons de la section (ex: "PEI1 Garçons" -> "PEI1")
 app.post('/api/admin/auto-clean-duplicates', async (req, res) => {
   try {
     const { section = 'garcons' } = req.body;
     const db = await connectToDatabase();
 
+    // 1. Récupérer toutes les classes potentielles depuis plans, class_schedules et settings
     const rawClasses = await db.collection('plans').distinct('data.Classe', { section: section, 'data.Classe': { $nin: [null, ""] } });
     const distinctInDb = (rawClasses || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
+
+    const schedClasses = await db.collection('class_schedules').distinct('classe', { section });
+    const distinctSched = (schedClasses || []).map(c => String(c || '').trim()).filter(c => c.length > 0);
+
+    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
+    const visClasses = (visDoc && Array.isArray(visDoc.visibleClasses)) ? visDoc.visibleClasses : [];
 
     let defaultList = [];
     if (section === 'maternelle') defaultList = ['PS', 'MS', 'GS'];
     else if (section === 'primaire') defaultList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
     else defaultList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
 
-    const allList = Array.from(new Set([...defaultList, ...distinctInDb]));
+    const allList = Array.from(new Set([...defaultList, ...distinctInDb, ...distinctSched, ...visClasses]));
     const duplicatesToMerge = [];
 
     allList.forEach(name => {
@@ -7850,7 +7922,6 @@ app.post('/api/admin/auto-clean-duplicates', async (req, res) => {
 
     const plans = await db.collection('plans').find({ section }).toArray();
     let totalMergedRows = 0;
-    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
     const currentHidden = new Set(visDoc && Array.isArray(visDoc.hiddenClasses) ? visDoc.hiddenClasses : []);
     const currentVisible = new Set(visDoc && Array.isArray(visDoc.visibleClasses) ? visDoc.visibleClasses : defaultList);
 
@@ -7858,6 +7929,7 @@ app.post('/api/admin/auto-clean-duplicates', async (req, res) => {
       const src = pair.source;
       const dst = pair.target;
 
+      // a) Mettre à jour toutes les lignes des plans hebdomadaires
       for (const p of plans) {
         if (Array.isArray(p.data)) {
           let modified = false;
@@ -7882,15 +7954,57 @@ app.post('/api/admin/auto-clean-duplicates', async (req, res) => {
         }
       }
 
-      await db.collection('students').updateMany(
+      // b) Fusionner dans class_schedules
+      const srcSched = await db.collection('class_schedules').findOne({
+        section,
+        classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') }
+      });
+      if (srcSched && Array.isArray(srcSched.slots)) {
+        const dstSched = await db.collection('class_schedules').findOne({
+          section,
+          classe: { $regex: new RegExp(`^${escapeRegex(dst)}$`, 'i') }
+        });
+        const existingDstSlots = (dstSched && Array.isArray(dstSched.slots)) ? dstSched.slots : [];
+        const mergedSlotsMap = new Map();
+        existingDstSlots.forEach(s => {
+          if (s && s.jour && s.periode) mergedSlotsMap.set(`${s.jour.toLowerCase()}_${s.periode}`, s);
+        });
+        srcSched.slots.forEach(s => {
+          if (s && s.jour && s.periode && !mergedSlotsMap.has(`${s.jour.toLowerCase()}_${s.periode}`)) {
+            mergedSlotsMap.set(`${s.jour.toLowerCase()}_${s.periode}`, s);
+          }
+        });
+        await db.collection('class_schedules').updateOne(
+          { section, classe: dst },
+          { $set: { section, classe: dst, slots: Array.from(mergedSlotsMap.values()), updatedAt: new Date() } },
+          { upsert: true }
+        );
+      }
+      await db.collection('class_schedules').deleteMany({
+        section,
+        classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') }
+      });
+
+      // c) Mettre à jour class_subject_teachers
+      await db.collection('class_subject_teachers').updateMany(
         { section, classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } },
         { $set: { classe: dst } }
+      );
+
+      // d) Mettre à jour les élèves et devoirs
+      await db.collection('students').updateMany(
+        { section, $or: [
+          { classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } },
+          { class: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } }
+        ] },
+        { $set: { classe: dst, class: dst } }
       );
       await db.collection('homework').updateMany(
         { section, classe: { $regex: new RegExp(`^${escapeRegex(src)}$`, 'i') } },
         { $set: { classe: dst } }
       );
 
+      // e) Mettre à jour la visibilité
       currentHidden.add(src);
       currentVisible.delete(src);
       currentVisible.add(dst);
@@ -7916,10 +8030,190 @@ app.post('/api/admin/auto-clean-duplicates', async (req, res) => {
       success: true,
       message: `${duplicatesToMerge.length} doublon(s) nettoyé(s) et fusionné(s) avec succès (${totalMergedRows} cours mis à jour).`,
       mergedCount: totalMergedRows,
-      mergedPairs: duplicatesToMerge
+      mergedPairs: duplicatesToMerge,
+      visibleClasses: Array.from(currentVisible)
     });
   } catch (error) {
     console.error('Erreur /api/admin/auto-clean-duplicates:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Appliquer / importer les classes et l'emploi du temps depuis le tableau de saisie hebdomadaire
+app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
+  try {
+    const { section = 'garcons', week = 1, clientPlanData = [] } = req.body;
+    const db = await connectToDatabase();
+
+    // 1. Rassembler toutes les lignes de la section
+    let candidateRows = [];
+    if (Array.isArray(clientPlanData) && clientPlanData.length > 0) {
+      candidateRows.push(...clientPlanData);
+    }
+
+    const planDocs = await db.collection('plans').find({ section }).toArray();
+    planDocs.forEach(p => {
+      if (Array.isArray(p.data)) {
+        candidateRows.push(...p.data);
+      }
+    });
+
+    const isPlaceholderMat = (m) => {
+      const s = String(m || '').trim();
+      return !s || s === '—' || s === '-' || s === '–';
+    };
+
+    // Déterminer les classes par défaut
+    let defaultSectionClasses = [];
+    if (section === 'maternelle') defaultSectionClasses = ['PS', 'MS', 'GS'];
+    else if (section === 'primaire') defaultSectionClasses = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
+    else defaultSectionClasses = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
+
+    // Canonicaliser et regrouper par classe
+    const classSlotsMap = new Map();
+    defaultSectionClasses.forEach(c => classSlotsMap.set(c, new Map()));
+
+    candidateRows.forEach(row => {
+      if (!row || typeof row !== 'object') return;
+      let rawCls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
+      if (!rawCls) return;
+
+      // Détection et suppression des doublons avec suffixe section
+      const suffixMatch = rawCls.match(/^(.+?)\s*(?:Garçons|Garcons|Filles|Fille|Section\s*Garçons|Section\s*Filles)$/i);
+      if (suffixMatch) {
+        rawCls = suffixMatch[1].trim();
+      }
+      const canonMatch = rawCls.match(/\b(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS)\b/i);
+      const canonCode = canonMatch ? canonMatch[1].toUpperCase() : rawCls;
+
+      if (!classSlotsMap.has(canonCode)) {
+        classSlotsMap.set(canonCode, new Map());
+      }
+
+      const mat = String(row[findKey(row, 'Matière')] || row['Matière'] || row.matiere || '').trim();
+      if (isPlaceholderMat(mat)) return;
+
+      const rawJour = row[findKey(row, 'Jour')] || row['Jour'] || row.jour || '';
+      const day = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(rawJour) : rawJour) || String(rawJour).trim();
+      const rawPer = row[findKey(row, 'Période')] || row['Période'] || row.periode || '1';
+      const per = String(rawPer).replace(/[^0-9]/g, '') || '1';
+      const ens = String(row[findKey(row, 'Enseignant')] || row['Enseignant'] || row.enseignant || '').trim();
+
+      const slotKey = `${day.toLowerCase()}_${per}`;
+      const existing = classSlotsMap.get(canonCode).get(slotKey);
+
+      const lec = String(row[findKey(row, 'Leçon')] || row['Leçon'] || '').trim();
+      const dev = String(row[findKey(row, 'Devoirs')] || row['Devoirs'] || '').trim();
+      const hasContent = Boolean((lec && lec !== '—' && lec !== '-') || (dev && dev !== '—' && dev !== '-'));
+
+      if (!existing || (!existing.hasContent && hasContent) || (!existing.enseignant && ens)) {
+        classSlotsMap.get(canonCode).set(slotKey, {
+          jour: day,
+          periode: per,
+          matiere: mat,
+          enseignant: (ens && ens !== '—' && ens !== '-') ? ens : (existing?.enseignant || ''),
+          hasContent: hasContent || (existing?.hasContent || false),
+          lessonPreview: (lec && lec !== '—' && lec !== '-') ? lec.substring(0, 50) : '',
+          homeworkPreview: (dev && dev !== '—' && dev !== '-') ? dev.substring(0, 50) : ''
+        });
+      }
+    });
+
+    // Enregistrer chaque classe dans class_schedules
+    let totalImportedSlots = 0;
+    const finalClasses = Array.from(classSlotsMap.keys()).sort();
+
+    for (const cls of finalClasses) {
+      const slots = Array.from(classSlotsMap.get(cls).values());
+      totalImportedSlots += slots.length;
+
+      await db.collection('class_schedules').updateOne(
+        { section, classe: cls },
+        {
+          $set: {
+            section,
+            classe: cls,
+            slots,
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+
+      // Mettre à jour class_subject_teachers
+      for (const s of slots) {
+        if (s.matiere && s.enseignant && s.enseignant !== '—') {
+          await db.collection('class_subject_teachers').updateOne(
+            { section, classe: cls, matiere: s.matiere },
+            { $set: { section, classe: cls, matiere: s.matiere, enseignant: s.enseignant, updatedAt: new Date() } },
+            { upsert: true }
+          );
+        }
+      }
+    }
+
+    // Mettre à jour la visibilité des classes
+    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
+    const currentHidden = new Set(visDoc && Array.isArray(visDoc.hiddenClasses) ? visDoc.hiddenClasses : []);
+    const currentVisible = new Set(visDoc && Array.isArray(visDoc.visibleClasses) ? visDoc.visibleClasses : []);
+    finalClasses.forEach(c => {
+      currentVisible.add(c);
+      currentHidden.delete(c);
+    });
+
+    // Éliminer tout suffixe doublon de visibleClasses
+    for (const c of Array.from(currentVisible)) {
+      if (/garçons|garcons|filles/i.test(c)) {
+        currentVisible.delete(c);
+        currentHidden.add(c);
+      }
+    }
+
+    await db.collection('settings').updateOne(
+      { _id: `classes_visibility_${section}` },
+      {
+        $set: {
+          section,
+          visibleClasses: Array.from(currentVisible),
+          hiddenClasses: Array.from(currentHidden),
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true }
+    );
+
+    // Corriger également les plans hebdomadaires pour enlever "PEI1 Garçons"
+    for (const p of planDocs) {
+      if (Array.isArray(p.data)) {
+        let changed = false;
+        p.data.forEach(r => {
+          const cKey = r.Classe !== undefined ? 'Classe' : (r.classe !== undefined ? 'classe' : null);
+          if (cKey && /garçons|garcons/i.test(r[cKey])) {
+            const clean = r[cKey].replace(/\s*(?:Garçons|Garcons|Section\s*Garçons)/i, '').trim();
+            if (clean) {
+              r[cKey] = clean;
+              changed = true;
+            }
+          }
+        });
+        if (changed) {
+          await db.collection('plans').updateOne({ _id: p._id }, { $set: { data: p.data, updatedAt: new Date() } });
+        }
+      }
+    }
+
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+
+    console.log(`📥 [Admin] Emploi du temps appliqué depuis le tableau de saisie (${section}): ${finalClasses.length} classes, ${totalImportedSlots} créneaux.`);
+    res.status(200).json({
+      success: true,
+      message: `Emploi du temps et classes appliqués avec succès depuis le tableau de saisie (${finalClasses.length} classes, ${totalImportedSlots} créneaux).`,
+      classes: finalClasses,
+      totalSlots: totalImportedSlots,
+      visibleClasses: Array.from(currentVisible)
+    });
+  } catch (error) {
+    console.error('Erreur /api/admin/import-schedule-from-plan:', error);
     res.status(500).json({ error: error.message });
   }
 });

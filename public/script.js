@@ -19155,15 +19155,121 @@ async function addNewClassToSection() {
     await loadClassManagementData(sec);
 }
 
-function quickDeleteSelectedScheduleClass() {
+async function quickAddNewScheduleClass() {
+    const sec = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
+    const newClass = prompt(`Saisissez le nom de la nouvelle classe à ajouter pour la section (${sec}) :\nExemples: PEI6, DP3, CM2, CP...`, '');
+    if (!newClass || !newClass.trim()) return;
+
+    const formattedName = newClass.trim().toUpperCase();
+
+    try {
+        const res = await fetch('/api/admin/add-class', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: sec, classe: formattedName })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur ' + res.status);
+
+        if (typeof showToastNotification === 'function') {
+            showToastNotification(data.message || `Classe "${formattedName}" ajoutée avec succès.`, 'success');
+        } else {
+            alert(data.message || `Classe "${formattedName}" ajoutée avec succès.`);
+        }
+
+        // Rafraîchir les listes de classes
+        if (typeof populateAdminScheduleClasses === 'function') await populateAdminScheduleClasses();
+        const select = document.getElementById('adminScheduleClassSelect');
+        if (select) {
+            select.value = formattedName;
+            if (typeof loadAdminScheduleForClass === 'function') await loadAdminScheduleForClass();
+        }
+        if (typeof updateFilters === 'function') updateFilters();
+        if (typeof sortAndDisplay === 'function') sortAndDisplay();
+    } catch (err) {
+        console.error('Erreur quickAddNewScheduleClass:', err);
+        alert("Erreur lors de l'ajout de la classe : " + err.message);
+    }
+}
+
+async function importScheduleFromWeeklyPlan() {
+    const sec = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
+    const weekSel = document.getElementById('adminScheduleWeekSelect');
+    const week = weekSel ? weekSel.value : (currentWeek || '1');
+
+    const confirmMsg = `Voulez-vous importer et appliquer les classes et l'emploi du temps depuis le tableau de saisie pour la section (${sec}) ?\n\n` +
+        `✅ Toutes les classes et leurs cours (Jours, Périodes, Matières, Enseignants) qui existent déjà dans le tableau de saisie seront appliqués à l'emploi du temps.\n` +
+        `Les doublons (ex: "PEI1 Garçons") seront automatiquement unifiés dans leurs classes officielles.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    const noticeEl = document.getElementById('scheduleDataStatsNotice');
+    if (noticeEl) noticeEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importation et application des classes et de l\'emploi du temps en cours...';
+
+    try {
+        const res = await fetch('/api/admin/import-schedule-from-plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                section: sec,
+                week,
+                clientPlanData: (typeof planData !== 'undefined' && Array.isArray(planData)) ? planData : []
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur ' + res.status);
+
+        if (typeof showToastNotification === 'function') {
+            showToastNotification(data.message, 'success');
+        } else {
+            alert(data.message);
+        }
+
+        // Recharger les classes et la grille d'emploi du temps
+        if (typeof populateAdminScheduleClasses === 'function') await populateAdminScheduleClasses();
+        const select = document.getElementById('adminScheduleClassSelect');
+        if (select && select.options.length > 1) {
+            select.selectedIndex = 1;
+            if (typeof loadAdminScheduleForClass === 'function') await loadAdminScheduleForClass();
+        }
+
+        if (typeof updateFilters === 'function') updateFilters();
+        if (currentWeek && typeof fetchPlanData === 'function') fetchPlanData(currentWeek);
+        if (typeof sortAndDisplay === 'function') sortAndDisplay();
+    } catch (err) {
+        console.error('Erreur importScheduleFromWeeklyPlan:', err);
+        alert("Erreur lors de l'importation de l'emploi du temps : " + err.message);
+        if (noticeEl) noticeEl.innerHTML = `<span style="color:#DC2626;">Erreur: ${escapeHtml(err.message)}</span>`;
+    }
+}
+
+async function quickDeleteSelectedScheduleClass() {
     const select = document.getElementById('adminScheduleClassSelect');
     const selectedClass = select ? select.value : '';
     if (!selectedClass) {
         alert("Veuillez d'abord sélectionner une classe dans la liste déroulante.");
         return;
     }
-    window.currentClassMgmtSection = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
-    deleteClassFromDb(selectedClass);
+    const sec = document.getElementById('adminScheduleSectionSelect')?.value || currentSection || 'garcons';
+    window.currentClassMgmtSection = sec;
+
+    // Détection de classe doublon avec suffixe (ex: "PEI1 Garçons" vs "PEI1")
+    if (/garçons|garcons|filles/i.test(selectedClass)) {
+        const cleanTarget = selectedClass.replace(/\s*(?:Garçons|Garcons|Section\s*Garçons|Section\s*Filles)/i, '').trim();
+        const isDouble = confirm(
+            `La classe "${selectedClass}" est un doublon de la classe officielle "${cleanTarget}".\n\n` +
+            `👉 Cliquez sur [OK] pour FUSIONNER tous ses cours dans "${cleanTarget}" et supprimer définitivement ce nom en double (Recommandé).\n` +
+            `👉 Cliquez sur [Annuler] pour choisir une suppression totale sans fusion.`
+        );
+        if (isDouble) {
+            await mergeClassInDb(selectedClass, cleanTarget);
+            if (typeof populateAdminScheduleClasses === 'function') await populateAdminScheduleClasses();
+            return;
+        }
+    }
+
+    await deleteClassFromDb(selectedClass);
+    if (typeof populateAdminScheduleClasses === 'function') await populateAdminScheduleClasses();
 }
 
 function toggleCrossSectionViewMode() {
@@ -19212,7 +19318,9 @@ window.deleteClassFromDb = deleteClassFromDb;
 window.mergeClassInDb = mergeClassInDb;
 window.executeAutoCleanDuplicates = executeAutoCleanDuplicates;
 window.addNewClassToSection = addNewClassToSection;
+window.quickAddNewScheduleClass = quickAddNewScheduleClass;
 window.quickDeleteSelectedScheduleClass = quickDeleteSelectedScheduleClass;
+window.importScheduleFromWeeklyPlan = importScheduleFromWeeklyPlan;
 window.syncClassVisibilityFromServer = syncClassVisibilityFromServer;
 window.toggleCrossSectionViewMode = toggleCrossSectionViewMode;
 window.handleCrossSectionToggle = handleCrossSectionToggle;
@@ -19762,6 +19870,513 @@ function populateBulletinModalSubjects(presetSubject) {
     }
 }
 
+function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, section) {
+    const isPei1 = Boolean(data.isPei1);
+    const maxCw = data.maxCw || (isPei1 ? 30 : 20);
+    const maxEval = data.maxEval || (isPei1 ? 20 : 30);
+    const maxHw = 20;
+    const maxExam = 30;
+    const semTitle = chosenSemester === 'S1' ? 'PREMIER SEMESTRE' : 'DEUXIÈME SEMESTRE';
+    const sectionTitle = section === 'garcons' ? 'Section Garçons 👦' : (section === 'filles' ? 'Section Filles 👧' : (section === 'primaire' ? 'Section Primaire 🎒' : 'Section Maternelle 🧸'));
+
+    const students = Array.isArray(data.students) ? [...data.students] : [];
+    // Récupérer la liste complète des matières
+    let subjects = (Array.isArray(data.subjects) && data.subjects.length > 0)
+      ? [...data.subjects]
+      : ((Array.isArray(data.standardSubjects) && data.standardSubjects.length > 0)
+        ? [...data.standardSubjects]
+        : (Array.isArray(data.subjectSheets) ? data.subjectSheets.map(s => s.subject) : []));
+
+    if (subjects.length === 0 && students.length > 0 && Array.isArray(students[0].subjects)) {
+      subjects = students[0].subjects.map(s => s.subject);
+    }
+    if (subjects.length === 0) {
+      subjects = ['Français', 'Mathématiques', 'Anglais', 'SVT', 'Physique-Chimie', 'Histoire-Géo', 'Arabe', 'Éducation Islamique'];
+    }
+
+    // Récupérer le nom de l'enseignant par matière depuis subjectSheets
+    const subjectTeacherMap = {};
+    if (Array.isArray(data.subjectSheets)) {
+      data.subjectSheets.forEach(s => {
+        if (s.subject && s.teacher) subjectTeacherMap[s.subject] = s.teacher;
+      });
+    }
+
+    // Calculer les moyennes et rangs par élève
+    students.forEach(st => {
+      let sumNotes = 0;
+      let countNotes = 0;
+      subjects.forEach(subj => {
+        const entry = (st.subjects || []).find(s => s.subject === subj || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(s.subject, subj)));
+        if (entry && typeof entry.total === 'number') {
+          sumNotes += entry.total;
+          countNotes++;
+        }
+      });
+      st._calculatedTotal = Math.round(sumNotes * 10) / 10;
+      st._calculatedAverage = countNotes > 0 ? Math.round((sumNotes / countNotes) * 10) / 10 : (st.generalAverage || 0);
+    });
+
+    // Tri par moyenne générale décroissante
+    students.sort((a, b) => b._calculatedAverage - a._calculatedAverage);
+    students.forEach((st, idx) => {
+      st._calculatedRank = idx + 1;
+    });
+
+    // Statistiques par matière (moyenne de classe, min, max, taux de réussite)
+    const subjectStats = {};
+    subjects.forEach(subj => {
+      const grades = [];
+      students.forEach(st => {
+        const entry = (st.subjects || []).find(s => s.subject === subj || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(s.subject, subj)));
+        if (entry && typeof entry.total === 'number') {
+          grades.push(entry.total);
+        }
+      });
+      const avg = grades.length > 0 ? (grades.reduce((a, b) => a + b, 0) / grades.length).toFixed(1) : '—';
+      const max = grades.length > 0 ? Math.max(...grades) : '—';
+      const min = grades.length > 0 ? Math.min(...grades) : '—';
+      const successCount = grades.filter(g => g >= 50).length;
+      const rate = grades.length > 0 ? Math.round((successCount / grades.length) * 100) : 0;
+      subjectStats[subj] = { avg, max, min, rate, count: grades.length };
+    });
+
+    // Statistiques globales de classe
+    const allAverages = students.map(s => s._calculatedAverage).filter(a => a > 0);
+    const classGeneralAvg = allAverages.length > 0 ? (allAverages.reduce((a, b) => a + b, 0) / allAverages.length).toFixed(1) : '—';
+    const classMaxAvg = allAverages.length > 0 ? Math.max(...allAverages).toFixed(1) : '—';
+    const classMinAvg = allAverages.length > 0 ? Math.min(...allAverages).toFixed(1) : '—';
+    const classSuccessCount = students.filter(s => s._calculatedAverage >= 50).length;
+    const classSuccessRate = students.length > 0 ? Math.round((classSuccessCount / students.length) * 100) : 0;
+
+    const printDate = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    let html = `<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <title>Procès-Verbal &amp; Relevé Général des Notes A4 — Classe ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 5mm 6mm;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #0F172A;
+            background: #F1F5F9;
+            margin: 0;
+            padding: 12px;
+            font-size: 8.5px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .no-print-bar {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: white;
+            padding: 10px 18px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            border: 1px solid #CBD5E1;
+        }
+        .btn-action-print {
+            background: linear-gradient(135deg, #1D4ED8, #2563EB);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            box-shadow: 0 2px 8px rgba(29,78,216,0.3);
+        }
+        .btn-action-download {
+            background: #059669;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            box-shadow: 0 2px 8px rgba(5,150,105,0.3);
+        }
+        .master-page-a4 {
+            background: white;
+            border: 1.5px solid #CBD5E1;
+            border-radius: 8px;
+            padding: 6mm 8mm;
+            margin: 0 auto;
+            width: 100%;
+            max-width: 287mm;
+            min-height: 198mm;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            page-break-inside: avoid;
+            page-break-after: avoid;
+            break-after: avoid;
+        }
+        .school-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #1E3A8A;
+            padding-bottom: 5px;
+            margin-bottom: 6px;
+        }
+        .school-title-fr {
+            font-size: 13px;
+            font-weight: 800;
+            color: #1E3A8A;
+            margin: 0;
+            letter-spacing: 0.4px;
+        }
+        .school-title-ar {
+            font-family: 'Amiri', serif;
+            font-size: 14px;
+            font-weight: 700;
+            color: #1E3A8A;
+            direction: rtl;
+        }
+        .doc-title-badge {
+            font-size: 11px;
+            font-weight: 800;
+            color: #1E40AF;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .doc-sub {
+            font-size: 8.5px;
+            font-weight: 700;
+            color: #475569;
+            margin-top: 1px;
+        }
+        .master-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 8px;
+            margin-bottom: 6px;
+        }
+        .master-table th {
+            background: #1E3A8A;
+            color: white;
+            font-weight: 700;
+            padding: 3.5px 3px;
+            border: 1px solid #1E3A8A;
+            text-align: center;
+            vertical-align: middle;
+            line-height: 1.15;
+        }
+        .master-table th.th-student {
+            text-align: left;
+            padding-left: 6px;
+            width: 135px;
+        }
+        .master-table th .th-teacher {
+            display: block;
+            font-size: 6.5px;
+            font-weight: 500;
+            color: #BFDBFE;
+            margin-top: 1px;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .master-table td {
+            border: 1px solid #CBD5E1;
+            padding: 3px 3px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .master-table td.td-student {
+            text-align: left;
+            padding-left: 6px;
+            font-weight: 700;
+            color: #1E293B;
+            white-space: nowrap;
+        }
+        .master-table tr:nth-child(even) td:not(.total-col):not(.avg-col):not(.rank-col) {
+            background: #F8FAFC;
+        }
+        .grade-pill {
+            display: inline-block;
+            padding: 1.5px 4px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 8px;
+        }
+        .grade-high { background: #ECFDF5; color: #047857; }
+        .grade-good { background: #EFF6FF; color: #1D4ED8; }
+        .grade-pass { background: #FEF3C7; color: #B45309; }
+        .grade-low { background: #FEF2F2; color: #B91C1C; font-weight: 800; }
+        .total-col {
+            font-weight: 700;
+            color: #334155;
+            background: #F1F5F9;
+        }
+        .avg-col {
+            font-weight: 800;
+            color: #1E3A8A;
+            background: #EEF2FF;
+            font-size: 8.5px;
+        }
+        .rank-col {
+            font-weight: 800;
+            color: #1D4ED8;
+            background: #EFF6FF;
+        }
+        .mention-col {
+            font-size: 7.5px;
+            font-weight: 700;
+            color: #475569;
+            text-align: left;
+            padding-left: 4px;
+            white-space: nowrap;
+        }
+        .stats-summary-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        .stat-card-mini {
+            background: #F8FAFC;
+            border: 1px solid #CBD5E1;
+            border-radius: 5px;
+            padding: 3px 6px;
+            text-align: center;
+        }
+        .stat-label-mini {
+            font-size: 7px;
+            font-weight: 700;
+            color: #64748B;
+            text-transform: uppercase;
+        }
+        .stat-val-mini {
+            font-size: 10px;
+            font-weight: 800;
+            margin-top: 1px;
+        }
+        .signatures-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding-top: 4px;
+            border-top: 1.5px solid #CBD5E1;
+        }
+        .sig-box {
+            border: 1px dashed #94A3B8;
+            border-radius: 5px;
+            padding: 4px 8px;
+            height: 44px;
+            font-size: 8px;
+            font-weight: 700;
+            color: #475569;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        @media print {
+            body {
+                background: white !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .no-print-bar { display: none !important; }
+            .master-page-a4 {
+                box-shadow: none !important;
+                border: none !important;
+                margin: 0 !important;
+                padding: 4mm 6mm !important;
+                width: 100% !important;
+                max-width: none !important;
+                page-break-inside: avoid !important;
+                page-break-after: avoid !important;
+                break-after: avoid !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print-bar">
+        <div>
+            <strong style="font-size:13px; color:#1E3A8A;">Procès-Verbal &amp; Relevé Général A4 — Classe : ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</strong>
+            <span style="color:#059669; font-weight:700; font-size:12px; margin-left:12px;">🌟 Toutes les matières réunies sur 1 seule page A4 (${students.length} élèves)</span>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <button type="button" class="btn-action-download" onclick="downloadBulletinsStandalone()">
+                📥 Télécharger HTML (A4)
+            </button>
+            <button type="button" class="btn-action-print" onclick="window.print()">
+                🖨️ Imprimer la Feuille A4 (PDF)
+            </button>
+        </div>
+    </div>
+
+    <div class="master-page-a4">
+        <div>
+            <!-- EN-TÊTE ÉTABLISSEMENT & CLASSE -->
+            <div class="school-header">
+                <div>
+                    <h1 class="school-title-fr">ÉCOLE BILINGUE AL-KAWTHAR</h1>
+                    <div style="font-size:8px; color:#64748B; font-style:italic;">Excellence &amp; Rigueur Pédagogique</div>
+                    <div style="font-size:8.5px; font-weight:800; color:#2563EB; margin-top:2px;">${escapeHtml(sectionTitle)}</div>
+                </div>
+
+                <div style="text-align:center;">
+                    <div class="doc-title-badge">PROCÈS-VERBAL &amp; RELEVÉ GÉNÉRAL DES NOTES</div>
+                    <div class="doc-sub">
+                        CLASSE : <strong style="color:#1E3A8A; font-size:9.5px;">${escapeHtml(chosenClass)}</strong> &bull;
+                        SEMESTRE : <strong style="color:#1E3A8A; font-size:9.5px;">${escapeHtml(semTitle)}</strong> &bull;
+                        ANNÉE SCOLAIRE : <strong>2025-2026</strong>
+                    </div>
+                </div>
+
+                <div style="text-align:right;">
+                    <div class="school-title-ar">مدرسة الكوثر ثنائية اللغة</div>
+                    <div style="font-size:8px; color:#475569; margin-top:2px;">Édition : <strong>${printDate}</strong></div>
+                    <div style="font-size:8px; color:#1E3A8A; font-weight:700;">Effectif : <strong>${students.length} Élève(s)</strong></div>
+                </div>
+            </div>
+
+            <!-- TABLEAU GÉNÉRAL DES NOTES : TOUTES LES MATIÈRES RÉUNIES -->
+            <table class="master-table">
+                <thead>
+                    <tr>
+                        <th style="width:24px;">N°</th>
+                        <th class="th-student">Nom &amp; Prénom de l'Élève</th>
+                        ${subjects.map(s => {
+                            const t = subjectTeacherMap[s] || '';
+                            return `<th>${escapeHtml(s)}${t ? `<span class="th-teacher">${escapeHtml(t)}</span>` : ''}</th>`;
+                        }).join('')}
+                        <th style="width:42px; background:#1E40AF;">Total</th>
+                        <th style="width:44px; background:#1E3A8A;">Moyenne</th>
+                        <th style="width:30px; background:#0284C7;">Rang</th>
+                        <th style="width:75px; background:#334155; text-align:left; padding-left:4px;">Mention</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${students.map((st, idx) => {
+                        return `
+                        <tr>
+                            <td style="font-weight:700; color:#64748B;">${idx + 1}</td>
+                            <td class="td-student">${escapeHtml(st.studentName)}</td>
+                            ${subjects.map(subj => {
+                                const entry = (st.subjects || []).find(s => s.subject === subj || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(s.subject, subj)));
+                                const val = (entry && typeof entry.total === 'number') ? entry.total : '—';
+                                let pillCls = 'grade-pass';
+                                if (val !== '—') {
+                                    if (val >= 80) pillCls = 'grade-high';
+                                    else if (val >= 65) pillCls = 'grade-good';
+                                    else if (val >= 50) pillCls = 'grade-pass';
+                                    else pillCls = 'grade-low';
+                                }
+                                return `<td><span class="grade-pill ${pillCls}">${val}</span></td>`;
+                            }).join('')}
+                            <td class="total-col">${st._calculatedTotal}</td>
+                            <td class="avg-col">${st._calculatedAverage}</td>
+                            <td class="rank-col">${st._calculatedRank}<sup>${st._calculatedRank === 1 ? 'er' : 'e'}</sup></td>
+                            <td class="mention-col">${escapeHtml(st.mention || 'Passable')}</td>
+                        </tr>
+                        `;
+                    }).join('')}
+                    <!-- LIGNE RÉCAPITULATIVE : MOYENNE DE LA CLASSE PAR MATIÈRE -->
+                    <tr style="background:#F1F5F9; font-weight:800; border-top:2px solid #1E3A8A;">
+                        <td colspan="2" style="text-align:right; padding-right:8px; color:#1E3A8A; font-weight:800;">
+                            MOYENNE DE LA CLASSE :
+                        </td>
+                        ${subjects.map(subj => {
+                            const stat = subjectStats[subj];
+                            return `<td style="font-weight:800; color:#1E3A8A; background:#EEF2FF;">${stat?.avg || '—'}</td>`;
+                        }).join('')}
+                        <td class="total-col">—</td>
+                        <td class="avg-col" style="font-size:9.5px; color:#1E40AF;">${classGeneralAvg}</td>
+                        <td class="rank-col">—</td>
+                        <td class="mention-col" style="font-weight:800; color:#059669;">${classSuccessRate}% Réussite</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div>
+            <!-- STATISTIQUES GLOBALES DE LA CLASSE -->
+            <div class="stats-summary-row">
+                <div class="stat-card-mini">
+                    <div class="stat-label-mini">Effectif Total</div>
+                    <div class="stat-val-mini" style="color:#1E3A8A;">${students.length} Élèves</div>
+                </div>
+                <div class="stat-card-mini">
+                    <div class="stat-label-mini">Moyenne Générale Classe</div>
+                    <div class="stat-val-mini" style="color:#1D4ED8;">${classGeneralAvg} / 100</div>
+                </div>
+                <div class="stat-card-mini">
+                    <div class="stat-label-mini">Plus Forte Moyenne</div>
+                    <div class="stat-val-mini" style="color:#059669;">${classMaxAvg} / 100</div>
+                </div>
+                <div class="stat-card-mini">
+                    <div class="stat-label-mini">Plus Faible Moyenne</div>
+                    <div class="stat-val-mini" style="color:#DC2626;">${classMinAvg} / 100</div>
+                </div>
+                <div class="stat-card-mini">
+                    <div class="stat-label-mini">Taux de Réussite (≥50%)</div>
+                    <div class="stat-val-mini" style="color:#7C3AED;">${classSuccessRate}% (${classSuccessCount}/${students.length})</div>
+                </div>
+            </div>
+
+            <!-- CADRES DES SIGNATURES OFFICIELLES -->
+            <div class="signatures-row">
+                <div class="sig-box">
+                    <span>Le Conseil des Professeurs :</span>
+                    <span style="font-size:7.5px; color:#64748B;">Émargement des enseignants</span>
+                </div>
+                <div class="sig-box">
+                    <span>Le Superviseur Pédagogique :</span>
+                    <span style="font-size:7.5px; color:#64748B;">Visa et validation de conformité</span>
+                </div>
+                <div class="sig-box">
+                    <span>La Direction de l'Établissement :</span>
+                    <span style="font-size:7.5px; color:#64748B;">(Cachet officiel &amp; Signature)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function downloadBulletinsStandalone() {
+            const blob = new Blob([document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'Releve_General_Toutes_Matieres_A4_${chosenClass}_${chosenSemester}.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+</html>`;
+
+    return html;
+}
+
 function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, chosenSubject, format) {
     const isPei1 = Boolean(data.isPei1);
     const maxCw = data.maxCw || (isPei1 ? 30 : 20);
@@ -19772,7 +20387,12 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
     const sectionTitle = section === 'garcons' ? 'Section Garçons' : (section === 'filles' ? 'Section Filles' : (section === 'primaire' ? 'Section Primaire' : 'Section Maternelle'));
 
     // FORMAT PRINCIPAL DEMANDÉ PAR L'UTILISATEUR :
-    // "le bultin sera par matiere tous les eleves et chaque classe dans une page"
+    // "je veux toutes les matiere de la classe dans une seule page et pas chaque matire ds une page"
+    if (format === 'all_subjects_single_page' || !format || (format !== 'by_subject' && format !== 'by_student')) {
+        return buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, section);
+    }
+
+    // FORMAT PAR MATIÈRE DÉTAILLÉE :
     if (format === 'by_subject') {
         const subjectSheets = Array.isArray(data.subjectSheets) ? data.subjectSheets : [];
         const sheetsToRender = (chosenSubject && chosenSubject !== 'all')
@@ -20610,7 +21230,7 @@ async function generateClassBulletins(mode) {
     const chosenClass = (classSelect?.value || 'PEI1').trim();
     const chosenSemester = (semSelect?.value || 'S1').trim();
     const chosenSubject = (subjSelect?.value || 'all').trim();
-    const chosenFormat = (formatSelect?.value || 'by_subject').trim();
+    const chosenFormat = (formatSelect?.value || 'all_subjects_single_page').trim();
 
     if (statusEl) {
         statusEl.style.display = 'block';
@@ -20648,15 +21268,20 @@ async function generateClassBulletins(mode) {
         const fullHTML = buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, chosenSubject, chosenFormat);
         lastGeneratedBulletinsHTML = fullHTML;
         const subjTag = (chosenSubject && chosenSubject !== 'all') ? `_${chosenSubject}` : '';
-        lastGeneratedBulletinsFilename = `${chosenFormat === 'by_subject' ? 'Proces_Verbal_Notes' : 'Bulletins_Scolaires'}_A4_${chosenClass}${subjTag}_${chosenSemester}.html`.replace(/[\s\/]+/g, '_');
+        const prefix = chosenFormat === 'all_subjects_single_page'
+            ? 'Releve_General_Toutes_Matieres'
+            : (chosenFormat === 'by_subject' ? 'Proces_Verbal_Notes' : 'Bulletins_Scolaires');
+        lastGeneratedBulletinsFilename = `${prefix}_A4_${chosenClass}${subjTag}_${chosenSemester}.html`.replace(/[\s\/]+/g, '_');
 
         if (statusEl) {
             statusEl.style.background = '#F0FDF4';
             statusEl.style.color = '#15803D';
             statusEl.style.border = '1px solid #BBF7D0';
-            const countLabel = chosenFormat === 'by_subject' 
-              ? `${(data.subjectSheets || []).length} feuille(s) par matière générée(s) (1 page A4 par matière)` 
-              : `${students.length} bulletin(s) individuel(s) généré(s)`;
+            const countLabel = chosenFormat === 'all_subjects_single_page'
+              ? `Relevé Général A4 généré (Toutes les matières sur 1 seule page A4 pour ${students.length} élèves)`
+              : (chosenFormat === 'by_subject' 
+                ? `${(data.subjectSheets || []).length} feuille(s) par matière générée(s) (1 page A4 par matière)` 
+                : `${students.length} bulletin(s) individuel(s) généré(s)`);
             statusEl.innerHTML = `✅ ${countLabel} pour la classe ${chosenClass} !`;
         }
 
