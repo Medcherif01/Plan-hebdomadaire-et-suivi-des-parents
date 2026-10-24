@@ -577,94 +577,100 @@
          <div id="admin-actions" class="filter-container admin-section" style="display: none;">
              <div class="admin-header-bar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                     <h3 id="admin-title" style="margin:0;"><i class="fas fa-user-shield"></i> Espace Administrateur - Gestion Complète</h3>
-                     <span class="admin-badge"><i class="fas fa-crown"></i> Compte Admin : Med01 / Mohamed</span>
+                     <h3 id="admin-title" style="margin:0;"><i class="fas fa-user-shield"></i> Console d'Administration</h3>
+                     <span class="admin-badge"><i class="fas fa-crown"></i> Admin : Med01 / Mohamed</span>
                  </div>
                  
-                 <!-- COMMUTATEUR RAPIDE DE SECTION ADMIN SANS DÉCONNEXION -->
-                 <div class="admin-section-fast-switch" title="Changer la section active de travail sans se déconnecter">
-                     <span style="font-size:0.85rem; font-weight:700; color:white;"><i class="fas fa-sync-alt"></i> Section Active :</span>
-                     <button type="button" class="admin-sec-toggle-btn active" id="adminSecBtn_garcons" onclick="switchAdminActiveSection('garcons')">
-                         👦 Garçons
-                     </button>
-                     <button type="button" class="admin-sec-toggle-btn" id="adminSecBtn_filles" onclick="switchAdminActiveSection('filles')">
-                         👧 Filles
-                     </button>
-                     <button type="button" class="admin-sec-toggle-btn" id="adminSecBtn_primaire" onclick="switchAdminActiveSection('primaire')">
-                         🎒 Primaire
-                     </button>
-                     <button type="button" class="admin-sec-toggle-btn" id="adminSecBtn_maternelle" onclick="switchAdminActiveSection('maternelle')">
-                         🧸 Maternelle
+                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                     <!-- COMMUTATEUR RAPIDE DE SECTION ADMIN SANS DÉCONNEXION -->
+                     <div class="admin-section-fast-switch" title="Changer la section active de travail sans se déconnecter">
+                         <span style="font-size:0.82rem; font-weight:700; color:white;"><i class="fas fa-sync-alt"></i> Section :</span>
+                         <button type="button" class="admin-sec-toggle-btn active" id="adminSecBtn_garcons" onclick="switchAdminActiveSection('garcons')">
+                             👦 Garçons
+                         </button>
+                         <button type="button" class="admin-sec-toggle-btn" id="adminSecBtn_filles" onclick="switchAdminActiveSection('filles')">
+                             👧 Filles
+                         </button>
+                         <button type="button" class="admin-sec-toggle-btn" id="adminSecBtn_primaire" onclick="switchAdminActiveSection('primaire')">
+                             🎒 Primaire
+                         </button>
+                         <button type="button" class="admin-sec-toggle-btn" id="adminSecBtn_maternelle" onclick="switchAdminActiveSection('maternelle')">
+                             🧸 Maternelle
+                         </button>
+                     </div>
+
+                     <!-- MENU DÉROULANT UNIQUE : BASE DE DONNÉES & OUTILS ADMIN -->
+                     <div id="adminToolsDropdownWrapper" style="position:relative; display:inline-block;">
+                         <button type="button" onclick="toggleAdminToolsDropdown(event)" class="pro-button" style="background: rgba(255,255,255,0.16); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 7px 13px; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                             <i class="fas fa-database" style="color: #93C5FD;"></i> <span>Base &amp; Outils ▾</span>
+                         </button>
+                         <div id="adminToolsDropdownMenu" style="display:none; position:absolute; right:0; top:calc(100% + 6px); background:#FFFFFF; border:1px solid #CBD5E1; border-radius:12px; box-shadow:0 12px 28px rgba(15,23,42,0.22); padding:8px; min-width:265px; z-index:1200; flex-direction:column; gap:5px;">
+                             <button type="button" id="btnAdminManageClasses" class="pro-button" onclick="closeAdminToolsDropdown(); openClassManagementModal();" style="background:#EFF6FF; color:#1E40AF; font-weight:700; padding:8px 12px; font-size:0.83rem; border-radius:8px; border:1px solid #BFDBFE; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%; text-align:left;">
+                                 <i class="fas fa-chalkboard"></i> <span>Gérer Classes &amp; Visibilité</span>
+                             </button>
+                             <button type="button" id="btnAdminPrintBulletins" class="pro-button" onclick="closeAdminToolsDropdown(); openClassGradesPrintModal();" style="background:#F5F3FF; color:#4338CA; font-weight:700; padding:8px 12px; font-size:0.83rem; border-radius:8px; border:1px solid #DDD6FE; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%; text-align:left;">
+                                 <i class="fas fa-print"></i> <span>Bulletins Classe (A4 PDF)</span>
+                             </button>
+                             <hr style="border:none; border-top:1px solid #E2E8F0; margin:2px 0;">
+                             <button type="button" id="btnAdminExportDb" class="pro-button" onclick="closeAdminToolsDropdown(); exportDatabaseExcel();" style="background:#ECFDF5; color:#047857; font-weight:700; padding:8px 12px; font-size:0.83rem; border-radius:8px; border:1px solid #A7F3D0; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%; text-align:left;">
+                                 <i class="fas fa-file-excel"></i> <span>Exporter la Base (Excel)</span>
+                             </button>
+                             <button type="button" id="btnAdminImportDb" class="pro-button" onclick="closeAdminToolsDropdown(); document.getElementById('importDatabaseFileInput').click();" style="background:#EFF6FF; color:#1D4ED8; font-weight:700; padding:8px 12px; font-size:0.83rem; border-radius:8px; border:1px solid #BFDBFE; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%; text-align:left;">
+                                 <i class="fas fa-file-upload"></i> <span>Importer / Restaurer</span>
+                             </button>
+                             <input type="file" id="importDatabaseFileInput" accept=".xlsx,.xls,.json" style="display:none;" onchange="handleImportDatabaseFile(event)">
+                             <hr style="border:none; border-top:1px solid #E2E8F0; margin:2px 0;">
+                             <button type="button" id="btnAdminClearPlans" class="pro-button" onclick="closeAdminToolsDropdown(); clearLessonPlansDb();" style="background:#FEF2F2; color:#DC2626; font-weight:700; padding:8px 12px; font-size:0.83rem; border-radius:8px; border:1px solid #FECACA; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%; text-align:left;">
+                                 <i class="fas fa-trash-alt"></i> <span>Purger Plans de Leçons</span>
+                             </button>
+                         </div>
+                     </div>
+
+                     <!-- BOUTON PLIER / DÉPLIER LE PANNEAU ADMIN -->
+                     <button type="button" onclick="toggleAdminWorkspacePanel()" class="pro-button" style="background: rgba(255,255,255,0.16); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 7px 12px; font-size: 0.82rem; font-weight: 700; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Masquer ou afficher les onglets d'administration pour agrandir le tableau de saisie">
+                         <i id="adminWorkspaceToggleIcon" class="fas fa-chevron-up"></i>
+                         <span id="adminWorkspaceToggleLabel">Réduire le panneau</span>
                      </button>
                  </div>
              </div>
              
-             <!-- BANDEAU GESTION BASE DE DONNÉES (EXPORT EXCEL, IMPORT & PURGE PLANS) -->
-             <div class="admin-database-management-card" style="background: linear-gradient(135deg, #1E293B, #0F172A); color: white; border-radius: 12px; padding: 14px 18px; margin-top: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border: 1px solid #334155; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-                 <div style="display: flex; align-items: center; gap: 12px;">
-                     <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(59, 130, 246, 0.2); border: 1px solid #3B82F6; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #60A5FA;">
-                         <i class="fas fa-database"></i>
-                     </div>
-                     <div>
-                         <div style="font-weight: 800; font-size: 1rem; color: #F8FAFC;">Sauvegarde & Restauration de la Base de Données</div>
-                         <div style="font-size: 0.8rem; color: #94A3B8;">Exporter toutes les données enregistrées (Excel) ou restaurer une sauvegarde précédente</div>
-                     </div>
+             <div id="adminWorkspaceCollapsibleBody" style="display:block; width:100%; margin-top:10px;">
+                 <!-- NAVIGATION PAR ONGLETS PRO (Emploi du temps mis en avant) -->
+                 <div class="admin-tabs-nav" id="adminTabsNav">
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('schedule')" id="tabBtn_schedule">
+                         <i class="fas fa-calendar-alt" style="color:#0284C7;"></i> <span>Emploi du Temps &amp; Matières</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn active" onclick="switchAdminTab('upload')" id="tabBtn_upload">
+                         <i class="fas fa-cloud-upload-alt"></i> <span>Import Plans Excel</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('teachers')" id="tabBtn_teachers">
+                         <i class="fas fa-users-cog"></i> <span>Enseignants &amp; Accès</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('calendar')" id="tabBtn_calendar">
+                         <i class="fas fa-calendar-week"></i> <span>Calendrier (38 Sem.)</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('students')" id="tabBtn_students">
+                         <i class="fas fa-user-graduate"></i> <span>Élèves &amp; Célébrations</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('publication')" id="tabBtn_publication">
+                         <i class="fas fa-bullhorn"></i> <span>Publication Parents</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('special_days')" id="tabBtn_special_days">
+                         <i class="fas fa-layer-group" style="color:#8B5CF6;"></i> <span>Jours Spéciaux</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('messages')" id="tabBtn_messages">
+                         <i class="fas fa-comments"></i> <span>Messages</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('reports')" id="tabBtn_reports">
+                         <i class="fas fa-file-invoice"></i> <span>Rapports Direction</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="switchAdminTab('teachers_photos')" id="tabBtn_teachers_photos">
+                         <i class="fab fa-google-drive" style="color:#0EA5E9;"></i> <span>Photos Drive</span>
+                     </button>
+                     <button type="button" class="admin-tab-btn" onclick="openClassGradesPrintModal()" id="tabBtn_bulletins_a4" style="display:none;">
+                         <i class="fas fa-print"></i> <span>Bulletins Classe (A4 PDF)</span>
+                     </button>
                  </div>
-                 <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                     <button type="button" id="btnAdminPrintBulletins" class="pro-button" onclick="openClassGradesPrintModal()" style="background: linear-gradient(135deg, #4F46E5, #3730A3); color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(79,70,229,0.35);" title="Imprimer ou télécharger les bulletins de notes de toute la classe (toutes les matières)">
-                         <i class="fas fa-print"></i> <span>🖨️ Bulletins Classe (A4 PDF)</span>
-                     </button>
-                     <button type="button" id="btnAdminManageClasses" class="pro-button" onclick="openClassManagementModal()" style="background: #6366F1; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(99,102,241,0.3);" title="Gérer, masquer ou supprimer des classes et fusionner les doublons">
-                         <i class="fas fa-chalkboard"></i> <span>Gérer Classes &amp; Doublons</span>
-                     </button>
-                     <button type="button" id="btnAdminExportDb" class="pro-button" onclick="exportDatabaseExcel()" style="background: #10B981; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(16,185,129,0.3);">
-                         <i class="fas fa-file-excel"></i> <span>Exporter la Base (Excel)</span>
-                     </button>
-                     <button type="button" id="btnAdminImportDb" class="pro-button" onclick="document.getElementById('importDatabaseFileInput').click()" style="background: #2563EB; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(37,99,235,0.3);">
-                         <i class="fas fa-file-upload"></i> <span>Importer / Restaurer</span>
-                     </button>
-                     <button type="button" id="btnAdminClearPlans" class="pro-button" onclick="clearLessonPlansDb()" style="background: #EF4444; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Supprimer tous les plans de leçons stockés pour libérer l'espace disque">
-                         <i class="fas fa-trash-alt"></i> <span>Purger Plans de Leçons</span>
-                     </button>
-                     <input type="file" id="importDatabaseFileInput" accept=".xlsx,.xls,.json" style="display:none;" onchange="handleImportDatabaseFile(event)">
-                 </div>
-             </div>
-             <!-- NAVIGATION PAR ONGLETS PRO -->
-             <div class="admin-tabs-nav" id="adminTabsNav">
-                 <button type="button" class="admin-tab-btn active" onclick="switchAdminTab('upload')" id="tabBtn_upload">
-                     <i class="fas fa-cloud-upload-alt"></i> <span>1. Import Plans Hebdo</span>
-                 </button>
-                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('teachers')" id="tabBtn_teachers">
-                     <i class="fas fa-users-cog"></i> <span>2. Enseignants & Mots de passe</span>
-                 </button>
-                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('calendar')" id="tabBtn_calendar">
-                     <i class="fas fa-calendar-alt"></i> <span>3. Calendrier (38 Semaines)</span>
-                 </button>
-                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('students')" id="tabBtn_students">
-                     <i class="fas fa-user-graduate"></i> <span>4. Élèves & Célébrations</span>
-                 </button>
-                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('reports')" id="tabBtn_reports">
-                     <i class="fas fa-file-invoice"></i> <span>5. Rapports de Direction</span>
-                 </button>
-                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('messages')" id="tabBtn_messages">
-                     <i class="fas fa-comments"></i> <span>6. Messages Enseignants & Parents</span>
-                 </button>
-                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('publication')" id="tabBtn_publication">
-                     <i class="fas fa-bullhorn"></i> <span>7. Publication Plans aux Parents</span>
-                 </button>
-                 <button type="button" class="admin-tab-btn" onclick="switchAdminTab('special_days')" id="tabBtn_special_days">
-                     <i class="fas fa-layer-group" style="color:#8B5CF6;"></i> <span>8. Fusion Jours & Photos</span>
-                 </button>
-                  <button type="button" class="admin-tab-btn" onclick="switchAdminTab('schedule')" id="tabBtn_schedule">
-                      <i class="fas fa-calendar-alt" style="color:#0284C7;"></i> <span>9. Emploi du Temps (Jours & Périodes)</span>
-                  </button>
-                  <button type="button" class="admin-tab-btn" onclick="switchAdminTab('teachers_photos')" id="tabBtn_teachers_photos">
-                      <i class="fab fa-google-drive" style="color:#0EA5E9;"></i> <span>10. Photos Enseignants (Drive)</span>
-                  </button>
-                  <button type="button" class="admin-tab-btn" onclick="openClassGradesPrintModal()" id="tabBtn_bulletins_a4" style="background:#4338CA; color:white; font-weight:700;">
-                      <i class="fas fa-print" style="color:#A5B4FC;"></i> <span>11. 🖨️ Bulletins Classe (A4 PDF)</span>
-                  </button>
-             </div>
 
              <!-- ONGLET 1 : IMPORT EXCEL DES PLANS HEBDOMADAIRES -->
              <div id="adminTab_upload" class="admin-tab-content" style="display:block; width:100%;">
@@ -1678,97 +1684,64 @@
                       <div id="adminPhotosStatusMsg" style="margin-top:14px; font-weight:700;"></div>
                   </div>
               </div>
+             </div><!-- /#adminWorkspaceCollapsibleBody -->
         </div>
-        <div class="filter-container main-actions-container pro-action-hub-grid" style="margin-bottom: 18px;">
-            <!-- GROUPE 1 : EXPORTATION & IMPRESSION DES PLANS HEBDOMADAIRES -->
-            <div class="pro-action-group-card">
-                <div class="pro-action-group-header">
-                    <i class="fas fa-file-export" style="color: #2563EB;"></i>
-                    <span>1. Exportation &amp; Impression des Plans</span>
-                </div>
-                <div class="pro-action-group-buttons">
-                    <button id="btnOpenDesignPlanModal" onclick="openDesignPlanModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #0D9488, #059669); color: white; border: none;" title="Afficher et télécharger le Plan Hebdomadaire en PDF / Design">
-                        <i class="fas fa-file-pdf" style="color: #A7F3D0;"></i>
-                        <span class="btn-text">Plan Hebdo (Design &amp; PDF)</span>
-                    </button>
-                    <button id="generateFullClassWordBtn" onclick="openFullClassWordModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #1E3A8A, #2563EB); color: white; border: none;" title="Télécharger le Plan Hebdo Complet par Classe (Toutes les matières & Tous les enseignants)">
-                        <i class="fas fa-file-word"></i>
-                        <span class="btn-text">Plan Complet Classe (Word)</span>
-                    </button>
-                    <button id="generateWordBtn" onclick="generateWordByClasse()" class="action-button pro-button" disabled style="background: #3B82F6; color: white; border: none;" title="Télécharger mon plan individuel pour mes matières">
-                        <i class="fas fa-user-edit"></i> <span class="btn-text">Mon Plan Individuel</span>
-                    </button>
-                    <button id="generateExcelBtn" onclick="generateExcelWorkbook()" class="action-button pro-button" disabled style="background: #10B981; color: white; border: none;" title="Exporter en un seul fichier Excel">
-                        <i class="fas fa-file-excel"></i> <span class="btn-text">Export Excel</span>
-                    </button>
-                </div>
-            </div>
 
-            <!-- GROUPE 2 : DISTRIBUTION ANNUELLE & ÉVÉNEMENTS -->
-            <div class="pro-action-group-card">
-                <div class="pro-action-group-header">
-                    <i class="fas fa-calendar-check" style="color: #0284C7;"></i>
-                    <span>2. Distribution Annuelle &amp; Jours Spéciaux</span>
-                </div>
-                <div class="pro-action-group-buttons">
-                    <button id="btnOpenAnnualDistribution" onclick="openAnnualDistributionModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #0284C7, #0369A1); color: white; border: none;">
-                        <i class="fas fa-calendar-alt" style="color: #BAE6FD;"></i>
-                        <span class="btn-text">📅 Distribution Annuelle</span>
-                    </button>
-                    <button id="btnOpenSpecialDaysQuickModal" onclick="openSpecialDayQuickModal()" class="action-button pro-button" style="background: linear-gradient(135deg, #7C3AED, #6D28D9); color: white; border: none;">
-                        <i class="fas fa-layer-group"></i> <span>⚡ Fusionner un Jour &amp; Photos</span>
-                    </button>
-                </div>
-            </div>
-            <a id="downloadLink" style="display:none;"></a>
-        </div>
+        <a id="downloadLink" style="display:none;"></a>
         <div id="message-alerte" style="display: none;"></div>
         <div id="progress-bar-container" style="display: none;">
             <div id="progress-bar">0%</div>
             <div id="progress-bar-subtext" style="display: none; font-size: 0.85rem; color: #1E293B; font-weight: 600; text-align: center; margin-top: 6px; padding: 4px;"></div>
         </div>
-         <div class="notes-container">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <label for="notesClassSelector" id="notes-class-label" style="font-weight: bold; margin: 0;"><i class="fas fa-sticky-note"></i> Notes pour la classe :</label>
-                    <select id="notesClassSelector" onchange="displayClassNotes()">
-                        <option value="">-- Sélectionnez une classe --</option>
-                    </select>
-                </div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button type="button" id="downloadNotesClassWordBtn" onclick="downloadSelectedNotesClassFullWord()" class="action-button pro-button" style="background: linear-gradient(135deg, #1E40AF, #2563EB); color: white; border: none; font-size: 0.85rem; padding: 6px 14px; font-weight: 700; border-radius: 8px;">
-                        <i class="fas fa-file-word"></i> Télécharger Plan Complet Word de cette classe
-                    </button>
-                    <button type="button" id="downloadNotesClassDesignBtn" onclick="downloadSelectedNotesClassFullDesign()" class="action-button pro-button" style="background: linear-gradient(135deg, #0D9488, #059669); color: white; border: none; font-size: 0.85rem; padding: 6px 14px; font-weight: 700; border-radius: 8px; box-shadow: 0 2px 8px rgba(13,148,136,0.25);">
-                        <i class="fas fa-file-pdf"></i> 📄 Plan Hebdomadaire (PDF) de cette classe
-                    </button>
-                </div>
-            </div>
-            <textarea id="notesInput" rows="4" placeholder="Sélectionnez une classe pour voir ou ajouter des notes..." spellcheck="true" disabled dir="auto"></textarea>
-            
-            <!-- OPTION ADMIN : AJOUT D'UNE PHOTO (LIEN GOOGLE DRIVE) SOUS LES REMARQUES & NOTES -->
-            <div id="notesPhotoUrlContainer" style="margin-top: 8px; margin-bottom: 8px; background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 10px; padding: 10px 14px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                    <label for="notesPhotoUrlInput" style="font-size: 0.85rem; font-weight: 700; color: #1E293B; margin: 0; display: inline-flex; align-items: center; gap: 6px;">
-                        <i class="fab fa-google-drive" style="color: #0F9D58; font-size: 1.05rem;"></i> Photo de la semaine pour cette classe (Lien Google Drive / Image) :
-                    </label>
-                    <span style="font-size: 0.74rem; color: #64748B;">S'insère proprement sous les commentaires enseignants dans le plan</span>
-                </div>
-                <div style="display: flex; gap: 8px; margin-top: 6px;">
-                    <input type="url" id="notesPhotoUrlInput" placeholder="https://drive.google.com/file/d/... ou https://..." style="flex: 1; padding: 7px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 0.85rem;" oninput="previewNotesPhoto()" disabled />
-                    <button type="button" class="pro-button" onclick="clearNotesPhoto()" style="padding: 7px 12px; background: #E2E8F0; color: #334155; border: none; font-size: 0.8rem; font-weight: 600; border-radius: 8px; cursor: pointer;">Effacer</button>
-                </div>
-                <div id="notesPhotoPreview" style="margin-top: 6px; display: none; align-items: center; gap: 10px;">
-                    <img id="notesPhotoPreviewImg" src="" alt="Aperçu Photo Remarques" style="height: 48px; max-width: 90px; object-fit: contain; border-radius: 5px; border: 1px solid #CBD5E1; background: white; padding: 2px;" />
-                    <span style="font-size: 0.78rem; color: #059669; font-weight: 700;"><i class="fas fa-check-circle"></i> Photo prête à être enregistrée</span>
-                </div>
-            </div>
 
-            <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
-                <button id="saveNotesBtn" onclick="saveNotes()" class="action-button pro-button success-button" disabled>
-                    <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Notes &amp; Photo</span>
-                </button>
-                <span id="notes-save-status" style="font-size: 0.9em;"></span>
+        <!-- TIROIR REPLIABLE : NOTES & PHOTO DE LA SEMAINE POUR LA CLASSE (ouvert via le bouton "Notes Classe" de la barre d'actions) -->
+        <div id="classNotesDrawerWrapper" style="display: none; margin-bottom: 14px;">
+            <div class="notes-container" style="margin: 0; border: 1.5px solid #CBD5E1; border-radius: 14px; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <label for="notesClassSelector" id="notes-class-label" style="font-weight: bold; margin: 0;"><i class="fas fa-sticky-note" style="color: #F59E0B;"></i> Notes &amp; Photo de la semaine pour la classe :</label>
+                        <select id="notesClassSelector" onchange="displayClassNotes()">
+                            <option value="">-- Sélectionnez une classe --</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <button type="button" id="downloadNotesClassWordBtn" onclick="downloadSelectedNotesClassFullWord()" class="action-button pro-button" style="background: linear-gradient(135deg, #1E40AF, #2563EB); color: white; border: none; font-size: 0.82rem; padding: 6px 12px; font-weight: 700; border-radius: 8px;">
+                            <i class="fas fa-file-word"></i> Plan Word de cette classe
+                        </button>
+                        <button type="button" id="downloadNotesClassDesignBtn" onclick="downloadSelectedNotesClassFullDesign()" class="action-button pro-button" style="background: linear-gradient(135deg, #0D9488, #059669); color: white; border: none; font-size: 0.82rem; padding: 6px 12px; font-weight: 700; border-radius: 8px;">
+                            <i class="fas fa-file-pdf"></i> Plan PDF de cette classe
+                        </button>
+                        <button type="button" onclick="toggleClassNotesDrawer()" class="pro-button" style="background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; font-size: 0.8rem; padding: 6px 10px; border-radius: 8px; cursor: pointer;">
+                            <i class="fas fa-times"></i> Fermer
+                        </button>
+                    </div>
+                </div>
+                <textarea id="notesInput" rows="3" placeholder="Sélectionnez une classe pour voir ou ajouter des notes générales (affichées sur le plan et dans l'espace parent)..." spellcheck="true" disabled dir="auto"></textarea>
+                
+                <!-- OPTION ADMIN : AJOUT D'UNE PHOTO (LIEN GOOGLE DRIVE) SOUS LES REMARQUES & NOTES -->
+                <div id="notesPhotoUrlContainer" style="margin-top: 8px; margin-bottom: 8px; background: #F8FAFC; border: 1.5px dashed #CBD5E1; border-radius: 10px; padding: 10px 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <label for="notesPhotoUrlInput" style="font-size: 0.85rem; font-weight: 700; color: #1E293B; margin: 0; display: inline-flex; align-items: center; gap: 6px;">
+                            <i class="fab fa-google-drive" style="color: #0F9D58; font-size: 1.05rem;"></i> Photo de la semaine pour cette classe (Lien Google Drive / Image) :
+                        </label>
+                        <span style="font-size: 0.74rem; color: #64748B;">S'insère sous les commentaires enseignants dans le plan</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                        <input type="url" id="notesPhotoUrlInput" placeholder="https://drive.google.com/file/d/... ou https://..." style="flex: 1; padding: 7px 12px; border-radius: 8px; border: 1px solid #CBD5E1; font-size: 0.85rem;" oninput="previewNotesPhoto()" disabled />
+                        <button type="button" class="pro-button" onclick="clearNotesPhoto()" style="padding: 7px 12px; background: #E2E8F0; color: #334155; border: none; font-size: 0.8rem; font-weight: 600; border-radius: 8px; cursor: pointer;">Effacer</button>
+                    </div>
+                    <div id="notesPhotoPreview" style="margin-top: 6px; display: none; align-items: center; gap: 10px;">
+                        <img id="notesPhotoPreviewImg" src="" alt="Aperçu Photo Remarques" style="height: 48px; max-width: 90px; object-fit: contain; border-radius: 5px; border: 1px solid #CBD5E1; background: white; padding: 2px;" />
+                        <span style="font-size: 0.78rem; color: #059669; font-weight: 700;"><i class="fas fa-check-circle"></i> Photo prête à être enregistrée</span>
+                    </div>
+                </div>
+
+                <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 5px;">
+                    <button id="saveNotesBtn" onclick="saveNotes()" class="action-button pro-button success-button" disabled>
+                        <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Notes &amp; Photo</span>
+                    </button>
+                    <span id="notes-save-status" style="font-size: 0.9em;"></span>
+                </div>
             </div>
         </div>
 
@@ -1900,135 +1873,152 @@
             </div>
         </div>
         
-         <!-- SÉLECTEUR DE SEMAINE & INCOMPLETS (JUSTE AVANT LA BARRE D'ACTIONS ET LE TABLEAU) -->
-         <div class="filter-container week-selector-container" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:white; border:1.5px solid #E2E8F0; border-radius:14px; padding:12px 18px; margin-bottom:14px; box-shadow:0 4px 14px rgba(15,23,42,0.04);">
-             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex:1; min-width:260px;">
-                 <label for="weekSelector" style="margin:0; font-weight:800; color:#1E293B; white-space:nowrap;"><i class="fas fa-calendar-week" style="color:#2563EB;"></i> Semaine :</label>
-                 <select id="weekSelector" onchange="loadPlanForWeek()" style="flex:1; max-width:440px; padding:9px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-weight:700; color:#0F172A; background:#F8FAFC;">
-                      <option value="">-- Sélectionnez une semaine --</option>
-                 </select>
+         <!-- BARRE DE COMMANDE ET DE FILTRAGE UNIFIÉE (REMPLACE LES MULTIPLES CARTES DISPERSÉES AU-DESSUS DU TABLEAU) -->
+         <div class="unified-teacher-command-bar" style="background: #FFFFFF; border: 1.5px solid #E2E8F0; border-radius: 14px; padding: 14px 18px; margin-bottom: 14px; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);">
+             <!-- LIGNE 1 : SEMAINE ACTIVE + STATUT + BOUTON ENREGISTRER + MENUS GROUPÉS -->
+             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #F1F5F9;">
+                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1; min-width: 260px;">
+                     <label for="weekSelector" style="margin: 0; font-weight: 800; color: #1E293B; white-space: nowrap; font-size: 0.9rem;">
+                         <i class="fas fa-calendar-week" style="color: #2563EB;"></i> Semaine :
+                     </label>
+                     <select id="weekSelector" onchange="loadPlanForWeek()" style="flex: 1; max-width: 380px; padding: 8px 12px; border-radius: 10px; border: 1.5px solid #CBD5E1; font-weight: 700; color: #0F172A; background: #F8FAFC; font-size: 0.88rem; cursor: pointer;">
+                         <option value="">-- Sélectionnez une semaine --</option>
+                     </select>
+                     <div id="teacherRowsCounterBadge" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.8rem; color: #1E293B; background: #F8FAFC; padding: 6px 12px; border-radius: 999px; border: 1px solid #CBD5E1;">
+                         <i class="fas fa-list-check" style="color: #2563EB;"></i>
+                         <span id="teacherRowCountTxt">0 cours</span>
+                         <span style="color: #94A3B8;">•</span>
+                         <span id="teacherModifiedCountTxt" style="color: #059669;">Enregistré ✅</span>
+                     </div>
+                 </div>
+
+                 <!-- BOUTONS D'ACTION REGROUPÉS PROPREMENT -->
+                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                     <!-- 1. Enregistrer (CTA Principal) -->
+                     <button id="saveAllDisplayedBtn" onclick="saveAllDisplayedRows()" class="action-button save-all-button pro-button success-button" disabled style="margin: 0; padding: 8px 16px; font-size: 0.86rem; font-weight: 700; border-radius: 10px;" title="Raccourci clavier : Ctrl + S / حفظ الكل">
+                         <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Lignes</span>
+                     </button>
+
+                     <!-- 2. Menu Exporter & Imprimer -->
+                     <div id="exportPlanDropdownWrapper" style="position: relative; display: inline-block;">
+                         <button type="button" onclick="toggleExportDropdown(event)" class="pro-button" style="margin: 0; padding: 8px 13px; font-size: 0.84rem; font-weight: 700; border-radius: 10px; background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                             <i class="fas fa-print"></i> <span>Exporter &amp; Imprimer ▾</span>
+                         </button>
+                         <div id="exportPlanDropdownMenu" style="display: none; position: absolute; right: 0; top: calc(100% + 6px); background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 12px 28px rgba(15,23,42,0.18); padding: 8px; min-width: 270px; z-index: 1100; flex-direction: column; gap: 6px;">
+                             <button id="btnOpenDesignPlanModal" onclick="closeExportDropdown(); openDesignPlanModal();" class="action-button pro-button" style="background: linear-gradient(135deg, #0D9488, #059669); color: white; border: none; width: 100%; justify-content: flex-start; padding: 9px 12px; font-size: 0.83rem; border-radius: 8px; margin: 0;">
+                                 <i class="fas fa-file-pdf" style="color: #A7F3D0;"></i> <span class="btn-text">Plan Hebdo (Design &amp; PDF)</span>
+                             </button>
+                             <button id="generateFullClassWordBtn" onclick="closeExportDropdown(); openFullClassWordModal();" class="action-button pro-button" style="background: linear-gradient(135deg, #1E3A8A, #2563EB); color: white; border: none; width: 100%; justify-content: flex-start; padding: 9px 12px; font-size: 0.83rem; border-radius: 8px; margin: 0;">
+                                 <i class="fas fa-file-word"></i> <span class="btn-text">Plan Complet Classe (Word)</span>
+                             </button>
+                             <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 2px 0;">
+                             <button id="generateWordBtn" onclick="closeExportDropdown(); generateWordByClasse();" class="action-button pro-button" disabled style="background: #3B82F6; color: white; border: none; width: 100%; justify-content: flex-start; padding: 8px 12px; font-size: 0.83rem; border-radius: 8px; margin: 0;">
+                                 <i class="fas fa-user-edit"></i> <span class="btn-text">Mon Plan Individuel (Word)</span>
+                             </button>
+                             <button id="generateExcelBtn" onclick="closeExportDropdown(); generateExcelWorkbook();" class="action-button pro-button" disabled style="background: #10B981; color: white; border: none; width: 100%; justify-content: flex-start; padding: 8px 12px; font-size: 0.83rem; border-radius: 8px; margin: 0;">
+                                 <i class="fas fa-file-excel"></i> <span class="btn-text">Export Excel Complet</span>
+                             </button>
+                         </div>
+                     </div>
+
+                     <!-- 3. Menu Fiches de Leçons IA -->
+                     <div style="position: relative; display: inline-block;">
+                         <button type="button" class="pro-button" onclick="toggleActionDropdown(event)" style="margin: 0; padding: 8px 13px; font-size: 0.84rem; font-weight: 700; border-radius: 10px; background: #F5F3FF; color: #6D28D9; border: 1px solid #DDD6FE; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                             <i class="fas fa-robot"></i> <span>Fiches de Leçon ▾</span>
+                         </button>
+                         <div id="actionDropdownMenu" class="action-dropdown-menu" style="right: 0; left: auto; min-width: 250px;">
+                             <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans(); closeActionDropdown();" disabled>
+                                 <i class="fas fa-file-word" style="color:#7C3AED;"></i> Plans de Leçon (Affichés)
+                             </button>
+                             <button id="openLessonPlanModalBtn" onclick="openLessonPlanModal('classes'); closeActionDropdown();">
+                                 <i class="fas fa-layer-group" style="color:#2563EB;"></i> Par Classes / Matières
+                             </button>
+                             <button id="openTeachersBulkDownloadBtn" onclick="openLessonPlanModal('teachers'); closeActionDropdown();">
+                                 <i class="fas fa-users-cog" style="color:#059669;"></i> Par Enseignants (ZIP)
+                             </button>
+                         </div>
+                     </div>
+
+                     <!-- 4. Menu Outils & Distribution Annuelle -->
+                     <div id="planToolsDropdownWrapper" style="position: relative; display: inline-block;">
+                         <button type="button" onclick="togglePlanToolsDropdown(event)" class="pro-button" style="margin: 0; padding: 8px 13px; font-size: 0.84rem; font-weight: 700; border-radius: 10px; background: #F8FAFC; color: #334155; border: 1px solid #CBD5E1; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">
+                             <i class="fas fa-sliders-h" style="color: #0284C7;"></i> <span>Outils &amp; Distribution ▾</span>
+                         </button>
+                         <div id="planToolsDropdownMenu" style="display: none; position: absolute; right: 0; top: calc(100% + 6px); background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 12px 28px rgba(15,23,42,0.18); padding: 8px; min-width: 285px; z-index: 1100; flex-direction: column; gap: 6px;">
+                             <button id="btnOpenAnnualDistribution" onclick="closePlanToolsDropdown(); openAnnualDistributionModal();" class="action-button pro-button" style="background: linear-gradient(135deg, #0284C7, #0369A1); color: white; border: none; width: 100%; justify-content: flex-start; padding: 9px 12px; font-size: 0.83rem; border-radius: 8px; margin: 0;">
+                                 <i class="fas fa-calendar-alt" style="color: #BAE6FD;"></i> <span class="btn-text">Distribution Annuelle</span>
+                             </button>
+                             <button id="btnAutoFillFromAnnualDist" onclick="closePlanToolsDropdown(); autoFillWeeklyPlanFromAnnualDistribution();" class="pro-button" style="background: #F0F9FF; color: #0369A1; border: 1px solid #BAE6FD; font-weight: 700; width: 100%; justify-content: flex-start; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; margin: 0; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                 <i class="fas fa-bolt" style="color:#0284C7;"></i> <span>Remplir via Distribution</span>
+                             </button>
+                             <button id="btnSyncToAnnualDist" onclick="closePlanToolsDropdown(); syncWeeklyPlanToAnnualDistribution();" class="pro-button" style="background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; font-weight: 700; width: 100%; justify-content: flex-start; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; margin: 0; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                 <i class="fas fa-sync-alt" style="color:#059669;"></i> <span>Sync vers Distribution</span>
+                             </button>
+                             <div id="syncDropdownMenu" style="display:none;"></div>
+                             <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 2px 0;">
+                             <button id="btnOpenSpecialDaysQuickModal" onclick="closePlanToolsDropdown(); openSpecialDayQuickModal();" class="action-button pro-button" style="background: linear-gradient(135deg, #7C3AED, #6D28D9); color: white; border: none; width: 100%; justify-content: flex-start; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; margin: 0;">
+                                 <i class="fas fa-layer-group"></i> <span>Fusionner un Jour &amp; Photos</span>
+                             </button>
+                             <button id="toggleIncompleteBtn" onclick="closePlanToolsDropdown(); toggleIncompleteList();" class="pro-button toggle-incomplete-btn" style="width: 100%; justify-content: flex-start; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; margin: 0;">
+                                 <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
+                             </button>
+                             <button type="button" id="btnCrossSectionToggle" onclick="closePlanToolsDropdown(); toggleCrossSectionViewMode();" class="pro-button" style="width: 100%; justify-content: flex-start; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; margin: 0; background: linear-gradient(135deg, #EC4899, #8B5CF6); color: white; border: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                 <i class="fas fa-eye"></i> <span id="btnCrossSectionToggleTxt">Voir saisie autre section</span>
+                             </button>
+                             <button type="button" onclick="closePlanToolsDropdown(); openClassManagementModal();" class="pro-button" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:8px 12px; font-size:0.82rem; font-weight:700; border-radius:8px; cursor:pointer; width:100%; display:flex; align-items:center; gap:8px; margin:0;">
+                                 <i class="fas fa-sliders-h"></i> <span>Gérer Classes affichées</span>
+                             </button>
+                             <button id="adminDeleteRowModalBtn" onclick="closePlanToolsDropdown(); openAdminDeleteRowModal();" class="action-button pro-button" style="display:none; background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; width: 100%; justify-content: flex-start; padding: 8px 12px; font-size: 0.82rem; border-radius: 8px; margin: 0;">
+                                 <i class="fas fa-trash-alt"></i> <span class="btn-text">Supprimer une ligne (Admin)</span>
+                             </button>
+                         </div>
+                     </div>
+
+                     <!-- 5. Bouton Notes Classe (ouvre le tiroir repliable) -->
+                     <button type="button" onclick="toggleClassNotesDrawer()" class="pro-button" style="margin: 0; padding: 8px 12px; font-size: 0.84rem; font-weight: 700; border-radius: 10px; background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Ajouter ou voir les remarques et photos de la classe">
+                         <i class="fas fa-sticky-note"></i> <span>Notes Classe</span>
+                     </button>
+                 </div>
              </div>
-             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                 <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px;">
-                     <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
+
+             <!-- LIGNE 2 : FILTRES DE TRI ET DE RECHERCHE SUR UNE SEULE LIGNE PROPRE -->
+             <div class="filter-container data-filters-container" style="margin: 12px 0 0 0; padding: 0; background: transparent; border: none; box-shadow: none;">
+                 <label for="filterEnseignant" id="filter-enseignant-label"><i class="fas fa-user-tie"></i> Enseignant:</label>
+                 <select id="filterEnseignant" onchange="sortAndDisplay()"> <option value="">Tous</option> </select>
+                 
+                 <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
+                 <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
+
+                 <label for="filterMatiere" id="filter-matiere-label"><i class="fas fa-book"></i> Matière:</label>
+                 <select id="filterMatiere" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
+                 <label for="filterPeriode" id="filter-periode-label"><i class="fas fa-clock"></i> Période:</label>
+                 <select id="filterPeriode" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
+                 <label for="filterJour" id="filter-jour-label"><i class="fas fa-calendar-day"></i> Jour:</label>
+                 <select id="filterJour" onchange="sortAndDisplay()">
+                     <option value="">Tous</option>
+                     <option value="Dimanche">Dimanche</option>
+                     <option value="Lundi">Lundi</option>
+                     <option value="Mardi">Mardi</option>
+                     <option value="Mercredi">Mercredi</option>
+                     <option value="Jeudi">Jeudi</option>
+                 </select>
+
+                 <button type="button" id="btnResetFilters" onclick="resetTeacherFilters()" class="pro-button secondary-button" style="padding: 6px 12px; font-size: 0.82rem; font-weight: 700; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;" title="Réinitialiser tous les filtres pour afficher l'ensemble des cours">
+                     <i class="fas fa-undo"></i> <span id="btnResetFiltersTxt">Tout afficher</span>
                  </button>
-                 <button type="button" id="btnCrossSectionToggle" onclick="toggleCrossSectionViewMode()" class="pro-button" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px; background: linear-gradient(135deg, #EC4899, #8B5CF6); color: white; border: none; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(236,72,153,0.3);" title="Consulter la saisie de l'autre section (Filles / Garçons) pour votre matière en lecture seule">
-                     <i class="fas fa-eye"></i> <span id="btnCrossSectionToggleTxt">Voir saisie autre section</span>
-                 </button>
+
+                 <div id="crossSectionToggleWrapper" style="display: none;">
+                     <input type="checkbox" id="toggleCrossSectionView" onchange="handleCrossSectionToggle(this.checked)" style="display: none;">
+                 </div>
              </div>
          </div>
+
          <div id="incompleteTeachersDisplay" style="display: none; margin-bottom:14px;">
              <h4>Enseignants Incomplets</h4>
              <ul id="incompleteList">
                  <li>Chargement...</li>
              </ul>
          </div>
-
-         <!-- FILTRES DE TRI ET DE RECHERCHE (PLACÉS DIRECTEMENT SOUS LE CHOIX DE LA SEMAINE ET AU-DESSUS DU TABLEAU) -->
-         <div class="filter-container data-filters-container" style="margin-bottom: 16px;">
-             <label for="filterEnseignant" id="filter-enseignant-label"><i class="fas fa-user-tie"></i> Enseignant:</label>
-             <select id="filterEnseignant" onchange="sortAndDisplay()"> <option value="">Tous</option> </select>
-             
-             <label for="filterClasse" id="filter-classe-label"><i class="fas fa-chalkboard-user"></i> Classe:</label>
-             <div style="display:inline-flex; align-items:center; gap:4px;">
-                 <select id="filterClasse" onchange="handleClassFilterChange()"> <option value="">Toutes</option> </select>
-                 <button type="button" onclick="openClassManagementModal()" class="pro-button" style="background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; padding:5px 9px; font-size:0.78rem; font-weight:700; border-radius:8px; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:5px;" title="Choisir les classes à afficher sur le tableau ou supprimer des classes">
-                     <i class="fas fa-sliders-h"></i> <span>Gérer Classes</span>
-                 </button>
-             </div>
-
-             <label for="filterMatiere" id="filter-matiere-label"><i class="fas fa-book"></i> Matière:</label>
-             <select id="filterMatiere" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
-             <label for="filterPeriode" id="filter-periode-label"><i class="fas fa-clock"></i> Période:</label>
-             <select id="filterPeriode" onchange="sortAndDisplay()"> <option value="">Toutes</option> </select>
-             <label for="filterJour" id="filter-jour-label"><i class="fas fa-calendar-day"></i> Jour:</label>
-             <select id="filterJour" onchange="sortAndDisplay()">
-                 <option value="">Tous</option>
-                 <option value="Dimanche">Dimanche</option>
-                 <option value="Lundi">Lundi</option>
-                 <option value="Mardi">Mardi</option>
-                 <option value="Mercredi">Mercredi</option>
-                 <option value="Jeudi">Jeudi</option>
-            </select>
-
-            <button type="button" id="btnResetFilters" onclick="resetTeacherFilters()" class="pro-button secondary-button" style="padding: 7px 12px; font-size: 0.84rem; font-weight: 700; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;" title="Réinitialiser tous les filtres pour afficher l'ensemble des cours">
-                <i class="fas fa-undo"></i> <span id="btnResetFiltersTxt">Effacer filtres</span>
-            </button>
-
-            <div id="crossSectionToggleWrapper" style="display: none;">
-                <input type="checkbox" id="toggleCrossSectionView" onchange="handleCrossSectionToggle(this.checked)" style="display: none;">
-            </div>
-         </div>
-
-         <div class="table-actions-container pro-action-hub-grid" style="margin-bottom: 16px;">
-             <!-- GROUPE A : SAUVEGARDE & SYNCHRONISATION -->
-             <div class="pro-action-group-card">
-                 <div class="pro-action-group-header">
-                     <i class="fas fa-save" style="color: #059669;"></i>
-                     <span>Sauvegarde &amp; Synchro</span>
-                 </div>
-                 <div class="pro-action-group-buttons" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                     <button id="saveAllDisplayedBtn" onclick="saveAllDisplayedRows()" class="action-button save-all-button pro-button success-button" disabled title="Raccourci clavier : Ctrl + S / حفظ الكل">
-                         <i class="fas fa-save"></i> <span class="btn-text">Enregistrer Lignes</span>
-                     </button>
-                     
-                     <div style="position:relative; display:inline-block; flex:1; min-width:180px;">
-                         <button type="button" class="action-button pro-button" onclick="toggleSyncDropdown(event)" style="background: linear-gradient(135deg, #0284C7, #0369A1); color: white; width:100%; justify-content:space-between;">
-                             <span style="display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-sync-alt"></i> <span>Distribution ▾</span></span>
-                             <i class="fas fa-chevron-down" style="font-size:0.75rem;"></i>
-                         </button>
-                         <div id="syncDropdownMenu" class="action-dropdown-menu">
-                             <button id="btnAutoFillFromAnnualDist" onclick="autoFillWeeklyPlanFromAnnualDistribution(); closeSyncDropdown();">
-                                 <i class="fas fa-bolt" style="color:#0284C7;"></i> Remplir via Distribution
-                             </button>
-                             <button id="btnSyncToAnnualDist" onclick="syncWeeklyPlanToAnnualDistribution(); closeSyncDropdown();">
-                                 <i class="fas fa-sync-alt" style="color:#059669;"></i> Sync vers Distribution
-                             </button>
-                         </div>
-                     </div>
-                 </div>
-             </div>
-
-            <!-- GROUPE B : FICHES DE LEÇONS IA & GESTION LIGNES -->
-            <div class="pro-action-group-card">
-                <div class="pro-action-group-header" style="justify-content: space-between;">
-                    <span style="display:inline-flex; align-items:center; gap:8px;">
-                        <i class="fas fa-robot" style="color: #7C3AED;"></i>
-                        <span>Fiches de Leçons (IA &amp; ZIP)</span>
-                    </span>
-                    <div id="teacherRowsCounterBadge" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.78rem; color: #1E293B; background: #FFFFFF; padding: 3px 10px; border-radius: 999px; border: 1px solid #CBD5E1; text-transform: none; letter-spacing: 0;">
-                        <i class="fas fa-list-check" style="color: #2563EB;"></i> 
-                        <span id="teacherRowCountTxt">0 cours</span>
-                        <span style="color: #94A3B8;">•</span>
-                        <span id="teacherModifiedCountTxt" style="color: #059669;">Enregistré ✅</span>
-                    </div>
-                </div>
-                <div class="pro-action-group-buttons" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <!-- LISTE DÉROULANTE (DROPDOWN) POUR LIBÉRER UN MAX D'ESPACE -->
-                    <div style="position:relative; display:inline-block; flex:1; min-width:210px;">
-                        <button type="button" class="action-button pro-button" onclick="toggleActionDropdown(event)" style="background: #7C3AED; color: white; width:100%; justify-content:space-between;">
-                            <span style="display:inline-flex; align-items:center; gap:8px;"><i class="fas fa-file-word"></i> <span>Générer Fiches de Leçon ▾</span></span>
-                            <i class="fas fa-chevron-down" style="font-size:0.75rem;"></i>
-                        </button>
-                        <div id="actionDropdownMenu" class="action-dropdown-menu">
-                            <button id="generateAllDisplayedPlansBtn" onclick="generateAllDisplayedLessonPlans(); closeActionDropdown();" disabled>
-                                <i class="fas fa-file-word" style="color:#7C3AED;"></i> Plans de Leçon (Affichés)
-                            </button>
-                            <button id="openLessonPlanModalBtn" onclick="openLessonPlanModal('classes'); closeActionDropdown();">
-                                <i class="fas fa-layer-group" style="color:#2563EB;"></i> Par Classes / Matières
-                            </button>
-                            <button id="openTeachersBulkDownloadBtn" onclick="openLessonPlanModal('teachers'); closeActionDropdown();">
-                                <i class="fas fa-users-cog" style="color:#059669;"></i> Par Enseignants (ZIP)
-                            </button>
-                        </div>
-                    </div>
-
-                    <button id="adminDeleteRowModalBtn" onclick="openAdminDeleteRowModal()" class="action-button pro-button" style="display:none; background: #DC2626; color: white;" title="Supprimer une ligne du tableau en toute sécurité (Admin)">
-                        <i class="fas fa-trash-alt"></i> <span class="btn-text">Supprimer</span>
-                    </button>
-                </div>
-            </div>
-        </div>
 
         <!-- Double barre de défilement supérieure (évite de devoir aller en bas du tableau pour glisser) -->
         <div class="table-top-scrollbar-wrapper" id="planTableTopScrollbar">
@@ -2631,8 +2621,8 @@
                             </h2>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                            <!-- Bouton Afficher & Imprimer le Plan pour le Parent -->
-                            <button type="button" class="pro-button print-parent-plan-btn" id="btnParentPrintPlanTop" onclick="printParentWeeklyPlan()" style="padding:8px 16px; font-weight:700; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 3px 10px rgba(16,185,129,0.25);">
+                            <!-- Boutons doublons masqués dans l'en-tête pour alléger l'interface parent (déjà présents dans la barre de filtres et les onglets juste en dessous) -->
+                            <button type="button" class="pro-button print-parent-plan-btn" id="btnParentPrintPlanTop" onclick="printParentWeeklyPlan()" style="display:none;">
                                 <i class="fas fa-print"></i> <span class="parentPrintBtnText">Afficher &amp; Imprimer le Plan</span>
                             </button>
                             <!-- Bouton Sélecteur de Langue FR / AR -->
@@ -2643,7 +2633,7 @@
                             <span id="parentSectionBadgeDisplay" class="section-badge badge-garcons" style="padding:8px 16px; font-weight:700; font-size:0.95rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px;">
                                 <i class="fas fa-venus-mars"></i> <span id="parentSectionToggleText">Section Garçons 👦</span>
                             </span>
-                            <button type="button" class="pro-button primary-button" onclick="showHomeworkView('parent-selection')" style="padding:8px 16px;">
+                            <button type="button" class="pro-button primary-button" onclick="showHomeworkView('parent-selection')" style="display:none;">
                                 <i class="fas fa-user-graduate"></i> <span id="btnHeaderStudentFollow">Suivi Élèves &amp; Devoirs</span>
                             </button>
                         </div>
@@ -4157,12 +4147,12 @@
                         <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i> Classe :
                     </label>
                     <select id="bulletinModalClassSelect" onchange="onBulletinsModalClassChanged()" class="form-control" style="width:100%; padding:10px 12px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; font-weight:600;">
-                        <option value="PEI1 Garçons">PEI1 Garçons</option>
-                        <option value="PEI2 Garçon">PEI2 Garçon</option>
-                        <option value="PEI3 Garçon">PEI3 Garçon</option>
-                        <option value="PEI4 Garçon">PEI4 Garçon</option>
-                        <option value="PEI5 Garçon">PEI5 Garçon</option>
-                        <option value="DP2 Garçons">DP2 Garçons</option>
+                        <option value="PEI1">PEI1</option>
+                        <option value="PEI2">PEI2</option>
+                        <option value="PEI3">PEI3</option>
+                        <option value="PEI4">PEI4</option>
+                        <option value="PEI5">PEI5</option>
+                        <option value="DP2">DP2</option>
                     </select>
                 </div>
 
