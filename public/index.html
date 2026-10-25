@@ -623,13 +623,13 @@
                      <button type="button" id="btnAdminExportDb" class="pro-button" onclick="exportDatabaseExcel()" style="background: #10B981; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(16,185,129,0.3);">
                          <i class="fas fa-file-excel"></i> <span>Exporter la Base (Excel)</span>
                      </button>
-                     <button type="button" id="btnAdminImportDb" class="pro-button" onclick="document.getElementById('importDatabaseFileInput').click()" style="background: #2563EB; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(37,99,235,0.3);">
-                         <i class="fas fa-file-upload"></i> <span>Importer / Restaurer</span>
+                     <button type="button" id="btnAdminImportDb" class="pro-button" onclick="openUniversalImportRestoreModal()" style="background: linear-gradient(135deg, #2563EB, #1D4ED8); color: white; font-weight: 800; padding: 8px 15px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 3px 10px rgba(37,99,235,0.4);" title="Importer et restaurer des données Excel perdues vers tous les endroits (Plan, Emploi du temps, Suivi, Notes, Bulletins) en choisissant les semaines et la/les section(s)">
+                         <i class="fas fa-file-upload"></i> <span>📥 Importer / Restaurer Données (Excel)</span>
                      </button>
                      <button type="button" id="btnAdminClearPlans" class="pro-button" onclick="clearLessonPlansDb()" style="background: #EF4444; color: white; font-weight: 700; padding: 8px 14px; font-size: 0.85rem; border-radius: 8px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;" title="Supprimer tous les plans de leçons stockés pour libérer l'espace disque">
                          <i class="fas fa-trash-alt"></i> <span>Purger Plans de Leçons</span>
                      </button>
-                     <input type="file" id="importDatabaseFileInput" accept=".xlsx,.xls,.json" style="display:none;" onchange="handleImportDatabaseFile(event)">
+                     <input type="file" id="importDatabaseFileInput" accept=".xlsx,.xls,.json" multiple style="display:none;" onchange="handleImportDatabaseFile(event)">
                  </div>
              </div>
              <!-- NAVIGATION PAR ONGLETS PRO -->
@@ -669,23 +669,44 @@
                   </button>
              </div>
 
-             <!-- ONGLET 1 : IMPORT EXCEL DES PLANS HEBDOMADAIRES -->
+             <!-- ONGLET 1 : IMPORT EXCEL DES PLANS HEBDOMADAIRES & RESTAURATION MULTI-ENDROITS -->
              <div id="adminTab_upload" class="admin-tab-content" style="display:block; width:100%;">
                  <div class="admin-card-inner">
-                     <h4><i class="fas fa-file-excel" style="color:#10B981;"></i> Chargement & Import des Plans Hebdomadaires (Excel)</h4>
-                     <p class="admin-subtext">L'administrateur peut importer et enregistrer les plans pour chaque section séparément (<strong>Section Garçons</strong>, <strong>Section Filles</strong> <strong>Section Primaire</strong> ou <strong>Section Maternelle</strong>) et les appliquer à une ou <strong>plusieurs semaines</strong> simultanément.</p>
+                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+                         <h4 style="margin:0;"><i class="fas fa-file-excel" style="color:#10B981;"></i> Importation &amp; Restauration Excel (Plans, Emploi du Temps, Suivi, Notes &amp; Bulletins)</h4>
+                         <button type="button" class="pro-button" onclick="openUniversalImportRestoreModal()" style="background:linear-gradient(135deg, #2563EB, #4F46E5); color:white; font-weight:800; padding:8px 14px; border-radius:8px; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px; font-size:0.84rem; box-shadow:0 3px 10px rgba(37,99,235,0.3);">
+                             <i class="fas fa-magic"></i> <span>Ouvrir l'Assistant Complet de Restauration Excel</span>
+                         </button>
+                     </div>
+                     <p class="admin-subtext">Importez un ou plusieurs fichiers Excel pour restaurer et synchroniser automatiquement les données vers <strong>tous les endroits</strong> (Tableau de saisie, Plan Hebdo Parent, Emploi du Temps, Suivi des devoirs, Notes CW/HW &amp; Bulletins) en choisissant <strong>une ou plusieurs semaines</strong> et <strong>une section, plusieurs sections ou toutes les sections</strong>.</p>
                      
                      <div class="admin-grid-2col" style="margin-top:15px; margin-bottom:15px;">
                          <div>
                              <label for="adminUploadSectionSelect" style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
-                                 <i class="fas fa-venus-mars" style="color:#2563EB;"></i> Section Cible d'Enregistrement :
+                                 <i class="fas fa-venus-mars" style="color:#2563EB;"></i> Section(s) Cible(s) d'Enregistrement :
                              </label>
-                             <select id="adminUploadSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:2px solid #3B82F6; font-weight:700; background:#EFF6FF;" onchange="updateUploadTargetInfo()">
-                                 <option value="garcons">👦 Section Garçons</option>
-                                 <option value="filles">👧 Section Filles</option>
-                                 <option value="primaire">🎒 Section Primaire</option>
-                                 <option value="maternelle">🧸 Section Maternelle</option>
+                             <select id="adminUploadSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:2px solid #3B82F6; font-weight:700; background:#EFF6FF;" onchange="onAdminUploadSectionModeChange()">
+                                 <option value="garcons">👦 Section Garçons uniquement</option>
+                                 <option value="filles">👧 Section Filles uniquement</option>
+                                 <option value="primaire">🎒 Section Primaire uniquement</option>
+                                 <option value="maternelle">🧸 Section Maternelle uniquement</option>
+                                 <option value="all">🌐 Toutes les sections (Auto-détection / Global)</option>
+                                 <option value="multi">☑️ Sélectionner plusieurs sections...</option>
                              </select>
+                             <div id="adminUploadMultiSectionsBox" style="display:none; margin-top:8px; padding:10px; background:#F8FAFC; border:1.5px solid #93C5FD; border-radius:8px; gap:10px; flex-wrap:wrap;">
+                                 <label style="display:inline-flex; align-items:center; gap:5px; font-weight:700; font-size:0.83rem; color:#1E40AF; cursor:pointer;">
+                                     <input type="checkbox" class="upload-section-checkbox" value="garcons" checked onchange="updateUploadTargetInfo()"> 👦 Garçons
+                                 </label>
+                                 <label style="display:inline-flex; align-items:center; gap:5px; font-weight:700; font-size:0.83rem; color:#BE185D; cursor:pointer;">
+                                     <input type="checkbox" class="upload-section-checkbox" value="filles" onchange="updateUploadTargetInfo()"> 👧 Filles
+                                 </label>
+                                 <label style="display:inline-flex; align-items:center; gap:5px; font-weight:700; font-size:0.83rem; color:#166534; cursor:pointer;">
+                                     <input type="checkbox" class="upload-section-checkbox" value="primaire" onchange="updateUploadTargetInfo()"> 🎒 Primaire
+                                 </label>
+                                 <label style="display:inline-flex; align-items:center; gap:5px; font-weight:700; font-size:0.83rem; color:#92400E; cursor:pointer;">
+                                     <input type="checkbox" class="upload-section-checkbox" value="maternelle" onchange="updateUploadTargetInfo()"> 🧸 Maternelle
+                                 </label>
+                             </div>
                          </div>
                          <div>
                              <label style="font-weight:700; color:#334155; display:block; margin-bottom:6px;">
@@ -700,6 +721,9 @@
                                  </label>
                                  <label style="font-weight:600; font-size:0.84rem; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                      <input type="radio" name="uploadWeekMode" value="range" onchange="toggleUploadWeekMode('range')"> Plage (De... à...)
+                                 </label>
+                                 <label style="font-weight:600; font-size:0.84rem; cursor:pointer; display:flex; align-items:center; gap:4px;" title="Utilise la colonne Semaine du fichier Excel si elle existe, sinon la semaine sélectionnée">
+                                     <input type="radio" name="uploadWeekMode" value="auto" onchange="toggleUploadWeekMode('auto')"> Selon Excel (Auto)
                                  </label>
                              </div>
                          </div>
@@ -751,18 +775,40 @@
                          </div>
                      </div>
 
+                     <!-- Sélection des endroits où propager les données -->
+                     <div style="margin-bottom:15px; background:#F0FDF4; border:1.5px solid #86EFAC; border-radius:10px; padding:12px 14px;">
+                         <div style="font-weight:800; color:#065F46; font-size:0.86rem; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                             <i class="fas fa-sitemap"></i> <span>Endroits à alimenter / restaurer automatiquement depuis l'Excel :</span>
+                         </div>
+                         <div style="display:flex; gap:14px; flex-wrap:wrap;">
+                             <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                                 <input type="checkbox" id="uploadTarget_plan" checked> 📋 Tableau de saisie &amp; Plan Hebdo (Enseignant + Parent)
+                             </label>
+                             <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                                 <input type="checkbox" id="uploadTarget_schedule" checked> 📅 Emploi du Temps &amp; Enseignants
+                             </label>
+                             <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                                 <input type="checkbox" id="uploadTarget_suivi" checked> 📝 Suivi Devoirs, Participation &amp; Comportement
+                             </label>
+                             <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                                 <input type="checkbox" id="uploadTarget_grades" checked> 🎓 Notes, Moyennes CW/HW &amp; Bulletins
+                             </label>
+                         </div>
+                         <div id="uploadTargetSummaryText" style="margin-top:8px; font-size:0.82rem; color:#1E40AF; font-weight:700;"></div>
+                     </div>
+
                      <div class="upload-dropzone-box">
                          <label for="excelFileInput" id="admin-excel-label" style="display:block; font-weight:700; margin-bottom:8px; cursor:pointer;">
                              <i class="fas fa-file-excel" style="font-size:2rem; color:#10B981;"></i><br>
-                             <span style="font-size:1.05rem; color:#1E293B;">Sélectionnez votre fichier Excel (.xlsx, .xls)</span>
+                             <span style="font-size:1.05rem; color:#1E293B;">Sélectionnez un ou plusieurs fichiers Excel (.xlsx, .xls, .json)</span>
                          </label>
-                         <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleFileUpload(event)" style="margin:10px auto; display:block;">
+                         <input type="file" id="excelFileInput" accept=".xlsx, .xls, .json" multiple onchange="handleFileUpload(event)" style="margin:10px auto; display:block;">
                          <div id="file-upload-status" style="font-size:0.95rem; font-weight:600; color:#1E293B; margin-top:8px;"></div>
                      </div>
 
                      <div style="margin-top:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
                          <button id="saveUploadedDataBtn" onclick="saveUploadedData()" disabled class="pro-button accent-button" style="padding:11px 22px; font-size:0.95rem;">
-                             <i class="fas fa-database"></i> <span class="btn-text">Charger et Enregistrer dans la DB</span>
+                             <i class="fas fa-database"></i> <span class="btn-text">Charger et Enregistrer vers Tous les Endroits</span>
                          </button>
                      </div>
                  </div>
@@ -4245,6 +4291,191 @@
                         <i class="fas fa-check"></i> Valider
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL D'IMPORTATION & RESTAURATION UNIVERSELLE EXCEL (VERS TOUS LES ENDROITS : PLAN, SUIVI, NOTES, EMPLOI DU TEMPS) -->
+    <div id="universalImportRestoreModal" class="hw-modal" style="display:none; z-index:100001;">
+        <div class="hw-modal-content" style="max-width:780px; width:95vw; max-height:92vh; overflow-y:auto; border-radius:18px; padding:24px; background:white; box-shadow:0 25px 60px rgba(15,23,42,0.35); border:1.5px solid #BFDBFE;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #E2E8F0; padding-bottom:14px; margin-bottom:18px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; display:flex; align-items:center; justify-content:center; font-size:1.3rem; box-shadow:0 4px 12px rgba(37,99,235,0.3);">
+                        <i class="fas fa-file-import"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:1.18rem; color:#0F172A; font-weight:800;">Importer &amp; Restaurer les Données Excel vers Tous les Endroits</h3>
+                        <p style="margin:3px 0 0 0; font-size:0.82rem; color:#475569;">Restaurez vos fichiers Excel (Plans, Suivi, Notes, Sauvegarde DB) vers <strong>1 ou plusieurs semaines</strong> et pour <strong>une section ou toutes les sections</strong></p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeUniversalImportRestoreModal()" style="border:none; background:#F1F5F9; width:34px; height:34px; border-radius:8px; font-size:1.3rem; color:#475569; cursor:pointer; font-weight:700;">&times;</button>
+            </div>
+
+            <!-- ÉTAPE 1 : CHOIX DU OU DES FICHIERS EXCEL / JSON -->
+            <div style="background:#F8FAFC; border:2px dashed #60A5FA; border-radius:12px; padding:16px; text-align:center; margin-bottom:16px;">
+                <label for="universalModalFileInput" style="cursor:pointer; display:block;">
+                    <i class="fas fa-file-excel" style="font-size:2.1rem; color:#10B981; margin-bottom:6px;"></i>
+                    <div style="font-weight:800; color:#1E293B; font-size:0.98rem;">1. Sélectionnez votre ou vos fichier(s) Excel (.xlsx, .xls) ou Sauvegarde (.json)</div>
+                    <div style="font-size:0.8rem; color:#64748B; margin-top:2px;">Accepte les fichiers de Plan Hebdomadaire, les fichiers multi-feuilles par classe, les fichiers de Notes/Suivi et les sauvegardes complètes</div>
+                </label>
+                <input type="file" id="universalModalFileInput" accept=".xlsx,.xls,.json" multiple onchange="handleUniversalModalFileChange(event)" style="margin:10px auto 4px auto; display:block; font-weight:600;">
+                <div id="universalModalFilePreview" style="display:none; margin-top:10px; padding:10px 14px; background:#EFF6FF; border:1px solid #93C5FD; border-radius:8px; text-align:left; font-size:0.84rem; color:#1E3A8A;"></div>
+            </div>
+
+            <!-- ÉTAPE 2 : CHOIX DE LA SECTION OU TOUTES LES SECTIONS -->
+            <div style="background:#FFF; border:1.5px solid #CBD5E1; border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+                <div style="font-weight:800; color:#0F172A; font-size:0.93rem; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-layer-group" style="color:#2563EB;"></i>
+                    <span>2. Choisissez la Section ou Toutes les Sections :</span>
+                </div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                    <label style="display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; border:1.5px solid #3B82F6; background:#EFF6FF; font-weight:700; font-size:0.85rem; color:#1E40AF; cursor:pointer;">
+                        <input type="radio" name="uniImportSectionMode" value="single" checked onchange="toggleUniversalSectionMode()"> Une seule section
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; border:1.5px solid #CBD5E1; background:#F8FAFC; font-weight:700; font-size:0.85rem; color:#334155; cursor:pointer;">
+                        <input type="radio" name="uniImportSectionMode" value="multi" onchange="toggleUniversalSectionMode()"> Plusieurs sections au choix
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; border:1.5px solid #10B981; background:#ECFDF5; font-weight:700; font-size:0.85rem; color:#065F46; cursor:pointer;">
+                        <input type="radio" name="uniImportSectionMode" value="all" onchange="toggleUniversalSectionMode()"> 🌐 Toutes les sections (Auto-détection / Global)
+                    </label>
+                </div>
+
+                <!-- Sélecteur section unique -->
+                <div id="uniSectionSingleBox">
+                    <select id="uniImportSingleSectionSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1.5px solid #93C5FD; font-weight:700; font-size:0.9rem; background:#F8FAFC;">
+                        <option value="garcons">👦 Section Garçons</option>
+                        <option value="filles">👧 Section Filles</option>
+                        <option value="primaire">🎒 Section Primaire</option>
+                        <option value="maternelle">🧸 Section Maternelle</option>
+                    </select>
+                </div>
+
+                <!-- Cases à cocher multi-sections -->
+                <div id="uniSectionMultiBox" style="display:none; gap:12px; flex-wrap:wrap; padding:10px; background:#F8FAFC; border-radius:8px; border:1px solid #CBD5E1;">
+                    <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.88rem; color:#1D4ED8; cursor:pointer;">
+                        <input type="checkbox" class="uni-sec-cb" value="garcons" checked> 👦 Section Garçons
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.88rem; color:#BE185D; cursor:pointer;">
+                        <input type="checkbox" class="uni-sec-cb" value="filles" checked> 👧 Section Filles
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.88rem; color:#15803D; cursor:pointer;">
+                        <input type="checkbox" class="uni-sec-cb" value="primaire"> 🎒 Section Primaire
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:0.88rem; color:#B45309; cursor:pointer;">
+                        <input type="checkbox" class="uni-sec-cb" value="maternelle"> 🧸 Section Maternelle
+                    </label>
+                </div>
+
+                <!-- Info mode Toutes les sections -->
+                <div id="uniSectionAllInfo" style="display:none; padding:8px 12px; background:#ECFDF5; border-radius:8px; border:1px solid #A7F3D0; font-size:0.81rem; color:#065F46; font-weight:600;">
+                    <i class="fas fa-shield-alt"></i> Chaque section reste <strong>100% indépendante</strong> : le système détecte automatiquement la section de chaque ligne (colonne Section, classes PS/MS/GS ➔ Maternelle, PP1-PP5 ➔ Primaire, Enseignants Garçons/Filles) et supprime le mot « Garçons/Filles » des noms de classes pour éviter tout doublon.
+                </div>
+            </div>
+
+            <!-- ÉTAPE 3 : CHOIX DE LA SEMAINE OU DES SEMAINES -->
+            <div style="background:#FFF; border:1.5px solid #CBD5E1; border-radius:12px; padding:14px 16px; margin-bottom:16px;">
+                <div style="font-weight:800; color:#0F172A; font-size:0.93rem; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-calendar-week" style="color:#2563EB;"></i>
+                    <span>3. Spécifiez la Semaine ou les Semaines Cibles :</span>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                    <label style="display:inline-flex; align-items:center; gap:5px; padding:7px 11px; border-radius:8px; border:1.5px solid #3B82F6; background:#EFF6FF; font-weight:700; font-size:0.83rem; color:#1E40AF; cursor:pointer;">
+                        <input type="radio" name="uniImportWeekMode" value="single" checked onchange="toggleUniversalWeekMode()"> Une seule semaine
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:5px; padding:7px 11px; border-radius:8px; border:1.5px solid #CBD5E1; background:#F8FAFC; font-weight:700; font-size:0.83rem; color:#334155; cursor:pointer;">
+                        <input type="radio" name="uniImportWeekMode" value="multiple" onchange="toggleUniversalWeekMode()"> Plusieurs semaines (Cases à cocher)
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:5px; padding:7px 11px; border-radius:8px; border:1.5px solid #CBD5E1; background:#F8FAFC; font-weight:700; font-size:0.83rem; color:#334155; cursor:pointer;">
+                        <input type="radio" name="uniImportWeekMode" value="range" onchange="toggleUniversalWeekMode()"> Plage de semaines (De S... à S...)
+                    </label>
+                    <label style="display:inline-flex; align-items:center; gap:5px; padding:7px 11px; border-radius:8px; border:1.5px solid #8B5CF6; background:#F5F3FF; font-weight:700; font-size:0.83rem; color:#5B21B6; cursor:pointer;">
+                        <input type="radio" name="uniImportWeekMode" value="auto" onchange="toggleUniversalWeekMode()"> 📄 Selon les semaines du fichier Excel
+                    </label>
+                </div>
+
+                <!-- Mode 1 seule semaine -->
+                <div id="uniWeekSingleBox">
+                    <select id="uniImportSingleWeekSelect" style="width:100%; padding:10px 12px; border-radius:8px; border:1.5px solid #CBD5E1; font-weight:700; font-size:0.9rem; background:white;"></select>
+                </div>
+
+                <!-- Mode plusieurs semaines -->
+                <div id="uniWeekMultiBox" style="display:none; background:#F8FAFC; border:1px solid #CBD5E1; border-radius:10px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                        <span style="font-weight:700; font-size:0.84rem; color:#1E293B;">Sélectionnez les semaines :</span>
+                        <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                            <button type="button" onclick="selectUniWeeksPreset('all')" style="padding:4px 8px; font-size:0.76rem; font-weight:700; border-radius:6px; background:#EEF2FF; color:#1E40AF; border:1px solid #C7D2FE; cursor:pointer;">Toutes (S1-S38)</button>
+                            <button type="button" onclick="selectUniWeeksPreset('p1')" style="padding:4px 8px; font-size:0.76rem; font-weight:700; border-radius:6px; background:#F0FDF4; color:#065F46; border:1px solid #BBF7D0; cursor:pointer;">S1-S12</button>
+                            <button type="button" onclick="selectUniWeeksPreset('p2')" style="padding:4px 8px; font-size:0.76rem; font-weight:700; border-radius:6px; background:#FEF3C7; color:#92400E; border:1px solid #FDE68A; cursor:pointer;">S13-S24</button>
+                            <button type="button" onclick="selectUniWeeksPreset('p3')" style="padding:4px 8px; font-size:0.76rem; font-weight:700; border-radius:6px; background:#FDF2F8; color:#9D174D; border:1px solid #FBCFE8; cursor:pointer;">S25-S38</button>
+                            <button type="button" onclick="selectUniWeeksPreset('none')" style="padding:4px 8px; font-size:0.76rem; font-weight:700; border-radius:6px; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; cursor:pointer;">Aucune</button>
+                        </div>
+                    </div>
+                    <div id="uniWeeksCheckboxesGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(60px, 1fr)); gap:5px; max-height:150px; overflow-y:auto; padding:6px; background:white; border-radius:8px; border:1px solid #E2E8F0;"></div>
+                </div>
+
+                <!-- Mode plage de semaines -->
+                <div id="uniWeekRangeBox" style="display:none; grid-template-columns:1fr 1fr; gap:12px; background:#F8FAFC; padding:12px; border-radius:10px; border:1px solid #CBD5E1;">
+                    <div>
+                        <label style="font-weight:700; font-size:0.82rem; color:#334155; display:block; margin-bottom:4px;">De la semaine :</label>
+                        <select id="uniImportRangeFromSelect" style="width:100%; padding:8px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700;"></select>
+                    </div>
+                    <div>
+                        <label style="font-weight:700; font-size:0.82rem; color:#334155; display:block; margin-bottom:4px;">À la semaine :</label>
+                        <select id="uniImportRangeToSelect" style="width:100%; padding:8px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700;"></select>
+                    </div>
+                </div>
+
+                <!-- Mode Auto depuis l'Excel -->
+                <div id="uniWeekAutoBox" style="display:none; padding:10px 12px; background:#F5F3FF; border:1px solid #DDD6FE; border-radius:8px; font-size:0.82rem; color:#5B21B6; font-weight:600;">
+                    <i class="fas fa-magic"></i> Les numéros de semaines présents dans la colonne <strong>Semaine</strong> ou les noms d'onglets du fichier Excel seront utilisés automatiquement. Si une feuille n'indique pas de semaine, elle sera enregistrée sur la semaine de repli :
+                    <select id="uniImportFallbackWeekSelect" style="margin-top:6px; width:100%; padding:7px 10px; border-radius:6px; border:1px solid #C4B5FD; font-weight:700; background:white;"></select>
+                </div>
+            </div>
+
+            <!-- ÉTAPE 4 : TOUS LES ENDROITS À SYNCHRONISER -->
+            <div style="background:#F0FDF4; border:1.5px solid #86EFAC; border-radius:12px; padding:14px 16px; margin-bottom:18px;">
+                <div style="font-weight:800; color:#065F46; font-size:0.93rem; margin-bottom:10px; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-check-double" style="color:#10B981;"></i>
+                    <span>4. Endroits où restaurer et appliquer les données importées :</span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:8px;">
+                    <label style="display:flex; align-items:center; gap:8px; background:white; padding:8px 10px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                        <input type="checkbox" id="uniTarget_plan" checked>
+                        <span>📋 Tableau de Saisie &amp; Plan Hebdo (Enseignant + Parent)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; background:white; padding:8px 10px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                        <input type="checkbox" id="uniTarget_schedule" checked>
+                        <span>📅 Emploi du Temps &amp; Liaisons Enseignants</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; background:white; padding:8px 10px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                        <input type="checkbox" id="uniTarget_suivi" checked>
+                        <span>📝 Suivi des Devoirs, Participation &amp; Comportement</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; background:white; padding:8px 10px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                        <input type="checkbox" id="uniTarget_grades" checked>
+                        <span>🎓 Notes, Moyennes CW/HW &amp; Bulletins Scolaires</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; background:white; padding:8px 10px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                        <input type="checkbox" id="uniTarget_students" checked>
+                        <span>👨‍🎓 Élèves, Enseignants &amp; Notes de Semaine</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; background:white; padding:8px 10px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700; font-size:0.83rem; color:#064E3B; cursor:pointer;">
+                        <input type="checkbox" id="uniTarget_publish" checked>
+                        <span>📢 Publier automatiquement aux Parents (Portail Parent)</span>
+                    </label>
+                </div>
+            </div>
+
+            <div id="universalModalStatusMsg" style="display:none; margin-bottom:14px; padding:12px 14px; border-radius:10px; font-weight:700; font-size:0.88rem;"></div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; border-top:1.5px solid #E2E8F0; padding-top:14px;">
+                <button type="button" onclick="closeUniversalImportRestoreModal()" class="pro-button" style="background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer;">
+                    Fermer
+                </button>
+                <button type="button" id="btnExecuteUniversalImport" onclick="executeUniversalImportRestore()" class="pro-button" style="background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; padding:11px 24px; border-radius:10px; font-weight:800; font-size:0.95rem; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 4px 14px rgba(16,185,129,0.35);">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <span>Restaurer &amp; Propager vers Tous les Endroits</span>
+                </button>
             </div>
         </div>
     </div>

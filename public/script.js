@@ -1467,12 +1467,35 @@
           updateUploadTargetInfo();
         }
 
+        function onAdminUploadSectionModeChange() {
+          const secSelect = document.getElementById('adminUploadSectionSelect');
+          const multiBox = document.getElementById('adminUploadMultiSectionsBox');
+          if (multiBox && secSelect) {
+            multiBox.style.display = (secSelect.value === 'multi') ? 'flex' : 'none';
+          }
+          updateUploadTargetInfo();
+        }
+
+        function getUploadTargetSections() {
+          const secSelect = document.getElementById('adminUploadSectionSelect');
+          const val = secSelect ? secSelect.value : (currentSection || 'garcons');
+          if (val === 'all') return 'all';
+          if (val === 'multi') {
+            const checked = [];
+            document.querySelectorAll('.upload-section-checkbox:checked').forEach(cb => {
+              if (cb.value) checked.push(cb.value);
+            });
+            return checked.length > 0 ? checked : [currentSection || 'garcons'];
+          }
+          return [val];
+        }
+
         function toggleUploadWeekMode(mode) {
           const singleBox = document.getElementById('uploadModeSingleContainer');
           const multiBox = document.getElementById('uploadModeMultipleContainer');
           const rangeBox = document.getElementById('uploadModeRangeContainer');
 
-          if (singleBox) singleBox.style.display = (mode === 'single') ? 'block' : 'none';
+          if (singleBox) singleBox.style.display = (mode === 'single' || mode === 'auto') ? 'block' : 'none';
           if (multiBox) multiBox.style.display = (mode === 'multiple') ? 'block' : 'none';
           if (rangeBox) rangeBox.style.display = (mode === 'range') ? 'block' : 'none';
 
@@ -1502,11 +1525,11 @@
           const modeRadio = document.querySelector('input[name="uploadWeekMode"]:checked');
           const mode = modeRadio ? modeRadio.value : 'single';
 
-          if (mode === 'single') {
+          if (mode === 'single' || mode === 'auto') {
             const sel = document.getElementById('adminUploadWeekSelect');
             const mainSel = document.getElementById('weekSelector');
-            const val = (sel && sel.value) ? parseInt(sel.value, 10) : (mainSel ? parseInt(mainSel.value, 10) : null);
-            return val ? [val] : [];
+            const val = (sel && sel.value) ? parseInt(sel.value, 10) : (mainSel ? parseInt(mainSel.value, 10) : 1);
+            return val ? [val] : [1];
           } else if (mode === 'multiple') {
             const checked = [];
             document.querySelectorAll('.upload-week-checkbox:checked').forEach(cb => {
@@ -1533,30 +1556,37 @@
 
         function updateUploadTargetInfo() {
           const weeks = getUploadTargetWeeks();
+          const modeRadio = document.querySelector('input[name="uploadWeekMode"]:checked');
+          const weekMode = modeRadio ? modeRadio.value : 'single';
           const countEl = document.getElementById('uploadMultiSelectedCount');
           const summaryEl = document.getElementById('uploadTargetSummaryText');
-          const secSelect = document.getElementById('adminUploadSectionSelect');
-          const sec = secSelect ? secSelect.value : (currentSection || 'garcons');
-          const secBadge = (sec === 'garcons') 
-            ? '<span style="background:#DBEAFE; color:#1D4ED8; padding:2px 8px; border-radius:6px; font-weight:700;">👦 Section Garçons</span>' 
-            : (sec === 'filles'
-              ? '<span style="background:#FCE7F3; color:#BE185D; padding:2px 8px; border-radius:6px; font-weight:700;">👧 Section Filles</span>'
-              : (sec === 'maternelle'
-                ? '<span style="background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:6px; font-weight:700;">🧸 Section Maternelle</span>'
-                : '<span style="background:#DCFCE7; color:#166534; padding:2px 8px; border-radius:6px; font-weight:700;">🎒 Section Primaire</span>'));
+          const targetSecs = getUploadTargetSections();
+
+          const getBadge = (sec) => {
+            if (sec === 'garcons') return '<span style="background:#DBEAFE; color:#1D4ED8; padding:2px 8px; border-radius:6px; font-weight:700;">👦 Garçons</span>';
+            if (sec === 'filles') return '<span style="background:#FCE7F3; color:#BE185D; padding:2px 8px; border-radius:6px; font-weight:700;">👧 Filles</span>';
+            if (sec === 'maternelle') return '<span style="background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:6px; font-weight:700;">🧸 Maternelle</span>';
+            return '<span style="background:#DCFCE7; color:#166534; padding:2px 8px; border-radius:6px; font-weight:700;">🎒 Primaire</span>';
+          };
+
+          const secBadge = targetSecs === 'all'
+            ? '<span style="background:#ECFDF5; color:#065F46; padding:2px 8px; border-radius:6px; font-weight:800; border:1px solid #6EE7B7;">🌐 Toutes les sections (Auto-détection indépendante)</span>'
+            : (Array.isArray(targetSecs) ? targetSecs.map(getBadge).join(' + ') : getBadge(targetSecs));
 
           if (countEl) {
             countEl.textContent = `${weeks.length} semaine(s) sélectionnée(s)`;
           }
 
           if (summaryEl) {
-            if (weeks.length === 0) {
-              summaryEl.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-exclamation-triangle"></i> Aucune semaine sélectionnée</span> pour la ${secBadge}.`;
+            if (weekMode === 'auto') {
+              summaryEl.innerHTML = `<i class="fas fa-magic" style="color:#8B5CF6;"></i> Semaines auto-détectées depuis le fichier Excel (repli S${weeks[0] || 1}) pour ${secBadge}.`;
+            } else if (weeks.length === 0) {
+              summaryEl.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-exclamation-triangle"></i> Aucune semaine sélectionnée</span> pour ${secBadge}.`;
             } else if (weeks.length === 1) {
-              summaryEl.innerHTML = `<i class="fas fa-shield-alt" style="color:#10B981;"></i> L'import s'enregistrera <strong>UNIQUEMENT</strong> dans la ${secBadge} pour la <strong>Semaine S${weeks[0]}</strong> (les 2 autres sections restent strictement inchangées).`;
+              summaryEl.innerHTML = `<i class="fas fa-shield-alt" style="color:#10B981;"></i> L'import s'appliquera à ${secBadge} pour la <strong>Semaine S${weeks[0]}</strong> (Plan, Emploi du temps, Suivi &amp; Notes).`;
             } else {
               const weeksList = weeks.length <= 8 ? weeks.map(w => `S${w}`).join(', ') : `S${weeks[0]}...S${weeks[weeks.length-1]} (${weeks.length} semaines)`;
-              summaryEl.innerHTML = `<i class="fas fa-shield-alt" style="color:#10B981;"></i> L'import s'enregistrera <strong>UNIQUEMENT</strong> dans la ${secBadge} sur <strong>${weeks.length} semaines</strong> (${weeksList}) (les 2 autres sections restent strictement inchangées).`;
+              summaryEl.innerHTML = `<i class="fas fa-shield-alt" style="color:#10B981;"></i> L'import s'appliquera à ${secBadge} sur <strong>${weeks.length} semaines</strong> (${weeksList}) (Plan, Emploi du temps, Suivi &amp; Notes).`;
             }
           }
         }
@@ -2617,58 +2647,335 @@
             }
         }
 
-        async function handleImportDatabaseFile(event) {
-            const file = event.target.files && event.target.files[0];
-            if (!file) return;
+        // --- ASSISTANT UNIVERSEL D'IMPORTATION & RESTAURATION EXCEL (VERS TOUS LES ENDROITS : PLAN, SUIVI, NOTES, EMPLOI DU TEMPS) ---
+        let universalSelectedFiles = [];
+        let uploadedExcelFilesList = [];
 
-            const isAr = (currentUserLanguage === 'ar');
-            const isEn = (currentUserLanguage === 'en');
-            const confirmMsg = isAr 
-                ? `هل أنت متأكد من رغبتك في استيراد البيانات من "${file.name}" إلى قاعدة البيانات؟ سيتم دمج وتحديث البيانات الحالية.`
-                : (isEn 
-                    ? `Are you sure you want to import data from "${file.name}" into the database? Existing data will be merged and updated.`
-                    : `Êtes-vous sûr de vouloir importer les données depuis "${file.name}" dans la base de données ? Les données existantes seront fusionnées/mises à jour.`);
+        function openUniversalImportRestoreModal() {
+            const modal = document.getElementById('universalImportRestoreModal');
+            if (!modal) return;
 
-            if (!confirm(confirmMsg)) {
-                event.target.value = '';
+            // Initialiser les listes de semaines (S1 à S38) dans le modal
+            const singleSel = document.getElementById('uniImportSingleWeekSelect');
+            const fromSel = document.getElementById('uniImportRangeFromSelect');
+            const toSel = document.getElementById('uniImportRangeToSelect');
+            const fallbackSel = document.getElementById('uniImportFallbackWeekSelect');
+            const grid = document.getElementById('uniWeeksCheckboxesGrid');
+            const secSingleSel = document.getElementById('uniImportSingleSectionSelect');
+
+            if (secSingleSel && currentSection) {
+                secSingleSel.value = currentSection;
+            }
+
+            const currentSecCfg = getActiveSectionWeeksConfig(currentSection || 'garcons');
+            let optionsHtml = '';
+            for (let i = 1; i <= 38; i++) {
+                const label = (typeof formatWeekDateRangeText === 'function')
+                    ? formatWeekDateRangeText(i, currentSection || 'garcons')
+                    : `Semaine ${i}`;
+                optionsHtml += `<option value="${i}">${escapeHtml(label)}</option>`;
+            }
+
+            const defWeek = String(currentWeek || 1);
+            if (singleSel) { singleSel.innerHTML = optionsHtml; singleSel.value = defWeek; }
+            if (fromSel) { fromSel.innerHTML = optionsHtml; fromSel.value = '1'; }
+            if (toSel) { toSel.innerHTML = optionsHtml; toSel.value = '38'; }
+            if (fallbackSel) { fallbackSel.innerHTML = optionsHtml; fallbackSel.value = defWeek; }
+
+            if (grid && !grid.innerHTML.trim()) {
+                let gHtml = '';
+                for (let i = 1; i <= 38; i++) {
+                    gHtml += `
+                        <label style="display:flex; align-items:center; gap:4px; font-size:0.79rem; font-weight:700; color:#334155; padding:4px 6px; border-radius:6px; background:#F8FAFC; border:1px solid #E2E8F0; cursor:pointer; user-select:none;">
+                            <input type="checkbox" class="uni-week-cb" value="${i}" ${String(i) === defWeek ? 'checked' : ''} style="cursor:pointer;">
+                            <span>S${i}</span>
+                        </label>
+                    `;
+                }
+                grid.innerHTML = gHtml;
+            }
+
+            toggleUniversalSectionMode();
+            toggleUniversalWeekMode();
+
+            const statusEl = document.getElementById('universalModalStatusMsg');
+            if (statusEl) statusEl.style.display = 'none';
+
+            modal.style.display = 'flex';
+        }
+
+        function closeUniversalImportRestoreModal() {
+            const modal = document.getElementById('universalImportRestoreModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function toggleUniversalSectionMode() {
+            const mode = document.querySelector('input[name="uniImportSectionMode"]:checked')?.value || 'single';
+            const singleBox = document.getElementById('uniSectionSingleBox');
+            const multiBox = document.getElementById('uniSectionMultiBox');
+            const allInfo = document.getElementById('uniSectionAllInfo');
+            if (singleBox) singleBox.style.display = (mode === 'single') ? 'block' : 'none';
+            if (multiBox) multiBox.style.display = (mode === 'multi') ? 'flex' : 'none';
+            if (allInfo) allInfo.style.display = (mode === 'all') ? 'block' : 'none';
+        }
+
+        function toggleUniversalWeekMode() {
+            const mode = document.querySelector('input[name="uniImportWeekMode"]:checked')?.value || 'single';
+            const singleBox = document.getElementById('uniWeekSingleBox');
+            const multiBox = document.getElementById('uniWeekMultiBox');
+            const rangeBox = document.getElementById('uniWeekRangeBox');
+            const autoBox = document.getElementById('uniWeekAutoBox');
+            if (singleBox) singleBox.style.display = (mode === 'single') ? 'block' : 'none';
+            if (multiBox) multiBox.style.display = (mode === 'multiple') ? 'block' : 'none';
+            if (rangeBox) rangeBox.style.display = (mode === 'range') ? 'grid' : 'none';
+            if (autoBox) autoBox.style.display = (mode === 'auto') ? 'block' : 'none';
+        }
+
+        function selectUniWeeksPreset(preset) {
+            document.querySelectorAll('.uni-week-cb').forEach(cb => {
+                const w = parseInt(cb.value, 10);
+                if (preset === 'all') cb.checked = true;
+                else if (preset === 'p1') cb.checked = (w >= 1 && w <= 12);
+                else if (preset === 'p2') cb.checked = (w >= 13 && w <= 24);
+                else if (preset === 'p3') cb.checked = (w >= 25 && w <= 38);
+                else cb.checked = false;
+            });
+        }
+
+        function handleUniversalModalFileChange(event) {
+            const files = Array.from(event.target.files || []);
+            universalSelectedFiles = files;
+            const previewEl = document.getElementById('universalModalFilePreview');
+            if (!previewEl) return;
+            if (files.length === 0) {
+                previewEl.style.display = 'none';
+                previewEl.innerHTML = '';
+                return;
+            }
+            previewEl.style.display = 'block';
+            previewEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Analyse de ${files.length} fichier(s) en cours...`;
+
+            // Analyser le premier fichier Excel côté client pour afficher un résumé immédiat à l'admin
+            const firstFile = files[0];
+            if (/\.(xlsx|xls)$/i.test(firstFile.name) && typeof XLSX !== 'undefined') {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const wb = XLSX.read(e.target.result, { type: 'array' });
+                        const sheets = wb.SheetNames.filter(s => s !== '_RAW_BACKUP');
+                        const classesFound = new Set();
+                        const weeksFound = new Set();
+                        let totalRows = 0;
+
+                        sheets.forEach(sName => {
+                            const rows = XLSX.utils.sheet_to_json(wb.Sheets[sName], { defval: '' });
+                            totalRows += rows.length;
+                            rows.forEach(r => {
+                                const c = cleanClassNameClient(r.Classe || r.classe || '');
+                                if (c && c !== '—' && c !== '-') classesFound.add(c);
+                                const w = parseInt(r.Semaine || r.semaine || '', 10);
+                                if (!isNaN(w) && w >= 1 && w <= 38) weeksFound.add(`S${w}`);
+                            });
+                        });
+
+                        // Si le fichier contient déjà plusieurs semaines dans la colonne Semaine ou _RAW_BACKUP, proposer le mode Auto
+                        if (weeksFound.size > 1 || wb.SheetNames.includes('_RAW_BACKUP')) {
+                            const autoRadio = document.querySelector('input[name="uniImportWeekMode"][value="auto"]');
+                            if (autoRadio) {
+                                autoRadio.checked = true;
+                                toggleUniversalWeekMode();
+                            }
+                        }
+
+                        const clsText = classesFound.size > 0 ? Array.from(classesFound).sort().join(', ') : 'Détection automatique';
+                        const wksText = weeksFound.size > 0 ? Array.from(weeksFound).join(', ') : 'Selon votre sélection ci-dessous';
+                        previewEl.innerHTML = `
+                            <div style="font-weight:800; color:#1E40AF; margin-bottom:4px;">
+                                <i class="fas fa-check-circle" style="color:#10B981;"></i> ${files.length} fichier(s) prêt(s) : ${files.map(f => escapeHtml(f.name)).join(', ')}
+                            </div>
+                            <div style="font-size:0.81rem; color:#334155; line-height:1.5;">
+                                • <strong>Feuilles détectées :</strong> ${escapeHtml(sheets.join(', '))} (${totalRows} lignes)<br>
+                                • <strong>Classes détectées (sans doublon) :</strong> ${escapeHtml(clsText)}<br>
+                                • <strong>Semaines dans le fichier :</strong> ${escapeHtml(wksText)}
+                            </div>
+                        `;
+                    } catch (err) {
+                        previewEl.innerHTML = `<i class="fas fa-file-check" style="color:#10B981;"></i> Fichier sélectionné : <strong>${escapeHtml(firstFile.name)}</strong>`;
+                    }
+                };
+                reader.readAsArrayBuffer(firstFile);
+            } else {
+                previewEl.innerHTML = `<i class="fas fa-file-check" style="color:#10B981;"></i> ${files.length} fichier(s) sélectionné(s) : <strong>${files.map(f => escapeHtml(f.name)).join(', ')}</strong>`;
+            }
+        }
+
+        async function refreshAllViewsAfterExcelImport(affectedSections) {
+            try {
+                const secsToClean = Array.isArray(affectedSections) && affectedSections.length > 0
+                    ? affectedSections
+                    : ['garcons', 'filles', 'primaire', 'maternelle'];
+                for (const s of secsToClean) {
+                    localStorage.removeItem('hiddenClasses_' + s);
+                    localStorage.removeItem('visibleClasses_' + s);
+                    if (window.sectionHiddenClassesMap) window.sectionHiddenClassesMap[s] = [];
+                }
+                if (typeof syncClassVisibilityFromServer === 'function') {
+                    await syncClassVisibilityFromServer(currentSection || 'garcons');
+                }
+            } catch (e) {}
+
+            // Réinitialiser les filtres pour afficher toutes les données importées
+            ['filterEnseignant', 'filterClasse', 'filterMatiere', 'filterPeriode', 'filterJour'].forEach(fId => {
+                const fEl = document.getElementById(fId);
+                if (fEl && !fEl.disabled) fEl.value = '';
+            });
+
+            if (currentWeek) {
+                await fetchPlanData(currentWeek);
+            }
+            if (typeof populateAdminScheduleClasses === 'function') {
+                await populateAdminScheduleClasses();
+            }
+            if (typeof loadGeneralEvaluations === 'function') {
+                try { await loadGeneralEvaluations(); } catch (e) {}
+            }
+        }
+
+        async function executeUniversalImportRestore() {
+            const fileInput = document.getElementById('universalModalFileInput');
+            const files = (universalSelectedFiles && universalSelectedFiles.length > 0)
+                ? universalSelectedFiles
+                : Array.from(fileInput?.files || []);
+
+            const statusEl = document.getElementById('universalModalStatusMsg');
+            const showModalStatus = (html, isErr) => {
+                if (!statusEl) return;
+                statusEl.style.display = 'block';
+                statusEl.style.background = isErr ? '#FEF2F2' : '#ECFDF5';
+                statusEl.style.color = isErr ? '#DC2626' : '#065F46';
+                statusEl.style.border = isErr ? '1px solid #FCA5A5' : '1px solid #6EE7B7';
+                statusEl.innerHTML = html;
+            };
+
+            if (!files || files.length === 0) {
+                showModalStatus('<i class="fas fa-exclamation-triangle"></i> Veuillez d\'abord sélectionner au moins un fichier Excel (.xlsx, .xls) ou .json.', true);
                 return;
             }
 
-            try {
-                const waitMsg = isAr ? 'جاري استيراد وتحديث قاعدة البيانات...' : (isEn ? 'Importing and updating database...' : 'Importation et mise à jour de la base de données en cours...');
-                displayAlert(waitMsg, false);
+            // 1. Récupérer la/les section(s)
+            const secMode = document.querySelector('input[name="uniImportSectionMode"]:checked')?.value || 'single';
+            let sectionsParam = 'all';
+            if (secMode === 'single') {
+                const sVal = document.getElementById('uniImportSingleSectionSelect')?.value || currentSection || 'garcons';
+                sectionsParam = [sVal];
+            } else if (secMode === 'multi') {
+                const checkedSecs = [];
+                document.querySelectorAll('.uni-sec-cb:checked').forEach(cb => checkedSecs.push(cb.value));
+                if (checkedSecs.length === 0) {
+                    showModalStatus('<i class="fas fa-exclamation-triangle"></i> Veuillez cocher au moins une section.', true);
+                    return;
+                }
+                sectionsParam = checkedSecs;
+            } else {
+                sectionsParam = 'all';
+            }
 
+            // 2. Récupérer le mode de semaine et la/les semaine(s)
+            const weekMode = document.querySelector('input[name="uniImportWeekMode"]:checked')?.value || 'single';
+            let weeksParam = [];
+            const fallbackWeek = parseInt(document.getElementById('uniImportFallbackWeekSelect')?.value || currentWeek || 1, 10) || 1;
+
+            if (weekMode === 'single') {
+                const w = parseInt(document.getElementById('uniImportSingleWeekSelect')?.value || currentWeek || 1, 10) || 1;
+                weeksParam = [w];
+            } else if (weekMode === 'multiple') {
+                document.querySelectorAll('.uni-week-cb:checked').forEach(cb => {
+                    const w = parseInt(cb.value, 10);
+                    if (!isNaN(w)) weeksParam.push(w);
+                });
+                if (weeksParam.length === 0) {
+                    showModalStatus('<i class="fas fa-exclamation-triangle"></i> Veuillez cocher au moins une semaine.', true);
+                    return;
+                }
+            } else if (weekMode === 'range') {
+                const fromW = parseInt(document.getElementById('uniImportRangeFromSelect')?.value || 1, 10) || 1;
+                const toW = parseInt(document.getElementById('uniImportRangeToSelect')?.value || 38, 10) || 38;
+                const minW = Math.min(fromW, toW);
+                const maxW = Math.max(fromW, toW);
+                for (let i = minW; i <= maxW; i++) weeksParam.push(i);
+            } else {
+                weeksParam = [fallbackWeek];
+            }
+
+            // 3. Récupérer les endroits cibles
+            const targets = {
+                plan: document.getElementById('uniTarget_plan')?.checked !== false,
+                schedule: document.getElementById('uniTarget_schedule')?.checked !== false,
+                suivi: document.getElementById('uniTarget_suivi')?.checked !== false,
+                grades: document.getElementById('uniTarget_grades')?.checked !== false,
+                students: document.getElementById('uniTarget_students')?.checked !== false,
+                publish: document.getElementById('uniTarget_publish')?.checked !== false
+            };
+
+            const btn = document.getElementById('btnExecuteUniversalImport');
+            if (btn) btn.disabled = true;
+            showModalStatus('<i class="fas fa-spinner fa-spin"></i> Importation et propagation des données Excel vers tous les endroits en cours...', false);
+
+            try {
                 const formData = new FormData();
-                formData.append('file', file);
+                files.forEach(f => formData.append('files', f));
+                formData.append('sections', JSON.stringify(sectionsParam));
+                formData.append('weekMode', weekMode);
+                formData.append('weeks', JSON.stringify(weeksParam));
+                formData.append('fallbackWeek', String(fallbackWeek));
+                formData.append('targets', JSON.stringify(targets));
 
                 const res = await fetch('/api/admin/import-database', {
                     method: 'POST',
                     body: formData
                 });
-
                 const data = await res.json();
                 if (!res.ok || !data.success) {
-                    throw new Error(data.message || 'Erreur lors de l\'importation');
+                    throw new Error(data.message || 'Erreur lors de l\'importation.');
                 }
 
-                const summaryText = data.summary ? Object.entries(data.summary).map(([k, v]) => `${k}: ${v}`).join(', ') : '';
-                const okMsg = isAr
-                    ? `تم استيراد قاعدة البيانات بنجاح ! (${summaryText})`
-                    : (isEn
-                        ? `Database imported successfully! (${summaryText})`
-                        : `Base de données importée avec succès ! (${summaryText})`);
+                const s = data.summary || {};
+                const details = [
+                    s.lignes_plan ? `📋 <strong>${s.lignes_plan}</strong> séances de plan` : null,
+                    s.semaines ? `📅 Semaines : <strong>${s.semaines}</strong>` : null,
+                    s.sections ? `🏫 Sections : <strong>${s.sections}</strong>` : null,
+                    s.emplois_du_temps_synchronises ? `🕒 Emplois du temps synchronisés` : null,
+                    s.devoirs_suivi_synchronises ? `📝 <strong>${s.devoirs_suivi_synchronises}</strong> devoirs synchronisés au suivi` : null,
+                    s.evaluations_suivi ? `⭐ <strong>${s.evaluations_suivi}</strong> évaluations de suivi` : null,
+                    s.notes_bulletins ? `🎓 <strong>${s.notes_bulletins}</strong> notes/bulletins` : null,
+                    s.eleves ? `👨‍🎓 <strong>${s.eleves}</strong> élèves` : null
+                ].filter(Boolean).join(' &bull; ');
 
-                displayAlert(okMsg, false);
-                event.target.value = '';
+                showModalStatus(`<i class="fas fa-check-circle"></i> <strong>Importation réussie !</strong><br><span style="font-size:0.83rem;">${details || 'Toutes les données ont été restaurées.'}</span>`, false);
+                displayAlert('Données Excel importées et restaurées vers tous les endroits avec succès !', false);
 
-                if (currentWeek) {
-                    await fetchPlanData(currentWeek);
+                if (weekMode !== 'auto' && weeksParam.length > 0 && !weeksParam.map(String).includes(String(currentWeek))) {
+                    currentWeek = weeksParam[0];
+                    const wSel = document.getElementById('weekSelector');
+                    if (wSel) wSel.value = String(currentWeek);
                 }
+
+                await refreshAllViewsAfterExcelImport(sectionsParam === 'all' ? ['garcons', 'filles', 'primaire', 'maternelle'] : sectionsParam);
             } catch (err) {
-                console.error('Erreur handleImportDatabaseFile:', err);
+                console.error('Erreur executeUniversalImportRestore:', err);
+                showModalStatus(`<i class="fas fa-times-circle"></i> Erreur : ${escapeHtml(err.message)}`, true);
                 displayAlert('Erreur lors de l\'importation : ' + err.message, true);
-                event.target.value = '';
+            } finally {
+                if (btn) btn.disabled = false;
             }
+        }
+
+        async function handleImportDatabaseFile(event) {
+            const files = Array.from(event.target.files || []);
+            if (files.length === 0) return;
+            universalSelectedFiles = files;
+            openUniversalImportRestoreModal();
+            handleUniversalModalFileChange({ target: { files } });
         }
 
         async function clearLessonPlansDb() {
@@ -2694,111 +3001,183 @@
             }
         }
 
-        // --- Fonctions Admin ---
-        function handleFileUpload(event) { const file = event.target.files[0]; const statusSpan = document.getElementById('file-upload-status'); const saveBtn = document.getElementById('saveUploadedDataBtn'); uploadedPlanData = null; saveBtn.disabled = true; statusSpan.textContent = ''; if (!file) { statusSpan.textContent = t('no_file_selected'); return; } console.log(`[Admin Upload] Fichier: ${file.name}`); statusSpan.textContent = t('reading_file', { fileName: file.name }); if (!/\.(xlsx|xls)$/i.test(file.name)) { displayAlert("invalid_file_type", true); statusSpan.textContent = "Type invalide."; event.target.value = ''; return; } const reader = new FileReader(); reader.onload = function(e) { try { const data = e.target.result; const workbook = XLSX.read(data, { type: 'array' }); const firstSheetName = workbook.SheetNames[0]; const worksheet = workbook.Sheets[firstSheetName]; const jsonDataRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false }); if (!jsonDataRaw || jsonDataRaw.length < 1) throw new Error("Feuille Excel vide."); const headersRaw = jsonDataRaw[0]; if (!headersRaw || !Array.isArray(headersRaw) || headersRaw.length === 0) throw new Error("En-têtes non trouvés."); const extractedHeaders = headersRaw.map(h => h ? String(h).trim().replace(/\s+/g, ' ') : null).filter(Boolean); if (extractedHeaders.length === 0) throw new Error("Aucun en-tête valide."); const dataRows = jsonDataRaw.slice(1); uploadedPlanData = dataRows.map((row) => { if (!Array.isArray(row)) return null; const obj = {}; extractedHeaders.forEach((header, index) => { obj[header] = (row && index < row.length) ? row[index] : null; }); return Object.values(obj).some(val => val != null && String(val).trim() !== '') ? obj : null; }).filter(Boolean); console.log(`[Admin Upload] ${uploadedPlanData.length} lignes extraites.`); statusSpan.textContent = t('file_read_success', { count: uploadedPlanData.length }).replace(file.name, ''); displayAlert('file_read_success', false, { fileName: file.name, count: uploadedPlanData.length }); saveBtn.disabled = false; } catch (error) { console.error("Erreur lecture Excel:", error); displayAlert('file_error', true, { error: error.message }); statusSpan.textContent = t('file_error', { error: '' }).replace(': {error}', '.'); uploadedPlanData = null; saveBtn.disabled = true; event.target.value = ''; } }; reader.onerror = function(e) { console.error("Erreur FileReader:", e); displayAlert('file_error', true, { error: "Erreur FileReader" }); statusSpan.textContent = t('file_error', { error: '' }).replace(': {error}', '.'); uploadedPlanData = null; saveBtn.disabled = true; event.target.value = ''; }; reader.readAsArrayBuffer(file); }
+        // --- Fonctions Admin (Onglet 1 : Import Excel Multi-Feuilles / Multi-Semaines / Multi-Sections / Tous Endroits) ---
+        function handleFileUpload(event) {
+            const files = Array.from(event.target.files || []);
+            const file = files[0];
+            const statusSpan = document.getElementById('file-upload-status');
+            const saveBtn = document.getElementById('saveUploadedDataBtn');
+            uploadedPlanData = null;
+            uploadedExcelFilesList = files;
+            if (saveBtn) saveBtn.disabled = true;
+            if (statusSpan) statusSpan.textContent = '';
+            if (!file) {
+                if (statusSpan) statusSpan.textContent = t('no_file_selected');
+                return;
+            }
+            if (!/\.(xlsx|xls|json)$/i.test(file.name)) {
+                displayAlert("invalid_file_type", true);
+                if (statusSpan) statusSpan.textContent = "Type invalide.";
+                event.target.value = '';
+                return;
+            }
+            if (/\.json$/i.test(file.name)) {
+                uploadedPlanData = [{ _isJsonBackup: true }];
+                if (statusSpan) statusSpan.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Fichier de sauvegarde JSON prêt (${escapeHtml(file.name)}).</span>`;
+                if (saveBtn) saveBtn.disabled = false;
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = e.target.result;
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const allExtractedRows = [];
+                    const detectedSheets = [];
+
+                    // Lire TOUTES les feuilles pertinentes du fichier Excel (pas seulement la 1ère feuille !)
+                    workbook.SheetNames.forEach(sheetName => {
+                        if (sheetName === '_RAW_BACKUP') return;
+                        const worksheet = workbook.Sheets[sheetName];
+                        const jsonDataRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false });
+                        if (!jsonDataRaw || jsonDataRaw.length < 2) return;
+                        const headersRaw = jsonDataRaw[0];
+                        if (!headersRaw || !Array.isArray(headersRaw)) return;
+                        const extractedHeaders = headersRaw.map(h => h ? String(h).trim().replace(/\s+/g, ' ') : null);
+                        if (extractedHeaders.filter(Boolean).length === 0) return;
+
+                        const sheetAsClass = cleanClassNameClient(sheetName);
+                        const isClassSheet = /^(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS|KG[1-3])$/i.test(sheetAsClass);
+
+                        const dataRows = jsonDataRaw.slice(1);
+                        let sheetRowCount = 0;
+                        dataRows.forEach(row => {
+                            if (!Array.isArray(row)) return;
+                            const obj = {};
+                            extractedHeaders.forEach((header, index) => {
+                                if (header) obj[header] = (row && index < row.length) ? row[index] : null;
+                            });
+                            if (Object.values(obj).some(val => val != null && String(val).trim() !== '')) {
+                                if (isClassSheet && !obj.Classe && !obj.classe) {
+                                    obj.Classe = sheetAsClass;
+                                }
+                                obj._sheetName = sheetName;
+                                allExtractedRows.push(obj);
+                                sheetRowCount++;
+                            }
+                        });
+                        if (sheetRowCount > 0) detectedSheets.push(`${sheetName} (${sheetRowCount})`);
+                    });
+
+                    uploadedPlanData = allExtractedRows;
+                    console.log(`[Admin Upload] ${uploadedPlanData.length} lignes extraites depuis ${detectedSheets.length} feuille(s).`);
+                    if (statusSpan) {
+                        statusSpan.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> ${files.length} fichier(s) lu(s) : <strong>${uploadedPlanData.length} lignes</strong> détectées sur ${detectedSheets.join(', ')}</span>`;
+                    }
+                    displayAlert('file_read_success', false, { fileName: file.name, count: uploadedPlanData.length });
+                    if (saveBtn) saveBtn.disabled = false;
+                } catch (error) {
+                    console.error("Erreur lecture Excel:", error);
+                    displayAlert('file_error', true, { error: error.message });
+                    if (statusSpan) statusSpan.textContent = "Erreur lecture fichier: " + error.message;
+                    uploadedPlanData = null;
+                    if (saveBtn) saveBtn.disabled = true;
+                    event.target.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
         async function saveUploadedData() {
             const targetWeeks = (typeof getUploadTargetWeeks === 'function') ? getUploadTargetWeeks() : [];
-            const adminSectionSelect = document.getElementById('adminUploadSectionSelect');
-            const targetSection = (adminSectionSelect && adminSectionSelect.value) ? adminSectionSelect.value : (currentSection || 'garcons');
+            const modeRadio = document.querySelector('input[name="uploadWeekMode"]:checked');
+            const weekMode = modeRadio ? modeRadio.value : 'single';
+            const targetSections = (typeof getUploadTargetSections === 'function') ? getUploadTargetSections() : [currentSection || 'garcons'];
             const statusSpan = document.getElementById('file-upload-status');
+            const fileInputEl = document.getElementById('excelFileInput');
+            const filesToUpload = (uploadedExcelFilesList && uploadedExcelFilesList.length > 0)
+                ? uploadedExcelFilesList
+                : Array.from(fileInputEl?.files || []);
 
-            if (!targetWeeks || targetWeeks.length === 0) {
+            if (weekMode !== 'auto' && (!targetWeeks || targetWeeks.length === 0)) {
                 displayAlert("please_select_week", true);
                 if (statusSpan) statusSpan.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Veuillez sélectionner au moins une semaine.</span>';
                 return;
             }
-            if (!uploadedPlanData || uploadedPlanData.length === 0) {
+            if ((!uploadedPlanData || uploadedPlanData.length === 0) && filesToUpload.length === 0) {
                 displayAlert("no_data_to_save", true);
                 if (statusSpan) statusSpan.innerHTML = '<span style="color:#EF4444;"><i class="fas fa-exclamation-circle"></i> Aucun fichier Excel chargé ou fichier vide.</span>';
                 return;
             }
 
-            const secLabel = targetSection === 'garcons' ? 'Garçons 👦' : (targetSection === 'filles' ? 'Filles 👧' : (targetSection === 'maternelle' ? 'Maternelle 🧸🎨' : 'Primaire 🎒📚'));
-            const isMulti = targetWeeks.length > 1;
-            const weeksStr = isMulti ? `${targetWeeks.length} semaines (${targetWeeks.map(w => `S${w}`).join(', ')})` : `Semaine S${targetWeeks[0]}`;
+            const targets = {
+                plan: document.getElementById('uploadTarget_plan')?.checked !== false,
+                schedule: document.getElementById('uploadTarget_schedule')?.checked !== false,
+                suivi: document.getElementById('uploadTarget_suivi')?.checked !== false,
+                grades: document.getElementById('uploadTarget_grades')?.checked !== false,
+                students: true,
+                publish: true
+            };
 
-            console.log(`[Admin Save] Enregistrement ${uploadedPlanData.length} lignes pour ${weeksStr} (Section ${targetSection}).`);
-            displayAlert(`Enregistrement en cours pour ${weeksStr} (${secLabel})...`, false);
+            const secLabel = targetSections === 'all'
+                ? 'Toutes les sections 🌐'
+                : (Array.isArray(targetSections) ? targetSections.join(', ') : String(targetSections));
+            const weeksStr = weekMode === 'auto'
+                ? `Auto (repli S${targetWeeks[0] || 1})`
+                : (targetWeeks.length > 1 ? `${targetWeeks.length} semaines (${targetWeeks.map(w => `S${w}`).join(', ')})` : `Semaine S${targetWeeks[0]}`);
+
+            displayAlert(`Importation et propagation en cours pour ${weeksStr} (${secLabel})...`, false);
             setButtonLoading('saveUploadedDataBtn', true, 'fas fa-database');
             showProgressBar();
-            updateProgressBar(15);
+            updateProgressBar(20);
 
             try {
-                const cleanData = uploadedPlanData.map(row => {
-                    if (!row || typeof row !== 'object') return null;
-                    const copy = { ...row, _section: targetSection };
-                    Object.keys(copy).forEach(k => {
-                        if (k.trim().toLowerCase() === 'classe' && copy[k]) {
-                            copy[k] = cleanClassNameClient(copy[k]) || String(copy[k]).trim();
-                        }
-                    });
-                    return copy;
-                }).filter(Boolean);
-
-                let response, result;
-                if (isMulti) {
-                    response = await fetch('/api/save-multiple-weeks', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ weeks: targetWeeks, data: cleanData, section: targetSection })
-                    });
+                const formData = new FormData();
+                if (filesToUpload.length > 0) {
+                    filesToUpload.forEach(f => formData.append('files', f));
                 } else {
-                    response = await fetch('/api/save-plan', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ week: targetWeeks[0], data: cleanData, section: targetSection })
-                    });
+                    formData.append('data', JSON.stringify({ planRows: uploadedPlanData }));
                 }
+                formData.append('sections', JSON.stringify(targetSections));
+                formData.append('weekMode', weekMode);
+                formData.append('weeks', JSON.stringify(targetWeeks));
+                formData.append('fallbackWeek', String(targetWeeks[0] || currentWeek || 1));
+                formData.append('targets', JSON.stringify(targets));
+
+                const response = await fetch('/api/admin/import-database', {
+                    method: 'POST',
+                    body: formData
+                });
 
                 updateProgressBar(85);
-                result = await response.json();
-                if (!response.ok) throw new Error(result.message || `Erreur serveur ${response.status}`);
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || `Erreur serveur ${response.status}`);
                 updateProgressBar(100);
 
-                const successMsg = isMulti 
-                    ? `Données appliquées avec succès sur ${targetWeeks.length} semaines pour la section ${secLabel} !`
-                    : `Données de la semaine S${targetWeeks[0]} pour la section ${secLabel} enregistrées avec succès !`;
+                const s = result.summary || {};
+                const successMsg = `Données Excel propagées avec succès (${s.lignes_plan || 0} séances, Semaines: ${s.semaines || weeksStr}, Sections: ${s.sections || secLabel}) !`;
 
                 displayAlert(successMsg, false);
-                if (statusSpan) statusSpan.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> ${successMsg}</span>`;
-                
+                if (statusSpan) statusSpan.innerHTML = `<span style="color:#10B981;"><i class="fas fa-check-circle"></i> ${escapeHtml(successMsg)}</span>`;
+
                 uploadedPlanData = null;
-                const fileInputEl = document.getElementById('excelFileInput');
+                uploadedExcelFilesList = [];
                 if (fileInputEl) fileInputEl.value = '';
                 const saveBtn = document.getElementById('saveUploadedDataBtn');
                 if (saveBtn) saveBtn.disabled = true;
 
-                // Nettoyer le cache local de visibilité des classes pour cette section et synchroniser avec le serveur
-                try {
-                    localStorage.removeItem('hiddenClasses_' + targetSection);
-                    localStorage.removeItem('visibleClasses_' + targetSection);
-                    if (window.sectionHiddenClassesMap) window.sectionHiddenClassesMap[targetSection] = [];
-                    if (typeof syncClassVisibilityFromServer === 'function') {
-                        await syncClassVisibilityFromServer(targetSection);
-                    }
-                } catch (e) {}
-                
-                if (targetSection === currentSection) {
-                    const weekToLoad = targetWeeks.map(String).includes(String(currentWeek)) ? currentWeek : targetWeeks[0];
-                    if (weekToLoad) {
-                        currentWeek = weekToLoad;
-                        const wSel = document.getElementById('weekSelector');
-                        if (wSel) wSel.value = String(weekToLoad);
-                        // Réinitialiser les filtres pour afficher l'intégralité du fichier Excel importé
-                        ['filterEnseignant', 'filterClasse', 'filterMatiere', 'filterPeriode', 'filterJour'].forEach(fId => {
-                            const fEl = document.getElementById(fId);
-                            if (fEl && !fEl.disabled) fEl.value = '';
-                        });
-                        await fetchPlanData(weekToLoad);
-                    }
+                if (weekMode !== 'auto' && targetWeeks.length > 0 && !targetWeeks.map(String).includes(String(currentWeek))) {
+                    currentWeek = targetWeeks[0];
+                    const wSel = document.getElementById('weekSelector');
+                    if (wSel) wSel.value = String(currentWeek);
                 }
-                if (typeof populateAdminScheduleClasses === 'function') {
-                    await populateAdminScheduleClasses();
-                }
+
+                await refreshAllViewsAfterExcelImport(targetSections === 'all' ? ['garcons', 'filles', 'primaire', 'maternelle'] : targetSections);
             } catch (error) {
                 console.error("Erreur enregistrement upload:", error);
                 displayAlert('uploaded_data_error', true, { error: error.message });
-                if (statusSpan) statusSpan.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${error.message}</span>`;
+                if (statusSpan) statusSpan.innerHTML = `<span style="color:#EF4444;"><i class="fas fa-times-circle"></i> Erreur: ${escapeHtml(error.message)}</span>`;
                 updateProgressBar(0);
             } finally {
                 hideProgressBar();
@@ -21849,6 +22228,12 @@ window.onGradeClassChange = onGradeClassChange;
 window.renderTeacherGradesTable = renderTeacherGradesTable;
 window.recalcStudentRowTotal = recalcStudentRowTotal;
 window.saveTeacherGradesData = saveTeacherGradesData;
-
-
-
+window.openUniversalImportRestoreModal = openUniversalImportRestoreModal;
+window.closeUniversalImportRestoreModal = closeUniversalImportRestoreModal;
+window.toggleUniversalSectionMode = toggleUniversalSectionMode;
+window.toggleUniversalWeekMode = toggleUniversalWeekMode;
+window.selectUniWeeksPreset = selectUniWeeksPreset;
+window.handleUniversalModalFileChange = handleUniversalModalFileChange;
+window.executeUniversalImportRestore = executeUniversalImportRestore;
+window.onAdminUploadSectionModeChange = onAdminUploadSectionModeChange;
+window.getUploadTargetSections = getUploadTargetSections;

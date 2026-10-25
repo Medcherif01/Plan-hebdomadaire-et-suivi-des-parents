@@ -2154,20 +2154,23 @@ app.get('/api/admin/export-database', async (req, res) => {
   try {
     const db = await connectToDatabase();
     const wb = XLSX.utils.book_new();
+    const filterSec = req.query.section && req.query.section !== 'all' ? String(req.query.section).toLowerCase().trim() : null;
+    const secQuery = filterSec ? { section: filterSec } : {};
 
     // 1. Plans hebdomadaires (plans)
-    const rawPlans = await db.collection('plans').find({}).toArray();
+    const rawPlans = await db.collection('plans').find(secQuery).toArray();
     const flatPlansRows = [];
     rawPlans.forEach(p => {
-      const section = p.section || (p._id && p._id.split('_')[0]) || '';
-      const week = p.week || (p._id && p._id.split('_')[1]) || '';
+      const section = p.section || (p._id && String(p._id).split('_')[0]) || '';
+      const week = p.week || (p._id && String(p._id).split('_')[1]) || '';
       const rows = Array.isArray(p.data) ? p.data : (Array.isArray(p.rowsData) ? p.rowsData : []);
       rows.forEach(r => {
+        if (!r || typeof r !== 'object') return;
         flatPlansRows.push({
           'Section': section,
           'Semaine': week,
           'Enseignant': r['Enseignant'] || r['enseignant'] || '',
-          'Classe': r['Classe'] || r['classe'] || '',
+          'Classe': cleanClassNameServer(r['Classe'] || r['classe'] || '') || (r['Classe'] || r['classe'] || ''),
           'Matiere': r['Matière'] || r['matiere'] || r['Matiere'] || '',
           'Periode': r['Période'] || r['periode'] || r['Periode'] || '',
           'Jour': r['Jour'] || r['jour'] || '',
@@ -2180,11 +2183,48 @@ app.get('/api/admin/export-database', async (req, res) => {
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatPlansRows.length > 0 ? flatPlansRows : [{ Info: 'Aucun plan' }]), 'Plans');
 
-    // 2. Élèves (students)
-    const students = await db.collection('students').find({}).toArray();
+    // 2. Emplois du Temps (class_schedules)
+    const schedules = await db.collection('class_schedules').find(secQuery).toArray();
+    const flatSchedules = [];
+    schedules.forEach(sc => {
+      const section = sc.section || 'garcons';
+      const classe = cleanClassNameServer(sc.classe || '') || sc.classe || '';
+      (sc.slots || []).forEach(sl => {
+        flatSchedules.push({
+          'Section': section,
+          'Classe': classe,
+          'Jour': sl.jour || '',
+          'Periode': sl.periode || '',
+          'Matiere': sl.matiere || '',
+          'Enseignant': sl.enseignant || ''
+        });
+      });
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatSchedules.length > 0 ? flatSchedules : [{ Info: 'Aucun emploi du temps' }]), 'Emplois_du_Temps');
+
+    // 3. Notes & Bulletins (studentGrades)
+    const studentGrades = await db.collection('studentGrades').find(secQuery).toArray();
+    const legacyGrades = await db.collection('student_grades').find(secQuery).toArray().catch(() => []);
+    const flatGrades = studentGrades.map(g => ({
+      'Section': g.section || 'garcons',
+      'Semestre': g.semester || 'S1',
+      'Classe': cleanClassNameServer(g.classe || '') || g.classe || '',
+      'Matiere': g.subject || '',
+      'Enseignant': g.teacher || '',
+      'Eleve': g.studentName || '',
+      'Devoirs_HW': g.hw ?? 0,
+      'Travaux_CW': g.cw ?? 0,
+      'Evaluation': g.evaluation ?? 0,
+      'Examen': g.examen ?? 0,
+      'Total': g.total ?? 0
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatGrades.length > 0 ? flatGrades : [{ Info: 'Aucune note' }]), 'Notes_Bulletins');
+
+    // 4. Élèves (students)
+    const students = await db.collection('students').find(secQuery).toArray();
     const flatStudents = students.map(s => ({
       'Section': s.section || '',
-      'Classe': s.class || s.classe || '',
+      'Classe': cleanClassNameServer(s.class || s.classe || '') || (s.class || s.classe || ''),
       'Nom': s.name || '',
       'Date_Naissance': s.birthday || '',
       'Photo': s.photo || '',
@@ -2192,11 +2232,11 @@ app.get('/api/admin/export-database', async (req, res) => {
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatStudents.length > 0 ? flatStudents : [{ Info: 'Aucun élève' }]), 'Eleves');
 
-    // 3. Évaluations (evaluations)
-    const evals = await db.collection('evaluations').find({}).toArray();
+    // 5. Évaluations & Suivi (evaluations)
+    const evals = await db.collection('evaluations').find(secQuery).toArray();
     const flatEvals = evals.map(e => ({
       'Section': e.section || '',
-      'Classe': e.class || e.rawClass || '',
+      'Classe': cleanClassNameServer(e.class || e.rawClass || '') || (e.class || e.rawClass || ''),
       'Date': e.date || '',
       'Matiere': e.subject || '',
       'Eleve': e.studentName || '',
@@ -2208,8 +2248,8 @@ app.get('/api/admin/export-database', async (req, res) => {
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatEvals.length > 0 ? flatEvals : [{ Info: 'Aucune évaluation' }]), 'Evaluations');
 
-    // 4. Utilisateurs / Enseignants (users)
-    const users = await db.collection('users').find({}).toArray();
+    // 6. Utilisateurs / Enseignants (users)
+    const users = await db.collection('users').find(secQuery).toArray();
     const flatUsers = users.map(u => ({
       'Section': u.section || '',
       'Nom_Utilisateur': u.username || '',
@@ -2220,31 +2260,31 @@ app.get('/api/admin/export-database', async (req, res) => {
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatUsers.length > 0 ? flatUsers : [{ Info: 'Aucun utilisateur' }]), 'Utilisateurs');
 
-    // 5. Notes de semaine (weekly_notes)
-    const notes = await db.collection('weekly_notes').find({}).toArray();
+    // 7. Notes de semaine (weekly_notes)
+    const notes = await db.collection('weekly_notes').find(secQuery).toArray();
     const flatNotes = notes.map(n => ({
       'Section': n.section || '',
       'Semaine': n.week || '',
-      'Classe': n.classe || '',
+      'Classe': cleanClassNameServer(n.classe || '') || n.classe || '',
       'Notes': n.notes || ''
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatNotes.length > 0 ? flatNotes : [{ Info: 'Aucune note' }]), 'Notes_Semaine');
 
-    // 6. Messages Parents / Enseignants (teacher_messages)
-    const messages = await db.collection('teacher_messages').find({}).toArray();
+    // 8. Messages Parents / Enseignants (teacher_messages)
+    const messages = await db.collection('teacher_messages').find(secQuery).toArray();
     const flatMessages = messages.map(m => ({
       'Section': m.section || '',
       'Enseignant': m.teacherName || '',
       'Parent': m.parentName || '',
       'Telephone': m.parentPhone || '',
       'Eleve': m.studentName || '',
-      'Classe': m.studentClass || '',
+      'Classe': cleanClassNameServer(m.studentClass || '') || m.studentClass || '',
       'Message': m.message || '',
       'Date': m.date || m.createdAt || ''
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatMessages.length > 0 ? flatMessages : [{ Info: 'Aucun message' }]), 'Messages');
 
-    // 7. Calendrier des 38 semaines (school_weeks_config)
+    // 9. Calendrier des 38 semaines (school_weeks_config)
     const weeksCfg = await db.collection('school_weeks_config').find({}).toArray();
     const flatWeeks = [];
     weeksCfg.forEach(doc => {
@@ -2263,8 +2303,8 @@ app.get('/api/admin/export-database', async (req, res) => {
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatWeeks.length > 0 ? flatWeeks : [{ Info: 'Aucune config' }]), 'Calendrier_Semaines');
 
-    // 8. Étoiles du Jour (daily_stars)
-    const stars = await db.collection('daily_stars').find({}).toArray();
+    // 10. Étoiles du Jour (daily_stars)
+    const stars = await db.collection('daily_stars').find(secQuery).toArray();
     const flatStars = [];
     stars.forEach(st => {
       const section = st.section || '';
@@ -2276,7 +2316,7 @@ app.get('/api/admin/export-database', async (req, res) => {
             flatStars.push({
               'Section': section,
               'Date': date,
-              'Classe': cls,
+              'Classe': cleanClassNameServer(cls) || cls,
               'Nom': s.name || s.studentName || '',
               'Score': s.score ?? 20
             });
@@ -2286,9 +2326,18 @@ app.get('/api/admin/export-database', async (req, res) => {
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flatStars.length > 0 ? flatStars : [{ Info: 'Aucune étoile' }]), 'Etoiles_du_Jour');
 
-    // 9. Sauvegarde JSON intégrale sans perte dans la feuille _RAW_BACKUP
+    // 11. Sauvegarde JSON intégrale sans perte dans la feuille _RAW_BACKUP
+    const subTeachers = await db.collection('class_subject_teachers').find(secQuery).toArray();
+    const pubPlans = await db.collection('published_plans').find(secQuery).toArray();
+    const teacherHomeworks = await db.collection('teacher_homeworks').find(secQuery).toArray().catch(() => []);
     const rawBackup = {
       plans: rawPlans,
+      class_schedules: schedules,
+      class_subject_teachers: subTeachers,
+      published_plans: pubPlans,
+      studentGrades,
+      student_grades: legacyGrades,
+      teacher_homeworks: teacherHomeworks,
       students,
       evaluations: evals,
       users,
@@ -2318,199 +2367,867 @@ app.get('/api/admin/export-database', async (req, res) => {
   }
 });
 
-// 2. Importer et restaurer la base de données depuis un fichier Excel ou JSON
+// Helper pour normaliser le nom d'une section depuis une chaîne quelconque
+function normalizeImportedSectionName(rawSec) {
+  if (!rawSec) return null;
+  const s = String(rawSec).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (!s || s === 'all' || s === 'toutes') return null;
+  if (s.includes('garcon') || s.includes('boy') || s.includes('banin') || s === 'g') return 'garcons';
+  if (s.includes('fille') || s.includes('girl') || s.includes('banat') || s === 'f') return 'filles';
+  if (s.includes('maternelle') || s.includes('kg') || s.includes('kindergarten')) return 'maternelle';
+  if (s.includes('primaire') || s.includes('primary') || s.includes('elem')) return 'primaire';
+  if (['garcons', 'filles', 'primaire', 'maternelle'].includes(s)) return s;
+  return null;
+}
+
+// Helper intelligent pour déterminer à quelle(s) section(s) appartient une ligne importée sans jamais mélanger les sections
+function resolveTargetSectionsForImportedRow(row, rawClassVal, teacherVal, sheetName, allowedSections, isAllMode) {
+  const validAllowed = Array.isArray(allowedSections) && allowedSections.length > 0
+    ? allowedSections.filter(s => ['garcons', 'filles', 'primaire', 'maternelle'].includes(s))
+    : ['garcons', 'filles', 'primaire', 'maternelle'];
+
+  const cleanCls = cleanClassNameServer(rawClassVal || '').toUpperCase();
+
+  // 1. Les classes Maternelle (PS, MS, GS, KG1..3) vont exclusivement en 'maternelle'
+  if (/^(PS|MS|GS|KG\s*[1-3])$/i.test(cleanCls)) {
+    if (isAllMode || validAllowed.includes('maternelle')) return ['maternelle'];
+    return [];
+  }
+
+  // 2. Les classes Primaire (PP1..PP5, CP, CE1..2, CM1..2) vont exclusivement en 'primaire'
+  if (/^(PP\s*[1-5]|CP|CE\s*[1-2]|CM\s*[1-2])$/i.test(cleanCls)) {
+    if (isAllMode || validAllowed.includes('primaire')) return ['primaire'];
+    return [];
+  }
+
+  // 3. Vérifier si la ligne ou le nom de feuille indique explicitement une section
+  const explicitRowSec = normalizeImportedSectionName(row?.Section || row?.section || row?._section) || normalizeImportedSectionName(sheetName);
+  if (explicitRowSec) {
+    if (isAllMode || validAllowed.includes(explicitRowSec)) return [explicitRowSec];
+    // Si l'admin a choisi explicitement UNE seule section (ex: 'garcons') et importe un fichier vers cette section,
+    // si la ligne est PEI/DP on l'accepte uniquement si ce n'est pas un export multi-sections
+    if (!isAllMode && validAllowed.length === 1 && /^(PEI\s*[1-5]|DP\s*[1-2])$/i.test(cleanCls) && !row?.Section && !row?.section) {
+      return [validAllowed[0]];
+    }
+    return [];
+  }
+
+  // 4. Vérifier si le nom brut de la classe contenait "Garçons" ou "Filles"
+  const rawClsStr = String(rawClassVal || '').toLowerCase();
+  if (/\b(garçons|garçon|garcons|garcon|boys|banin)\b/i.test(rawClsStr)) {
+    if (isAllMode || validAllowed.includes('garcons')) return ['garcons'];
+    return [];
+  }
+  if (/\b(filles|fille|girls|banat)\b/i.test(rawClsStr)) {
+    if (isAllMode || validAllowed.includes('filles')) return ['filles'];
+    return [];
+  }
+
+  // 5. En mode "Toutes les sections" (ou multi-sections Garçons + Filles), distinguer Garçons et Filles par le nom de l'enseignant s'il est connu
+  const tStr = String(teacherVal || '').trim();
+  if (tStr && (isAllMode || validAllowed.length > 1)) {
+    const isMale = (typeof maleTeachers !== 'undefined' ? maleTeachers : []).some(m => m.toLowerCase() === tStr.toLowerCase());
+    const isFemale = (typeof femaleTeachers !== 'undefined' ? femaleTeachers : []).some(f => f.toLowerCase() === tStr.toLowerCase());
+    if (isMale && !isFemale && validAllowed.includes('garcons')) return ['garcons'];
+    if (isFemale && !isMale && validAllowed.includes('filles')) return ['filles'];
+  }
+
+  // 6. Si la classe est PEI1..5 ou DP1..2, elle ne peut aller que dans garcons et/ou filles (jamais primaire/maternelle)
+  if (/^(PEI\s*[1-5]|DP\s*[1-2])$/i.test(cleanCls)) {
+    const secondaryAllowed = validAllowed.filter(s => s === 'garcons' || s === 'filles');
+    if (secondaryAllowed.length > 0) return secondaryAllowed;
+    return [validAllowed[0] || 'garcons'];
+  }
+
+  // Par défaut, appliquer aux sections sélectionnées par l'admin
+  return validAllowed;
+}
+
+// Helper pour synchroniser les devoirs et travaux du plan hebdomadaire vers teacher_homeworks (pour l'Espace Parent & Suivi)
+async function syncHomeworksFromPlanRowsToSuivi(db, planRows, section, weekNumber) {
+  try {
+    if (!Array.isArray(planRows) || planRows.length === 0) return 0;
+    const datesNode = typeof getSectionWeekDates === 'function' ? getSectionWeekDates(section, weekNumber) : null;
+    const weekStartDate = datesNode?.start ? new Date(datesNode.start + 'T00:00:00Z') : null;
+    let hwCount = 0;
+
+    for (const r of planRows) {
+      if (!r || typeof r !== 'object') continue;
+      const cls = cleanClassNameServer(r[findKey(r, 'Classe') || 'Classe'] || r.Classe || r.classe || '');
+      const mat = String(r[findKey(r, 'Matière') || 'Matière'] || r.Matière || r.matiere || r.Matiere || '').trim();
+      const ens = String(r[findKey(r, 'Enseignant') || 'Enseignant'] || r.Enseignant || r.enseignant || '').trim();
+      const jourRaw = String(r[findKey(r, 'Jour') || 'Jour'] || r.Jour || r.jour || '').trim();
+      const perRaw = String(r[findKey(r, 'Période') || 'Période'] || r.Période || r.periode || r.Periode || '').trim();
+      const devoirs = String(r[findKey(r, 'Devoirs') || 'Devoirs'] || r.Devoirs || r.devoirs || '').trim();
+      const lecon = String(r[findKey(r, 'Leçon') || 'Leçon'] || r.Leçon || r.lecon || r.Lecon || '').trim();
+      const travaux = String(r[findKey(r, 'Travaux de classe') || 'Travaux de classe'] || r['Travaux de classe'] || r.Travaux_de_classe || '').trim();
+
+      if (!cls || !mat || mat === '—' || mat === '-') continue;
+      const hasHw = devoirs && devoirs !== '—' && devoirs !== '-' && devoirs !== '–';
+      const hasCw = (lecon && lecon !== '—' && lecon !== '-') || (travaux && travaux !== '—' && travaux !== '-');
+      if (!hasHw && !hasCw) continue;
+
+      let matchedDay = typeof extractDayNameFromString === 'function' ? extractDayNameFromString(jourRaw) : null;
+      if (!matchedDay) {
+        for (const d of ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi']) {
+          if (jourRaw.toLowerCase().includes(d.toLowerCase())) {
+            matchedDay = d;
+            break;
+          }
+        }
+      }
+      if (!matchedDay) matchedDay = 'Dimanche';
+
+      let isoDate = '';
+      if (weekStartDate && !isNaN(weekStartDate.getTime()) && typeof getDateForDayNameNode === 'function') {
+        const dt = getDateForDayNameNode(weekStartDate, matchedDay);
+        if (dt && !isNaN(dt.getTime())) {
+          isoDate = dt.toISOString().split('T')[0];
+        }
+      }
+
+      const hwId = `planhw_${section}_W${weekNumber}_${cls}_${matchedDay}_P${perRaw}_${mat}`.replace(/\s+/g, '_');
+      await db.collection('teacher_homeworks').updateOne(
+        { _id: hwId },
+        {
+          $set: {
+            _id: hwId,
+            section,
+            week: Number(weekNumber),
+            classe: cls,
+            class: cls,
+            subject: mat,
+            matiere: mat,
+            teacher: ens,
+            enseignant: ens,
+            day: matchedDay,
+            periode: perRaw,
+            date: isoDate || matchedDay,
+            homework: hasHw ? devoirs : '',
+            content: hasHw ? devoirs : (lecon || travaux),
+            lesson: lecon,
+            classwork: travaux,
+            source: 'excel_plan_sync',
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+      if (hasHw) hwCount++;
+    }
+    return hwCount;
+  } catch (err) {
+    console.warn('Note syncHomeworksFromPlanRowsToSuivi:', err.message);
+    return 0;
+  }
+}
+
+// 2. Importer et restaurer les données Excel ou JSON vers TOUS LES ENDROITS (Plan, Emploi du temps, Suivi, Notes, Élèves)
+// avec choix de la/des semaine(s) et de la/des section(s)
 app.post('/api/admin/import-database', async (req, res) => {
   try {
-    let fileBuf = null;
-    let jsonBackup = null;
-
-    if (req.files && req.files.file) {
-      fileBuf = req.files.file.data;
-    } else if (req.body && req.body.data) {
-      jsonBackup = req.body.data;
-    }
-
-    if (!fileBuf && !jsonBackup) {
-      return res.status(400).json({ success: false, message: 'Aucun fichier ou donnée fourni pour l\'importation.' });
-    }
-
     const db = await connectToDatabase();
-    const summary = {};
+    const now = new Date();
 
-    // Traitement du fichier Excel
-    if (fileBuf) {
-      const wb = XLSX.read(fileBuf, { type: 'buffer' });
+    // 1. Extraire les paramètres de ciblage (Sections, Semaines, Endroits cibles)
+    let rawSections = req.body?.sections || req.body?.section || req.query?.section || 'all';
+    if (typeof rawSections === 'string') {
+      try {
+        if (rawSections.startsWith('[')) rawSections = JSON.parse(rawSections);
+      } catch (e) {}
+    }
+    const isAllSections = rawSections === 'all' || (Array.isArray(rawSections) && rawSections.includes('all'));
+    const targetSections = isAllSections
+      ? ['garcons', 'filles', 'primaire', 'maternelle']
+      : (Array.isArray(rawSections)
+          ? rawSections.map(s => normalizeImportedSectionName(s)).filter(Boolean)
+          : [normalizeImportedSectionName(rawSections) || 'garcons']);
 
-      // Vérifier si la feuille de restauration haute fidélité _RAW_BACKUP est présente
+    let weekMode = String(req.body?.weekMode || req.query?.weekMode || 'auto').toLowerCase().trim();
+    let rawWeeks = req.body?.weeks || req.body?.week || req.query?.weeks || [];
+    if (typeof rawWeeks === 'string') {
+      try {
+        if (rawWeeks.startsWith('[')) rawWeeks = JSON.parse(rawWeeks);
+        else rawWeeks = rawWeeks.split(',').map(w => parseInt(w.trim(), 10)).filter(w => !isNaN(w));
+      } catch (e) {
+        rawWeeks = [];
+      }
+    } else if (typeof rawWeeks === 'number') {
+      rawWeeks = [rawWeeks];
+    }
+    const targetWeeks = Array.isArray(rawWeeks)
+      ? rawWeeks.map(w => parseInt(w, 10)).filter(w => !isNaN(w) && w >= 1 && w <= 38)
+      : [];
+    const fallbackWeek = parseInt(req.body?.fallbackWeek || targetWeeks[0] || 1, 10) || 1;
+
+    let rawTargets = req.body?.targets || {};
+    if (typeof rawTargets === 'string') {
+      try { rawTargets = JSON.parse(rawTargets); } catch (e) { rawTargets = {}; }
+    }
+    const targets = {
+      plan: rawTargets.plan !== false,
+      schedule: rawTargets.schedule !== false,
+      suivi: rawTargets.suivi !== false,
+      grades: rawTargets.grades !== false,
+      students: rawTargets.students !== false,
+      publish: rawTargets.publish !== false
+    };
+
+    // 2. Récupérer le(s) fichier(s) uploadé(s) ou les données JSON envoyées
+    const uploadedFiles = [];
+    if (req.files) {
+      if (Array.isArray(req.files.files)) uploadedFiles.push(...req.files.files);
+      else if (req.files.files) uploadedFiles.push(req.files.files);
+      if (Array.isArray(req.files.file)) uploadedFiles.push(...req.files.file);
+      else if (req.files.file) uploadedFiles.push(req.files.file);
+    }
+
+    let directJsonPayload = null;
+    if (req.body && req.body.data && typeof req.body.data === 'object') {
+      directJsonPayload = req.body.data;
+    } else if (req.body && Array.isArray(req.body.planRows)) {
+      directJsonPayload = req.body;
+    }
+
+    if (uploadedFiles.length === 0 && !directJsonPayload) {
+      return res.status(400).json({ success: false, message: 'Aucun fichier Excel/JSON ou donnée fourni pour l\'importation.' });
+    }
+
+    const summary = {
+      plansRows: 0,
+      weeksUpdated: new Set(),
+      sectionsUpdated: new Set(),
+      schedulesSynced: 0,
+      homeworksSynced: 0,
+      evaluations: 0,
+      grades: 0,
+      students: 0,
+      users: 0,
+      weeklyNotes: 0
+    };
+
+    // Accumulateurs pour toutes les feuilles et fichiers
+    const collectedPlanRows = []; // { row, sheetName, explicitWeek }
+    const collectedEvalRows = [];
+    const collectedGradeRows = [];
+    const collectedStudentRows = [];
+    const collectedUserRows = [];
+    const collectedNoteRows = [];
+    const jsonBackupsToProcess = [];
+
+    if (directJsonPayload) {
+      if (Array.isArray(directJsonPayload)) {
+        directJsonPayload.forEach(r => collectedPlanRows.push({ row: r, sheetName: '', explicitWeek: null }));
+      } else if (Array.isArray(directJsonPayload.planRows)) {
+        directJsonPayload.planRows.forEach(r => collectedPlanRows.push({ row: r, sheetName: '', explicitWeek: null }));
+      } else {
+        jsonBackupsToProcess.push(directJsonPayload);
+      }
+    }
+
+    // 3. Parcourir chaque fichier uploadé (.xlsx, .xls, .json)
+    for (const fObj of uploadedFiles) {
+      const fName = String(fObj.name || '').toLowerCase();
+      const buf = fObj.data;
+      if (!buf) continue;
+
+      if (fName.endsWith('.json')) {
+        try {
+          const parsed = JSON.parse(buf.toString('utf8'));
+          jsonBackupsToProcess.push(parsed);
+        } catch (e) {
+          console.warn('⚠️ Fichier JSON invalide:', fName, e.message);
+        }
+        continue;
+      }
+
+      const wb = XLSX.read(buf, { type: 'buffer' });
+
+      // Si le classeur contient _RAW_BACKUP, l'extraire aussi
       if (wb.SheetNames.includes('_RAW_BACKUP')) {
-        const rawSheet = wb.Sheets['_RAW_BACKUP'];
-        const chunkRows = XLSX.utils.sheet_to_json(rawSheet);
-        const fullJsonStr = chunkRows.map(r => r.DATA_CHUNK || '').join('');
-        if (fullJsonStr) {
-          try {
-            jsonBackup = JSON.parse(fullJsonStr);
-          } catch (e) {
-            console.warn('⚠️ Erreur parsing _RAW_BACKUP JSON, repli sur feuilles tabulaires:', e.message);
+        try {
+          const chunkRows = XLSX.utils.sheet_to_json(wb.Sheets['_RAW_BACKUP']);
+          const fullJsonStr = chunkRows.map(r => r.DATA_CHUNK || '').join('');
+          if (fullJsonStr) {
+            jsonBackupsToProcess.push(JSON.parse(fullJsonStr));
+          }
+        } catch (e) {
+          console.warn('⚠️ Erreur lecture _RAW_BACKUP:', e.message);
+        }
+      }
+
+      // Parcourir TOUTES les feuilles du classeur Excel pour ne rien perdre
+      for (const sheetName of wb.SheetNames) {
+        if (sheetName === '_RAW_BACKUP') continue;
+        const sheet = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        if (!Array.isArray(rows) || rows.length === 0) continue;
+
+        const firstRowKeys = Object.keys(rows[0] || {}).map(k => k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim());
+        if (firstRowKeys.length === 1 && firstRowKeys[0] === 'info') continue;
+
+        const sNameNorm = sheetName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+
+        // Détecter si le nom de la feuille contient un numéro de semaine (ex: "S5", "Semaine 12", "Week 3")
+        let sheetWeek = null;
+        const wkMatch = sheetName.match(/(?:semaine|week|^s)\s*0*(\d{1,2})\b/i);
+        if (wkMatch && wkMatch[1]) {
+          const parsedW = parseInt(wkMatch[1], 10);
+          if (parsedW >= 1 && parsedW <= 38) sheetWeek = parsedW;
+        }
+
+        // Détecter si le nom de la feuille est un nom de classe (ex: "PEI1", "PEI2", "DP1", "PP1", "PS")
+        const sheetAsClass = cleanClassNameServer(sheetName);
+        const isClassSheetName = /^(PEI[1-5]|DP[1-2]|PP[1-5]|PS|MS|GS|KG[1-3])$/i.test(sheetAsClass);
+
+        // Classifier la feuille selon ses colonnes ou son nom
+        const hasPlanCols = firstRowKeys.some(k => ['periode', 'jour', 'lecon', 'travaux de classe', 'travaux_de_classe', 'support', 'devoirs'].includes(k)) ||
+          (firstRowKeys.some(k => k.includes('enseignant') || k.includes('matiere')) && firstRowKeys.some(k => k.includes('jour') || k.includes('periode') || k.includes('classe')));
+        const hasGradeCols = sNameNorm.includes('note') || sNameNorm.includes('bulletin') || sNameNorm.includes('grade') ||
+          firstRowKeys.some(k => ['devoirs_hw', 'travaux_cw', 'evaluation', 'examen', 'cw', 'hw'].includes(k));
+        const hasEvalCols = sNameNorm === 'evaluations' || sNameNorm.includes('suivi') ||
+          (firstRowKeys.some(k => k.includes('eleve')) && firstRowKeys.some(k => ['statut', 'participation', 'comportement'].includes(k)));
+        const hasStudentCols = sNameNorm === 'eleves' || sNameNorm === 'students' ||
+          (firstRowKeys.includes('nom') && firstRowKeys.some(k => ['date_naissance', 'parent_phone', 'birthday'].includes(k)));
+        const hasUserCols = sNameNorm === 'utilisateurs' || sNameNorm === 'users' ||
+          firstRowKeys.some(k => ['nom_utilisateur', 'mot_de_passe', 'nom_tableau'].includes(k));
+
+        if (sNameNorm === 'notes_semaine') {
+          rows.forEach(r => collectedNoteRows.push(r));
+        } else if (hasUserCols) {
+          rows.forEach(r => collectedUserRows.push(r));
+        } else if (hasStudentCols) {
+          rows.forEach(r => collectedStudentRows.push(r));
+        } else if (hasEvalCols) {
+          rows.forEach(r => collectedEvalRows.push({ ...r, _sheetName: sheetName }));
+        } else if (hasGradeCols && !hasPlanCols) {
+          rows.forEach(r => collectedGradeRows.push({ ...r, _sheetName: sheetName }));
+        } else if (hasPlanCols || sNameNorm === 'plans' || sNameNorm === 'emplois_du_temps' || isClassSheetName) {
+          rows.forEach(r => {
+            const copy = { ...r };
+            if (isClassSheetName && !copy.Classe && !copy.classe && !copy[findKey(copy, 'Classe')]) {
+              copy.Classe = sheetAsClass;
+            }
+            collectedPlanRows.push({ row: copy, sheetName, explicitWeek: sheetWeek });
+          });
+        } else {
+          // Feuille générique : si elle contient Classe/Matière/Enseignant, la traiter comme Plan/Emploi du temps
+          rows.forEach(r => {
+            const copy = { ...r };
+            if (isClassSheetName && !copy.Classe && !copy.classe) copy.Classe = sheetAsClass;
+            collectedPlanRows.push({ row: copy, sheetName, explicitWeek: sheetWeek });
+          });
+        }
+      }
+    }
+
+    // 4. Extraire les éléments des éventuels objets jsonBackup (_RAW_BACKUP ou fichier .json)
+    for (const jb of jsonBackupsToProcess) {
+      if (Array.isArray(jb.plans)) {
+        jb.plans.forEach(pDoc => {
+          const pSec = pDoc.section || (pDoc._id && String(pDoc._id).split('_')[0]) || '';
+          const pWk = parseInt(pDoc.week || (pDoc._id && String(pDoc._id).split('_')[1]), 10) || null;
+          const pRows = Array.isArray(pDoc.data) ? pDoc.data : (Array.isArray(pDoc.rowsData) ? pDoc.rowsData : []);
+          pRows.forEach(r => {
+            collectedPlanRows.push({
+              row: { ...r, Section: r.Section || r._section || pSec, Semaine: r.Semaine || pWk },
+              sheetName: 'Plans',
+              explicitWeek: pWk
+            });
+          });
+        });
+      }
+      if (Array.isArray(jb.evaluations)) {
+        jb.evaluations.forEach(ev => collectedEvalRows.push(ev));
+      }
+      if (Array.isArray(jb.studentGrades)) {
+        jb.studentGrades.forEach(g => collectedGradeRows.push(g));
+      }
+      if (Array.isArray(jb.student_grades)) {
+        jb.student_grades.forEach(g => collectedGradeRows.push(g));
+      }
+      if (Array.isArray(jb.students)) {
+        jb.students.forEach(s => collectedStudentRows.push(s));
+      }
+      if (Array.isArray(jb.users)) {
+        jb.users.forEach(u => collectedUserRows.push(u));
+      }
+      if (Array.isArray(jb.weekly_notes)) {
+        jb.weekly_notes.forEach(n => collectedNoteRows.push(n));
+      }
+    }
+
+    // 5. TRAITEMENT 1 : PLANS HEBDOMADAIRES + EMPLOI DU TEMPS + PUBLICATION PARENTS + DEVOIRS SUIVI
+    if ((targets.plan || targets.schedule || targets.suivi) && collectedPlanRows.length > 0) {
+      // Regrouper les lignes par (section, week)
+      // Structure: Map<section, Map<week, Array<normalizedRow>>>
+      const sectionWeekRowsMap = new Map();
+      const allRowsBySectionForSchedule = new Map();
+
+      const addRowToSecWeek = (sec, wk, normRow) => {
+        if (!sectionWeekRowsMap.has(sec)) sectionWeekRowsMap.set(sec, new Map());
+        const wkMap = sectionWeekRowsMap.get(sec);
+        if (!wkMap.has(wk)) wkMap.set(wk, []);
+        wkMap.get(wk).push({ ...normRow, _section: sec });
+
+        if (!allRowsBySectionForSchedule.has(sec)) allRowsBySectionForSchedule.set(sec, []);
+        allRowsBySectionForSchedule.get(sec).push({ ...normRow, _section: sec });
+      };
+
+      // Vérifier quelles semaines existent dans le fichier si weekMode !== 'auto'
+      const weeksFoundInFile = new Set();
+      collectedPlanRows.forEach(({ row, explicitWeek }) => {
+        const w = parseInt(row.Semaine || row.semaine || row.Week || explicitWeek, 10);
+        if (!isNaN(w) && w >= 1 && w <= 38) weeksFoundInFile.add(w);
+      });
+
+      for (const { row, sheetName, explicitWeek } of collectedPlanRows) {
+        if (!row || typeof row !== 'object') continue;
+        const rawCls = row['Classe'] || row['classe'] || row[findKey(row, 'Classe')] || '';
+        const cleanCls = cleanClassNameServer(rawCls);
+        const ens = String(row['Enseignant'] || row['enseignant'] || row[findKey(row, 'Enseignant')] || '').trim();
+        const mat = String(row['Matière'] || row['Matiere'] || row['matiere'] || row[findKey(row, 'Matière')] || '').trim();
+        const per = String(row['Période'] || row['Periode'] || row['periode'] || row[findKey(row, 'Période')] || '').trim();
+        const jour = String(row['Jour'] || row['jour'] || row[findKey(row, 'Jour')] || '').trim();
+        const lecon = String(row['Leçon'] || row['Lecon'] || row['lecon'] || row[findKey(row, 'Leçon')] || '').trim();
+        const travaux = String(row['Travaux de classe'] || row['Travaux_de_classe'] || row['travaux de classe'] || row[findKey(row, 'Travaux de classe')] || '').trim();
+        const support = String(row['Support'] || row['support'] || row[findKey(row, 'Support')] || '').trim();
+        const devoirs = String(row['Devoirs'] || row['devoirs'] || row[findKey(row, 'Devoirs')] || '').trim();
+
+        if (!cleanCls && !mat && !ens) continue;
+
+        const normRow = {
+          'Enseignant': ens,
+          'Classe': cleanCls || String(rawCls).trim(),
+          'Matière': mat || '—',
+          'Période': per || '1',
+          'Jour': jour || 'Dimanche',
+          'Leçon': lecon,
+          'Travaux de classe': travaux,
+          'Support': support,
+          'Devoirs': devoirs
+        };
+
+        // Déterminer la ou les sections cibles pour cette ligne (sans mélanger les sections !)
+        const resolvedSecs = resolveTargetSectionsForImportedRow(row, rawCls, ens, sheetName, targetSections, isAllSections);
+        if (!resolvedSecs || resolvedSecs.length === 0) continue;
+
+        // Déterminer la ou les semaines cibles pour cette ligne
+        const rowWeekNum = parseInt(row.Semaine || row.semaine || row.Week || explicitWeek, 10);
+        let weeksForThisRow = [];
+
+        if (weekMode === 'auto') {
+          if (!isNaN(rowWeekNum) && rowWeekNum >= 1 && rowWeekNum <= 38) {
+            weeksForThisRow = [rowWeekNum];
+          } else if (targetWeeks.length > 0) {
+            weeksForThisRow = targetWeeks;
+          } else {
+            weeksForThisRow = [fallbackWeek];
+          }
+        } else {
+          // L'admin a spécifié explicitement 1 semaine, plusieurs semaines ou une plage de semaines
+          const desiredWeeks = targetWeeks.length > 0 ? targetWeeks : [fallbackWeek];
+          if (weeksFoundInFile.size <= 1 || isNaN(rowWeekNum)) {
+            // Le fichier Excel est un plan hebdomadaire type (ou d'une seule semaine) : on l'applique à TOUTES les semaines sélectionnées par l'admin
+            weeksForThisRow = desiredWeeks;
+          } else {
+            // Le fichier Excel contient déjà plusieurs semaines distinctes : on filtre sur les semaines sélectionnées par l'admin
+            if (desiredWeeks.includes(rowWeekNum)) {
+              weeksForThisRow = [rowWeekNum];
+            }
+          }
+        }
+
+        for (const sec of resolvedSecs) {
+          for (const wk of weeksForThisRow) {
+            addRowToSecWeek(sec, wk, normRow);
           }
         }
       }
 
-      // Si pas de jsonBackup, importer feuille par feuille
-      if (!jsonBackup) {
-        if (wb.SheetNames.includes('Plans')) {
-          const planRows = XLSX.utils.sheet_to_json(wb.Sheets['Plans']);
-          const groups = new Map();
-          planRows.forEach(r => {
-            const sec = (r.Section || 'garcons').toLowerCase();
-            const wk = Number(r.Semaine) || 1;
-            const key = `${sec}_${wk}`;
-            if (!groups.has(key)) groups.set(key, { section: sec, week: wk, data: [] });
-            groups.get(key).data.push({
-              'Enseignant': r.Enseignant || '',
-              'Classe': r.Classe || '',
-              'Matière': r.Matiere || r.Matière || '',
-              'Période': r.Periode || r.Période || '',
-              'Jour': r.Jour || '',
-              'Leçon': r.Lecon || r.Leçon || '',
-              'Travaux de classe': r.Travaux_de_classe || r['Travaux de classe'] || '',
-              'Support': r.Support || '',
-              'Devoirs': r.Devoirs || ''
-            });
+      // Si le fichier avait plusieurs semaines mais que l'admin a demandé d'appliquer sur des semaines non présentes dans le fichier,
+      // utiliser la première semaine disponible de la section comme modèle pour remplir les semaines demandées
+      if (weekMode !== 'auto' && targetWeeks.length > 0) {
+        for (const [sec, wkMap] of sectionWeekRowsMap.entries()) {
+          if (wkMap.size > 0) {
+            const firstAvailableRows = wkMap.values().next().value;
+            for (const targetWk of targetWeeks) {
+              if (!wkMap.has(targetWk) && Array.isArray(firstAvailableRows) && firstAvailableRows.length > 0) {
+                wkMap.set(targetWk, firstAvailableRows.map(r => ({ ...r })));
+              }
+            }
+          }
+        }
+      }
+
+      // Enregistrer chaque (section, semaine) dans `plans`, publier dans `published_plans` et synchroniser les devoirs vers `teacher_homeworks`
+      for (const [sec, wkMap] of sectionWeekRowsMap.entries()) {
+        summary.sectionsUpdated.add(sec);
+
+        for (const [wk, rowsForWeek] of wkMap.entries()) {
+          const docId = `${sec}_${wk}`;
+          const cleanSecRows = filterPlanDataBySection(rowsForWeek, sec);
+          const completedData = ensureAllPeriods1To8ForPlan(cleanSecRows, sec, wk);
+
+          // Préserver les saisies existantes si le champ importé est vide
+          const existingDoc = await db.collection('plans').findOne({ _id: docId });
+          const existingData = (existingDoc && Array.isArray(existingDoc.data)) ? existingDoc.data : [];
+
+          const mergedData = completedData.map(item => {
+            if (!item || typeof item !== 'object') return item;
+            const stamped = { ...item, _section: sec };
+            const itemMat = String(stamped[findKey(stamped, 'Matière') || 'Matière'] || '').trim();
+            if (!itemMat || itemMat === '—' || itemMat === '-') return stamped;
+
+            const match = existingData.find(oldRow => matchPlanRow(oldRow, stamped));
+            if (match) {
+              const preserved = { ...stamped };
+              ['Leçon', 'Devoirs', 'Remarques', 'Notes', 'Travaux de classe', 'Support', 'Observation'].forEach(field => {
+                const val = String(preserved[field] || '').trim();
+                const oldVal = String(match[field] || '').trim();
+                if ((!val || val === '—' || val === '-') && oldVal && oldVal !== '—' && oldVal !== '-') {
+                  preserved[field] = match[field];
+                }
+              });
+              return preserved;
+            }
+            return stamped;
           });
-          let plansCount = 0;
-          for (const [key, group] of groups.entries()) {
+
+          if (targets.plan) {
             await db.collection('plans').updateOne(
-              { _id: key },
-              { $set: { _id: key, section: group.section, week: group.week, data: group.data, updatedAt: new Date() } },
+              { _id: docId },
+              {
+                $set: {
+                  _id: docId,
+                  week: Number(wk),
+                  section: sec,
+                  data: mergedData,
+                  updatedAt: now
+                }
+              },
               { upsert: true }
             );
-            plansCount += group.data.length;
+            summary.plansRows += cleanSecRows.length;
+            summary.weeksUpdated.add(`S${wk}`);
           }
-          summary.plans = plansCount;
+
+          if (targets.publish) {
+            await db.collection('published_plans').updateOne(
+              { _id: docId },
+              {
+                $set: {
+                  _id: docId,
+                  section: sec,
+                  week: Number(wk),
+                  published: true,
+                  isPublishedToParents: true,
+                  publishedAt: now
+                }
+              },
+              { upsert: true }
+            );
+          }
+
+          if (targets.suivi) {
+            const hwAdded = await syncHomeworksFromPlanRowsToSuivi(db, mergedData, sec, wk);
+            summary.homeworksSynced += hwAdded;
+          }
         }
 
-        if (wb.SheetNames.includes('Eleves')) {
-          const studentRows = XLSX.utils.sheet_to_json(wb.Sheets['Eleves']);
-          let sCount = 0;
-          for (const s of studentRows) {
-            if (!s.Nom) continue;
-            const sec = s.Section || 'garcons';
-            const cls = s.Classe || '';
-            const sId = `${sec}_${cls}_${s.Nom}`.replace(/\s+/g, '_');
+        // Synchroniser l'emploi du temps et les enseignants de la section
+        if (targets.schedule) {
+          const allSecRows = allRowsBySectionForSchedule.get(sec) || [];
+          if (allSecRows.length > 0) {
+            await syncScheduleAndTeachersFromPlanRows(db, allSecRows, sec);
+            summary.schedulesSynced++;
+          }
+        }
+      }
+    }
+
+    // 6. TRAITEMENT 2 : SUIVI DES DEVOIRS, PARTICIPATION & COMPORTEMENT (evaluations)
+    if (targets.suivi && collectedEvalRows.length > 0) {
+      let eCount = 0;
+      for (const e of collectedEvalRows) {
+        const studentName = String(e.Eleve || e['Élève'] || e.studentName || e.student || e.Nom || '').trim();
+        if (!studentName) continue;
+        const rawCls = e.Classe || e.class || e.rawClass || '';
+        const cleanCls = cleanClassNameServer(rawCls) || String(rawCls).trim();
+        const subj = String(e.Matiere || e['Matière'] || e.subject || '').trim();
+        const evalBy = String(e.Evalue_Par || e.evaluatedBy || e.Enseignant || 'Admin').trim();
+        const resolvedSecs = resolveTargetSectionsForImportedRow(e, rawCls, evalBy, e._sheetName || '', targetSections, isAllSections);
+
+        for (const sec of resolvedSecs) {
+          const dateStr = String(e.Date || e.date || new Date().toISOString().split('T')[0]).trim();
+          const statusVal = String(e.Statut || e.status || 'Fait').trim();
+          const partVal = e.Participation !== undefined && e.Participation !== '' ? Number(e.Participation) : (e.participation !== undefined ? Number(e.participation) : 10);
+          const behVal = e.Comportement !== undefined && e.Comportement !== '' ? Number(e.Comportement) : (e.behavior !== undefined ? Number(e.behavior) : 10);
+          const commentVal = String(e.Remarque || e.comment || '').trim();
+
+          const evalFilter = {
+            section: sec,
+            class: cleanCls,
+            date: dateStr,
+            subject: subj,
+            studentName: studentName
+          };
+          await db.collection('evaluations').updateOne(
+            evalFilter,
+            {
+              $set: {
+                section: sec,
+                class: cleanCls,
+                rawClass: cleanCls,
+                date: dateStr,
+                subject: subj,
+                studentName: studentName,
+                status: statusVal,
+                participation: isNaN(partVal) ? 10 : partVal,
+                behavior: isNaN(behVal) ? 10 : behVal,
+                comment: commentVal,
+                evaluatedBy: evalBy,
+                updatedAt: now
+              }
+            },
+            { upsert: true }
+          );
+          summary.sectionsUpdated.add(sec);
+          eCount++;
+        }
+      }
+      summary.evaluations = eCount;
+    }
+
+    // 7. TRAITEMENT 3 : NOTES, MOYENNES CONTINUES CW/HW & BULLETINS (studentGrades + student_grades)
+    if (targets.grades && collectedGradeRows.length > 0) {
+      let gCount = 0;
+      for (const g of collectedGradeRows) {
+        // Cas 1 : Document structuré par élève avec objet `subjects` (format student_grades)
+        if (g.subjects && typeof g.subjects === 'object') {
+          const stName = String(g.student || g.studentName || '').trim();
+          const rawCls = g.classe || g.class || '';
+          const cleanCls = cleanClassNameServer(rawCls) || String(rawCls).trim();
+          const resolvedSecs = resolveTargetSectionsForImportedRow(g, rawCls, '', '', targetSections, isAllSections);
+          for (const sec of resolvedSecs) {
+            await db.collection('student_grades').updateOne(
+              { section: sec, classe: cleanCls, student: stName },
+              { $set: { ...g, section: sec, classe: cleanCls, student: stName, updatedAt: now } },
+              { upsert: true }
+            );
+            for (const [subjName, subjScores] of Object.entries(g.subjects)) {
+              if (!subjScores || typeof subjScores !== 'object') continue;
+              const hw = Number(subjScores.devoirs ?? subjScores.homework ?? subjScores.hw ?? 0) || 0;
+              const cw = Number(subjScores.participation ?? subjScores.classwork ?? subjScores.cw ?? 0) || 0;
+              const evaluation = Number(subjScores.evaluation ?? 0) || 0;
+              const examen = Number(subjScores.examen ?? 0) || 0;
+              const total = Number(subjScores.total ?? (hw + cw + evaluation + examen)) || 0;
+              await db.collection('studentGrades').updateOne(
+                { section: sec, classe: cleanCls, subject: subjName, semester: g.semester || 'S1', studentName: stName },
+                {
+                  $set: {
+                    section: sec,
+                    classe: cleanCls,
+                    subject: subjName,
+                    semester: g.semester || 'S1',
+                    studentName: stName,
+                    hw,
+                    cw,
+                    evaluation,
+                    examen,
+                    total,
+                    updatedAt: now.toISOString()
+                  }
+                },
+                { upsert: true }
+              );
+              gCount++;
+            }
+            summary.sectionsUpdated.add(sec);
+          }
+          continue;
+        }
+
+        // Cas 2 : Ligne tabulaire Excel (Eleve, Classe, Matiere, Devoirs_HW / HW, Travaux_CW / CW, Evaluation, Examen, Total)
+        const stName = String(g.Eleve || g['Élève'] || g.studentName || g.student || g.Nom || '').trim();
+        const subj = String(g.Matiere || g['Matière'] || g.subject || '').trim();
+        if (!stName || !subj) continue;
+
+        const rawCls = g.Classe || g.classe || g.class || '';
+        const cleanCls = cleanClassNameServer(rawCls) || String(rawCls).trim();
+        const teacher = String(g.Enseignant || g.teacher || '').trim();
+        const semester = String(g.Semestre || g.semester || 'S1').trim();
+        const hw = Number(g.Devoirs_HW ?? g.HW ?? g.hw ?? g.Devoirs ?? 14) || 0;
+        const cw = Number(g.Travaux_CW ?? g.CW ?? g.cw ?? g.Participation ?? 14) || 0;
+        const evaluation = Number(g.Evaluation ?? g['Évaluation'] ?? g.evaluation ?? 0) || 0;
+        const examen = Number(g.Examen ?? g.examen ?? 0) || 0;
+        const total = Number(g.Total ?? g.total ?? (hw + cw + evaluation + examen)) || 0;
+
+        const resolvedSecs = resolveTargetSectionsForImportedRow(g, rawCls, teacher, g._sheetName || '', targetSections, isAllSections);
+        for (const sec of resolvedSecs) {
+          await db.collection('studentGrades').updateOne(
+            { section: sec, classe: cleanCls, subject: subj, semester, studentName: stName },
+            {
+              $set: {
+                section: sec,
+                classe: cleanCls,
+                subject: subj,
+                semester,
+                studentName: stName,
+                teacher,
+                hw,
+                cw,
+                evaluation,
+                examen,
+                total,
+                updatedAt: now.toISOString()
+              }
+            },
+            { upsert: true }
+          );
+
+          // Synchroniser aussi dans student_grades pour la cumulation continue CW/HW du suivi général
+          const sgDoc = await db.collection('student_grades').findOne({ section: sec, classe: cleanCls, student: stName });
+          const subjectsObj = (sgDoc && sgDoc.subjects && typeof sgDoc.subjects === 'object') ? { ...sgDoc.subjects } : {};
+          subjectsObj[subj] = {
+            ...(subjectsObj[subj] || {}),
+            participation: cw,
+            classwork: cw,
+            devoirs: hw,
+            homework: hw,
+            evaluation,
+            examen,
+            total
+          };
+          await db.collection('student_grades').updateOne(
+            { section: sec, classe: cleanCls, student: stName },
+            {
+              $set: {
+                section: sec,
+                classe: cleanCls,
+                student: stName,
+                studentName: stName,
+                subjects: subjectsObj,
+                updatedAt: now
+              }
+            },
+            { upsert: true }
+          );
+          summary.sectionsUpdated.add(sec);
+          gCount++;
+        }
+      }
+      summary.grades = gCount;
+    }
+
+    // 8. TRAITEMENT 4 : ÉLÈVES, ENSEIGNANTS & NOTES DE SEMAINE
+    if (targets.students) {
+      if (collectedStudentRows.length > 0) {
+        let sCount = 0;
+        for (const s of collectedStudentRows) {
+          const stName = String(s.Nom || s.name || s.Eleve || '').trim();
+          if (!stName) continue;
+          const rawCls = s.Classe || s.class || s.classe || '';
+          const cleanCls = cleanClassNameServer(rawCls) || String(rawCls).trim();
+          const resolvedSecs = resolveTargetSectionsForImportedRow(s, rawCls, '', '', targetSections, isAllSections);
+          for (const sec of resolvedSecs) {
+            const sId = `${sec}_${cleanCls}_${stName}`.replace(/\s+/g, '_');
             await db.collection('students').updateOne(
               { _id: sId },
-              { $set: { _id: sId, name: s.Nom, class: cls, section: sec, birthday: s.Date_Naissance || '', photo: s.Photo || '', parentPhone: s.Parent_Phone || '' } },
+              {
+                $set: {
+                  _id: sId,
+                  name: stName,
+                  class: cleanCls,
+                  section: sec,
+                  birthday: s.Date_Naissance || s.birthday || '',
+                  photo: s.Photo || s.photo || '',
+                  parentPhone: s.Parent_Phone || s.parentPhone || ''
+                }
+              },
               { upsert: true }
             );
             sCount++;
           }
-          summary.students = sCount;
         }
+        summary.students = sCount;
+      }
 
-        if (wb.SheetNames.includes('Evaluations')) {
-          const evalRows = XLSX.utils.sheet_to_json(wb.Sheets['Evaluations']);
-          let eCount = 0;
-          for (const e of evalRows) {
-            if (!e.Eleve) continue;
-            await db.collection('evaluations').insertOne({
-              section: e.Section || 'garcons',
-              class: e.Classe || '',
-              rawClass: e.Classe || '',
-              date: e.Date || '',
-              subject: e.Matiere || '',
-              studentName: e.Eleve,
-              status: e.Statut || 'Fait',
-              participation: Number(e.Participation) || 10,
-              behavior: Number(e.Comportement) || 10,
-              comment: e.Remarque || '',
-              evaluatedBy: e.Evalue_Par || 'Admin'
-            });
-            eCount++;
-          }
-          summary.evaluations = eCount;
-        }
-
-        if (wb.SheetNames.includes('Utilisateurs')) {
-          const userRows = XLSX.utils.sheet_to_json(wb.Sheets['Utilisateurs']);
-          let uCount = 0;
-          for (const u of userRows) {
-            if (!u.Nom_Utilisateur) continue;
-            const sec = u.Section || 'garcons';
-            const uId = `${sec}_${u.Nom_Utilisateur}`;
+      if (collectedUserRows.length > 0) {
+        let uCount = 0;
+        for (const u of collectedUserRows) {
+          const uName = String(u.Nom_Utilisateur || u.username || '').trim();
+          if (!uName) continue;
+          const resolvedSecs = resolveTargetSectionsForImportedRow(u, '', uName, '', targetSections, isAllSections);
+          for (const sec of resolvedSecs) {
+            const uId = `${sec}_${uName}`;
             await db.collection('users').updateOne(
               { _id: uId },
-              { $set: { _id: uId, username: u.Nom_Utilisateur, tableTeacherName: u.Nom_Tableau || '', role: u.Role || 'teacher', language: u.Langue || 'fr', password: u.Mot_de_passe || u.Nom_Utilisateur, section: sec } },
+              {
+                $set: {
+                  _id: uId,
+                  username: uName,
+                  tableTeacherName: u.Nom_Tableau || u.tableTeacherName || uName,
+                  role: u.Role || u.role || 'teacher',
+                  language: u.Langue || u.language || 'fr',
+                  password: u.Mot_de_passe || u.password || uName,
+                  section: sec
+                }
+              },
               { upsert: true }
             );
             uCount++;
           }
-          summary.users = uCount;
         }
+        summary.users = uCount;
       }
-    }
 
-    // Traitement de l'objet de restauration JSON intégrale (haute fidélité)
-    if (jsonBackup) {
-      if (Array.isArray(jsonBackup.plans)) {
-        for (const p of jsonBackup.plans) {
-          if (p._id) await db.collection('plans').updateOne({ _id: p._id }, { $set: p }, { upsert: true });
+      if (collectedNoteRows.length > 0) {
+        let nCount = 0;
+        for (const n of collectedNoteRows) {
+          const noteText = String(n.Notes || n.notes || '').trim();
+          if (!noteText) continue;
+          const rawCls = n.Classe || n.classe || '';
+          const cleanCls = cleanClassNameServer(rawCls) || String(rawCls).trim();
+          const wk = parseInt(n.Semaine || n.week || fallbackWeek, 10) || fallbackWeek;
+          const resolvedSecs = resolveTargetSectionsForImportedRow(n, rawCls, '', '', targetSections, isAllSections);
+          for (const sec of resolvedSecs) {
+            const nId = `${sec}_${wk}_${cleanCls}`;
+            await db.collection('weekly_notes').updateOne(
+              { _id: nId },
+              { $set: { _id: nId, section: sec, week: wk, classe: cleanCls, notes: noteText, updatedAt: now } },
+              { upsert: true }
+            );
+            nCount++;
+          }
         }
-        summary.plans = jsonBackup.plans.length;
-      }
-      if (Array.isArray(jsonBackup.students)) {
-        for (const s of jsonBackup.students) {
-          if (s._id) await db.collection('students').updateOne({ _id: s._id }, { $set: s }, { upsert: true });
-        }
-        summary.students = jsonBackup.students.length;
-      }
-      if (Array.isArray(jsonBackup.evaluations)) {
-        for (const e of jsonBackup.evaluations) {
-          await db.collection('evaluations').insertOne(e);
-        }
-        summary.evaluations = jsonBackup.evaluations.length;
-      }
-      if (Array.isArray(jsonBackup.users)) {
-        for (const u of jsonBackup.users) {
-          if (u._id) await db.collection('users').updateOne({ _id: u._id }, { $set: u }, { upsert: true });
-        }
-        summary.users = jsonBackup.users.length;
-      }
-      if (Array.isArray(jsonBackup.weekly_notes)) {
-        for (const n of jsonBackup.weekly_notes) {
-          if (n._id) await db.collection('weekly_notes').updateOne({ _id: n._id }, { $set: n }, { upsert: true });
-        }
-        summary.weekly_notes = jsonBackup.weekly_notes.length;
-      }
-      if (Array.isArray(jsonBackup.school_weeks_config)) {
-        for (const w of jsonBackup.school_weeks_config) {
-          if (w._id) await db.collection('school_weeks_config').updateOne({ _id: w._id }, { $set: w }, { upsert: true });
-        }
-        summary.school_weeks_config = jsonBackup.school_weeks_config.length;
-      }
-      if (Array.isArray(jsonBackup.daily_stars)) {
-        for (const s of jsonBackup.daily_stars) {
-          if (s._id) await db.collection('daily_stars').updateOne({ _id: s._id }, { $set: s }, { upsert: true });
-        }
-        summary.daily_stars = jsonBackup.daily_stars.length;
-      }
-      if (Array.isArray(jsonBackup.teacher_messages)) {
-        for (const m of jsonBackup.teacher_messages) {
-          if (m._id) await db.collection('teacher_messages').updateOne({ _id: m._id }, { $set: m }, { upsert: true });
-        }
-        summary.teacher_messages = jsonBackup.teacher_messages.length;
+        summary.weeklyNotes = nCount;
       }
     }
 
     if (typeof db.saveToDisk === 'function') db.saveToDisk();
 
+    const weeksArr = Array.from(summary.weeksUpdated);
+    const secsArr = Array.from(summary.sectionsUpdated);
+
     res.status(200).json({
       success: true,
-      message: 'Base de données importée et restaurée avec succès !',
-      summary
+      message: 'Données Excel importées et propagées vers tous les endroits avec succès !',
+      summary: {
+        lignes_plan: summary.plansRows,
+        semaines: weeksArr.length > 0 ? weeksArr.join(', ') : (targetWeeks.length > 0 ? targetWeeks.map(w => `S${w}`).join(', ') : 'Auto'),
+        sections: secsArr.length > 0 ? secsArr.join(', ') : targetSections.join(', '),
+        emplois_du_temps_synchronises: summary.schedulesSynced,
+        devoirs_suivi_synchronises: summary.homeworksSynced,
+        evaluations_suivi: summary.evaluations,
+        notes_bulletins: summary.grades,
+        eleves: summary.students,
+        enseignants: summary.users
+      }
     });
   } catch (err) {
     console.error('❌ Erreur import-database:', err);
-    res.status(500).json({ success: false, message: 'Erreur lors de l\'importation de la base de données: ' + err.message });
+    res.status(500).json({ success: false, message: 'Erreur lors de l\'importation : ' + err.message });
   }
 });
 
@@ -5640,6 +6357,9 @@ app.get('/api/general-evaluations', async (req, res) => {
     const studentGradesDocs = await db.collection('student_grades').find({
       $or: [{ section: section }, { section: { $exists: false } }]
     }).toArray().catch(() => []);
+    const directStudentGradesColDocs = await db.collection('studentGrades').find({
+      $or: [{ section: section }, { section: { $exists: false } }]
+    }).toArray().catch(() => []);
 
     // Récupérer les matières des classes depuis les plans hebdomadaires pour garantir un affichage complet par matière
     const planDocs = await db.collection('plans').find({
@@ -5709,7 +6429,7 @@ app.get('/api/general-evaluations', async (req, res) => {
       if (ev.status) { sd.statuses.push(ev.status); if (subj) sd.bySubject[subj].statuses.push(ev.status); }
     });
 
-    // 3. Intégrer également les notes saisies dans student_grades (Participation/Classwork & Devoirs/Homework) pour la cumulation continue
+    // 3. Intégrer également les notes saisies dans student_grades et studentGrades (Participation/Classwork & Devoirs/Homework) pour la cumulation continue
     studentGradesDocs.forEach(gDoc => {
       const gStudent = gDoc.student || gDoc.studentName || '';
       const gClass = gDoc.classe || gDoc.class || '';
@@ -5738,6 +6458,33 @@ app.get('/api/general-evaluations', async (req, res) => {
           sd.directHwScores.push(hwVal);
           sd.bySubject[cleanSubj].directHwScores.push(hwVal);
         }
+      }
+    });
+
+    directStudentGradesColDocs.forEach(gRow => {
+      const gStudent = gRow.studentName || gRow.student || '';
+      const gClass = gRow.classe || gRow.class || '';
+      const cleanSubj = String(gRow.subject || '').trim();
+      if (!gStudent || !cleanSubj) return;
+      const matched = matchAdminStudent(gStudent, gClass, authoritativeList);
+      const sName = matched ? matched.name : String(gStudent).trim();
+      const cName = matched ? matched.class : (normalizeStudentClass(gClass) || String(gClass).trim());
+      if (!sName || !cName) return;
+      const key = `${cName}|||${sName}`;
+      if (!studentEvaluations[key]) return;
+      const sd = studentEvaluations[key];
+      if (!sd.bySubject[cleanSubj]) {
+        sd.bySubject[cleanSubj] = { behaviors: [], participations: [], statuses: [], directCwScores: [], directHwScores: [] };
+      }
+      const cwVal = parseFloat(gRow.cw);
+      const hwVal = parseFloat(gRow.hw);
+      if (!isNaN(cwVal) && cwVal >= 0) {
+        sd.directCwScores.push(cwVal);
+        sd.bySubject[cleanSubj].directCwScores.push(cwVal);
+      }
+      if (!isNaN(hwVal) && hwVal >= 0) {
+        sd.directHwScores.push(hwVal);
+        sd.bySubject[cleanSubj].directHwScores.push(hwVal);
       }
     });
 
@@ -6252,14 +6999,20 @@ app.post('/api/save-plan', async (req, res) => {
       { upsert: true }
     );
 
-    // Synchroniser immédiatement l'emploi du temps et les enseignants avec les classes et séances du plan enregistré
+    // Synchroniser immédiatement l'emploi du temps, la publication parents et les devoirs suivi avec le plan enregistré
     await syncScheduleAndTeachersFromPlanRows(db, mergedData, section);
+    await db.collection('published_plans').updateOne(
+      { _id: docId },
+      { $set: { _id: docId, section, week: weekNumber, published: true, isPublishedToParents: true, publishedAt: now } },
+      { upsert: true }
+    );
+    await syncHomeworksFromPlanRowsToSuivi(db, mergedData, section, weekNumber);
     if (typeof db.saveToDisk === 'function') db.saveToDisk();
 
-    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${mergedData.length} lignes enregistrées et synchronisées avec l'emploi du temps.`);
+    console.log(`💾 [Save Plan] S${weekNumber} (${section}): ${mergedData.length} lignes enregistrées et synchronisées avec l'emploi du temps et le suivi.`);
     res.status(200).json({ 
       success: true,
-      message: `Plan S${weekNumber} pour la section ${section} enregistré et synchronisé avec l'emploi du temps.`,
+      message: `Plan S${weekNumber} pour la section ${section} enregistré et synchronisé avec l'emploi du temps et le suivi.`,
       section: section,
       week: weekNumber
     });
@@ -6294,6 +7047,7 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
     const existingMap = new Map();
     existingDocs.forEach(d => existingMap.set(d._id, d));
 
+    const mergedByWeek = new Map();
     const operations = validWeeks.map(w => {
       const docId = `${section}_${w}`;
       const existingDoc = existingMap.get(docId);
@@ -6319,6 +7073,7 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
         }
         return stamped;
       });
+      mergedByWeek.set(w, mergedData);
 
       return {
         updateOne: {
@@ -6338,14 +7093,23 @@ app.post('/api/save-multiple-weeks', async (req, res) => {
     });
 
     await db.collection('plans').bulkWrite(operations);
-    // Synchroniser immédiatement l'emploi du temps et les enseignants avec les classes et séances du fichier Excel importé
+    // Synchroniser immédiatement l'emploi du temps, la publication parents et les devoirs du suivi
     await syncScheduleAndTeachersFromPlanRows(db, cleanSectionData, section);
+    for (const w of validWeeks) {
+      const docId = `${section}_${w}`;
+      await db.collection('published_plans').updateOne(
+        { _id: docId },
+        { $set: { _id: docId, section, week: w, published: true, isPublishedToParents: true, publishedAt: now } },
+        { upsert: true }
+      );
+      await syncHomeworksFromPlanRowsToSuivi(db, mergedByWeek.get(w) || cleanSectionData, section, w);
+    }
     if (typeof db.saveToDisk === 'function') db.saveToDisk();
 
-    console.log(`[Multi-Weeks Upload] ${cleanSectionData.length} lignes appliquées aux semaines ${validWeeks.join(', ')} et synchronisées avec l'emploi du temps (${section}).`);
+    console.log(`[Multi-Weeks Upload] ${cleanSectionData.length} lignes appliquées aux semaines ${validWeeks.join(', ')} et synchronisées avec l'emploi du temps et le suivi (${section}).`);
     res.status(200).json({ 
       success: true,
-      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section} et synchronisé avec l'emploi du temps.`,
+      message: `Fichier Excel appliqué avec succès à ${validWeeks.length} semaine(s) pour la section ${section} et synchronisé avec l'emploi du temps et le suivi.`,
       savedWeeks: validWeeks,
       section: section
     });
