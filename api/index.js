@@ -5661,6 +5661,136 @@ app.get('/api/plans/:week', async (req, res) => {
       // Filtrage strict par section : aucune classe ou enseignant d'une autre section n'est toléré
       let rawData = filterPlanDataBySection(planDocument.data || [], section);
 
+      // Classes réellement présentes dans le plan hebdomadaire (Tableau de saisie)
+      const planExistingClassesSet = new Set();
+      rawData.forEach(r => {
+        if (!r || typeof r !== 'object') return;
+        const c = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
+        if (c && c !== '—' && c !== '-') planExistingClassesSet.add(c);
+      });
+
+      // Appliquer le modèle d'emploi du temps canonique (class_schedules) UNIQUEMENT pour les classes qui existent dans le plan hebdomadaire
+      // (L'emploi du temps sert à organiser les périodes et modifier les enseignants, jamais à ajouter des classes fantômes)
+      try {
+        const canonicalSchedules = await db.collection('class_schedules').find({ section }).toArray();
+        if (canonicalSchedules && canonicalSchedules.length > 0) {
+          const isPlaceholderMat = (m) => {
+            const s = String(m || '').trim();
+            return !s || s === '—' || s === '-' || s === '–';
+          };
+          const normSubj = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+          for (const schedDoc of canonicalSchedules) {
+            const schedCls = String(schedDoc.classe || '').trim();
+            if (!schedCls || !Array.isArray(schedDoc.slots)) continue;
+
+            // Vérifier que cette classe existe bien dans le tableau de saisie (plan hebdo)
+            const matchedPlanCls = Array.from(planExistingClassesSet).find(pc => pc.toLowerCase() === schedCls.toLowerCase() || isClassMatchServer(pc, schedCls));
+            if (planExistingClassesSet.size > 0 && !matchedPlanCls) {
+              continue; // Ignorer toute classe qui n'est pas dans le tableau de saisie
+            }
+            const targetCls = matchedPlanCls || schedCls;
+
+            const canonicalSlots = schedDoc.slots.filter(s => s && !isPlaceholderMat(s.matiere));
+            if (canonicalSlots.length === 0) continue;
+
+            const isTargetRow = (row) => {
+              const rCls = row[findKey(row, 'Classe')];
+              return rCls && (String(rCls).trim().toLowerCase() === targetCls.toLowerCase() || isClassMatchServer(rCls, targetCls));
+            };
+
+            const oldClassRows = rawData.filter(isTargetRow);
+            const otherRows = rawData.filter(r => !isTargetRow(r));
+            const oldValidRows = oldClassRows.filter(r => !isPlaceholderMat(r[findKey(r, 'Matière')]));
+            const usedOld = new Set();
+            const syncedClassRows = [];
+
+            canonicalSlots.forEach(slot => {
+              const sDay = extractDayNameFromString(slot.jour) || String(slot.jour || '').trim();
+              const sPer = String(slot.periode || '1').replace(/[^0-9]/g, '') || '1';
+              const sMat = String(slot.matiere || '').trim();
+              const sEns = String(slot.enseignant || '').trim();
+
+              // 1. Chercher une correspondance exacte (Jour + Période + Matière équivalente)
+              let matched = oldValidRows.find(o => {
+                if (usedOld.has(o)) return false;
+                const oDay = extractDayNameFromString(o[findKey(o, 'Jour')]) || String(o[findKey(o, 'Jour')] || '').trim();
+                const oPer = String(o[findKey(o, 'Période')] || '').replace(/[^0-9]/g, '');
+                const oMat = String(o[findKey(o, 'Matière')] || '').trim();
+                return oDay.toLowerCase() === sDay.toLowerCase() && oPer === sPer && (normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat));
+              });
+
+              // 2. Sinon chercher une ligne de la même matière ayant du contenu pédagogique saisi
+              if (!matched) {
+                matched = oldValidRows.find(o => {
+                  if (usedOld.has(o)) return false;
+                  const oMat = String(o[findKey(o, 'Matière')] || '').trim();
+                  if (!(normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat))) return false;
+                  const lec = String(o[findKey(o, 'Leçon')] || '').trim();
+                  const dev = String(o[findKey(o, 'Devoirs')] || '').trim();
+                  const tra = String(o[findKey(o, 'Travaux de classe')] || '').trim();
+                  return Boolean((lec && lec !== '—') || (dev && dev !== '—') || (tra && tra !== '—'));
+                });
+              }
+
+              // 3. Sinon chercher n'importe quelle ligne de la même matière non encore utilisée
+              if (!matched) {
+                matched = oldValidRows.find(o => {
+                  if (usedOld.has(o)) return false;
+                  const oMat = String(o[findKey(o, 'Matière')] || '').trim();
+                  return normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat);
+                });
+              }
+
+              if (matched) {
+                usedOld.add(matched);
+                const jourK = findKey(matched, 'Jour') || 'Jour';
+                const perK = findKey(matched, 'Période') || 'Période';
+                const clsK = findKey(matched, 'Classe') || 'Classe';
+                const matK = findKey(matched, 'Matière') || 'Matière';
+                const ensK = findKey(matched, 'Enseignant') || 'Enseignant';
+                syncedClassRows.push({
+                  ...matched,
+                  [clsK]: targetCls,
+                  [jourK]: sDay,
+                  [perK]: sPer,
+                  [matK]: sMat,
+                  [ensK]: sEns || matched[ensK] || '',
+                  _section: section
+                });
+              } else {
+                syncedClassRows.push({
+                  'Enseignant': sEns || '',
+                  'Jour': sDay,
+                  'Période': sPer,
+                  'Classe': targetCls,
+                  'Matière': sMat,
+                  'Leçon': '',
+                  'Travaux de classe': '',
+                  'Support': '',
+                  'Devoirs': '',
+                  '_section': section
+                });
+              }
+            });
+
+            rawData = [...otherRows, ...syncedClassRows];
+          }
+        }
+      } catch (schedSyncErr) {
+        console.warn('Note sync class_schedules dans GET /api/plans/:week:', schedSyncErr.message);
+      }
+
+      // Récupérer les liaisons Matière ➔ Enseignant configurées pour cette section
+      const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
+      const subTeacherMap = new Map();
+      subTeacherDocs.forEach(d => {
+        if (d.classe && d.matiere && d.enseignant) {
+          const k = `${d.classe.trim().toLowerCase()}_${d.matiere.trim().toLowerCase()}`;
+          subTeacherMap.set(k, d.enseignant.trim());
+        }
+      });
+
       const enrichedData = rawData.map(row => {
         const ensKey = findKey(row, 'Enseignant') || 'Enseignant';
         let enseignant = row[ensKey] || '';
@@ -5668,6 +5798,38 @@ app.get('/api/plans/:week', async (req, res) => {
         const matiere = row[findKey(row, 'Matière')] || '';
         const periode = row[findKey(row, 'Période')] || '';
         const jour = row[findKey(row, 'Jour')] || '';
+
+        const isPlaceholderSubj = !matiere || !String(matiere).trim() || String(matiere).trim() === '—' || String(matiere).trim() === '-';
+
+        // Si l'enseignant n'est pas déjà défini sur la ligne ou si une liaison spécifique à la classe a été modifiée dans l'emploi du temps
+        if (!isPlaceholderSubj && classe && matiere && subTeacherDocs.length > 0) {
+          const exactClassLinkedDoc = subTeacherDocs.find(d =>
+            d.enseignant && d.enseignant.trim() &&
+            d.classe && d.classe !== 'all' &&
+            (String(d.classe).trim().toLowerCase() === String(classe).trim().toLowerCase() || isClassMatchServer(d.classe, classe)) &&
+            isEquivalentSubjectServer(d.matiere, matiere)
+          );
+          if (exactClassLinkedDoc && exactClassLinkedDoc.enseignant && exactClassLinkedDoc.enseignant.trim()) {
+            enseignant = exactClassLinkedDoc.enseignant.trim();
+            row[ensKey] = enseignant;
+          } else if (!enseignant || !String(enseignant).trim() || String(enseignant).trim() === '—') {
+            const globalLinkedDoc = subTeacherDocs.find(d =>
+              d.enseignant && d.enseignant.trim() &&
+              (d.classe === 'all' || !d.classe) &&
+              isEquivalentSubjectServer(d.matiere, matiere)
+            );
+            if (globalLinkedDoc && globalLinkedDoc.enseignant) {
+              enseignant = globalLinkedDoc.enseignant.trim();
+              row[ensKey] = enseignant;
+            }
+          }
+        } else if (!isPlaceholderSubj && (!enseignant || !enseignant.trim()) && classe && matiere) {
+          const k = `${classe.trim().toLowerCase()}_${matiere.trim().toLowerCase()}`;
+          if (subTeacherMap.has(k)) {
+            enseignant = subTeacherMap.get(k);
+            row[ensKey] = enseignant;
+          }
+        }
         
         const potentialLessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
         const fallbackId = `${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
@@ -5721,7 +5883,32 @@ app.get('/api/plans/:week', async (req, res) => {
           specialDays: specialDays || []
       });
     } else {
-      const defaultEmptyData = ensureAllPeriods1To8ForPlan([], section, weekNumber);
+      // Chercher si un emploi du temps canonique existe déjà pour les classes de cette section afin de pré-peupler proprement la semaine
+      const canonicalTemplatesDocs = await db.collection('class_schedules').find({ section }).toArray();
+      const templateRows = [];
+      if (canonicalTemplatesDocs && canonicalTemplatesDocs.length > 0) {
+        canonicalTemplatesDocs.forEach(tDoc => {
+          if (tDoc.classe && Array.isArray(tDoc.slots)) {
+            tDoc.slots.forEach(s => {
+              if (s.matiere && String(s.matiere).trim() && String(s.matiere).trim() !== '—' && String(s.matiere).trim() !== '-') {
+                templateRows.push({
+                  'Enseignant': s.enseignant || '',
+                  'Jour': s.jour,
+                  'Période': String(s.periode),
+                  'Classe': tDoc.classe,
+                  'Matière': s.matiere,
+                  'Leçon': '',
+                  'Travaux de classe': '',
+                  'Support': '',
+                  'Devoirs': '',
+                  '_section': section
+                });
+              }
+            });
+          }
+        });
+      }
+      const defaultEmptyData = ensureAllPeriods1To8ForPlan(templateRows, section, weekNumber);
       const pubDoc = await db.collection('published_plans').findOne({
         $or: [
           { _id: `${section}_${weekNumber}` },
@@ -5753,23 +5940,100 @@ app.get('/api/plans/:week', async (req, res) => {
   }
 });
 
-// Synchroniser la visibilité des classes à partir des lignes du Tableau de Saisie (ex: import Excel)
+// Synchroniser automatiquement class_schedules et class_subject_teachers à partir des lignes du Tableau de Saisie (ex: import Excel)
 async function syncScheduleAndTeachersFromPlanRows(db, rows, section) {
   if (!db || !Array.isArray(rows) || rows.length === 0) return;
   try {
+    const isPlaceholderMat = (m) => {
+      const s = String(m || '').trim();
+      return !s || s === '—' || s === '-' || s === '–';
+    };
+
+    const classSlotsMap = new Map();
     const canonicalClassNames = new Map();
+
     rows.forEach(row => {
       if (!row || typeof row !== 'object') return;
       const rawCls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
       if (!rawCls || rawCls === '—' || rawCls === '-') return;
+
       const clsLow = rawCls.toLowerCase();
       if (!canonicalClassNames.has(clsLow)) {
         canonicalClassNames.set(clsLow, rawCls);
       }
+      const clsName = canonicalClassNames.get(clsLow);
+      if (!classSlotsMap.has(clsName)) {
+        classSlotsMap.set(clsName, new Map());
+      }
+
+      const mat = String(row[findKey(row, 'Matière')] || row['Matière'] || row.matiere || '').trim();
+      if (isPlaceholderMat(mat)) return;
+
+      const rawJour = row[findKey(row, 'Jour')] || row['Jour'] || row.jour || '';
+      const day = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(rawJour) : rawJour) || String(rawJour).trim();
+      const rawPer = row[findKey(row, 'Période')] || row['Période'] || row.periode || '1';
+      const per = String(rawPer).replace(/[^0-9]/g, '') || '1';
+      const ens = String(row[findKey(row, 'Enseignant')] || row['Enseignant'] || row.enseignant || '').trim();
+
+      if (!day || !per) return;
+      const slotKey = `${day.toLowerCase()}_${per}`;
+      const existing = classSlotsMap.get(clsName).get(slotKey);
+      if (!existing || (!existing.enseignant && ens && ens !== '—')) {
+        classSlotsMap.get(clsName).set(slotKey, {
+          jour: day,
+          periode: String(per),
+          matiere: mat,
+          enseignant: (ens && ens !== '—' && ens !== '-') ? ens : (existing?.enseignant || ''),
+          hasContent: true
+        });
+      }
     });
-    const uploadedClasses = Array.from(canonicalClassNames.values());
+
+    const uploadedClasses = Array.from(classSlotsMap.keys());
     if (uploadedClasses.length === 0) return;
+
     const now = new Date();
+    // Supprimer de class_schedules toute classe de cette section qui n'existe plus dans le plan importé
+    await db.collection('class_schedules').deleteMany({
+      section,
+      classe: { $nin: uploadedClasses }
+    });
+
+    for (const cls of uploadedClasses) {
+      const slots = Array.from(classSlotsMap.get(cls).values());
+      await db.collection('class_schedules').updateOne(
+        { section, classe: cls },
+        {
+          $set: {
+            section,
+            classe: cls,
+            slots,
+            updatedAt: now
+          }
+        },
+        { upsert: true }
+      );
+
+      for (const s of slots) {
+        if (s.matiere && s.enseignant && s.enseignant !== '—' && s.enseignant !== '-') {
+          await db.collection('class_subject_teachers').updateOne(
+            { section, classe: cls, matiere: s.matiere },
+            {
+              $set: {
+                section,
+                classe: cls,
+                matiere: s.matiere,
+                enseignant: s.enseignant,
+                updatedAt: now
+              }
+            },
+            { upsert: true }
+          );
+        }
+      }
+    }
+
+    // Mettre à jour la visibilité des classes pour que l'Emploi du Temps et le Tableau de Saisie aient strictement les mêmes classes
     await db.collection('settings').updateOne(
       { _id: `classes_visibility_${section}` },
       {
@@ -11890,6 +12154,40 @@ async function extractClassSubjectsAndTeachersFromPlan(db, section, targetClasse
       }
     });
   });
+
+  // Compléter avec class_schedules si nécessaire
+  if (targetClasse) {
+    try {
+      const schedDocs = await db.collection('class_schedules').find({ section }).toArray();
+      schedDocs.forEach(doc => {
+        if (!doc.classe) return;
+        if (!classesMap.has(doc.classe.toLowerCase())) {
+          classesMap.set(doc.classe.toLowerCase(), doc.classe.trim());
+        }
+        if (doc.classe.toLowerCase() === String(targetClasse).trim().toLowerCase() || isClassMatchServer(doc.classe, targetClasse)) {
+          (doc.slots || []).forEach(s => {
+            const mat = String(s.matiere || '').trim();
+            if (isPlaceholderMat(mat)) return;
+            let existingKey = null;
+            for (const [k, val] of subjectsMap.entries()) {
+              if (k === mat.toLowerCase() || isEquivalentSubjectServer(val, mat)) {
+                existingKey = k;
+                break;
+              }
+            }
+            const canonSubj = existingKey ? subjectsMap.get(existingKey) : mat;
+            if (!existingKey) {
+              subjectsMap.set(mat.toLowerCase(), mat);
+            }
+            const ens = String(s.enseignant || '').trim();
+            if (ens && ens !== '—' && ens !== '-' && !subjectTeachers.has(canonSubj)) {
+              subjectTeachers.set(canonSubj, ens);
+            }
+          });
+        }
+      });
+    } catch (e) {}
+  }
 
   return {
     classes: Array.from(classesMap.values()).sort(),

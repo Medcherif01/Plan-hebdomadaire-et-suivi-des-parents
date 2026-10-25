@@ -6101,8 +6101,7 @@ function displayPlanTable(data) {
         }
 
         function switchAdminTab(tabName) {
-            if (tabName === 'schedule') tabName = 'upload';
-            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days', 'teachers_photos'];
+            const tabs = ['upload', 'teachers', 'calendar', 'students', 'reports', 'messages', 'publication', 'special_days', 'schedule', 'teachers_photos'];
             tabs.forEach(t => {
                 const contentEl = document.getElementById(`adminTab_${t}`);
                 const btnEl = document.getElementById(`tabBtn_${t}`);
@@ -6141,6 +6140,8 @@ function displayPlanTable(data) {
             } else if (tabName === 'special_days') {
                 if (typeof populateAdminSpecialDaysForm === 'function') populateAdminSpecialDaysForm();
                 if (typeof loadAdminSpecialDaysList === 'function') loadAdminSpecialDaysList();
+            } else if (tabName === 'schedule') {
+                if (typeof initAdminScheduleTab === 'function') initAdminScheduleTab();
             }
         }
 
