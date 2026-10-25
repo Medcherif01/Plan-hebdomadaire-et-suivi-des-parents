@@ -4284,7 +4284,7 @@ app.get('/api/teacher-homeworks', async (req, res) => {
 
 app.get('/api/evaluations', async (req, res) => {
   try {
-    const { class: className, student: studentQueryParam, studentName: studentNameQueryParam, date: dateQuery, week, section = 'garcons' } = req.query;
+    const { class: className, student: studentQueryParam, studentName: studentNameQueryParam, date: dateQuery, week, directDate, section = 'garcons' } = req.query;
     const studentName = studentQueryParam || studentNameQueryParam;
     if (!className || !dateQuery) {
       return res.status(400).json({ error: 'Classe et date sont requises.' });
@@ -4293,9 +4293,6 @@ app.get('/api/evaluations', async (req, res) => {
     const db = await connectToDatabase();
 
     // 1. DÉTECTION DU VENDREDI OU SAMEDI -> AFFICHER LES DEVOIRS DU JEUDI PRÉCÉDENT
-    // Règle devoirs élèves pour toutes les sections :
-    // Du dimanche au jeudi, afficher le jour même.
-    // Le vendredi et samedi, afficher les devoirs du jeudi dernier (ils restent affichés vendredi et samedi).
     let effectiveDateQuery = dateQuery;
     let isWeekendRedirect = false;
     const qDate = new Date(dateQuery + (dateQuery.length === 10 ? 'T00:00:00Z' : ''));
@@ -4314,27 +4311,7 @@ app.get('/api/evaluations', async (req, res) => {
       }
     }
 
-    // Déterminer la semaine cible basée sur la date effective (qui est Jeudi en cas de week-end)
-    let targetWeekNumber = null;
-    if (week && !isNaN(parseInt(week, 10))) {
-      targetWeekNumber = parseInt(week, 10);
-    }
     const sectionWeekConfig = (sectionSpecificWeekDateRangesNode && sectionSpecificWeekDateRangesNode[section]) || specificWeekDateRangesNode;
-    if (!targetWeekNumber && sectionWeekConfig && typeof sectionWeekConfig === 'object') {
-      for (const [wStr, dates] of Object.entries(sectionWeekConfig)) {
-        if (dates.start && dates.end && effectiveDateQuery >= dates.start && effectiveDateQuery <= dates.end) {
-          targetWeekNumber = parseInt(wStr, 10);
-          break;
-        }
-      }
-    }
-
-    if (!targetWeekNumber) {
-      targetWeekNumber = getCurrentWeekNumber(new Date(effectiveDateQuery + 'T00:00:00Z'), section);
-    }
-
-    const targetWeekConfig = (sectionWeekConfig && sectionWeekConfig[targetWeekNumber]) || {};
-    const weekStartDate = targetWeekConfig.start ? new Date(targetWeekConfig.start + 'T00:00:00Z') : null;
 
     // 2. EXTRACTION AUTOMATIQUE DES DEVOIRS DEPUIS 'plans' DE LA SECTION
     let planDocs = await db.collection('plans').find({
@@ -4355,6 +4332,59 @@ app.get('/api/evaluations', async (req, res) => {
         ]
       }).toArray();
     }
+
+    const normClass = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const targetNormClass = normClass(className);
+
+    // Identifier toutes les semaines qui contiennent des données ou devoirs pour cette classe
+    const weeksWithHomeworks = new Set();
+    const weeksWithClassData = new Set();
+    planDocs.forEach(doc => {
+      const wNum = Number(doc.week);
+      if (!wNum || !Array.isArray(doc.data)) return;
+      doc.data.forEach(row => {
+        const rowClass = row[findKey(row, 'Classe')];
+        if (!rowClass) return;
+        const rNorm = normClass(rowClass);
+        const classMatch = (rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm) || (typeof isClassMatchServer === 'function' && isClassMatchServer(rowClass, className)));
+        if (!classMatch) return;
+        weeksWithClassData.add(wNum);
+        const rowDevoirsClean = String(row[findKey(row, 'Devoirs')] || '').trim();
+        const hasExplicitDevoir = rowDevoirsClean !== '' && rowDevoirsClean !== '-' && rowDevoirsClean !== '—' && rowDevoirsClean.toLowerCase() !== 'aucun' && rowDevoirsClean.toLowerCase() !== 'sans';
+        if (hasExplicitDevoir) {
+          weeksWithHomeworks.add(wNum);
+        }
+      });
+    });
+
+    const availableWeeks = Array.from(weeksWithHomeworks.size > 0 ? weeksWithHomeworks : weeksWithClassData).sort((a, b) => a - b);
+
+    // Déterminer la semaine cible basée sur le paramètre week ou la date effective
+    let targetWeekNumber = null;
+    if (week && week !== 'true' && !isNaN(parseInt(week, 10))) {
+      targetWeekNumber = parseInt(week, 10);
+    }
+    if (!targetWeekNumber && sectionWeekConfig && typeof sectionWeekConfig === 'object') {
+      for (const [wStr, dates] of Object.entries(sectionWeekConfig)) {
+        if (dates.start && dates.end && effectiveDateQuery >= dates.start && effectiveDateQuery <= dates.end) {
+          targetWeekNumber = parseInt(wStr, 10);
+          break;
+        }
+      }
+    }
+    if (!targetWeekNumber) {
+      targetWeekNumber = getCurrentWeekNumber(new Date(effectiveDateQuery + 'T00:00:00Z'), section);
+    }
+
+    // Si l'utilisateur n'a pas forcé une semaine/date précise et que la semaine courante n'a aucun devoir pour cette classe,
+    // basculer automatiquement sur la semaine la plus récente contenant des devoirs saisis par les enseignants
+    if ((!week || week === 'true') && directDate !== 'true' && !weeksWithHomeworks.has(Number(targetWeekNumber)) && weeksWithHomeworks.size > 0) {
+      const sortedHwWeeks = Array.from(weeksWithHomeworks).sort((a, b) => b - a);
+      targetWeekNumber = sortedHwWeeks[0];
+    }
+
+    const targetWeekConfig = (sectionWeekConfig && sectionWeekConfig[targetWeekNumber]) || {};
+    const weekStartDate = targetWeekConfig.start ? new Date(targetWeekConfig.start + 'T00:00:00Z') : null;
 
     // Préparer la liste des 5 jours d'école (Dimanche à Jeudi) avec leurs dates précises
     const schoolDays = [
@@ -4388,9 +4418,6 @@ app.get('/api/evaluations', async (req, res) => {
     const dayNameParsed = isWeekendRedirect ? "Jeudi" : (extractDayNameFromString(effectiveDateQuery) || extractDayNameFromString(dayNameFr) || dayNameFr);
     const cleanDateQuery = String(effectiveDateQuery).trim().toLowerCase();
 
-    const normClass = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    const targetNormClass = normClass(className);
-
     const homeworks = [];
     const weeklyHomeworks = [];
     const seenAssignments = new Set();
@@ -4405,7 +4432,7 @@ app.get('/api/evaluations', async (req, res) => {
     docsToProcess.forEach(doc => {
       if (Array.isArray(doc.data)) {
         const isTargetWeek = Number(doc.week) === Number(targetWeekNumber);
-        const docWConfig = (specificWeekDateRangesNode && specificWeekDateRangesNode[doc.week]) || {};
+        const docWConfig = (sectionWeekConfig && sectionWeekConfig[doc.week]) || (specificWeekDateRangesNode && specificWeekDateRangesNode[doc.week]) || {};
         const docStartDate = docWConfig.start ? new Date(docWConfig.start + 'T00:00:00Z') : null;
 
         doc.data.forEach(row => {
@@ -4417,13 +4444,13 @@ app.get('/api/evaluations', async (req, res) => {
           const rowPeriode = row[findKey(row, 'Période')];
           const rowLecon = row[findKey(row, 'Leçon')];
           const rowTravaux = row[findKey(row, 'Travaux de classe')];
+          const rowSupport = row[findKey(row, 'Support')];
 
           const rowDevoirsClean = String(rowDevoirs || '').trim();
           const hasExplicitDevoir = rowDevoirsClean !== '' && rowDevoirsClean !== '-' && rowDevoirsClean !== '—' && rowDevoirsClean.toLowerCase() !== 'aucun' && rowDevoirsClean.toLowerCase() !== 'sans';
           if (rowClass && hasExplicitDevoir) {
             if (section === 'maternelle' && typeof isMaternelleClassServer === 'function' && !isMaternelleClassServer(rowClass)) return;
             if (section === 'primaire' && typeof isMaternelleClassServer === 'function' && isMaternelleClassServer(rowClass)) return;
-            if (typeof isRowAllowedForSection === 'function' && !isRowAllowedForSection(row, section)) return;
             const rNorm = normClass(rowClass);
             const classMatch = (rNorm === targetNormClass || rNorm.includes(targetNormClass) || targetNormClass.includes(rNorm) || (typeof isClassMatchServer === 'function' && isClassMatchServer(rowClass, className)));
 
@@ -4442,7 +4469,7 @@ app.get('/api/evaluations', async (req, res) => {
 
               // Mettre à jour le compteur du jour d'école pour la semaine cible (uniquement si devoir dans colonne Devoirs)
               if (isTargetWeek && stdDay) {
-                const sDayObj = schoolDays.find(sd => sd.day === stdDay || sd.date === exactRowDate);
+                const sDayObj = schoolDays.find(sd => sd.day === stdDay || (exactRowDate && sd.date === exactRowDate));
                 if (sDayObj) {
                   sDayObj.count++;
                 }
@@ -4467,7 +4494,9 @@ app.get('/api/evaluations', async (req, res) => {
               }
 
               const effectiveAssignment = rowDevoirsClean;
-              const resolvedTeacher = resolveSectionTeacher(section, rowClass, rowMatiere, rowEnseignant, subTeacherDocs);
+              const resolvedTeacher = (rowEnseignant && String(rowEnseignant).trim() && String(rowEnseignant).trim() !== '—')
+                ? String(rowEnseignant).trim()
+                : resolveSectionTeacher(section, rowClass, rowMatiere, rowEnseignant, subTeacherDocs);
 
               const hwItem = {
                 week: doc.week,
@@ -4475,8 +4504,9 @@ app.get('/api/evaluations', async (req, res) => {
                 assignment: effectiveAssignment,
                 teacher: resolvedTeacher,
                 period: rowPeriode || '',
-                lesson: rowLecon || '',
-                classWork: rowTravaux || '',
+                lesson: (rowLecon && String(rowLecon).trim() !== '—') ? String(rowLecon).trim() : '',
+                classWork: (rowTravaux && String(rowTravaux).trim() !== '—') ? String(rowTravaux).trim() : '',
+                support: (rowSupport && String(rowSupport).trim() !== '—') ? String(rowSupport).trim() : '',
                 day: stdDay || rowDay || '',
                 exactDate: exactRowDate,
                 formattedDateFr: formattedDateFr,
@@ -4543,6 +4573,7 @@ app.get('/api/evaluations', async (req, res) => {
       schoolDays,
       evaluations: evaluations || [],
       targetWeek: targetWeekNumber,
+      availableWeeks,
       isWeekendRedirect,
       effectiveDate: effectiveDateQuery,
       weekStartDate: targetWeekConfig.start || '',
@@ -5601,26 +5632,55 @@ app.get('/api/general-evaluations', async (req, res) => {
     const db = await connectToDatabase();
     const authoritativeList = await getAuthoritativeStudents(db, section);
 
-    const eightWeeksAgo = moment().subtract(8, 'weeks').startOf('day');
+    // Cumulation continue sur toute l'année scolaire (toutes les évaluations de suivi + notes continues CW/HW)
     const evaluations = await db.collection('evaluations').find({
-      $or: [{ section: section }, { section: { $exists: false } }],
-      date: { $gte: eightWeeksAgo.format('YYYY-MM-DD') }
+      $or: [{ section: section }, { section: { $exists: false } }]
     }).toArray();
+
+    const studentGradesDocs = await db.collection('student_grades').find({
+      $or: [{ section: section }, { section: { $exists: false } }]
+    }).toArray().catch(() => []);
+
+    // Récupérer les matières des classes depuis les plans hebdomadaires pour garantir un affichage complet par matière
+    const planDocs = await db.collection('plans').find({
+      $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }]
+    }).project({ data: 1 }).toArray().catch(() => []);
+
+    const classSubjectsMap = {};
+    planDocs.forEach(doc => {
+      if (!Array.isArray(doc.data)) return;
+      doc.data.forEach(r => {
+        const rawCls = r[findKey(r, 'Classe')];
+        const rawMat = r[findKey(r, 'Matière')];
+        if (!rawCls || !rawMat) return;
+        const mTrim = String(rawMat).trim();
+        if (!mTrim || mTrim === '—' || mTrim === '-') return;
+        const cNorm = normalizeStudentClass(rawCls) || String(rawCls).trim();
+        if (!classSubjectsMap[cNorm]) classSubjectsMap[cNorm] = new Set();
+        classSubjectsMap[cNorm].add(mTrim);
+      });
+    });
 
     // 1. Initialiser les fiches de suivi pour TOUS les élèves enregistrés par l'admin dans la section
     const studentEvaluations = {};
     for (const st of authoritativeList) {
       const key = `${st.class}|||${st.name}`;
+      const initBySubj = {};
+      const cSubjs = classSubjectsMap[st.class] || new Set();
+      cSubjs.forEach(subj => {
+        initBySubj[subj] = { behaviors: [], participations: [], statuses: [], directCwScores: [], directHwScores: [] };
+      });
       studentEvaluations[key] = {
         classe: st.class,
         student: st.name,
         photo: st.photo || '',
         behaviors: [], participations: [], statuses: [],
-        bySubject: {}
+        directCwScores: [], directHwScores: [],
+        bySubject: initBySubj
       };
     }
 
-    // 2. Associer chaque évaluation à son élève officiel admin
+    // 2. Associer chaque évaluation quotidienne à son élève officiel admin
     evaluations.forEach(ev => {
       const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
       const sName = matched ? matched.name : (ev.studentName || '').trim();
@@ -5633,56 +5693,99 @@ app.get('/api/general-evaluations', async (req, res) => {
           classe: cName,
           student: sName,
           behaviors: [], participations: [], statuses: [],
+          directCwScores: [], directHwScores: [],
           bySubject: {}
         };
       }
       const sd = studentEvaluations[key];
       const subj = (ev.subject || '').trim();
       if (subj && !sd.bySubject[subj]) {
-        sd.bySubject[subj] = { behaviors: [], participations: [], statuses: [] };
+        sd.bySubject[subj] = { behaviors: [], participations: [], statuses: [], directCwScores: [], directHwScores: [] };
       }
-      const bNum = parseInt(ev.behavior, 10);
-      const pNum = parseInt(ev.participation, 10);
+      const bNum = parseFloat(ev.behavior);
+      const pNum = parseFloat(ev.participation);
       if (!isNaN(bNum)) { sd.behaviors.push(bNum); if (subj) sd.bySubject[subj].behaviors.push(bNum); }
       if (!isNaN(pNum)) { sd.participations.push(pNum); if (subj) sd.bySubject[subj].participations.push(pNum); }
       if (ev.status) { sd.statuses.push(ev.status); if (subj) sd.bySubject[subj].statuses.push(ev.status); }
     });
 
-    function calcScores(behaviors, participations, statuses, isPEI1) {
+    // 3. Intégrer également les notes saisies dans student_grades (Participation/Classwork & Devoirs/Homework) pour la cumulation continue
+    studentGradesDocs.forEach(gDoc => {
+      const gStudent = gDoc.student || gDoc.studentName || '';
+      const gClass = gDoc.classe || gDoc.class || '';
+      const matched = matchAdminStudent(gStudent, gClass, authoritativeList);
+      const sName = matched ? matched.name : String(gStudent).trim();
+      const cName = matched ? matched.class : (normalizeStudentClass(gClass) || String(gClass).trim());
+      if (!sName || !cName) return;
+
+      const key = `${cName}|||${sName}`;
+      if (!studentEvaluations[key]) return;
+      const sd = studentEvaluations[key];
+      const subjectsObj = gDoc.subjects || {};
+      for (const [subjName, subjVals] of Object.entries(subjectsObj)) {
+        const cleanSubj = String(subjName || '').trim();
+        if (!cleanSubj || !subjVals || typeof subjVals !== 'object') continue;
+        if (!sd.bySubject[cleanSubj]) {
+          sd.bySubject[cleanSubj] = { behaviors: [], participations: [], statuses: [], directCwScores: [], directHwScores: [] };
+        }
+        const cwVal = parseFloat(subjVals.participation ?? subjVals.classwork);
+        const hwVal = parseFloat(subjVals.devoirs ?? subjVals.homework);
+        if (!isNaN(cwVal) && cwVal >= 0) {
+          sd.directCwScores.push(cwVal);
+          sd.bySubject[cleanSubj].directCwScores.push(cwVal);
+        }
+        if (!isNaN(hwVal) && hwVal >= 0) {
+          sd.directHwScores.push(hwVal);
+          sd.bySubject[cleanSubj].directHwScores.push(hwVal);
+        }
+      }
+    });
+
+    function calcScores(behaviors, participations, statuses, isPEI1, directCwScores = [], directHwScores = []) {
       const maxPB = isPEI1 ? 30 : 20;
-      const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : 0;
-      const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : 0;
-      const rawPB = ((avgB + avgP) / 2) / 10 * maxPB;
-      const participationBehaviorScore = Math.min(maxPB, parseFloat(rawPB.toFixed(2)));
+      const hasDailyPB = behaviors.length > 0 || participations.length > 0;
+      const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : (participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : 10);
+      const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : (behaviors.length > 0 ? avgB : 10);
+      let rawPB = ((avgB + avgP) / 2) / 10 * maxPB;
+
+      if (directCwScores.length > 0) {
+        const avgDirectCw = directCwScores.reduce((a, b) => a + b, 0) / directCwScores.length;
+        rawPB = hasDailyPB ? ((rawPB + avgDirectCw) / 2) : avgDirectCw;
+      } else if (!hasDailyPB) {
+        rawPB = maxPB;
+      }
+      const participationBehaviorScore = Math.min(maxPB, Math.max(0, parseFloat(rawPB.toFixed(2))));
       
       const total = statuses.length;
       const done = statuses.filter(s => s === 'Fait').length;
       const partial = statuses.filter(s => s === 'Partiellement Fait').length;
       const nonFait = statuses.filter(s => s === 'Non Fait').length;
-      const homeworkRate = total > 0 ? Math.round(((done + partial * 0.5) / total) * 100) : 100;
-      const homeworkScore = Math.min(20, parseFloat(((homeworkRate / 100) * 20).toFixed(2)));
+      let homeworkRate = total > 0 ? Math.round(((done + partial * 0.5) / total) * 100) : 100;
+      let rawHW = (homeworkRate / 100) * 20;
 
-      const participationRate = Math.round((avgP / 10) * 100);
-      const behaviorRate = Math.round((avgB / 10) * 100);
+      if (directHwScores.length > 0) {
+        const avgDirectHw = directHwScores.reduce((a, b) => a + b, 0) / directHwScores.length;
+        rawHW = total > 0 ? ((rawHW + avgDirectHw) / 2) : avgDirectHw;
+        homeworkRate = Math.min(100, Math.max(0, Math.round((rawHW / 20) * 100)));
+      }
+      const homeworkScore = Math.min(20, Math.max(0, parseFloat(rawHW.toFixed(2))));
+
+      const participationRate = Math.min(100, Math.max(0, Math.round((avgP / 10) * 100)));
+      const behaviorRate = Math.min(100, Math.max(0, Math.round((avgB / 10) * 100)));
+      const cwRate = Math.min(100, Math.max(0, Math.round((participationBehaviorScore / maxPB) * 100)));
 
       // Calcul de la progression globale sur 100% : Devoirs (40%), Participation (30%), Comportement (30%)
-      let overallProgress = 0;
-      if (total > 0 && (behaviors.length > 0 || participations.length > 0)) {
-        overallProgress = Math.round(homeworkRate * 0.40 + participationRate * 0.30 + behaviorRate * 0.30);
-      } else if (behaviors.length > 0 || participations.length > 0) {
-        overallProgress = Math.round((participationRate + behaviorRate) / 2);
-      } else if (total > 0) {
-        overallProgress = homeworkRate;
-      } else {
-        overallProgress = 100;
-      }
+      let overallProgress = Math.round(homeworkRate * 0.40 + cwRate * 0.60);
       overallProgress = Math.min(100, Math.max(0, overallProgress));
 
       return {
         participationBehaviorScore,
+        classworkScore: participationBehaviorScore,
         homeworkScore,
         maxPB,
+        maxCW: maxPB,
         maxHW: 20,
+        cwRate,
         avgB: parseFloat(avgB.toFixed(1)),
         avgP: parseFloat(avgP.toFixed(1)),
         participationRate,
@@ -5692,24 +5795,30 @@ app.get('/api/general-evaluations', async (req, res) => {
         totalHw: total,
         doneCount: done,
         partialCount: partial,
-        nonFaitCount: nonFait
+        nonFaitCount: nonFait,
+        evalCount: behaviors.length + participations.length + total + directCwScores.length + directHwScores.length
       };
     }
 
     const results = Object.values(studentEvaluations).map(sd => {
-      const isPEI1 = sd.classe === 'PEI1';
+      const isPEI1 = String(sd.classe || '').toUpperCase().includes('PEI1');
       const maxPB = isPEI1 ? 30 : 20;
-      const global = calcScores(sd.behaviors, sd.participations, sd.statuses, isPEI1);
+      const global = calcScores(sd.behaviors, sd.participations, sd.statuses, isPEI1, sd.directCwScores, sd.directHwScores);
       const subjectScores = {};
       for (const [subj, data] of Object.entries(sd.bySubject)) {
-        subjectScores[subj] = calcScores(data.behaviors, data.participations, data.statuses, isPEI1);
+        subjectScores[subj] = calcScores(data.behaviors, data.participations, data.statuses, isPEI1, data.directCwScores, data.directHwScores);
       }
       return {
         classe: sd.classe,
         student: sd.student,
-        isPEI1, maxPB, maxHW: 20,
+        isPEI1,
+        maxPB,
+        maxCW: maxPB,
+        maxHW: 20,
         participationBehaviorScore: global.participationBehaviorScore,
+        classworkScore: global.classworkScore,
         homeworkScore: global.homeworkScore,
+        cwRate: global.cwRate,
         totalScore: parseFloat((global.participationBehaviorScore + global.homeworkScore).toFixed(2)),
         totalMax: maxPB + 20,
         overallProgress: global.overallProgress,
@@ -8854,17 +8963,24 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
       deletedSubjects = []
     } = req.body;
 
-    let sWeek = parseInt(startWeek, 10);
-    let eWeek = parseInt(endWeek, 10);
+    let sWeek = parseInt(startWeek, 10) || 1;
+    let eWeek = parseInt(endWeek, 10) || sWeek;
     if (targetMode === 'all_year' || targetMode === 'all') {
       sWeek = 1;
       eWeek = 38;
-    } else if (isNaN(sWeek) || sWeek < 1) {
-      sWeek = 1;
-      eWeek = (targetMode === 'remaining' ? 38 : 1);
     } else if (targetMode === 'remaining') {
+      sWeek = Math.max(1, Math.min(38, sWeek));
       eWeek = 38;
-    } else if (isNaN(eWeek) || eWeek < sWeek) {
+    } else if (targetMode === 'previous') {
+      eWeek = Math.max(1, Math.min(38, parseInt(endWeek || startWeek, 10) || 1));
+      sWeek = 1;
+    } else if (targetMode === 'range') {
+      const w1 = Math.max(1, Math.min(38, sWeek));
+      const w2 = Math.max(1, Math.min(38, eWeek));
+      sWeek = Math.min(w1, w2);
+      eWeek = Math.max(w1, w2);
+    } else {
+      sWeek = Math.max(1, Math.min(38, sWeek));
       eWeek = sWeek;
     }
 
@@ -8897,6 +9013,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
     const getPerNum = (p) => { const n = parseInt(p, 10); return isNaN(n) ? 99 : n; };
 
     // Nettoyer et dédupliquer strictement les créneaux soumis par (Jour, Période) en ignorant les placeholders "—"
+    // tout en conservant originalJour / originalPeriode pour déplacer les séances déjà saisies avec leurs leçons/devoirs !
     for (const [cls, rawSlots] of Object.entries(schedulesToApply)) {
       const dedupedSlotMap = new Map();
       (rawSlots || []).forEach(slot => {
@@ -8904,10 +9021,14 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
         const cleanDay = extractDayNameFromString(slot.jour) || String(slot.jour || '').trim();
         const cleanPer = String(slot.periode || '1').replace(/[^0-9]/g, '') || '1';
         if (!cleanDay) return;
+        const origDay = extractDayNameFromString(slot.originalJour || slot.jour) || cleanDay;
+        const origPer = String(slot.originalPeriode || slot.periode || '1').replace(/[^0-9]/g, '') || cleanPer;
         const slotKey = `${cleanDay.toLowerCase()}_${cleanPer}`;
         dedupedSlotMap.set(slotKey, {
           jour: cleanDay,
           periode: cleanPer,
+          originalJour: origDay,
+          originalPeriode: origPer,
           matiere: String(slot.matiere).trim(),
           enseignant: String(slot.enseignant || '').trim()
         });
@@ -8926,34 +9047,26 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
     const nowAuto = new Date();
     try {
       for (const [cls, clsSlots] of Object.entries(schedulesToApply)) {
+        const cleanSlotsForDb = clsSlots.map(s => ({
+          jour: s.jour,
+          periode: s.periode,
+          matiere: s.matiere,
+          enseignant: s.enseignant
+        }));
         await db.collection('class_schedules').updateOne(
           { section, classe: cls },
           {
             $set: {
               section,
               classe: cls,
-              slots: clsSlots,
+              slots: cleanSlotsForDb,
               updatedAt: nowAuto
             }
           },
           { upsert: true }
         );
 
-        // Récupérer les matières présentes dans le nouvel emploi du temps
-        const activeSubjKeys = new Set(clsSlots.map(s => String(s.matiere).trim().toLowerCase()));
-
-        // Supprimer de class_subject_teachers les matières qui ont été retirées de l'emploi du temps de cette classe
-        const existingLinks = await db.collection('class_subject_teachers').find({ section, classe: cls }).toArray();
-        for (const link of existingLinks) {
-          if (link.matiere && !activeSubjKeys.has(String(link.matiere).trim().toLowerCase())) {
-            const stillPresent = clsSlots.some(s => isEquivalentSubjectServer(s.matiere, link.matiere));
-            if (!stillPresent) {
-              await db.collection('class_subject_teachers').deleteOne({ _id: link._id });
-            }
-          }
-        }
-
-        // Mettre à jour les liaisons actives
+        // Mettre à jour les liaisons actives Matière ➔ Enseignant
         for (const slot of clsSlots) {
           if (slot.matiere && slot.enseignant && slot.enseignant.trim()) {
             await db.collection('class_subject_teachers').updateOne(
@@ -8986,7 +9099,12 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
           ]
         });
 
-        let weekRows = planDoc && Array.isArray(planDoc.data) ? [...planDoc.data] : [];
+        // RÈGLE STRICTE : L'emploi du temps ne doit JAMAIS créer ni ajouter des classes dans des semaines vides ou inexistantes
+        if (!planDoc || !Array.isArray(planDoc.data) || planDoc.data.length === 0) {
+          return;
+        }
+
+        let weekRows = [...planDoc.data];
         let weekModified = false;
 
         for (const [clsName, newSlots] of Object.entries(schedulesToApply)) {
@@ -8996,10 +9114,14 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
           };
 
           const oldClassRows = weekRows.filter(isTargetClass);
-          const otherRows = weekRows.filter(r => !isTargetClass(r));
+          // RÈGLE STRICTE : Ne jamais ajouter une classe qui n'existe pas déjà dans le tableau de saisie de cette semaine !
+          if (oldClassRows.length === 0) {
+            continue;
+          }
 
-          // Conserver uniquement les anciennes lignes qui avaient un vrai contenu pédagogique (pour les réassocier aux nouveaux créneaux de la même matière)
-          // Les cours supprimés de l'emploi du temps ou les anciens créneaux vides ne sont JAMAIS conservés en doublon ou fantômes !
+          const otherRows = weekRows.filter(r => !isTargetClass(r));
+          const canonicalClassNameInWeek = oldClassRows[0][findKey(oldClassRows[0], 'Classe')] || clsName;
+
           const oldValidRows = oldClassRows.filter(r => {
             const m = r[findKey(r, 'Matière')];
             return !isPlaceholderMat(m);
@@ -9008,29 +9130,51 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
           const usedOldRows = new Set();
           const remappedClassRows = [];
 
-          // 1. D'abord associer les créneaux qui sont restés exactement au même Jour + Période + Matière équivalente
+          // 1. D'abord associer chaque créneau avec sa position d'origine (originalJour + originalPeriode) ou actuelle (jour + periode)
+          // Cela garantit que lorsqu'une séance déjà saisie (avec Leçon, Devoirs, Travaux) est déplacée (changement de jour ou période),
+          // son contenu pédagogique se déplace exactement avec elle !
           const exactMatchesMap = new Map();
           newSlots.forEach((slot, idx) => {
-            const slotDay = extractDayNameFromString(slot.jour) || slot.jour;
-            const slotPer = String(slot.periode).replace(/[^0-9]/g, '') || String(slot.periode);
-            const exactOld = oldValidRows.find(oldRow => {
+            const origDay = extractDayNameFromString(slot.originalJour || slot.jour) || slot.originalJour || slot.jour;
+            const origPer = String(slot.originalPeriode || slot.periode).replace(/[^0-9]/g, '') || String(slot.periode);
+            const targetDay = extractDayNameFromString(slot.jour) || slot.jour;
+            const targetPer = String(slot.periode).replace(/[^0-9]/g, '') || String(slot.periode);
+
+            // Priorité 1A : Correspondance sur (originalJour, originalPeriode) + Matière
+            let exactOld = oldValidRows.find(oldRow => {
               if (usedOldRows.has(oldRow)) return false;
               const oDay = extractDayNameFromString(oldRow[findKey(oldRow, 'Jour')]) || oldRow[findKey(oldRow, 'Jour')];
               const oPer = String(oldRow[findKey(oldRow, 'Période')] || '').replace(/[^0-9]/g, '');
               const oMat = oldRow[findKey(oldRow, 'Matière')] || '';
               return (
-                String(oDay).toLowerCase() === String(slotDay).toLowerCase() &&
-                oPer === slotPer &&
+                String(oDay).toLowerCase() === String(origDay).toLowerCase() &&
+                oPer === origPer &&
                 (normSubj(oMat) === normSubj(slot.matiere) || isEquivalentSubjectServer(oMat, slot.matiere))
               );
             });
+
+            // Priorité 1B : Correspondance sur (targetDay, targetPer) + Matière
+            if (!exactOld) {
+              exactOld = oldValidRows.find(oldRow => {
+                if (usedOldRows.has(oldRow)) return false;
+                const oDay = extractDayNameFromString(oldRow[findKey(oldRow, 'Jour')]) || oldRow[findKey(oldRow, 'Jour')];
+                const oPer = String(oldRow[findKey(oldRow, 'Période')] || '').replace(/[^0-9]/g, '');
+                const oMat = oldRow[findKey(oldRow, 'Matière')] || '';
+                return (
+                  String(oDay).toLowerCase() === String(targetDay).toLowerCase() &&
+                  oPer === targetPer &&
+                  (normSubj(oMat) === normSubj(slot.matiere) || isEquivalentSubjectServer(oMat, slot.matiere))
+                );
+              });
+            }
+
             if (exactOld) {
               usedOldRows.add(exactOld);
               exactMatchesMap.set(idx, exactOld);
             }
           });
 
-          // 2. Ensuite, pour les créneaux déplacés ou nouveaux, associer par matière dans l'ordre chronologique (en priorisant les lignes ayant du contenu saisi)
+          // 2. Ensuite, pour les créneaux déplacés ou modifiés, associer par matière en priorisant les lignes ayant du contenu saisi
           newSlots.forEach((slot, idx) => {
             let matchedOldRow = exactMatchesMap.get(idx) || null;
 
@@ -9070,7 +9214,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
 
               const updatedRow = {
                 ...matchedOldRow,
-                [clsKey]: clsName,
+                [clsKey]: canonicalClassNameInWeek,
                 [jourKey]: slot.jour,
                 [perKey]: String(slot.periode),
                 [matKey]: slot.matiere,
@@ -9100,7 +9244,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
                 [ensKey]: slot.enseignant || '',
                 [jourKey]: slot.jour,
                 [perKey]: String(slot.periode),
-                [clsKey]: clsName,
+                [clsKey]: canonicalClassNameInWeek,
                 [matKey]: slot.matiere,
                 [lecKey]: '',
                 [objKey]: '',
@@ -9114,8 +9258,21 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
             }
           });
 
-          // NOTE CRITIQUE : On ne réinjecte JAMAIS les anciennes lignes dont le créneau ou la matière a été supprimé de l'emploi du temps !
-          // Cela garantit à 100% qu'aucun doublon ni aucun cours supprimé ne reste dans le tableau.
+          // Préserver également toute ancienne ligne ayant une leçon ou un devoir saisi d'une matière qui n'était pas dans newSlots
+          // (sauf si explicitement supprimée via deletedSubjects) pour ne jamais perdre de travail enseignant
+          const deletedNormSet = new Set((deletedSubjects || []).map(d => normSubj(d)));
+          oldValidRows.forEach(oldRow => {
+            if (usedOldRows.has(oldRow)) return;
+            const oMat = oldRow[findKey(oldRow, 'Matière')] || '';
+            if (deletedNormSet.has(normSubj(oMat))) return;
+            const lec = String(oldRow[findKey(oldRow, 'Leçon')] || '').trim();
+            const dev = String(oldRow[findKey(oldRow, 'Devoirs')] || '').trim();
+            const tra = String(oldRow[findKey(oldRow, 'Travaux de classe')] || '').trim();
+            if ((lec && lec !== '—') || (dev && dev !== '—') || (tra && tra !== '—')) {
+              usedOldRows.add(oldRow);
+              remappedClassRows.push(oldRow);
+            }
+          });
 
           remappedClassRows.sort((a, b) => {
             const jA = a[findKey(a, 'Jour')];
@@ -9133,8 +9290,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
         }
 
         if (weekModified) {
-          // Appliquer la garantie des 8 périodes sans doublons avant sauvegarde en base
-          const finalWeekData = ensureAllPeriods1To8ForPlan(weekRows, section, w);
+          // Ne JAMAIS injecter de fausses lignes vides "—" ni ajouter/supprimer d'autres classes : sauvegarder weekRows tel quel
           const targetDocId = planDoc ? planDoc._id : docId;
           await db.collection('plans').updateOne(
             { _id: targetDocId },
@@ -9142,7 +9298,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
               $set: {
                 week: w,
                 section: section,
-                data: finalWeekData,
+                data: weekRows,
                 updatedAt: now
               }
             },
@@ -9157,7 +9313,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Emploi du temps mis à jour et synchronisé directement sur le tableau (${affectedWeeksCount} semaine(s) actualisée(s), sans doublons ni cours supprimés).`,
+      message: `Emploi du temps réorganisé avec succès (${affectedWeeksCount} semaine(s) actualisée(s) sans perturber le tableau ni les classes).`,
       affectedWeeksCount,
       totalUpdatedRows,
       startWeek: sWeek,

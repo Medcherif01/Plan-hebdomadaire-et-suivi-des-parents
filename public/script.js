@@ -7360,40 +7360,18 @@ async function loadParentWeeklyPlan() {
 
         let fetchedData = data.planData || [];
         
-        // Double sécurité : filtrer les enseignants et les classes des autres sections
-        if (section === 'garcons') {
-            fetchedData = fetchedData.filter(row => {
-                const ens = (getRowField(row, 'Enseignant') || '').trim();
-                if (isDualSectionTeacher(ens)) return true;
-                return !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase()) &&
-                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase()) &&
-                       !maternelleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase());
-            });
-        } else if (section === 'filles') {
-            fetchedData = fetchedData.filter(row => {
-                const ens = (getRowField(row, 'Enseignant') || '').trim();
-                if (isDualSectionTeacher(ens)) return true;
-                return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
-                       !primaireTeachersList.some(p => p.toLowerCase() === ens.toLowerCase()) &&
-                       !maternelleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase());
-            });
-        } else if (section === 'primaire') {
+        // Filtrer uniquement PS/MS/GS entre primaire et maternelle, sans jamais masquer les lignes saisies par les enseignants de la section
+        if (section === 'primaire') {
             fetchedData = fetchedData.filter(row => {
                 const cls = (getRowField(row, 'Classe') || '').trim().toUpperCase();
                 if (['PS', 'MS', 'GS'].includes(cls) || (typeof isMaternelleClass === 'function' && isMaternelleClass(cls))) return false;
-                const ens = (getRowField(row, 'Enseignant') || '').trim();
-                if (isDualSectionTeacher(ens)) return true;
-                return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
-                       !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase());
+                return true;
             });
         } else if (section === 'maternelle') {
             fetchedData = fetchedData.filter(row => {
                 const cls = (getRowField(row, 'Classe') || '').trim().toUpperCase();
                 if (cls && !['PS', 'MS', 'GS'].includes(cls) && !(typeof isMaternelleClass === 'function' && isMaternelleClass(cls))) return false;
-                const ens = (getRowField(row, 'Enseignant') || '').trim();
-                if (isDualSectionTeacher(ens)) return true;
-                return !maleTeachersList.some(m => m.toLowerCase() === ens.toLowerCase()) &&
-                       !femaleTeachersList.some(f => f.toLowerCase() === ens.toLowerCase());
+                return true;
             });
         }
         
@@ -9223,9 +9201,18 @@ window.navigateStudentHomeworkDay = navigateStudentHomeworkDay;
 function resetStudentHomeworkToToday() {
     if (!selectedStudentObj || !selectedStudentObj.name) return;
     const todayDate = (typeof getInitialHomeworkDate === 'function') ? getInitialHomeworkDate() : new Date().toISOString().split('T')[0];
+    window.selectedStudentHomeworkWeek = '';
     loadStudentHomeworksForDate(selectedStudentObj.name, selectedStudentObj.class, todayDate, true);
 }
 window.resetStudentHomeworkToToday = resetStudentHomeworkToToday;
+
+function onStudentHomeworkWeekChange(weekVal) {
+    window.selectedStudentHomeworkWeek = weekVal || '';
+    if (!selectedStudentObj) return;
+    isShowingWeeklyHomeworks = true;
+    loadStudentHomeworksForDate(selectedStudentObj.name, selectedStudentObj.class, currentHomeworkDate || new Date().toISOString().split('T')[0], false);
+}
+window.onStudentHomeworkWeekChange = onStudentHomeworkWeekChange;
 
 async function loadStudentHomeworksForDate(studentName, className, dateStr, isDirectDayClick = false) {
     try {
@@ -9238,9 +9225,6 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             if (studentName.includes('%')) studentName = decodeURIComponent(studentName);
         } catch (e) {}
 
-        // Règle devoirs élèves pour toutes les sections :
-        // Du dimanche au jeudi : devoirs du jour même.
-        // Le vendredi et samedi : devoirs du jeudi dernier (restent affichés tout le vendredi et samedi).
         const dateResolution = (typeof getStudentEffectiveHomeworkDate === 'function') 
             ? getStudentEffectiveHomeworkDate(dateStr) 
             : { dateStr: (dateStr || new Date().toISOString().split('T')[0]), isWeekendThursdayStay: false };
@@ -9262,7 +9246,7 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             if (isWeekendStay) {
                 dateDisplayEl.innerHTML = `<i class="fas fa-calendar-check" style="margin-right:6px; color:#2563EB;"></i> ${isAr ? 'واجبات يوم الخميس الماضي' : 'Devoirs du Jeudi dernier'} <span style="font-size:0.92rem; color:#475569; font-weight:600;">(${formattedDate})</span>`;
             } else {
-                dateDisplayEl.innerHTML = `<i class="fas fa-calendar-day" style="margin-right:6px; color:#2563EB;"></i> ${isAr ? 'واجبات اليوم' : 'Devoirs d\'aujourd\'hui'} <span style="font-size:0.92rem; color:#475569; font-weight:600;">(${formattedDate})</span>`;
+                dateDisplayEl.innerHTML = `<i class="fas fa-calendar-day" style="margin-right:6px; color:#2563EB;"></i> ${isAr ? 'واجبات اليوم ومتابعة الخطة' : 'Devoirs & Suivi du Tableau de Saisie'} <span style="font-size:0.92rem; color:#475569; font-weight:600;">(${formattedDate})</span>`;
             }
         }
 
@@ -9272,7 +9256,7 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                     ? `<span style="color:#1E40AF; font-weight:600;"><i class="fas fa-umbrella-beach"></i> تظل واجبات يوم الخميس معروضة طوال يومي الجمعة والسبت لمتابعة عطلة نهاية الأسبوع</span>`
                     : `<span style="color:#1E40AF; font-weight:600;"><i class="fas fa-umbrella-beach"></i> Les devoirs de jeudi restent affichés le vendredi et samedi durant le week-end</span>`;
             } else {
-                subtitleEl.innerHTML = isAr ? 'الواجبات المبرمجة لليوم الدراسي الحالي' : 'Devoirs programmés pour cette journée de classe';
+                subtitleEl.innerHTML = isAr ? 'مرتبط مباشرة بجدول إدخال المدرسين (الواجبات، الدروس، وأعمال القسم)' : 'Synchronisé en direct avec le tableau de saisie des enseignants (Devoirs, Leçons & Travaux de classe)';
             }
         }
 
@@ -9284,11 +9268,10 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             } else {
                 badgeEl.style.background = '#ECFDF5';
                 badgeEl.style.color = '#065F46';
-                badgeEl.innerHTML = `<i class="fas fa-check-circle"></i> ${isAr ? 'يوم دراسي' : 'Aujourd\'hui'}`;
+                badgeEl.innerHTML = `<i class="fas fa-check-circle"></i> ${isAr ? 'يوم دراسي' : 'Suivi Direct'}`;
             }
         }
 
-        // Bannière d'information explicite pour le week-end (vendredi & samedi sur jeudi)
         const weekendNoticeEl = document.getElementById('student-weekend-notice');
         if (weekendNoticeEl) {
             if (isWeekendStay) {
@@ -9304,25 +9287,37 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             }
         }
 
-        // La barre des 5 jours d'école et toolbar de navigation sont affichées pour les parents
         const schoolDaysBar = document.getElementById('student-school-days-bar');
         if (schoolDaysBar) schoolDaysBar.style.display = 'flex';
         currentStudentSelectedDate = effectiveDateStr;
 
         const grid = document.getElementById('homework-items-grid');
-        if (grid) grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#6B7280;"><i class="fas fa-spinner fa-spin fa-2x" style="color:#3B82F6; margin-bottom:10px;"></i><p>Chargement des devoirs en direct du plan hebdomadaire...</p></div>';
+        if (grid) grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:30px; color:#6B7280;"><i class="fas fa-spinner fa-spin fa-2x" style="color:#3B82F6; margin-bottom:10px;"></i><p>Chargement des devoirs en direct du tableau de saisie...</p></div>';
 
-        const res = await fetch(`/api/evaluations?class=${encodeURIComponent(className)}&student=${encodeURIComponent(studentName)}&date=${effectiveDateStr}&section=${section}`);
+        const weekQueryParam = window.selectedStudentHomeworkWeek ? `&week=${encodeURIComponent(window.selectedStudentHomeworkWeek)}` : '';
+        const directDateParam = isDirectDayClick ? '&directDate=true' : '';
+        const res = await fetch(`/api/evaluations?class=${encodeURIComponent(className)}&student=${encodeURIComponent(studentName)}&date=${effectiveDateStr}&section=${section}${weekQueryParam}${directDateParam}`);
         if (res.ok) {
             const data = await res.json();
             lastEvaluationsData = data;
-            const { homeworks = [], evaluations = [], schoolDays = [] } = data;
+            const { homeworks = [], weeklyHomeworks = [], evaluations = [], schoolDays = [], availableWeeks = [], targetWeek } = data;
             currentStudentSchoolDays = schoolDays || [];
+
+            // Peupler le sélecteur de semaine des devoirs (#studentHomeworkWeekSelect)
+            const hwWeekSel = document.getElementById('studentHomeworkWeekSelect');
+            if (hwWeekSel) {
+                const weeksList = Array.from(new Set([...(availableWeeks || []), ...(targetWeek ? [Number(targetWeek)] : [])])).sort((a, b) => a - b);
+                hwWeekSel.innerHTML = `<option value="">${isAr ? 'الأسبوع النشط' : 'Semaine active'}${targetWeek ? ` (S${targetWeek})` : ''}</option>`;
+                weeksList.forEach(wNum => {
+                    const sel = String(window.selectedStudentHomeworkWeek) === String(wNum) || (!window.selectedStudentHomeworkWeek && Number(targetWeek) === Number(wNum)) ? 'selected' : '';
+                    hwWeekSel.innerHTML += `<option value="${wNum}" ${sel}>Semaine ${wNum}</option>`;
+                });
+            }
 
             // Mise à jour de la date active dans le badge de navigation
             const navDayTextEl = document.getElementById('studentCurrentNavDayText');
             if (navDayTextEl) {
-                navDayTextEl.textContent = formatFrenchDate(effectiveDateStr);
+                navDayTextEl.textContent = targetWeek ? `Semaine ${targetWeek} • ${formatFrenchDate(effectiveDateStr)}` : formatFrenchDate(effectiveDateStr);
             }
             const txtPrevDay = document.getElementById('txtPrevDay');
             const txtNextDay = document.getElementById('txtNextDay');
@@ -9331,22 +9326,47 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             if (txtNextDay) txtNextDay.textContent = (isAr ? 'اليوم التالي' : (currentUserLanguage === 'en' ? 'Next Day' : 'Jour suivant'));
             if (txtTodayBtn) txtTodayBtn.textContent = (isAr ? 'اليوم' : (currentUserLanguage === 'en' ? 'Today' : 'Aujourd\'hui'));
 
-            // Mise à jour des intitulés des 2 onglets élèves (1. Devoirs du Jour | 2. Progression & Évaluations)
             const lblTabHw = document.getElementById('lblStudentTabHomeworks');
             const lblTabProg = document.getElementById('lblStudentTabProgress');
-            if (lblTabHw) lblTabHw.textContent = isAr ? '1. واجبات اليوم' : (currentUserLanguage === 'en' ? '1. Today\'s Homework' : '1. Devoirs du Jour');
-            if (lblTabProg) lblTabProg.textContent = isAr ? '2. التقدم والتقييمات' : (currentUserLanguage === 'en' ? '2. Progress & Evaluations' : '2. Progression & Évaluations');
+            if (lblTabHw) lblTabHw.textContent = isAr ? '1. الواجبات والمتابعة' : (currentUserLanguage === 'en' ? '1. Homework & Follow-up' : '1. Devoirs & Suivi');
+            if (lblTabProg) lblTabProg.textContent = isAr ? '2. التقدم والتقييمات (CW & HW)' : (currentUserLanguage === 'en' ? '2. Progress & Grades (CW & HW)' : '2. Notes Cumulées CW & HW');
 
             // Affichage de la barre des 5 jours d'école
             if (typeof renderSchoolDaysBar === 'function') {
                 renderSchoolDaysBar(currentStudentSchoolDays, effectiveDateStr, studentName, className);
             }
 
-            // Règle stricte pour les élèves : afficher uniquement les devoirs déjà mis dans la colonne Devoirs par les enseignants ce jour
-            const displayList = (homeworks || []).filter(hw => {
+            // Filtrer les devoirs du jour et les devoirs de toute la semaine saisis par les enseignants
+            const filterValidHw = (list) => (list || []).filter(hw => {
                 const text = String(hw.assignment || '').trim();
                 return text !== '' && text !== '-' && text !== '—' && text.toLowerCase() !== 'aucun';
             });
+
+            const todayHwList = filterValidHw(homeworks);
+            const weekHwList = filterValidHw(weeklyHomeworks);
+
+            // Si aucun devoir sur le jour précis (et pas un clic direct sur un jour vide), ou si le mode "Tous les devoirs de la semaine" est actif,
+            // afficher tous les devoirs de la semaine saisis dans le tableau de saisie pour que les parents voient toujours les devoirs !
+            let displayList = todayHwList;
+            let showingAllWeekFallback = false;
+            if (isShowingWeeklyHomeworks || (todayHwList.length === 0 && weekHwList.length > 0 && !isDirectDayClick)) {
+                displayList = weekHwList;
+                showingAllWeekFallback = true;
+            }
+
+            const btnToggleWeek = document.getElementById('btnToggleAllWeekHomeworks');
+            const txtToggleWeek = document.getElementById('txtToggleAllWeekHw');
+            if (btnToggleWeek && txtToggleWeek) {
+                if (showingAllWeekFallback || isShowingWeeklyHomeworks) {
+                    btnToggleWeek.style.background = '#1D4ED8';
+                    btnToggleWeek.style.color = '#FFFFFF';
+                    txtToggleWeek.textContent = isAr ? `كل واجبات الأسبوع (${weekHwList.length})` : `Toute la Semaine ${targetWeek || ''} (${weekHwList.length} devoirs)`;
+                } else {
+                    btnToggleWeek.style.background = '#EFF6FF';
+                    btnToggleWeek.style.color = '#1D4ED8';
+                    txtToggleWeek.textContent = isAr ? `عرض كل واجبات الأسبوع (${weekHwList.length})` : `Tous les devoirs de la semaine (${weekHwList.length})`;
+                }
+            }
 
             const countBadgeEl = document.getElementById('badgeStudentTodayHwCount');
             if (countBadgeEl) {
@@ -9356,10 +9376,10 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             if (displayList.length === 0) {
                 const noHwTitle = isWeekendStay
                     ? (isAr ? 'لا توجد واجبات مسجلة في خانة الواجبات ليوم الخميس الماضي' : 'Aucun devoir inscrit dans la colonne Devoirs pour jeudi dernier')
-                    : (isAr ? 'لا توجد واجبات مسجلة في خانة الواجبات لهذا اليوم' : 'Aucun devoir inscrit dans la colonne Devoirs pour ce jour');
-                const noHwDesc = isWeekendStay
-                    ? (isAr ? 'لم يقم المدرسون بإدراج واجبات في عمود الواجبات ليوم الخميس. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل أو متابعة التقدم.' : 'Les enseignants n\'ont pas inscrit de devoirs dans la colonne Devoirs pour jeudi. Vous pouvez consulter la progression de l\'élève ou le plan hebdomadaire.')
-                    : (isAr ? 'لم يقم المدرسون بإدراج واجبات في عمود الواجبات لهذا اليوم. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل أو متابعة التقدم.' : 'Les enseignants n\'ont pas inscrit de devoirs dans la colonne Devoirs pour cette journée. Vous pouvez consulter la progression de l\'élève ou le plan hebdomadaire.');
+                    : (isAr ? 'لا توجد واجبات مسجلة لهذا اليوم' : 'Aucun devoir inscrit pour ce jour');
+                const noHwDesc = weekHwList.length > 0
+                    ? (isAr ? `يوجد ${weekHwList.length} واجب(ات) مسجلة في أيام أخرى من هذا الأسبوع. اضغط أدناه لعرضها جميعاً.` : `Il y a ${weekHwList.length} devoir(s) saisi(s) par les enseignants sur les autres jours de la Semaine ${targetWeek || ''}. Cliquez ci-dessous pour tous les afficher.`)
+                    : (isAr ? 'لم يقم المدرسون بإدراج واجبات في عمود الواجبات لهذا اليوم. يمكنك مراجعة الخطة الأسبوعية الكاملة للفصل أو متابعة التقدم.' : 'Les enseignants n\'ont pas inscrit de devoirs pour cette journée. Vous pouvez consulter toutes les séances dans le Plan Hebdo ou les notes cumulées CW & HW.');
 
                 grid.innerHTML = `
                     <div style="grid-column: 1/-1; background:white; padding:35px 25px; border-radius:16px; text-align:center; color:#6B7280; box-shadow:0 4px 15px rgba(0,0,0,0.04); border:1px solid #E2E8F0;">
@@ -9373,8 +9393,13 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                             ${noHwDesc}
                         </p>
                         <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+                            ${weekHwList.length > 0 ? `
+                                <button type="button" class="pro-button primary-button" onclick="toggleWeeklyHomeworksView()" style="padding:10px 18px; font-weight:700; background:#2563EB; color:white;">
+                                    <i class="fas fa-layer-group"></i> <span>${isAr ? `عرض جميع واجبات الأسبوع (${weekHwList.length})` : `Afficher les ${weekHwList.length} devoir(s) de la Semaine ${targetWeek || ''}`}</span>
+                                </button>
+                            ` : ''}
                             <button type="button" class="pro-button" onclick="switchStudentDashboardSection('progress')" style="padding:10px 18px; font-weight:700; background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; box-shadow:none;">
-                                <i class="fas fa-chart-line"></i> <span>${isAr ? 'عرض التقدم والتقييمات' : 'Voir Progression & Évaluations'}</span>
+                                <i class="fas fa-chart-line"></i> <span>${isAr ? 'عرض التقدم والتقييمات' : 'Voir Notes Cumulées CW & HW'}</span>
                             </button>
                             <button type="button" class="pro-button primary-button" onclick="goToCurrentStudentClassPlan()" style="padding:10px 18px; font-weight:700;">
                                 <i class="fas fa-book-open"></i> <span>${isAr ? 'الخطة الأسبوعية للفصل' : 'Consulter le Plan Hebdo'}</span>
@@ -9389,39 +9414,16 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                 const ev = evaluations.find(e => e.subject === hw.subject) || {};
                 const status = ev.status || 'Non Fait';
                 const statusClass = status.toLowerCase().replace(/\s+/g, '-');
-                const pVal = ev.participation || 0;
-                const bVal = ev.behavior || 0;
+                const pVal = ev.participation !== undefined ? ev.participation : 10;
+                const bVal = ev.behavior !== undefined ? ev.behavior : 10;
                 const comment = ev.comment || '';
 
-                const effectiveSection = (typeof selectedStudentObj !== 'undefined' && selectedStudentObj && selectedStudentObj.section) 
-                    || currentSection 
-                    || (className && className.toLowerCase().includes('garçon') ? 'garcons' : 'filles');
-                
-                let displayTeacher = hw.teacher || '';
-                if (effectiveSection === 'garcons') {
-                    const t = String(displayTeacher).trim();
-                    const tNorm = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    const isFem = (typeof femaleTeachersList !== 'undefined' ? femaleTeachersList : []).some(f => {
-                        const fLow = f.toLowerCase();
-                        return tNorm === fLow || tNorm.includes(fLow) || t.toLowerCase().includes(fLow);
-                    }) || tNorm.includes('soltani') || tNorm.includes('amal') || tNorm.includes('souha');
+                const displayTeacher = (hw.teacher && String(hw.teacher).trim() !== '—') ? String(hw.teacher).trim() : '';
 
-                    if (isFem || !t || t === 'Enseignant') {
-                        const sLow = String(hw.subject || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                        if (sLow.includes('math')) displayTeacher = 'Mohamed';
-                        else if (sLow.includes('angl') || sLow.includes('eng')) displayTeacher = 'Kamel';
-                        else if (sLow.includes('arab') || sLow.includes('islam') || sLow.includes('coran') || /[\u0600-\u06FF]/.test(hw.subject || '')) displayTeacher = 'Majed';
-                        else if (sLow.includes('scienc') || sLow.includes('svt') || sLow.includes('physiq')) displayTeacher = 'Sylvano';
-                        else if (sLow.includes('franc')) displayTeacher = 'Abas';
-                        else if (sLow.includes('hist') || sLow.includes('geo')) displayTeacher = 'Zine';
-                        else if (sLow.includes('sport')) displayTeacher = 'Tonga';
-                        else displayTeacher = 'Mohamed';
-                    }
-                }
-
-                const dayBadge = hw.day ? `<span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-size:0.75rem; font-weight:700; margin-left:6px;"><i class="fas fa-calendar-day"></i> ${hw.day}</span>` : '';
+                const weekBadge = hw.week ? `<span style="background:#DBEAFE; color:#1E40AF; padding:3px 8px; border-radius:6px; font-size:0.74rem; font-weight:800;">S${hw.week}</span>` : '';
+                const dayBadge = hw.day ? `<span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-size:0.75rem; font-weight:700;"><i class="fas fa-calendar-day"></i> ${hw.day}${hw.formattedDateFr ? ` (${hw.formattedDateFr})` : ''}</span>` : '';
                 const periodBadge = hw.period ? `<span style="background:#F1F5F9; color:#475569; padding:3px 8px; border-radius:6px; font-size:0.75rem; font-weight:600;"><i class="fas fa-clock"></i> P${hw.period}</span>` : '';
-                const teacherBadge = displayTeacher ? `<span style="font-size:0.8rem; color:#64748B; display:flex; align-items:center; gap:4px;"><i class="fas fa-chalkboard-teacher"></i> ${displayTeacher}</span>` : '';
+                const teacherBadge = displayTeacher ? `<span style="font-size:0.82rem; color:#475569; font-weight:600; display:flex; align-items:center; gap:5px; margin-top:4px;"><i class="fas fa-chalkboard-teacher" style="color:#2563EB;"></i> ${escapeHtml(displayTeacher)}</span>` : '';
 
                 return `
                     <div style="background:white; border-radius:16px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); border:1px solid #E2E8F0; position:relative; display:flex; flex-direction:column; justify-content:space-between;">
@@ -9429,7 +9431,8 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; gap:8px;">
                                 <div>
                                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                        <span style="font-weight:800; color:#1E40AF; font-size:1.1rem;"><i class="fas fa-book"></i> ${hw.subject}</span>
+                                        <span style="font-weight:800; color:#1E40AF; font-size:1.1rem;"><i class="fas fa-book"></i> ${escapeHtml(hw.subject)}</span>
+                                        ${weekBadge}
                                         ${dayBadge}
                                         ${periodBadge}
                                     </div>
@@ -9442,21 +9445,27 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                             </div>
 
                             ${hw.lesson ? `
-                                <div style="font-size:0.85rem; color:#475569; margin-bottom:8px; background:#F8FAFC; padding:6px 10px; border-radius:6px; border:1px dashed #CBD5E1;">
-                                    <strong><i class="fas fa-graduation-cap"></i> Leçon :</strong> ${escapeHtml(hw.lesson)}
+                                <div style="font-size:0.85rem; color:#334155; margin-bottom:8px; background:#F8FAFC; padding:8px 12px; border-radius:8px; border:1px solid #E2E8F0;">
+                                    <strong style="color:#0F172A;"><i class="fas fa-graduation-cap" style="color:#2563EB;"></i> Leçon :</strong> ${escapeHtml(hw.lesson)}
+                                </div>
+                            ` : ''}
+
+                            ${hw.classWork ? `
+                                <div style="font-size:0.85rem; color:#334155; margin-bottom:8px; background:#F0FDF4; padding:8px 12px; border-radius:8px; border:1px solid #BBF7D0;">
+                                    <strong style="color:#166534;"><i class="fas fa-tasks" style="color:#16A34A;"></i> Travaux de classe (Classwork) :</strong> ${escapeHtml(hw.classWork)}
                                 </div>
                             ` : ''}
 
                             <div style="margin:10px 0; font-size:0.95rem; color:#1F2937; background:#EFF6FF; padding:12px 14px; border-radius:10px; border-left:4px solid #3B82F6;">
                                 <div style="font-weight:700; color:#1D4ED8; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
-                                    <i class="fas fa-pencil-alt"></i> Devoir à faire :
+                                    <i class="fas fa-pencil-alt"></i> Devoir à faire (Homework) :
                                 </div>
                                 <div style="white-space:pre-wrap; line-height:1.5;">${escapeHtml(hw.assignment || 'Aucun devoir')}</div>
                             </div>
 
-                            <div style="display:flex; gap:15px; font-size:0.85em; color:#4B5563; margin-top:8px; padding-top:8px; border-top:1px solid #F1F5F9;">
-                                <span><i class="fas fa-hands"></i> Participation: <strong>${pVal}/10</strong></span>
-                                <span><i class="fas fa-user-check"></i> Comportement: <strong>${bVal}/10</strong></span>
+                            <div style="display:flex; gap:15px; font-size:0.85em; color:#4B5563; margin-top:8px; padding-top:8px; border-top:1px solid #F1F5F9; flex-wrap:wrap;">
+                                <span><i class="fas fa-hands" style="color:#10B981;"></i> Classwork (Participation): <strong>${pVal}/10</strong></span>
+                                <span><i class="fas fa-user-check" style="color:#8B5CF6;"></i> Comportement: <strong>${bVal}/10</strong></span>
                             </div>
 
                             ${comment ? `
@@ -9469,8 +9478,9 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                             ` : ''}
                         </div>
 
-                        <div style="margin-top:14px; padding-top:10px; border-top:1px solid #F1F5F9; display:flex; justify-content:flex-end;">
-                            <button type="button" onclick="goToCurrentStudentClassPlan('${hw.day || ''}')" style="background:none; border:none; color:#3B82F6; font-size:0.82rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                        <div style="margin-top:14px; padding-top:10px; border-top:1px solid #F1F5F9; display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:0.75rem; color:#64748B;"><i class="fas fa-sync-alt"></i> Synchronisé avec le tableau de saisie</span>
+                            <button type="button" onclick="goToCurrentStudentClassPlan('${hw.day || ''}', '${hw.week || ''}')" style="background:none; border:none; color:#3B82F6; font-size:0.82rem; font-weight:700; cursor:pointer; display:flex; align-items:center; gap:4px;">
                                 <span>Voir dans le Plan Hebdo</span> <i class="fas fa-arrow-right"></i>
                             </button>
                         </div>
@@ -9486,16 +9496,26 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
 function toggleWeeklyHomeworksView() {
     isShowingWeeklyHomeworks = !isShowingWeeklyHomeworks;
     if (selectedStudentObj) {
-        loadStudentHomeworksForDate(selectedStudentObj.name, selectedStudentObj.class, currentHomeworkDate);
+        loadStudentHomeworksForDate(selectedStudentObj.name, selectedStudentObj.class, currentHomeworkDate, false);
     }
 }
 
-function goToCurrentStudentClassPlan(targetDay) {
+function goToCurrentStudentClassPlan(targetDay, targetWeek) {
     if (!selectedStudentObj) return;
     showHomeworkView('parent-plan');
     const classSelect = document.getElementById('parentClassSelector');
     if (classSelect) {
+        if (!Array.from(classSelect.options).some(o => o.value === selectedStudentObj.class)) {
+            const opt = document.createElement('option');
+            opt.value = selectedStudentObj.class;
+            opt.textContent = selectedStudentObj.class;
+            classSelect.appendChild(opt);
+        }
         classSelect.value = selectedStudentObj.class;
+    }
+    const weekSelect = document.getElementById('parentWeekSelector');
+    if (weekSelect && targetWeek) {
+        weekSelect.value = String(targetWeek);
     }
     if (targetDay && schoolDaysList.includes(targetDay)) {
         parentActiveDay = targetDay;
@@ -9527,14 +9547,15 @@ function changeHomeworkDate(offsetDays) {
     const curr = new Date(currentHomeworkDate);
     curr.setDate(curr.getDate() + offsetDays);
     const newDateStr = curr.toISOString().split('T')[0];
-    loadStudentHomeworksForDate(selectedStudentObj.name, selectedStudentObj.class, newDateStr);
+    loadStudentHomeworksForDate(selectedStudentObj.name, selectedStudentObj.class, newDateStr, true);
 }
 
 async function loadGeneralEvaluations(studentName, className) {
     try {
         const section = currentSection || 'garcons';
         const container = document.getElementById('general-evaluations-container');
-        if (!container) return;
+        const bannerEl = document.getElementById('student-cumulative-cw-hw-banner');
+        if (!container && !bannerEl) return;
 
         const res = await fetch(`/api/general-evaluations?section=${section}`);
         if (res.ok) {
@@ -9551,13 +9572,16 @@ async function loadGeneralEvaluations(studentName, className) {
             }) || data.find(d => norm(d.student) === targetStudentNorm);
 
             if (!studentData) {
-                container.innerHTML = `
-                    <div class="student-progress-card" style="padding:16px 20px; text-align:center; background:#F8FAFC; border:1px dashed #CBD5E1; border-radius:14px; margin-bottom:20px;">
-                        <p style="margin:0; color:#64748B; font-size:0.92rem;">
-                            <i class="fas fa-info-circle"></i> ${currentUserLanguage === 'ar' ? 'لم يتم تسجيل تقييمات عامة بعد لهذا التلميذ.' : 'Aucune évaluation générale enregistrée pour le moment pour cet élève.'}
-                        </p>
-                    </div>
-                `;
+                if (bannerEl) bannerEl.style.display = 'none';
+                if (container) {
+                    container.innerHTML = `
+                        <div class="student-progress-card" style="padding:16px 20px; text-align:center; background:#F8FAFC; border:1px dashed #CBD5E1; border-radius:14px; margin-bottom:20px;">
+                            <p style="margin:0; color:#64748B; font-size:0.92rem;">
+                                <i class="fas fa-info-circle"></i> ${currentUserLanguage === 'ar' ? 'لم يتم تسجيل تقييمات عامة بعد لهذا التلميذ.' : 'Aucune évaluation générale enregistrée pour le moment pour cet élève.'}
+                            </p>
+                        </div>
+                    `;
+                }
                 const badgeEl = document.getElementById('student-progress-badge');
                 if (badgeEl) badgeEl.innerHTML = '';
                 return;
@@ -9568,40 +9592,48 @@ async function loadGeneralEvaluations(studentName, className) {
             const partRate = Math.min(100, Math.max(0, Math.round(studentData.participationRate ?? 100)));
             const behRate = Math.min(100, Math.max(0, Math.round(studentData.behaviorRate ?? 100)));
 
-            const avgP = studentData.avgParticipation != null ? studentData.avgParticipation : (studentData.participationBehaviorScore ? (studentData.participationBehaviorScore / 2).toFixed(1) : '10.0');
-            const avgB = studentData.avgBehavior != null ? studentData.avgBehavior : (studentData.participationBehaviorScore ? (studentData.participationBehaviorScore / 2).toFixed(1) : '10.0');
+            const maxCW = studentData.maxCW || studentData.maxPB || 20;
+            const maxHW = studentData.maxHW || 20;
+            const cwScore = studentData.classworkScore != null ? Number(studentData.classworkScore).toFixed(1) : (studentData.participationBehaviorScore != null ? Number(studentData.participationBehaviorScore).toFixed(1) : Number(maxCW).toFixed(1));
+            const hwScore = studentData.homeworkScore != null ? Number(studentData.homeworkScore).toFixed(1) : Number(maxHW).toFixed(1);
+            const totalCumulScore = (parseFloat(cwScore) + parseFloat(hwScore)).toFixed(1);
+            const totalCumulMax = maxCW + maxHW;
+
+            const avgP = studentData.avgParticipation != null ? studentData.avgParticipation : '10.0';
+            const avgB = studentData.avgBehavior != null ? studentData.avgBehavior : '10.0';
             const totalHw = studentData.totalHomeworks || (studentData.doneCount || 0) + (studentData.partialCount || 0) + (studentData.nonFaitCount || 0);
             const doneCount = studentData.doneCount || 0;
             const partialCount = studentData.partialCount || 0;
+            const nonFaitCount = studentData.nonFaitCount || 0;
 
-            // Palette et statut selon le niveau de progression
-            let progressColor = '#10B981'; // Émeraude
+            let progressColor = '#10B981';
             let progressBg = '#ECFDF5';
             let statusTextFr = 'Progression Excellente';
             let statusTextAr = 'تقدم ممتاز';
             let statusClass = 'status-fait';
 
             if (overall < 50) {
-                progressColor = '#EF4444'; // Rouge
+                progressColor = '#EF4444';
                 progressBg = '#FEF2F2';
                 statusTextFr = 'Nécessite un suivi';
                 statusTextAr = 'يحتاج إلى متابعة';
                 statusClass = 'status-non-fait';
             } else if (overall < 70) {
-                progressColor = '#F59E0B'; // Orange
+                progressColor = '#F59E0B';
                 progressBg = '#FFFBEB';
                 statusTextFr = 'Progression Moyenne';
                 statusTextAr = 'تقدم متوسط';
                 statusClass = 'status-partiel';
             } else if (overall < 85) {
-                progressColor = '#3B82F6'; // Bleu
+                progressColor = '#3B82F6';
                 progressBg = '#EFF6FF';
                 statusTextFr = 'Bonne Progression';
                 statusTextAr = 'تقدم جيد جداً';
                 statusClass = 'status-fait';
             }
 
-            const currentStatusText = currentUserLanguage === 'ar' ? statusTextAr : statusTextFr;
+            const isAr = currentUserLanguage === 'ar';
+            const currentStatusText = isAr ? statusTextAr : statusTextFr;
 
             // Mise à jour du badge dans l'en-tête de l'élève
             const badgeEl = document.getElementById('student-progress-badge');
@@ -9609,36 +9641,104 @@ async function loadGeneralEvaluations(studentName, className) {
                 badgeEl.className = `status-text ${statusClass}`;
                 badgeEl.style.display = 'inline-block';
                 badgeEl.style.fontSize = '0.9rem';
-                badgeEl.innerHTML = `<i class="fas fa-chart-line"></i> ${overall}% • ${currentStatusText}`;
+                badgeEl.innerHTML = `<i class="fas fa-award"></i> CW: ${cwScore}/${maxCW} • HW: ${hwScore}/${maxHW} (${overall}%)`;
             }
 
-            // Génération du détail par matière
+            // Affichage de la bannière permanente de Cumulation Continue (Classwork & Homework) en haut de la fiche élève
+            if (bannerEl) {
+                bannerEl.style.display = 'block';
+                bannerEl.innerHTML = `
+                    <div style="background:linear-gradient(135deg, #EFF6FF 0%, #F0FDF4 100%); border:1.5px solid #BFDBFE; border-radius:16px; padding:16px 20px; box-shadow:0 4px 14px rgba(37,99,235,0.07);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <div style="width:40px; height:40px; border-radius:10px; background:#2563EB; color:white; display:flex; align-items:center; justify-content:center; font-size:1.15rem; font-weight:800;">
+                                    <i class="fas fa-calculator"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight:800; color:#1E293B; font-size:1.02rem;">
+                                        ${isAr ? 'المعدل التراكمي المستمر : أعمال القسم (Classwork) والواجبات (Homework)' : 'Cumul Continu des Notes : Classwork (CW) & Homework (HW)'}
+                                    </div>
+                                    <div style="font-size:0.8rem; color:#475569; font-weight:600;">
+                                        ${isAr ? 'تراكم مستمر يتحدث تلقائياً مع كل متابعة يومية وتقييم للمدرسين' : 'Cumulation continue mise à jour automatiquement à chaque suivi des devoirs et participation en classe'}
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" onclick="switchStudentDashboardSection('progress')" style="background:#FFFFFF; color:#1D4ED8; border:1.5px solid #93C5FD; border-radius:10px; padding:7px 14px; font-size:0.82rem; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                                <i class="fas fa-list-ul"></i> <span>${isAr ? 'التفاصيل حسب المادة' : 'Détail CW & HW par matière'}</span>
+                            </button>
+                        </div>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                            <div style="background:white; border:1.5px solid #BBF7D0; border-radius:12px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-size:0.78rem; font-weight:800; color:#15803D; text-transform:uppercase;"><i class="fas fa-chalkboard-teacher"></i> Classwork (CW - Cumul)</div>
+                                    <div style="font-size:0.76rem; color:#64748B; margin-top:2px;">Participation (${avgP}/10) & Comportement (${avgB}/10)</div>
+                                </div>
+                                <div style="font-size:1.45rem; font-weight:900; color:#16A34A;">${cwScore} <span style="font-size:0.9rem; color:#64748B; font-weight:700;">/ ${maxCW}</span></div>
+                            </div>
+                            <div style="background:white; border:1.5px solid #BFDBFE; border-radius:12px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-size:0.78rem; font-weight:800; color:#1D4ED8; text-transform:uppercase;"><i class="fas fa-home"></i> Homework (HW - Cumul)</div>
+                                    <div style="font-size:0.76rem; color:#64748B; margin-top:2px;">${doneCount} fait(s), ${partialCount} partiel(s), ${nonFaitCount} non fait(s)</div>
+                                </div>
+                                <div style="font-size:1.45rem; font-weight:900; color:#2563EB;">${hwScore} <span style="font-size:0.9rem; color:#64748B; font-weight:700;">/ ${maxHW}</span></div>
+                            </div>
+                            <div style="background:white; border:1.5px solid #DDD6FE; border-radius:12px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="font-size:0.78rem; font-weight:800; color:#6D28D9; text-transform:uppercase;"><i class="fas fa-star"></i> Total Cumulé (CW + HW)</div>
+                                    <div style="font-size:0.76rem; color:#64748B; margin-top:2px;">Taux global : ${overall}% (${currentStatusText})</div>
+                                </div>
+                                <div style="font-size:1.45rem; font-weight:900; color:#7C3AED;">${totalCumulScore} <span style="font-size:0.9rem; color:#64748B; font-weight:700;">/ ${totalCumulMax}</span></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (!container) return;
+
+            // Génération du détail cumulatif CW & HW par matière
             const subjectScores = studentData.subjectScores || {};
             const subjectEntries = Object.entries(subjectScores);
             let subjectsHtml = '';
 
             if (subjectEntries.length > 0) {
                 subjectsHtml = `
-                    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #E2E8F0;">
-                        <button type="button" onclick="toggleSubjectProgressDetails()" style="background:none; border:none; color:#2563EB; font-weight:700; font-size:0.92rem; cursor:pointer; display:flex; align-items:center; gap:8px; padding:4px 0; margin-bottom:12px;">
-                            <i id="subject-progress-toggle-icon" class="fas fa-chevron-down"></i>
-                            <span>${currentUserLanguage === 'ar' ? `تفاصيل التقدم حسب كل مادة (${subjectEntries.length} مواد)` : `Détail de progression par matière (${subjectEntries.length} matières)`}</span>
-                        </button>
-                        <div id="subject-progress-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px;">
+                    <div style="margin-top:18px; padding-top:16px; border-top:1px solid #E2E8F0;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                            <button type="button" onclick="toggleSubjectProgressDetails()" style="background:none; border:none; color:#1E40AF; font-weight:800; font-size:0.96rem; cursor:pointer; display:flex; align-items:center; gap:8px; padding:4px 0;">
+                                <i id="subject-progress-toggle-icon" class="fas fa-chevron-down"></i>
+                                <span>${isAr ? `تفاصيل نقاط Classwork و Homework حسب كل مادة (${subjectEntries.length} مواد)` : `Notes Cumulées Classwork (CW) & Homework (HW) par matière (${subjectEntries.length} matières)`}</span>
+                            </button>
+                            <span style="font-size:0.78rem; color:#64748B; font-weight:600;"><i class="fas fa-sync"></i> Cumulation continue sur l'année</span>
+                        </div>
+                        <div id="subject-progress-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px;">
                             ${subjectEntries.map(([subj, sInfo]) => {
                                 const sProg = Math.min(100, Math.max(0, sInfo.overallProgress ?? 100));
                                 const sColor = sProg >= 75 ? '#10B981' : (sProg >= 50 ? '#F59E0B' : '#EF4444');
+                                const sCw = sInfo.classworkScore != null ? Number(sInfo.classworkScore).toFixed(1) : (sInfo.participationBehaviorScore != null ? Number(sInfo.participationBehaviorScore).toFixed(1) : Number(maxCW).toFixed(1));
+                                const sHw = sInfo.homeworkScore != null ? Number(sInfo.homeworkScore).toFixed(1) : Number(maxHW).toFixed(1);
+                                const sTot = (parseFloat(sCw) + parseFloat(sHw)).toFixed(1);
                                 return `
-                                    <div style="background:white; border:1px solid #E2E8F0; border-radius:10px; padding:12px 14px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
-                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                            <span style="font-weight:700; color:#1E293B; font-size:0.92rem;">${escapeHtml(subj)}</span>
-                                            <span style="font-weight:800; color:${sColor}; font-size:0.92rem;">${sProg}%</span>
+                                    <div style="background:white; border:1.5px solid #E2E8F0; border-radius:12px; padding:14px 16px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                            <span style="font-weight:800; color:#1E293B; font-size:0.95rem;">${escapeHtml(subj)}</span>
+                                            <span style="font-weight:900; color:${sColor}; font-size:0.9rem; background:${sColor}15; padding:2px 8px; border-radius:6px;">${sTot} / ${totalCumulMax} (${sProg}%)</span>
+                                        </div>
+                                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                                            <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:6px 10px;">
+                                                <div style="font-size:0.72rem; color:#166534; font-weight:700;">Classwork (CW)</div>
+                                                <div style="font-size:1.05rem; font-weight:900; color:#15803D;">${sCw} <small style="font-weight:600; color:#64748B;">/ ${maxCW}</small></div>
+                                            </div>
+                                            <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:6px 10px;">
+                                                <div style="font-size:0.72rem; color:#1E40AF; font-weight:700;">Homework (HW)</div>
+                                                <div style="font-size:1.05rem; font-weight:900; color:#1D4ED8;">${sHw} <small style="font-weight:600; color:#64748B;">/ ${maxHW}</small></div>
+                                            </div>
                                         </div>
                                         <div style="width:100%; height:6px; background:#F1F5F9; border-radius:4px; overflow:hidden; margin-bottom:8px;">
                                             <div style="width:${sProg}%; height:100%; background:${sColor}; border-radius:4px; transition:width 0.6s ease;"></div>
                                         </div>
-                                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:#64748B;">
-                                            <span><i class="fas fa-pencil-alt"></i> Devoirs: <strong>${sInfo.homeworkRate ?? 100}%</strong></span>
+                                        <div style="display:flex; justify-content:space-between; font-size:0.76rem; color:#64748B;">
+                                            <span><i class="fas fa-pencil-alt"></i> Devoirs: <strong>${sInfo.homeworkRate ?? 100}%</strong> (${sInfo.doneCount || 0}/${sInfo.totalHw || 0})</span>
                                             <span><i class="fas fa-hands"></i> Part: <strong>${sInfo.avgP ?? '10'}/10</strong></span>
                                             <span><i class="fas fa-user-check"></i> Comp: <strong>${sInfo.avgB ?? '10'}/10</strong></span>
                                         </div>
@@ -9652,15 +9752,14 @@ async function loadGeneralEvaluations(studentName, className) {
 
             container.innerHTML = `
                 <div class="student-progress-card" style="background:white; border-radius:16px; padding:20px 24px; box-shadow:0 4px 20px rgba(0,0,0,0.05); border:1px solid #E2E8F0; margin-bottom:20px;">
-                    <!-- En-tête de progression -->
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
                         <div>
                             <div style="font-size:1.15rem; font-weight:800; color:#1E293B; display:flex; align-items:center; gap:8px;">
                                 <i class="fas fa-chart-line" style="color:#2563EB;"></i>
-                                <span>${currentUserLanguage === 'ar' ? 'مستوى تقدم التلميذ (إجمالي 100%)' : 'Niveau de Progression de l\'Élève (sur 100%)'}</span>
+                                <span>${isAr ? 'المعدل التراكمي المستمر (Classwork & Homework)' : 'Cumulation Continue : Classwork (CW) & Homework (HW)'}</span>
                             </div>
                             <div style="font-size:0.85rem; color:#64748B; margin-top:2px;">
-                                ${currentUserLanguage === 'ar' ? 'محسوب بناءً على إنجاز الواجبات، المشاركة في القسم، والسلوك في جميع المواد' : 'Calculé selon la réalisation des devoirs, la participation et le comportement dans toutes les matières'}
+                                ${isAr ? 'محسوب بشكل تراكمي مستمر بناءً على إنجاز الواجبات، المشاركة في القسم، والسلوك في جميع المواد' : 'Calculé en cumulation continue selon les devoirs faits (Homework), la participation et le comportement en classe (Classwork)'}
                             </div>
                         </div>
                         <div style="display:flex; align-items:center; gap:10px;">
@@ -9668,71 +9767,65 @@ async function loadGeneralEvaluations(studentName, className) {
                                 ${currentStatusText}
                             </span>
                             <span style="font-size:1.6rem; font-weight:900; color:${progressColor}; letter-spacing:-0.5px;">
-                                ${overall}%
+                                ${totalCumulScore} / ${totalCumulMax}
                             </span>
                         </div>
                     </div>
 
-                    <!-- Grande barre de progression principale -->
                     <div style="width:100%; height:14px; background:#F1F5F9; border-radius:10px; overflow:hidden; box-shadow:inset 0 1px 3px rgba(0,0,0,0.1); margin-bottom:18px;">
                         <div style="width:${overall}%; height:100%; background:linear-gradient(90deg, ${progressColor}, #3B82F6); border-radius:10px; transition:width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                     </div>
 
-                    <!-- 3 Piliers Clairs -->
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:14px;">
-                        <!-- Pilier 1 : Faisabilité des Devoirs -->
-                        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px 16px;">
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px;">
+                        <div style="background:#EFF6FF; border:1.5px solid #BFDBFE; border-radius:12px; padding:14px 16px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:6px;">
+                                <span style="font-size:0.88rem; font-weight:800; color:#1E40AF; display:flex; align-items:center; gap:6px;">
                                     <i class="fas fa-pencil-alt" style="color:#2563EB;"></i>
-                                    <span>${currentUserLanguage === 'ar' ? 'إنجاز الواجبات' : 'Faisabilité Devoirs'}</span>
+                                    <span>${isAr ? 'نقطة الواجبات (Homework)' : 'Note Homework (HW)'}</span>
                                 </span>
-                                <span style="font-weight:800; color:#2563EB; font-size:0.92rem;">${hwRate}%</span>
+                                <span style="font-weight:900; color:#1D4ED8; font-size:1.1rem;">${hwScore} / ${maxHW}</span>
                             </div>
-                            <div style="width:100%; height:6px; background:#E2E8F0; border-radius:4px; overflow:hidden; margin-bottom:6px;">
+                            <div style="width:100%; height:6px; background:#DBEAFE; border-radius:4px; overflow:hidden; margin-bottom:6px;">
                                 <div style="width:${hwRate}%; height:100%; background:#2563EB; border-radius:4px;"></div>
                             </div>
-                            <div style="font-size:0.75rem; color:#64748B;">
-                                ${currentUserLanguage === 'ar' ? `${doneCount} مكتمل • ${partialCount} جزئي من ${totalHw}` : `${doneCount} fait(s), ${partialCount} partiel(s) sur ${totalHw}`}
+                            <div style="font-size:0.76rem; color:#475569; font-weight:600;">
+                                ${isAr ? `${doneCount} مكتمل • ${partialCount} جزئي من ${totalHw} (${hwRate}%)` : `${doneCount} fait(s), ${partialCount} partiel(s) sur ${totalHw} (${hwRate}%)`}
                             </div>
                         </div>
 
-                        <!-- Pilier 2 : Participation en Classe -->
-                        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px 16px;">
+                        <div style="background:#F0FDF4; border:1.5px solid #BBF7D0; border-radius:12px; padding:14px 16px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:6px;">
-                                    <i class="fas fa-hands" style="color:#10B981;"></i>
-                                    <span>${currentUserLanguage === 'ar' ? 'المشاركة بالقسم' : 'Participation'}</span>
+                                <span style="font-size:0.88rem; font-weight:800; color:#166534; display:flex; align-items:center; gap:6px;">
+                                    <i class="fas fa-chalkboard-teacher" style="color:#16A34A;"></i>
+                                    <span>${isAr ? 'نقطة القسم (Classwork)' : 'Note Classwork (CW)'}</span>
                                 </span>
-                                <span style="font-weight:800; color:#10B981; font-size:0.92rem;">${avgP}/10</span>
+                                <span style="font-weight:900; color:#15803D; font-size:1.1rem;">${cwScore} / ${maxCW}</span>
                             </div>
-                            <div style="width:100%; height:6px; background:#E2E8F0; border-radius:4px; overflow:hidden; margin-bottom:6px;">
-                                <div style="width:${partRate}%; height:100%; background:#10B981; border-radius:4px;"></div>
+                            <div style="width:100%; height:6px; background:#DCFCE7; border-radius:4px; overflow:hidden; margin-bottom:6px;">
+                                <div style="width:${partRate}%; height:100%; background:#16A34A; border-radius:4px;"></div>
                             </div>
-                            <div style="font-size:0.75rem; color:#64748B;">
-                                ${currentUserLanguage === 'ar' ? `معدل التفاعل: ${partRate}%` : `Taux de participation : ${partRate}%`}
+                            <div style="font-size:0.76rem; color:#475569; font-weight:600;">
+                                ${isAr ? `المشاركة: ${avgP}/10 • السلوك: ${avgB}/10` : `Participation : ${avgP}/10 • Comportement : ${avgB}/10`}
                             </div>
                         </div>
 
-                        <!-- Pilier 3 : Comportement & Discipline -->
-                        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px 16px;">
+                        <div style="background:#F5F3FF; border:1.5px solid #DDD6FE; border-radius:12px; padding:14px 16px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                                <span style="font-size:0.85rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:6px;">
-                                    <i class="fas fa-user-check" style="color:#8B5CF6;"></i>
-                                    <span>${currentUserLanguage === 'ar' ? 'السلوك والانضباط' : 'Comportement'}</span>
+                                <span style="font-size:0.88rem; font-weight:800; color:#5B21B6; display:flex; align-items:center; gap:6px;">
+                                    <i class="fas fa-award" style="color:#7C3AED;"></i>
+                                    <span>${isAr ? 'المجموع التراكمي (CW+HW)' : 'Cumul Continu Global'}</span>
                                 </span>
-                                <span style="font-weight:800; color:#8B5CF6; font-size:0.92rem;">${avgB}/10</span>
+                                <span style="font-weight:900; color:#6D28D9; font-size:1.1rem;">${totalCumulScore} / ${totalCumulMax}</span>
                             </div>
-                            <div style="width:100%; height:6px; background:#E2E8F0; border-radius:4px; overflow:hidden; margin-bottom:6px;">
-                                <div style="width:${behRate}%; height:100%; background:#8B5CF6; border-radius:4px;"></div>
+                            <div style="width:100%; height:6px; background:#EDE9FE; border-radius:4px; overflow:hidden; margin-bottom:6px;">
+                                <div style="width:${overall}%; height:100%; background:#7C3AED; border-radius:4px;"></div>
                             </div>
-                            <div style="font-size:0.75rem; color:#64748B;">
-                                ${currentUserLanguage === 'ar' ? `معدل الانضباط: ${behRate}%` : `Discipline & respect : ${behRate}%`}
+                            <div style="font-size:0.76rem; color:#475569; font-weight:600;">
+                                ${isAr ? `نسبة النجاح التراكمية: ${overall}%` : `Moyenne générale cumulée : ${overall}%`}
                             </div>
                         </div>
                     </div>
 
-                    <!-- Détail par matière -->
                     ${subjectsHtml}
                 </div>
             `;
@@ -15337,6 +15430,25 @@ window.adminScheduleClassesCache = [];
 window.adminScheduleMaxPeriod = 8;
 window.currentEditingSlot = null;
 
+function openAdminSchedulePanel() {
+    const adminPanel = document.getElementById('admin-actions');
+    if (adminPanel) {
+        adminPanel.style.display = 'block';
+    }
+    if (typeof switchAdminTab === 'function') {
+        switchAdminTab('schedule');
+    } else {
+        initAdminScheduleTab();
+    }
+    setTimeout(() => {
+        const targetEl = document.getElementById('adminTab_schedule') || adminPanel;
+        if (targetEl && typeof targetEl.scrollIntoView === 'function') {
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, 80);
+}
+window.openAdminSchedulePanel = openAdminSchedulePanel;
+
 async function initAdminScheduleTab() {
     const sectionSel = document.getElementById('adminScheduleSectionSelect');
     if (sectionSel) {
@@ -15356,6 +15468,27 @@ async function initAdminScheduleTab() {
         if (!weekSel.value) weekSel.value = "1";
     }
 
+    const rangeStartSel = document.getElementById('adminScheduleRangeStart');
+    const rangeEndSel = document.getElementById('adminScheduleRangeEnd');
+    if (rangeStartSel && rangeEndSel) {
+        rangeStartSel.innerHTML = '';
+        rangeEndSel.innerHTML = '';
+        const curW = parseInt(currentWeek, 10) || 1;
+        for (let w = 1; w <= 38; w++) {
+            const opt1 = document.createElement('option');
+            opt1.value = String(w);
+            opt1.textContent = 'S' + w;
+            if (w === 1) opt1.selected = true;
+            rangeStartSel.appendChild(opt1);
+
+            const opt2 = document.createElement('option');
+            opt2.value = String(w);
+            opt2.textContent = 'S' + w;
+            if (w === curW) opt2.selected = true;
+            rangeEndSel.appendChild(opt2);
+        }
+    }
+
     updateAdminScheduleScopeInfo();
     await populateAdminScheduleClasses();
 }
@@ -15369,12 +15502,8 @@ async function populateAdminScheduleClasses() {
     classSel.innerHTML = '<option value="">-- Chargement des classes... --</option>';
 
     try {
-        const response = await fetch('/api/all-classes?section=' + encodeURIComponent(targetSection));
-        if (!response.ok) throw new Error('Erreur ' + response.status);
-        let classes = await response.json();
-        if (!Array.isArray(classes)) classes = [];
-
-        // Si on est sur la section courante et que planData contient des classes (ex: import Excel), garantir que les classes de l'emploi du temps sont strictement celles du tableau de saisie
+        let classes = [];
+        // RÈGLE STRICTE : Les classes de l'emploi du temps sont obligatoirement les mêmes que celles du tableau de saisie (aucun ajout/suppression de classe)
         if (targetSection === currentSection && Array.isArray(window.planData) && window.planData.length > 0) {
             const clsK = typeof findHKey === 'function' ? findHKey('Classe') : 'Classe';
             const planClassesMap = new Map();
@@ -15390,9 +15519,17 @@ async function populateAdminScheduleClasses() {
             }
         }
 
+        if (classes.length === 0) {
+            const response = await fetch('/api/all-classes?section=' + encodeURIComponent(targetSection));
+            if (response.ok) {
+                const apiClasses = await response.json();
+                if (Array.isArray(apiClasses)) classes = apiClasses;
+            }
+        }
+
         window.adminScheduleClassesCache = classes || [];
 
-        classSel.innerHTML = '<option value="">-- Sélectionnez une classe --</option>';
+        classSel.innerHTML = '<option value="">-- Sélectionnez une classe du tableau --</option>';
         window.adminScheduleClassesCache.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c;
@@ -15414,7 +15551,7 @@ async function populateAdminScheduleClasses() {
             const tbl = document.getElementById('adminScheduleTable');
             if (msg) {
                 msg.style.display = 'block';
-                msg.textContent = "Aucune classe trouvée pour cette section. Veuillez importer un plan ou sélectionner une autre section.";
+                msg.textContent = "Aucune classe trouvée dans le tableau de saisie pour cette section.";
             }
             if (tbl) tbl.style.display = 'none';
         }
@@ -15446,12 +15583,20 @@ function updateAdminScheduleScopeInfo() {
     if (!summaryText) return;
 
     if (mode === 'all_year') {
-        summaryText.innerHTML = '🌟 <strong>Toute l\'année dès le début :</strong> L\'emploi du temps sera appliqué à <u>TOUTES les 38 semaines</u> (de la <strong>Semaine 1</strong> jusqu\'à la <strong>Semaine 38</strong> incluse). <span style="color:#15803D; font-weight:800;"><i class="fas fa-shield-alt"></i> Garantie absolue : toutes les leçons, devoirs et travaux déjà saisis par les enseignants sont 100% conservés.</span>';
+        summaryText.innerHTML = '🌟 <strong>Toute l\'année (S1 à S38) :</strong> La réorganisation des séances et des enseignants sera appliquée sur toutes les semaines existantes de l\'année, <span style="color:#15803D; font-weight:800;">en conservant 100% des leçons et devoirs déjà saisis et sans jamais ajouter ni supprimer de classes.</span>';
     } else if (mode === 'single') {
-        summaryText.innerHTML = '📌 <strong>Semaine unique :</strong> Les modifications s\'appliqueront <u>exclusivement à la Semaine ' + selWeek + '</u>. Les autres semaines resteront inchangées.';
+        summaryText.innerHTML = '📌 <strong>Cette semaine uniquement :</strong> La réorganisation (changement de jour/période ou d\'enseignant) s\'appliquera <u>exclusivement à la Semaine ' + selWeek + '</u>, avec déplacement automatique des leçons et devoirs déjà saisis.';
+    } else if (mode === 'previous') {
+        summaryText.innerHTML = '⏪ <strong>Semaines précédentes (S1 à S' + selWeek + ') :</strong> La réorganisation sera appliquée de la <strong>Semaine 1</strong> jusqu\'à la <strong>Semaine ' + selWeek + '</strong> incluse, tout en préservant les saisies existantes.';
+    } else if (mode === 'range') {
+        const rStart = parseInt(document.getElementById('adminScheduleRangeStart')?.value || '1', 10) || 1;
+        const rEnd = parseInt(document.getElementById('adminScheduleRangeEnd')?.value || String(selWeek), 10) || selWeek;
+        const wMin = Math.min(rStart, rEnd);
+        const wMax = Math.max(rStart, rEnd);
+        summaryText.innerHTML = '🎯 <strong>Plage personnalisée (S' + wMin + ' à S' + wMax + ') :</strong> La réorganisation s\'appliquera de la <strong>Semaine ' + wMin + '</strong> à la <strong>Semaine ' + wMax + '</strong> (' + (wMax - wMin + 1) + ' semaine(s)), sans toucher aux autres classes.';
     } else {
         const remainingCount = 38 - selWeek + 1;
-        summaryText.innerHTML = '⏩ <strong>Semaines restantes :</strong> Les modifications s\'appliqueront à <u>' + remainingCount + ' semaine(s)</u> (de la <strong>Semaine ' + selWeek + '</strong> jusqu\'à la <strong>Semaine 38</strong> incluse).';
+        summaryText.innerHTML = '⏩ <strong>Semaines suivantes (S' + selWeek + ' à S38) :</strong> La réorganisation s\'appliquera à <u>' + remainingCount + ' semaine(s)</u> (de la <strong>Semaine ' + selWeek + '</strong> jusqu\'à la <strong>Semaine 38</strong>).';
     }
 }
 
@@ -15470,7 +15615,7 @@ async function loadAdminScheduleForClass() {
     if (!selectedClass) {
         if (msgEl) {
             msgEl.style.display = 'block';
-            msgEl.innerHTML = '<i class="fas fa-info-circle"></i> Veuillez sélectionner une classe ci-dessus pour afficher et réorganiser son emploi du temps.';
+            msgEl.innerHTML = '<i class="fas fa-info-circle"></i> Veuillez sélectionner une classe ci-dessus pour réorganiser ses séances ou modifier ses enseignants.';
         }
         if (tblEl) tblEl.style.display = 'none';
         if (noticeEl) noticeEl.innerHTML = '';
@@ -15480,7 +15625,7 @@ async function loadAdminScheduleForClass() {
 
     if (msgEl) {
         msgEl.style.display = 'block';
-        msgEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Chargement des créneaux de la classe ' + selectedClass + '...';
+        msgEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Chargement des séances de la classe ' + selectedClass + '...';
     }
     if (tblEl) tblEl.style.display = 'none';
 
@@ -15494,7 +15639,6 @@ async function loadAdminScheduleForClass() {
         if (!response.ok) throw new Error('Erreur ' + response.status);
         const data = await response.json();
 
-        // Filtrer les créneaux vides ("—") et dédupliquer par (Jour, Période)
         const rawSlots = data.slots || [];
         const dedupedMap = new Map();
         rawSlots.forEach(s => {
@@ -15507,6 +15651,8 @@ async function loadAdminScheduleForClass() {
                     ...s,
                     jour: dName,
                     periode: pNum,
+                    originalJour: dName,
+                    originalPeriode: pNum,
                     matiere: String(s.matiere).trim(),
                     enseignant: (s.enseignant && String(s.enseignant).trim() !== '—') ? String(s.enseignant).trim() : ''
                 });
@@ -15527,7 +15673,6 @@ async function loadAdminScheduleForClass() {
         window.currentAdminScheduleClass = selectedClass;
         window.currentAdminScheduleDeletedSubjects = [];
 
-        // Récupérer et consolider les attributions existantes pour la classe
         (window.currentAdminScheduleSlots || []).forEach(s => {
             if (s.matiere && !isPlaceholderMat(s.matiere) && s.enseignant && s.enseignant.trim()) {
                 if (!window.currentClassSubjectTeachersMap[s.matiere]) {
@@ -15536,7 +15681,6 @@ async function loadAdminScheduleForClass() {
             }
         });
 
-        // Compléter tout créneau qui n'a pas d'enseignant avec l'enseignant lié à sa matière
         window.currentAdminScheduleSlots.forEach(s => {
             if ((!s.enseignant || !s.enseignant.trim()) && s.matiere && window.currentClassSubjectTeachersMap[s.matiere]) {
                 s.enseignant = window.currentClassSubjectTeachersMap[s.matiere];
@@ -15552,9 +15696,9 @@ async function loadAdminScheduleForClass() {
 
         if (noticeEl) {
             if (data.filledSlotsCount > 0) {
-                noticeEl.innerHTML = '🛡️ <strong>' + data.filledSlotsCount + ' séance(s)</strong> de cette semaine ont déjà été remplies par les enseignants (leçons, devoirs). <em>Toutes les modifications sont appliquées directement sur le tableau sans doublons ni cours fantômes.</em>';
+                noticeEl.innerHTML = '🛡️ <strong>' + data.filledSlotsCount + ' séance(s)</strong> de cette semaine ont déjà été saisies par les enseignants (leçons, devoirs). <em>Si vous déplacez une séance vers un autre jour ou une autre période, son contenu saisi se déplace automatiquement avec elle !</em>';
             } else {
-                noticeEl.innerHTML = '✨ <strong>Synchronisation directe active :</strong> Toute modification de l\'emploi du temps est répercutée immédiatement sur le tableau hebdomadaire sans aucun doublon.';
+                noticeEl.innerHTML = '✨ <strong>Réorganisation sécurisée :</strong> Changez la période, le jour ou l\'enseignant sans jamais perturber le tableau ni ajouter/supprimer de classes.';
             }
         }
 
@@ -15574,21 +15718,11 @@ async function loadAdminScheduleForClass() {
     }
 }
 
-/**
- * Synchronise automatiquement et immédiatement la grille d'emploi du temps actuelle avec le serveur et le tableau principal,
- * sans nécessiter de rechargement manuel et sans créer de doublons ni laisser de cours supprimés.
- */
-async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
-    const sectionSel = document.getElementById('adminScheduleSectionSelect');
-    const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+function getSelectedScheduleWeekBounds() {
     const weekSel = document.getElementById('adminScheduleWeekSelect');
     const selectedWeek = weekSel ? parseInt(weekSel.value, 10) || (currentWeek || 1) : (currentWeek || 1);
-    const selectedClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
-
-    if (!selectedClass) return;
-
     const radios = document.getElementsByName('adminScheduleScopeRadio');
-    let targetMode = 'all_year';
+    let targetMode = 'single';
     for (const r of radios) {
         if (r.checked) { targetMode = r.value; break; }
     }
@@ -15601,10 +15735,34 @@ async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
     } else if (targetMode === 'remaining') {
         startW = selectedWeek;
         endW = 38;
+    } else if (targetMode === 'previous') {
+        startW = 1;
+        endW = selectedWeek;
+    } else if (targetMode === 'range') {
+        const r1 = parseInt(document.getElementById('adminScheduleRangeStart')?.value || '1', 10) || 1;
+        const r2 = parseInt(document.getElementById('adminScheduleRangeEnd')?.value || String(selectedWeek), 10) || selectedWeek;
+        startW = Math.min(r1, r2);
+        endW = Math.max(r1, r2);
     }
+    return { selectedWeek, targetMode, startW, endW };
+}
 
-    // 1. Mise à jour locale immédiate du tableau en mémoire (window.planData / window.rawPlanData) si la section correspond
-    if (targetSection === currentSection && Array.isArray(window.planData)) {
+/**
+ * Synchronise la grille d'emploi du temps actuelle avec le serveur et le tableau principal,
+ * en déplaçant les séances déjà saisies (originalJour/originalPeriode -> jour/periode) sans jamais injecter de fausses lignes vides.
+ */
+async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+    const selectedClass = window.currentAdminScheduleClass || document.getElementById('adminScheduleClassSelect')?.value || '';
+
+    if (!selectedClass) return;
+
+    const { selectedWeek, targetMode, startW, endW } = getSelectedScheduleWeekBounds();
+    const curW = parseInt(currentWeek, 10) || selectedWeek;
+
+    // 1. Mise à jour locale immédiate du tableau en mémoire si la semaine active fait partie de la plage ciblée
+    if (targetSection === currentSection && Array.isArray(window.planData) && curW >= startW && curW <= endW) {
         applyClassScheduleDirectlyToLocalPlanData(selectedClass, window.currentAdminScheduleSlots || []);
     }
 
@@ -15624,11 +15782,16 @@ async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
             })
         });
         if (res.ok) {
+            // Mettre à jour originalJour / originalPeriode après synchronisation réussie
+            (window.currentAdminScheduleSlots || []).forEach(s => {
+                s.originalJour = s.jour;
+                s.originalPeriode = s.periode;
+            });
             if (targetSection === currentSection && typeof fetchPlanData === 'function' && currentWeek) {
                 await fetchPlanData(currentWeek);
             }
             if (!silent && typeof showToastNotification === 'function') {
-                showToastNotification(`Emploi du temps de ${selectedClass} mis à jour directement sur le tableau !`, 'success');
+                showToastNotification(`Séances de ${selectedClass} réorganisées avec succès (Semaine(s) ${startW}${endW !== startW ? ' à ' + endW : ''}) !`, 'success');
             }
         }
     } catch (err) {
@@ -15637,8 +15800,8 @@ async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
 }
 
 /**
- * Applique instantanément les créneaux d'une classe sur window.planData et window.rawPlanData
- * en éliminant tout doublon et tout cours supprimé, puis rafraîchit le tableau HTML.
+ * Applique instantanément la réorganisation des séances d'une classe sur window.planData et window.rawPlanData
+ * SANS JAMAIS ajouter de fausses lignes vides "—" ni ajouter/supprimer de classes !
  */
 function applyClassScheduleDirectlyToLocalPlanData(classeName, newSlots) {
     if (!classeName || !Array.isArray(window.planData)) return;
@@ -15658,6 +15821,8 @@ function applyClassScheduleDirectlyToLocalPlanData(classeName, newSlots) {
         return !s || s === '—' || s === '-' || s === '–';
     };
 
+    const dayOrderMap = { 'dimanche': 1, 'lundi': 2, 'mardi': 3, 'mercredi': 4, 'jeudi': 5 };
+
     const rebuildArrayForClass = (sourceArray) => {
         if (!Array.isArray(sourceArray)) return [];
         const otherRows = [];
@@ -15674,27 +15839,59 @@ function applyClassScheduleDirectlyToLocalPlanData(classeName, newSlots) {
             }
         });
 
+        // RÈGLE STRICTE : Si la classe n'existe pas dans le tableau, ne jamais l'ajouter !
+        if (oldClassRows.length === 0) {
+            return sourceArray;
+        }
+
+        const canonicalClassName = oldClassRows[0][clsK] || classeName;
         const validOldRows = oldClassRows.filter(r => !isPlaceholder(r[matK]));
         const usedOld = new Set();
-        const slotMap = new Map();
+        const rebuiltClassRows = [];
 
-        // Placer les nouveaux créneaux dans slotMap par (Jour, Période)
+        // Placer les créneaux réorganisés en associant d'abord par (originalJour, originalPeriode) pour déplacer les leçons/devoirs saisis
         (newSlots || []).forEach(slot => {
             if (!slot || isPlaceholder(slot.matiere)) return;
             const dName = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(slot.jour) : slot.jour) || String(slot.jour || '').trim();
             const pStr = String(slot.periode || '1').replace(/[^0-9]/g, '') || '1';
-            const key = `${dName}_${pStr}`;
+            const origDay = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(slot.originalJour || slot.jour) : (slot.originalJour || slot.jour)) || dName;
+            const origPer = String(slot.originalPeriode || slot.periode || '1').replace(/[^0-9]/g, '') || pStr;
 
-            // Chercher une ancienne ligne correspondante (même jour/période/matière ou même matière) pour préserver leçons/devoirs
+            // 1. Chercher sur (originalJour, originalPeriode) + Matière
             let matchedOld = validOldRows.find(o => {
                 if (usedOld.has(o)) return false;
                 const oDay = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(o[jourK]) : o[jourK]) || String(o[jourK] || '').trim();
                 const oPer = String(o[perK] || '').replace(/[^0-9]/g, '');
                 const oMat = String(o[matK] || '').trim();
                 const eqMat = typeof isEquivalentSubject === 'function' ? isEquivalentSubject(oMat, slot.matiere) : oMat.toLowerCase() === String(slot.matiere).trim().toLowerCase();
-                return oDay.toLowerCase() === dName.toLowerCase() && oPer === pStr && eqMat;
+                return oDay.toLowerCase() === origDay.toLowerCase() && oPer === origPer && eqMat;
             });
 
+            // 2. Chercher sur (dName, pStr) + Matière
+            if (!matchedOld) {
+                matchedOld = validOldRows.find(o => {
+                    if (usedOld.has(o)) return false;
+                    const oDay = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(o[jourK]) : o[jourK]) || String(o[jourK] || '').trim();
+                    const oPer = String(o[perK] || '').replace(/[^0-9]/g, '');
+                    const oMat = String(o[matK] || '').trim();
+                    const eqMat = typeof isEquivalentSubject === 'function' ? isEquivalentSubject(oMat, slot.matiere) : oMat.toLowerCase() === String(slot.matiere).trim().toLowerCase();
+                    return oDay.toLowerCase() === dName.toLowerCase() && oPer === pStr && eqMat;
+                });
+            }
+
+            // 3. Chercher une ligne de la même matière ayant déjà du contenu saisi
+            if (!matchedOld) {
+                matchedOld = validOldRows.find(o => {
+                    if (usedOld.has(o)) return false;
+                    const oMat = String(o[matK] || '').trim();
+                    const eqMat = typeof isEquivalentSubject === 'function' ? isEquivalentSubject(oMat, slot.matiere) : oMat.toLowerCase() === String(slot.matiere).trim().toLowerCase();
+                    if (!eqMat) return false;
+                    const hasContent = !isPlaceholder(o[lecK]) || !isPlaceholder(o[devK]) || !isPlaceholder(o[traK]);
+                    return hasContent;
+                });
+            }
+
+            // 4. Chercher n'importe quelle ligne restante de la même matière
             if (!matchedOld) {
                 matchedOld = validOldRows.find(o => {
                     if (usedOld.has(o)) return false;
@@ -15705,20 +15902,20 @@ function applyClassScheduleDirectlyToLocalPlanData(classeName, newSlots) {
 
             if (matchedOld) {
                 usedOld.add(matchedOld);
-                slotMap.set(key, {
+                rebuiltClassRows.push({
                     ...matchedOld,
-                    [clsK]: classeName,
+                    [clsK]: canonicalClassName,
                     [jourK]: dName,
                     [perK]: pStr,
                     [matK]: String(slot.matiere).trim(),
                     [ensK]: (slot.enseignant && String(slot.enseignant).trim()) ? String(slot.enseignant).trim() : (matchedOld[ensK] || '')
                 });
             } else {
-                slotMap.set(key, {
+                rebuiltClassRows.push({
                     [ensK]: (slot.enseignant && String(slot.enseignant).trim()) ? String(slot.enseignant).trim() : '',
                     [jourK]: dName,
                     [perK]: pStr,
-                    [clsK]: classeName,
+                    [clsK]: canonicalClassName,
                     [matK]: String(slot.matiere).trim(),
                     [lecK]: '',
                     [traK]: '',
@@ -15729,30 +15926,12 @@ function applyClassScheduleDirectlyToLocalPlanData(classeName, newSlots) {
             }
         });
 
-        // Compléter les 5 jours x 8 périodes avec des lignes vides "—" pour les créneaux sans cours
-        const daysOrder = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi'];
-        const rebuiltClassRows = [];
-        daysOrder.forEach(dName => {
-            for (let p = 1; p <= 8; p++) {
-                const key = `${dName}_${p}`;
-                if (slotMap.has(key)) {
-                    rebuiltClassRows.push(slotMap.get(key));
-                } else {
-                    rebuiltClassRows.push({
-                        [ensK]: '—',
-                        [jourK]: dName,
-                        [perK]: String(p),
-                        [clsK]: classeName,
-                        [matK]: '—',
-                        [lecK]: '—',
-                        [traK]: '—',
-                        [supK]: '—',
-                        [devK]: '—',
-                        _section: currentSection || 'garcons',
-                        _autoGeneratedEmptyPeriod: true
-                    });
-                }
-            }
+        // Trier proprement par Jour puis Période sans JAMAIS injecter de lignes vides "—"
+        rebuiltClassRows.sort((a, b) => {
+            const dA = dayOrderMap[String(a[jourK] || '').trim().toLowerCase()] || 99;
+            const dB = dayOrderMap[String(b[jourK] || '').trim().toLowerCase()] || 99;
+            if (dA !== dB) return dA - dB;
+            return (parseInt(a[perK], 10) || 99) - (parseInt(b[perK], 10) || 99);
         });
 
         return [...otherRows, ...rebuiltClassRows];
@@ -16320,12 +16499,17 @@ function openScheduleSlotModal(day, period) {
     const matInput = document.getElementById('slotModalMatiereInput');
     const tSel = document.getElementById('slotModalTeacherSelect');
     const notice = document.getElementById('slotModalAutoLinkNotice');
+    const targetDaySel = document.getElementById('slotModalTargetDaySelect');
+    const targetPerSel = document.getElementById('slotModalTargetPeriodSelect');
 
     if (!modal) return;
 
     if (titleEl) {
-        titleEl.textContent = 'Créneau : ' + day + ' - Période ' + period;
+        titleEl.textContent = 'Séance : ' + day + ' - Période ' + period;
     }
+
+    if (targetDaySel) targetDaySel.value = day;
+    if (targetPerSel) targetPerSel.value = String(period);
 
     const existing = (window.currentAdminScheduleSlots || []).find(s => {
         const sDay = (s.jour || '').trim();
@@ -16345,13 +16529,22 @@ function openScheduleSlotModal(day, period) {
     }
 
     if (tSel) {
+        if (existingEns && !Array.from(tSel.options).some(o => o.value.toLowerCase() === existingEns.toLowerCase())) {
+            const opt = document.createElement('option');
+            opt.value = existingEns;
+            opt.textContent = existingEns;
+            tSel.appendChild(opt);
+        }
         tSel.value = existingEns;
     }
 
     if (notice) {
-        if (existingEns && existingMat) {
+        if (existing && existing.hasContent) {
             notice.style.display = 'inline-flex';
-            notice.innerHTML = '<i class="fas fa-check-circle" style="color:#16A34A;"></i> <span>Enseignant attribué automatiquement : <strong>' + escapeHtml(existingEns) + '</strong></span>';
+            notice.innerHTML = '<i class="fas fa-shield-alt" style="color:#16A34A;"></i> <span>Cette séance contient déjà une leçon/devoir saisi : son contenu sera conservé si vous changez sa période, son jour ou son enseignant.</span>';
+        } else if (existingEns && existingMat) {
+            notice.style.display = 'inline-flex';
+            notice.innerHTML = '<i class="fas fa-check-circle" style="color:#16A34A;"></i> <span>Enseignant attribué : <strong>' + escapeHtml(existingEns) + '</strong></span>';
         } else {
             notice.style.display = 'none';
         }
@@ -16369,8 +16562,13 @@ function closeScheduleSlotModal() {
 
 async function applyScheduleSlotModal() {
     if (!window.currentEditingSlot) return;
-    const day = window.currentEditingSlot.day;
-    const period = window.currentEditingSlot.period;
+    const srcDay = window.currentEditingSlot.day;
+    const srcPeriod = String(window.currentEditingSlot.period);
+    const targetDaySel = document.getElementById('slotModalTargetDaySelect');
+    const targetPerSel = document.getElementById('slotModalTargetPeriodSelect');
+    const targetDay = (targetDaySel && targetDaySel.value) ? targetDaySel.value : srcDay;
+    const targetPeriod = (targetPerSel && targetPerSel.value) ? String(targetPerSel.value) : srcPeriod;
+
     const matInput = document.getElementById('slotModalMatiereInput');
     const tSel = document.getElementById('slotModalTeacherSelect');
 
@@ -16394,20 +16592,77 @@ async function applyScheduleSlotModal() {
 
     if (!window.currentAdminScheduleSlots) window.currentAdminScheduleSlots = [];
 
-    // Supprimer toute entrée existante sur ce même créneau (Jour, Période) pour éviter tout doublon
-    window.currentAdminScheduleSlots = window.currentAdminScheduleSlots.filter(s => {
+    const sIdx = window.currentAdminScheduleSlots.findIndex(s => {
         const sDay = (s.jour || '').trim();
         const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
-        return !(sDay.toLowerCase().startsWith(day.toLowerCase()) && sPer === String(period));
+        return sDay.toLowerCase().startsWith(srcDay.toLowerCase()) && sPer === srcPeriod;
     });
 
-    window.currentAdminScheduleSlots.push({
-        jour: day,
-        periode: String(period),
-        matiere: matiere,
-        enseignant: enseignant,
-        hasContent: false
+    const tIdx = window.currentAdminScheduleSlots.findIndex(s => {
+        const sDay = (s.jour || '').trim();
+        const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
+        return sDay.toLowerCase().startsWith(targetDay.toLowerCase()) && sPer === targetPeriod;
     });
+
+    const isMoving = (srcDay.toLowerCase() !== targetDay.toLowerCase() || srcPeriod !== targetPeriod);
+
+    if (isMoving) {
+        // Si le créneau cible contient déjà une autre séance, on les permute (swap) en préservant leurs originalJour / originalPeriode !
+        if (sIdx >= 0 && tIdx >= 0) {
+            const srcSlot = window.currentAdminScheduleSlots[sIdx];
+            const tgtSlot = window.currentAdminScheduleSlots[tIdx];
+
+            srcSlot.originalJour = srcSlot.originalJour || srcSlot.jour;
+            srcSlot.originalPeriode = srcSlot.originalPeriode || srcSlot.periode;
+            tgtSlot.originalJour = tgtSlot.originalJour || tgtSlot.jour;
+            tgtSlot.originalPeriode = tgtSlot.originalPeriode || tgtSlot.periode;
+
+            srcSlot.jour = targetDay;
+            srcSlot.periode = targetPeriod;
+            srcSlot.matiere = matiere;
+            srcSlot.enseignant = enseignant;
+
+            tgtSlot.jour = srcDay;
+            tgtSlot.periode = srcPeriod;
+        } else if (sIdx >= 0 && tIdx === -1) {
+            const srcSlot = window.currentAdminScheduleSlots[sIdx];
+            srcSlot.originalJour = srcSlot.originalJour || srcSlot.jour;
+            srcSlot.originalPeriode = srcSlot.originalPeriode || srcSlot.periode;
+            srcSlot.jour = targetDay;
+            srcSlot.periode = targetPeriod;
+            srcSlot.matiere = matiere;
+            srcSlot.enseignant = enseignant;
+        } else {
+            if (tIdx >= 0) window.currentAdminScheduleSlots.splice(tIdx, 1);
+            window.currentAdminScheduleSlots.push({
+                jour: targetDay,
+                periode: targetPeriod,
+                originalJour: srcDay,
+                originalPeriode: srcPeriod,
+                matiere: matiere,
+                enseignant: enseignant,
+                hasContent: false
+            });
+        }
+    } else {
+        if (sIdx >= 0) {
+            const srcSlot = window.currentAdminScheduleSlots[sIdx];
+            srcSlot.originalJour = srcSlot.originalJour || srcSlot.jour;
+            srcSlot.originalPeriode = srcSlot.originalPeriode || srcSlot.periode;
+            srcSlot.matiere = matiere;
+            srcSlot.enseignant = enseignant;
+        } else {
+            window.currentAdminScheduleSlots.push({
+                jour: targetDay,
+                periode: targetPeriod,
+                originalJour: targetDay,
+                originalPeriode: targetPeriod,
+                matiere: matiere,
+                enseignant: enseignant,
+                hasContent: false
+            });
+        }
+    }
 
     if (enseignant) {
         window.currentAdminScheduleSlots.forEach(s => {
@@ -16598,6 +16853,15 @@ async function applyQuickScheduleSwap() {
     if (sIdx === -1 && tIdx === -1) {
         alert("Les deux créneaux sélectionnés sont vides dans la grille.");
         return;
+    }
+
+    if (sIdx >= 0) {
+        window.currentAdminScheduleSlots[sIdx].originalJour = window.currentAdminScheduleSlots[sIdx].originalJour || window.currentAdminScheduleSlots[sIdx].jour;
+        window.currentAdminScheduleSlots[sIdx].originalPeriode = window.currentAdminScheduleSlots[sIdx].originalPeriode || window.currentAdminScheduleSlots[sIdx].periode;
+    }
+    if (tIdx >= 0) {
+        window.currentAdminScheduleSlots[tIdx].originalJour = window.currentAdminScheduleSlots[tIdx].originalJour || window.currentAdminScheduleSlots[tIdx].jour;
+        window.currentAdminScheduleSlots[tIdx].originalPeriode = window.currentAdminScheduleSlots[tIdx].originalPeriode || window.currentAdminScheduleSlots[tIdx].periode;
     }
 
     if (action === 'swap') {
@@ -16796,46 +17060,27 @@ function handleScheduleExcelImport(event) {
 async function saveAndReorganizeSchedule() {
     const sectionSel = document.getElementById('adminScheduleSectionSelect');
     const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
-    const weekSel = document.getElementById('adminScheduleWeekSelect');
-    const selectedWeek = weekSel ? parseInt(weekSel.value, 10) || 1 : 1;
     const classSel = document.getElementById('adminScheduleClassSelect');
     const selectedClass = classSel ? classSel.value : '';
-
-    const radios = document.getElementsByName('adminScheduleScopeRadio');
-    let targetMode = 'all_year';
-    for (const r of radios) {
-        if (r.checked) { targetMode = r.value; break; }
-    }
 
     if (!selectedClass) {
         alert("Veuillez sélectionner une classe.");
         return;
     }
 
-    let startW = selectedWeek;
-    let endW = selectedWeek;
-
-    if (targetMode === 'all_year') {
-        startW = 1;
-        endW = 38;
-    } else if (targetMode === 'remaining') {
-        startW = selectedWeek;
-        endW = 38;
-    } else {
-        startW = selectedWeek;
-        endW = selectedWeek;
-    }
+    const { selectedWeek, targetMode, startW, endW } = getSelectedScheduleWeekBounds();
+    const curW = parseInt(currentWeek, 10) || selectedWeek;
 
     const saveBtn = document.getElementById('btnSaveScheduleReorganize');
     const origBtnHtml = saveBtn ? saveBtn.innerHTML : '';
     if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Synchronisation sur le tableau...';
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Réorganisation en cours...';
     }
 
     try {
-        // Appliquer immédiatement en local sur le tableau
-        if (targetSection === currentSection) {
+        // Appliquer immédiatement en local sur le tableau si la semaine active est dans la plage
+        if (targetSection === currentSection && curW >= startW && curW <= endW) {
             applyClassScheduleDirectlyToLocalPlanData(selectedClass, window.currentAdminScheduleSlots || []);
         }
 
@@ -16867,7 +17112,7 @@ async function saveAndReorganizeSchedule() {
         await loadAdminScheduleForClass();
 
         if (typeof showToastNotification === 'function') {
-            showToastNotification(`Emploi du temps de ${selectedClass} appliqué directement sur le tableau (${resData.affectedWeeksCount} semaine(s) synchronisée(s), sans doublons ni cours supprimés) !`, 'success');
+            showToastNotification(`Séances de ${selectedClass} réorganisées avec succès (${resData.affectedWeeksCount} semaine(s) actualisée(s), sans perturber le tableau ni les classes) !`, 'success');
         }
     } catch (err) {
         console.error("Erreur saveAndReorganizeSchedule:", err);
