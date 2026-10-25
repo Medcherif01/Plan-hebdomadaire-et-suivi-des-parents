@@ -399,8 +399,25 @@
             maternelle: maternelleTeachersList
         };
 
+        function cleanClassNameClient(rawClass) {
+            if (!rawClass) return '';
+            let str = String(rawClass).trim();
+            if (!str || str === '—' || str === '-' || str === '–') return '';
+            str = str
+                .replace(/\b(?:section\s*)?(?:garçons|garçon|garcons|garcon|filles|fille|boys|girls|banin|banat)\b/gi, '')
+                .replace(/[\(\)\[\]]+/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            const canonMatch = str.match(/^(PEI\s*[1-5]|DP\s*[1-2]|PP\s*[1-5]|PS|MS|GS|KG\s*[1-3]|CP|CE\s*[1-2]|CM\s*[1-2])$/i);
+            if (canonMatch) {
+                return canonMatch[1].replace(/\s+/g, '').toUpperCase();
+            }
+            return str;
+        }
+        window.cleanClassNameClient = cleanClassNameClient;
+
         const sectionClassesMap = {
-            garcons: ["PEI1 Garçons", "PEI2 Garçon", "PEI3 Garçon", "PEI4 Garçon", "PEI5 Garçon", "DP2 Garçons"],
+            garcons: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
             filles: ["PEI1", "PEI2", "PEI3", "PEI4", "PEI5", "DP1", "DP2"],
             primaire: ["PP1", "PP2", "PP3", "PP4", "PP5"],
             maternelle: ["PS", "MS", "GS"]
@@ -408,13 +425,22 @@
 
         function getSectionClasses(sec) {
             const s = sec || currentSection || 'garcons';
-            if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[s]) && window.sectionVisibleClassesMap[s].length > 0) {
-                let list = window.sectionVisibleClassesMap[s];
-                if (s === 'garcons') {
-                    list = list.filter(c => !['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1'].includes(String(c).trim().toUpperCase()));
-                    if (list.length === 0) list = sectionClassesMap.garcons;
+            // Si on a des données dans planData pour la section courante, extraire ses classes propres
+            if (s === currentSection && Array.isArray(planData) && planData.length > 0) {
+                const clsK = typeof findHKey === 'function' ? findHKey('Classe') : 'Classe';
+                const fromPlan = new Set();
+                planData.forEach(r => {
+                    if (!r || r.isReadOnlyCrossSection) return;
+                    const c = cleanClassNameClient(r[clsK] || r.Classe || r.classe || '');
+                    if (c) fromPlan.add(c);
+                });
+                if (fromPlan.size > 0) {
+                    return Array.from(fromPlan).sort(typeof compareClasses === 'function' ? compareClasses : undefined);
                 }
-                return list;
+            }
+            if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[s]) && window.sectionVisibleClassesMap[s].length > 0) {
+                const cleaned = Array.from(new Set(window.sectionVisibleClassesMap[s].map(c => cleanClassNameClient(c)).filter(Boolean)));
+                if (cleaned.length > 0) return cleaned;
             }
             return sectionClassesMap[s] || sectionClassesMap.garcons;
         }
@@ -2700,7 +2726,13 @@
             try {
                 const cleanData = uploadedPlanData.map(row => {
                     if (!row || typeof row !== 'object') return null;
-                    return { ...row, _section: targetSection };
+                    const copy = { ...row, _section: targetSection };
+                    Object.keys(copy).forEach(k => {
+                        if (k.trim().toLowerCase() === 'classe' && copy[k]) {
+                            copy[k] = cleanClassNameClient(copy[k]) || String(copy[k]).trim();
+                        }
+                    });
+                    return copy;
                 }).filter(Boolean);
 
                 let response, result;
@@ -2735,10 +2767,30 @@
                 if (fileInputEl) fileInputEl.value = '';
                 const saveBtn = document.getElementById('saveUploadedDataBtn');
                 if (saveBtn) saveBtn.disabled = true;
+
+                // Nettoyer le cache local de visibilité des classes pour cette section et synchroniser avec le serveur
+                try {
+                    localStorage.removeItem('hiddenClasses_' + targetSection);
+                    localStorage.removeItem('visibleClasses_' + targetSection);
+                    if (window.sectionHiddenClassesMap) window.sectionHiddenClassesMap[targetSection] = [];
+                    if (typeof syncClassVisibilityFromServer === 'function') {
+                        await syncClassVisibilityFromServer(targetSection);
+                    }
+                } catch (e) {}
                 
-                if (targetSection === currentSection && targetWeeks.map(String).includes(String(currentWeek))) {
-                    console.log("[Admin Save] Rechargement automatique de la semaine courante...");
-                    await fetchPlanData(currentWeek);
+                if (targetSection === currentSection) {
+                    const weekToLoad = targetWeeks.map(String).includes(String(currentWeek)) ? currentWeek : targetWeeks[0];
+                    if (weekToLoad) {
+                        currentWeek = weekToLoad;
+                        const wSel = document.getElementById('weekSelector');
+                        if (wSel) wSel.value = String(weekToLoad);
+                        // Réinitialiser les filtres pour afficher l'intégralité du fichier Excel importé
+                        ['filterEnseignant', 'filterClasse', 'filterMatiere', 'filterPeriode', 'filterJour'].forEach(fId => {
+                            const fEl = document.getElementById(fId);
+                            if (fEl && !fEl.disabled) fEl.value = '';
+                        });
+                        await fetchPlanData(weekToLoad);
+                    }
                 }
                 if (typeof populateAdminScheduleClasses === 'function') {
                     await populateAdminScheduleClasses();
@@ -3293,6 +3345,11 @@
                     if (row) {
                         row._section = currentSection;
                         row.isReadOnlyCrossSection = false;
+                        Object.keys(row).forEach(k => {
+                            if (k.trim().toLowerCase() === 'classe' && row[k]) {
+                                row[k] = cleanClassNameClient(row[k]) || row[k];
+                            }
+                        });
                     }
                 });
 
@@ -3310,6 +3367,11 @@
                                     if (row) {
                                         row._section = oppSection;
                                         row.isReadOnlyCrossSection = true;
+                                        Object.keys(row).forEach(k => {
+                                            if (k.trim().toLowerCase() === 'classe' && row[k]) {
+                                                row[k] = cleanClassNameClient(row[k]) || row[k];
+                                            }
+                                        });
                                     }
                                 });
                             }
@@ -3791,11 +3853,6 @@
                 const iP = perK && i.hasOwnProperty(perK) ? String(i[perK]).trim() : ''; 
                 const iJ = jK && i.hasOwnProperty(jK) ? String(i[jK]).trim() : ''; 
                 
-                // Filtre de visibilité des classes (masquer les doublons ou classes non souhaitées)
-                if (iC && typeof isClassVisibleOnTable === 'function' && !isClassVisibleOnTable(iC, i._section || currentSection)) {
-                    return false;
-                } 
-                
                 const isCrossSectionRow = !!(i.isReadOnlyCrossSection || (i._section && i._section !== currentSection));
 
                 if (isCrossSectionRow) {
@@ -3808,16 +3865,6 @@
                         if (!matchesMyMatiere) return false;
                     }
                 } else {
-                    if (currentSection === 'garcons') {
-                        if (/fille|filles|banat|بنات/i.test(iC) || /\bf\b/i.test(iC)) return false;
-                        const fLow = ['amina', 'fatima', 'khadija', 'mariam', 'salma', 'zainab', 'nour', 'houda', 'leila', 'sarah', 'zohra', 'nadia', 'samira', 'imane', 'mouna', 'siham', 'hajar', 'meriem', 'aicha', 'hanane', 'أمينة', 'فاطمة', 'خديجة', 'مريم', 'سلمى', 'زينب', 'نور', 'هدى', 'ليلى', 'سارة', 'زهرة'];
-                        if (fLow.some(f => iE.toLowerCase().includes(f)) && !iE.toLowerCase().includes('farah') && !iE.toLowerCase().includes('musique') && !iE.toLowerCase().includes('music')) return false;
-                    } else if (currentSection === 'filles') {
-                        if (/garcon|garçons|garcons|banin|بنين|اولاد/i.test(iC) || /\bg\b|\bb\b/i.test(iC)) return false;
-                        const mLow = ['mohamed', 'abas', 'jaber', 'imad', 'kamel', 'majed', 'mohamed ali', 'morched', 'saeed', 'sami', 'sylvano', 'tonga', 'oumarou', 'zine', 'youssouf', 'محمد', 'عباس', 'جابر', 'عماد', 'كامل', 'ماجد', 'مرشد', 'سعيد', 'سامي', 'زين', 'يوسف'];
-                        if (mLow.some(m => iE.toLowerCase().includes(m))) return false;
-                    }
-                    
                     // Si enseignant connecté (non admin)
                     if (isTeacherOnly) {
                         if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
@@ -18722,15 +18769,14 @@ function initClassVisibilityFromStorage() {
     const sections = ['garcons', 'filles', 'primaire', 'maternelle'];
     sections.forEach(sec => {
         try {
+            localStorage.removeItem('hiddenClasses_' + sec);
+            window.sectionHiddenClassesMap[sec] = [];
             const rawVis = localStorage.getItem('visibleClasses_' + sec);
             if (rawVis) {
                 const parsed = JSON.parse(rawVis);
-                if (Array.isArray(parsed)) window.sectionVisibleClassesMap[sec] = parsed;
-            }
-            const rawHid = localStorage.getItem('hiddenClasses_' + sec);
-            if (rawHid) {
-                const parsed = JSON.parse(rawHid);
-                if (Array.isArray(parsed)) window.sectionHiddenClassesMap[sec] = parsed;
+                if (Array.isArray(parsed)) {
+                    window.sectionVisibleClassesMap[sec] = Array.from(new Set(parsed.map(c => cleanClassNameClient(c)).filter(Boolean)));
+                }
             }
         } catch (e) {}
     });
@@ -18744,13 +18790,12 @@ async function syncClassVisibilityFromServer(sec) {
         if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data.visibleClasses)) {
-                window.sectionVisibleClassesMap[targetSection] = data.visibleClasses;
-                localStorage.setItem('visibleClasses_' + targetSection, JSON.stringify(data.visibleClasses));
+                const cleaned = Array.from(new Set(data.visibleClasses.map(c => cleanClassNameClient(c)).filter(Boolean)));
+                window.sectionVisibleClassesMap[targetSection] = cleaned;
+                localStorage.setItem('visibleClasses_' + targetSection, JSON.stringify(cleaned));
             }
-            if (Array.isArray(data.hiddenClasses)) {
-                window.sectionHiddenClassesMap[targetSection] = data.hiddenClasses;
-                localStorage.setItem('hiddenClasses_' + targetSection, JSON.stringify(data.hiddenClasses));
-            }
+            window.sectionHiddenClassesMap[targetSection] = [];
+            localStorage.removeItem('hiddenClasses_' + targetSection);
         }
     } catch (e) {
         console.warn('Note syncClassVisibilityFromServer:', e.message);
@@ -18760,24 +18805,8 @@ syncClassVisibilityFromServer(currentSection || 'garcons');
 
 function isClassVisibleOnTable(classe, section) {
     if (!classe) return true;
-    const sec = section || currentSection || 'garcons';
     const rawClass = String(classe).trim();
-    const lowerClass = rawClass.toLowerCase();
-
-    // 1. Vérifier si explicitement masquée
-    if (window.sectionHiddenClassesMap && Array.isArray(window.sectionHiddenClassesMap[sec])) {
-        if (window.sectionHiddenClassesMap[sec].some(h => String(h).trim().toLowerCase() === lowerClass)) {
-            return false;
-        }
-    }
-
-    // 2. Vérifier si un ensemble restreint de classes visibles est défini
-    if (window.sectionVisibleClassesMap && Array.isArray(window.sectionVisibleClassesMap[sec]) && window.sectionVisibleClassesMap[sec].length > 0) {
-        return window.sectionVisibleClassesMap[sec].some(v => 
-            String(v).trim().toLowerCase() === lowerClass || (typeof isClassMatch === 'function' && isClassMatch(v, rawClass))
-        );
-    }
-
+    if (!rawClass || rawClass === '—' || rawClass === '-') return false;
     return true;
 }
 

@@ -440,72 +440,53 @@ const isDualMusicTeacher = isDualSectionTeacher;
 // ========================================================================
 // SÉPARATION STRICTE ET DÉFINITIVE DES SECTIONS
 // ========================================================================
+// ========================================================================
+// NORMALISATION CANONIQUE DES NOMS DE CLASSES (SANS "GARÇONS" / "FILLES")
+// ET INDÉPENDANCE STRICTE DES SECTIONS
+// ========================================================================
+function cleanClassNameServer(rawClass) {
+  if (!rawClass) return '';
+  let str = String(rawClass).trim();
+  if (!str || str === '—' || str === '-' || str === '–') return '';
+  // Enlever les mentions redondantes "Garçons", "Garçon", "Garcons", "Filles", "Fille", "Section ..."
+  str = str
+    .replace(/\b(?:section\s*)?(?:garçons|garçon|garcons|garcon|filles|fille|boys|girls|banin|banat)\b/gi, '')
+    .replace(/[\(\)\[\]]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const canonMatch = str.match(/^(PEI\s*[1-5]|DP\s*[1-2]|PP\s*[1-5]|PS|MS|GS|KG\s*[1-3]|CP|CE\s*[1-2]|CM\s*[1-2])$/i);
+  if (canonMatch) {
+    return canonMatch[1].replace(/\s+/g, '').toUpperCase();
+  }
+  return str;
+}
+
 function isRowAllowedForSection(row, targetSection) {
   if (!row || typeof row !== 'object') return false;
   const sec = String(targetSection || 'garcons').toLowerCase().trim();
 
-  // Si la ligne porte une section explicite correspondante, l'autoriser immédiatement
-  if (row._section && String(row._section).toLowerCase().trim() === sec) {
-    return true;
-  }
-
-  // Si la ligne contient du contenu pédagogique saisi par un enseignant, la préserver et l'associer à la section
-  const lecon = String(row['Leçon'] || row.lecon || '').trim();
-  const devoirs = String(row['Devoirs'] || row.devoirs || '').trim();
-  const travaux = String(row['Travaux de classe'] || row.travaux || '').trim();
-  if ((lecon && lecon !== '—' && lecon !== '-') || (devoirs && devoirs !== '—' && devoirs !== '-') || (travaux && travaux !== '—' && travaux !== '-')) {
-    if (!row._section) {
-      row._section = sec;
+  // Si la ligne porte explicitement une AUTRE section valide, l'exclure pour ne jamais mélanger les sections
+  if (row._section) {
+    const rowSec = String(row._section).toLowerCase().trim();
+    if (['garcons', 'filles', 'primaire', 'maternelle'].includes(rowSec) && rowSec !== sec) {
+      return false;
     }
-    return true;
   }
 
-  // Si la ligne porte une section explicite différente
-  if (row._section && String(row._section).toLowerCase().trim() !== sec) {
-    return false;
+  // Nettoyer le nom de la classe sur la ligne pour éviter toute répétition ("PEI1 Garçons" -> "PEI1")
+  const clsKey = (typeof findKey === 'function' ? findKey(row, 'Classe') : null) || (row.Classe !== undefined ? 'Classe' : (row.classe !== undefined ? 'classe' : 'Classe'));
+  if (row[clsKey]) {
+    const cleaned = cleanClassNameServer(row[clsKey]);
+    if (cleaned) row[clsKey] = cleaned;
   }
 
-  const ens = (row['Enseignant'] || row.enseignant || (typeof findKey === 'function' ? row[findKey(row, 'Enseignant')] : '') || '').trim();
-  const cls = (row['Classe'] || row.classe || (typeof findKey === 'function' ? row[findKey(row, 'Classe')] : '') || '').trim();
-  const clsUpper = cls.toUpperCase();
-  const clsNorm = cls.toLowerCase().replace(/[\s\-_]+/g, '');
-  const ensNorm = ens.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-  const isFemaleClass = /fille|filles|banat|بنات/i.test(cls) || /\bf\b/i.test(cls);
-  const isMaleClass = /garcon|garçons|garcons|banin|بنين|اولاد/i.test(cls) || /\bg\b|\bb\b/i.test(cls);
-  const isMatClass = isMaternelleClassServer(cls) || ['PS', 'MS', 'GS'].includes(clsUpper) || /maternelle|روض/i.test(cls);
-  const isPrimClass = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'].includes(clsUpper) || /primaire|ابتدائي/i.test(cls);
-
-  const isFemaleTeacher = femaleTeachers.some(f => {
-    const fLow = f.toLowerCase();
-    return ensNorm.includes(fLow) || ens.toLowerCase().includes(fLow);
-  });
-  const isMaleTeacher = maleTeachers.some(m => {
-    const mLow = m.toLowerCase();
-    return ensNorm.includes(mLow) || ens.toLowerCase().includes(mLow);
-  });
-
-  if (sec === 'garcons') {
-    if (isFemaleClass || isMatClass || isPrimClass) return false;
-    return true;
-  } else if (sec === 'filles') {
-    if (isMaleClass || isMatClass || isPrimClass) return false;
-    return true;
-  } else if (sec === 'primaire') {
-    if (isMatClass || isMaleClass || isFemaleClass) return false;
-    if (['PEI1','PEI2','PEI3','PEI4','PEI5','DP1','DP2'].includes(clsUpper)) return false;
-    return true;
-  } else if (sec === 'maternelle') {
-    if (cls && !isMatClass) return false;
-    return true;
-  }
+  row._section = sec;
   return true;
 }
 
 function resolveSectionTeacher(section, classe, subject, candidateTeacher, subTeacherDocs = []) {
   const sec = String(section || 'garcons').toLowerCase().trim();
-  const cNorm = String(classe || '').toLowerCase().trim();
-  const isGarcons = (sec === 'garcons' || cNorm.includes('garcon') || cNorm.includes('garçon') || cNorm.includes('بنين'));
+  const cleanCls = cleanClassNameServer(classe) || String(classe || '').trim();
 
   const cand = String(candidateTeacher || '').trim();
   // Si un enseignant valide est déjà fourni (ex: import Excel ou tableau de saisie), le conserver strictement
@@ -516,7 +497,7 @@ function resolveSectionTeacher(section, classe, subject, candidateTeacher, subTe
   if (Array.isArray(subTeacherDocs) && subTeacherDocs.length > 0) {
     const exactMatch = subTeacherDocs.find(d =>
       (!d.section || d.section === sec) &&
-      d.classe && isClassMatchServer(d.classe, classe) &&
+      d.classe && isClassMatchServer(cleanClassNameServer(d.classe), cleanCls) &&
       isEquivalentSubjectServer(d.matiere, subject) &&
       d.enseignant && String(d.enseignant).trim() && String(d.enseignant).trim() !== '—'
     );
@@ -531,25 +512,21 @@ function resolveSectionTeacher(section, classe, subject, candidateTeacher, subTe
     if (fallbackMatch && fallbackMatch.enseignant) return fallbackMatch.enseignant.trim();
   }
 
-  if (isGarcons) {
-    const sLow = String(subject || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (sLow.includes('math')) return 'Mohamed';
-    if (sLow.includes('angl') || sLow.includes('eng')) return 'Kamel';
-    if (sLow.includes('arab') || sLow.includes('islam') || sLow.includes('coran') || sLow.includes('tarbiya') || /[\u0600-\u06FF]/.test(subject || '')) return 'Majed';
-    if (sLow.includes('scienc') || sLow.includes('svt') || sLow.includes('physiq') || sLow.includes('chim')) return 'Sylvano';
-    if (sLow.includes('franc') || sLow.includes('fren')) return 'Abas';
-    if (sLow.includes('hist') || sLow.includes('geo')) return 'Zine';
-    if (sLow.includes('sport') || sLow.includes('eps')) return 'Tonga';
-    if (sLow.includes('info') || sLow.includes('tech')) return 'Oumarou';
-    return 'Mohamed';
-  }
-
-  return cand || 'Enseignant';
+  return cand || '';
 }
 
 function filterPlanDataBySection(rows, section) {
   if (!Array.isArray(rows)) return [];
-  return rows.filter(r => isRowAllowedForSection(r, section));
+  const sec = String(section || 'garcons').toLowerCase().trim();
+  const result = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const copy = { ...r };
+    if (isRowAllowedForSection(copy, sec)) {
+      result.push(copy);
+    }
+  }
+  return result;
 }
 
 // ========================================================================
@@ -580,12 +557,15 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
     return score;
   };
 
-  // Extraire strictement les classes réellement présentes dans data (pour suivre fidèlement tout fichier Excel importé)
+  // Extraire strictement les classes réellement présentes dans data en normalisant le nom (sans "Garçons"/"Filles")
   const canonicalClassMap = new Map();
   data.forEach(r => {
     if (!r || typeof r !== 'object') return;
-    const c = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
+    const rawC = (r['Classe'] || r.classe || (typeof findKey === 'function' ? r[findKey(r, 'Classe')] : ''))?.trim();
+    const c = cleanClassNameServer(rawC);
     if (c && c !== '—' && c !== '-') {
+      const cKey = findKey(r, 'Classe') || 'Classe';
+      r[cKey] = c;
       const cLow = c.toLowerCase();
       if (!canonicalClassMap.has(cLow)) {
         canonicalClassMap.set(cLow, c);
@@ -593,11 +573,9 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
     }
   });
 
-  // Uniquement si data ne contient absolument aucune classe, utiliser les classes par défaut de la section
+  // Uniquement si data ne contient absolument aucune classe, utiliser les classes par défaut propres de la section
   if (canonicalClassMap.size === 0) {
-    if (section === 'garcons') {
-      ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
-    } else if (section === 'filles') {
+    if (section === 'garcons' || section === 'filles') {
       ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
     } else if (section === 'primaire') {
       ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'].forEach(c => canonicalClassMap.set(c.toLowerCase(), c));
@@ -660,7 +638,8 @@ function ensureAllPeriods1To8ForPlan(data, section, weekNumber) {
 
     if (rawC && matchedDay && !isNaN(pVal) && pVal >= 1 && pVal <= 10) {
       if (pVal > maxPeriodDetected) maxPeriodDetected = pVal;
-      const clsCanonical = canonicalClassMap.get(rawC.toLowerCase()) || rawC;
+      const cleanC = cleanClassNameServer(rawC) || rawC;
+      const clsCanonical = canonicalClassMap.get(cleanC.toLowerCase()) || cleanC;
       const k = `${clsCanonical.toLowerCase()}___${matchedDay.toLowerCase()}___${pVal}`;
 
       if (!existingMap.has(k)) {
@@ -1235,6 +1214,180 @@ async function clearAllStoredLessonPlans(db) {
 
 let hasCleanedInitialPlans = false;
 
+async function sanitizeDatabaseClassesAndSections(db) {
+  if (!db) return;
+  try {
+    const sections = ['garcons', 'filles', 'primaire', 'maternelle'];
+
+    // 1. Nettoyer tous les plans hebdomadaires : enlever "Garçons"/"Garçon"/"Filles" des noms de classes et dédupliquer
+    const allPlans = await db.collection('plans').find({}).toArray();
+    for (const p of allPlans) {
+      const sec = String(p.section || String(p._id || '').split('_')[0] || 'garcons').toLowerCase().trim();
+      const wNum = parseInt(p.week, 10) || parseInt(String(p._id || '').split('_')[1], 10) || 1;
+      if (!Array.isArray(p.data)) continue;
+      let changed = false;
+      p.data.forEach(row => {
+        if (!row || typeof row !== 'object') return;
+        const cKey = (typeof findKey === 'function' ? findKey(row, 'Classe') : null) || 'Classe';
+        const rawC = String(row[cKey] || row.Classe || row.classe || '').trim();
+        const cleanC = cleanClassNameServer(rawC);
+        if (cleanC && cleanC !== rawC) {
+          row[cKey] = cleanC;
+          changed = true;
+        }
+        if (row._section !== sec) {
+          row._section = sec;
+          changed = true;
+        }
+      });
+
+      // Nettoyer aussi les clés de classNotes et classNotesPhotos
+      if (p.classNotes && typeof p.classNotes === 'object') {
+        for (const [k, v] of Object.entries({ ...p.classNotes })) {
+          const ck = cleanClassNameServer(k);
+          if (ck && ck !== k) {
+            if (!p.classNotes[ck]) p.classNotes[ck] = v;
+            delete p.classNotes[k];
+            changed = true;
+          }
+        }
+      }
+      if (p.classNotesPhotos && typeof p.classNotesPhotos === 'object') {
+        for (const [k, v] of Object.entries({ ...p.classNotesPhotos })) {
+          const ck = cleanClassNameServer(k);
+          if (ck && ck !== k) {
+            if (!p.classNotesPhotos[ck]) p.classNotesPhotos[ck] = v;
+            delete p.classNotesPhotos[k];
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        const deduped = ensureAllPeriods1To8ForPlan(p.data, sec, wNum);
+        await db.collection('plans').updateOne(
+          { _id: p._id },
+          { $set: { section: sec, week: wNum, data: deduped, classNotes: p.classNotes || {}, classNotesPhotos: p.classNotesPhotos || {} } }
+        );
+      }
+    }
+
+    // 2. Nettoyer et dédupliquer class_schedules par section
+    for (const sec of sections) {
+      const schedDocs = await db.collection('class_schedules').find({ section: sec }).toArray();
+      const mergedByCleanClass = new Map();
+      for (const doc of schedDocs) {
+        const cleanC = cleanClassNameServer(doc.classe);
+        if (!cleanC) continue;
+        if (!mergedByCleanClass.has(cleanC)) {
+          mergedByCleanClass.set(cleanC, new Map());
+        }
+        const slotMap = mergedByCleanClass.get(cleanC);
+        if (Array.isArray(doc.slots)) {
+          doc.slots.forEach(s => {
+            if (!s || !s.jour || !s.periode || !s.matiere || s.matiere === '—' || s.matiere === '-') return;
+            const k = `${String(s.jour).trim().toLowerCase()}_${String(s.periode).trim()}`;
+            if (!slotMap.has(k) || (!slotMap.get(k).enseignant && s.enseignant)) {
+              slotMap.set(k, s);
+            }
+          });
+        }
+      }
+      await db.collection('class_schedules').deleteMany({ section: sec });
+      for (const [cleanC, slotMap] of mergedByCleanClass.entries()) {
+        await db.collection('class_schedules').insertOne({
+          section: sec,
+          classe: cleanC,
+          slots: Array.from(slotMap.values()),
+          updatedAt: new Date()
+        });
+      }
+
+      // 3. Nettoyer class_subject_teachers
+      const cstDocs = await db.collection('class_subject_teachers').find({ section: sec }).toArray();
+      for (const doc of cstDocs) {
+        if (doc.classe && doc.classe !== 'all') {
+          const cleanC = cleanClassNameServer(doc.classe);
+          if (cleanC && cleanC !== doc.classe) {
+            await db.collection('class_subject_teachers').updateOne(
+              { _id: doc._id },
+              { $set: { classe: cleanC } }
+            );
+          }
+        }
+      }
+
+      // 4. Réinitialiser hiddenClasses à [] pour qu'aucune classe ne soit cachée
+      const secPlans = await db.collection('plans').find({ section: sec }).toArray();
+      const classesInSecPlans = new Set();
+      secPlans.forEach(p => {
+        if (Array.isArray(p.data)) {
+          p.data.forEach(r => {
+            if (!r) return;
+            const c = cleanClassNameServer(r[findKey(r, 'Classe')] || r.Classe || r.classe || '');
+            if (c) classesInSecPlans.add(c);
+          });
+        }
+      });
+      const visibleList = classesInSecPlans.size > 0
+        ? Array.from(classesInSecPlans).sort()
+        : (sec === 'maternelle' ? ['PS', 'MS', 'GS'] : (sec === 'primaire' ? ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'] : ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2']));
+
+      await db.collection('settings').updateOne(
+        { _id: `classes_visibility_${sec}` },
+        {
+          $set: {
+            section: sec,
+            visibleClasses: visibleList,
+            hiddenClasses: [],
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+
+      // Si class_schedules de la section est vide ou incomplet mais qu'un plan existe pour cette section, synchroniser class_schedules depuis le plan le plus riche de la section
+      if (secPlans.length > 0) {
+        let bestPlan = secPlans[0];
+        let bestCount = 0;
+        for (const sp of secPlans) {
+          const validCount = (sp.data || []).filter(r => {
+            const m = String(r[findKey(r, 'Matière')] || r.Matière || '').trim();
+            return m && m !== '—' && m !== '-';
+          }).length;
+          if (validCount > bestCount) {
+            bestCount = validCount;
+            bestPlan = sp;
+          }
+        }
+        if (bestPlan && Array.isArray(bestPlan.data) && bestCount > 0) {
+          await syncScheduleAndTeachersFromPlanRows(db, bestPlan.data, sec);
+        }
+      }
+    }
+
+    // 5. Nettoyer les noms de classes dans students, homework, evaluations
+    for (const collName of ['students', 'homework', 'evaluations']) {
+      const docs = await db.collection(collName).find({}).toArray();
+      for (const d of docs) {
+        const rawC = d.classe || d.class || '';
+        const cleanC = cleanClassNameServer(rawC);
+        if (cleanC && cleanC !== rawC) {
+          const upd = {};
+          if (d.classe !== undefined) upd.classe = cleanC;
+          if (d.class !== undefined) upd.class = cleanC;
+          await db.collection(collName).updateOne({ _id: d._id }, { $set: upd });
+        }
+      }
+    }
+
+    if (typeof db.saveToDisk === 'function') db.saveToDisk();
+    console.log('✅ [DB Sanitize] Noms de classes normalisés (sans Garçons/Filles) et sections vérifiées.');
+  } catch (err) {
+    console.warn('⚠️ Note sanitizeDatabaseClassesAndSections:', err.message);
+  }
+}
+
 async function connectToDatabase() {
   if (cachedDb) return cachedDb;
   const mongoUrl = (process.env.MONGO_URL || MONGO_URL || '').trim();
@@ -1243,6 +1396,7 @@ async function connectToDatabase() {
     if (!hasCleanedInitialPlans) {
       hasCleanedInitialPlans = true;
       clearAllStoredLessonPlans(cachedDb);
+      await sanitizeDatabaseClassesAndSections(cachedDb);
     }
     return cachedDb;
   }
@@ -1254,6 +1408,7 @@ async function connectToDatabase() {
     if (!hasCleanedInitialPlans) {
       hasCleanedInitialPlans = true;
       clearAllStoredLessonPlans(cachedDb);
+      await sanitizeDatabaseClassesAndSections(cachedDb);
     }
     return db;
   } catch (err) {
@@ -1261,6 +1416,7 @@ async function connectToDatabase() {
     if (!hasCleanedInitialPlans) {
       hasCleanedInitialPlans = true;
       clearAllStoredLessonPlans(cachedDb);
+      await sanitizeDatabaseClassesAndSections(cachedDb);
     }
     return cachedDb;
   }
@@ -2893,32 +3049,15 @@ const calculateStarsLegacy = (evaluations) => {
 };
 
 const defaultBoysStudents = {
-  'PEI1 Garçons': [
-    { name: "Faris BAHKALI", photo: "https://lh3.googleusercontent.com/d/1IB6BKROX3TRxaIIHVVVWbB7-Ii-V8VrC", birthday: "4/2014" },
-    { name: "Ibrahim TULI", photo: "https://lh3.googleusercontent.com/d/1B0QUZJhpSad5Fs3qRTugUe4oyTlUDEVu", birthday: "2/2015" }
-  ],
   'PEI1': [
     { name: "Faris BAHKALI", photo: "https://lh3.googleusercontent.com/d/1IB6BKROX3TRxaIIHVVVWbB7-Ii-V8VrC", birthday: "4/2014" },
     { name: "Ibrahim TULI", photo: "https://lh3.googleusercontent.com/d/1B0QUZJhpSad5Fs3qRTugUe4oyTlUDEVu", birthday: "2/2015" }
-  ],
-  'PEI2 Garçon': [
-    { name: "Ahmed", photo: "https://lh3.googleusercontent.com/d/1cDF-yegSB2tqsWac0AoNttbi8qAALYT1", birthday: "9/2013" },
-    { name: "Yasser", photo: "https://lh3.googleusercontent.com/d/1DthaZcLUhfkkxbvaTr4o4XJENIM6ZNsz", birthday: "8/2013" },
-    { name: "Eyad", photo: "https://lh3.googleusercontent.com/d/1HGyWS4cC1jWWD25Ah3WcT_eIbUHqFzJ1", birthday: "4/2013" },
-    { name: "Ali", photo: "https://lh3.googleusercontent.com/d/18QAEYQWVI2HgQf9Kl_8eJ91cjE-Rjg40", birthday: "4/2013" }
   ],
   'PEI2': [
     { name: "Ahmed", photo: "https://lh3.googleusercontent.com/d/1cDF-yegSB2tqsWac0AoNttbi8qAALYT1", birthday: "9/2013" },
     { name: "Yasser", photo: "https://lh3.googleusercontent.com/d/1DthaZcLUhfkkxbvaTr4o4XJENIM6ZNsz", birthday: "8/2013" },
     { name: "Eyad", photo: "https://lh3.googleusercontent.com/d/1HGyWS4cC1jWWD25Ah3WcT_eIbUHqFzJ1", birthday: "4/2013" },
     { name: "Ali", photo: "https://lh3.googleusercontent.com/d/18QAEYQWVI2HgQf9Kl_8eJ91cjE-Rjg40", birthday: "4/2013" }
-  ],
-  'PEI3 Garçon': [
-    { name: "Seifeddine", photo: "https://lh3.googleusercontent.com/d/1tWdPSbtCAsTMB86WzDgqh3Xw01ahm9s6", birthday: "1/2012" },
-    { name: "Mohamed", photo: "https://lh3.googleusercontent.com/d/1lB8ObGOvQDVT6FITL2y7C5TYmAGyggFn", birthday: "11/2011" },
-    { name: "Wajih", photo: "https://lh3.googleusercontent.com/d/1MH6M05mQamOHevmDffVFNpSFNnxqbxs3", birthday: "6/2012" },
-    { name: "Ahmad", photo: "https://lh3.googleusercontent.com/d/1zU-jBuAbYjHanzank9C1BAd00skS1Y5J", birthday: "2/2012" },
-    { name: "Adam", photo: "https://lh3.googleusercontent.com/d/15I9p6VSnn1yVmPxRRbGsUkM-fsBKYOWF", birthday: "12/2012" }
   ],
   'PEI3': [
     { name: "Seifeddine", photo: "https://lh3.googleusercontent.com/d/1tWdPSbtCAsTMB86WzDgqh3Xw01ahm9s6", birthday: "1/2012" },
@@ -2927,13 +3066,6 @@ const defaultBoysStudents = {
     { name: "Ahmad", photo: "https://lh3.googleusercontent.com/d/1zU-jBuAbYjHanzank9C1BAd00skS1Y5J", birthday: "2/2012" },
     { name: "Adam", photo: "https://lh3.googleusercontent.com/d/15I9p6VSnn1yVmPxRRbGsUkM-fsBKYOWF", birthday: "12/2012" }
   ],
-  'PEI4 Garçon': [
-    { name: "Mohamed Younes", photo: "https://lh3.googleusercontent.com/d/1ok8M9EOY71ScKuaW0mHfKUErjKZ4wbe1", birthday: "11/2011" },
-    { name: "Mohamed Amine", photo: "https://lh3.googleusercontent.com/d/1UrBw6guz0oBTUy8COGeewIs3XAK773bR", birthday: "12/2012" },
-    { name: "Samir", photo: "https://lh3.googleusercontent.com/d/1NdaCH8CU0DJFHXw4D0lItP-QnCswl23b", birthday: "12/2012" },
-    { name: "Abdulrahman", photo: "https://lh3.googleusercontent.com/d/1yCTO5StU2tnPY0BEynnWzUveljMIUcLE", birthday: "4/2012" },
-    { name: "Youssef", photo: "https://lh3.googleusercontent.com/d/1Bygg5-PYrjjMOZdI5hAe16eZ8ltn772e", birthday: "11/2011" }
-  ],
   'PEI4': [
     { name: "Mohamed Younes", photo: "https://lh3.googleusercontent.com/d/1ok8M9EOY71ScKuaW0mHfKUErjKZ4wbe1", birthday: "11/2011" },
     { name: "Mohamed Amine", photo: "https://lh3.googleusercontent.com/d/1UrBw6guz0oBTUy8COGeewIs3XAK773bR", birthday: "12/2012" },
@@ -2941,22 +3073,15 @@ const defaultBoysStudents = {
     { name: "Abdulrahman", photo: "https://lh3.googleusercontent.com/d/1yCTO5StU2tnPY0BEynnWzUveljMIUcLE", birthday: "4/2012" },
     { name: "Youssef", photo: "https://lh3.googleusercontent.com/d/1Bygg5-PYrjjMOZdI5hAe16eZ8ltn772e", birthday: "11/2011" }
   ],
-  'PEI5 Garçon': [
-    { name: "Rayane", photo: "", birthday: "3/2010" },
-    { name: "Anis", photo: "", birthday: "5/2010" },
-    { name: "Taha", photo: "", birthday: "8/2010" },
-    { name: "Hamza", photo: "", birthday: "11/2010" }
-  ],
   'PEI5': [
     { name: "Rayane", photo: "", birthday: "3/2010" },
     { name: "Anis", photo: "", birthday: "5/2010" },
     { name: "Taha", photo: "", birthday: "8/2010" },
     { name: "Hamza", photo: "", birthday: "11/2010" }
   ],
-  'DP2 Garçons': [
-    { name: "Bilal S.", photo: "", birthday: "1/2008" },
-    { name: "Zaid", photo: "", birthday: "4/2008" },
-    { name: "Walid", photo: "", birthday: "8/2008" }
+  'DP1': [
+    { name: "Omar", photo: "", birthday: "2/2009" },
+    { name: "Karim", photo: "", birthday: "6/2009" }
   ],
   'DP2': [
     { name: "Bilal S.", photo: "", birthday: "1/2008" },
@@ -5658,161 +5783,53 @@ app.get('/api/plans/:week', async (req, res) => {
       
       console.log(`📋 Plans disponibles pour S${weekNumber} (${section}):`, Array.from(availableLessonPlanIds));
       
-      // Filtrage strict par section : aucune classe ou enseignant d'une autre section n'est toléré
+      // Normalisation des classes de la section (sans jamais filtrer ni écraser le contenu du plan/Excel importé)
       let rawData = filterPlanDataBySection(planDocument.data || [], section);
 
-      // Classes réellement présentes dans le plan hebdomadaire (Tableau de saisie)
-      const planExistingClassesSet = new Set();
-      rawData.forEach(r => {
-        if (!r || typeof r !== 'object') return;
-        const c = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
-        if (c && c !== '—' && c !== '-') planExistingClassesSet.add(c);
-      });
-
-      // Appliquer le modèle d'emploi du temps canonique (class_schedules) UNIQUEMENT pour les classes qui existent dans le plan hebdomadaire
-      // (L'emploi du temps sert à organiser les périodes et modifier les enseignants, jamais à ajouter des classes fantômes)
+      // Si des cours existent dans ce plan mais que class_schedules pour cette section est vide, synchroniser l'emploi du temps avec le plan
       try {
-        const canonicalSchedules = await db.collection('class_schedules').find({ section }).toArray();
-        if (canonicalSchedules && canonicalSchedules.length > 0) {
-          const isPlaceholderMat = (m) => {
-            const s = String(m || '').trim();
-            return !s || s === '—' || s === '-' || s === '–';
-          };
-          const normSubj = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-          for (const schedDoc of canonicalSchedules) {
-            const schedCls = String(schedDoc.classe || '').trim();
-            if (!schedCls || !Array.isArray(schedDoc.slots)) continue;
-
-            // Vérifier que cette classe existe bien dans le tableau de saisie (plan hebdo)
-            const matchedPlanCls = Array.from(planExistingClassesSet).find(pc => pc.toLowerCase() === schedCls.toLowerCase() || isClassMatchServer(pc, schedCls));
-            if (planExistingClassesSet.size > 0 && !matchedPlanCls) {
-              continue; // Ignorer toute classe qui n'est pas dans le tableau de saisie
-            }
-            const targetCls = matchedPlanCls || schedCls;
-
-            const canonicalSlots = schedDoc.slots.filter(s => s && !isPlaceholderMat(s.matiere));
-            if (canonicalSlots.length === 0) continue;
-
-            const isTargetRow = (row) => {
-              const rCls = row[findKey(row, 'Classe')];
-              return rCls && (String(rCls).trim().toLowerCase() === targetCls.toLowerCase() || isClassMatchServer(rCls, targetCls));
-            };
-
-            const oldClassRows = rawData.filter(isTargetRow);
-            const otherRows = rawData.filter(r => !isTargetRow(r));
-            const oldValidRows = oldClassRows.filter(r => !isPlaceholderMat(r[findKey(r, 'Matière')]));
-            const usedOld = new Set();
-            const syncedClassRows = [];
-
-            canonicalSlots.forEach(slot => {
-              const sDay = extractDayNameFromString(slot.jour) || String(slot.jour || '').trim();
-              const sPer = String(slot.periode || '1').replace(/[^0-9]/g, '') || '1';
-              const sMat = String(slot.matiere || '').trim();
-              const sEns = String(slot.enseignant || '').trim();
-
-              // 1. Chercher une correspondance exacte (Jour + Période + Matière équivalente)
-              let matched = oldValidRows.find(o => {
-                if (usedOld.has(o)) return false;
-                const oDay = extractDayNameFromString(o[findKey(o, 'Jour')]) || String(o[findKey(o, 'Jour')] || '').trim();
-                const oPer = String(o[findKey(o, 'Période')] || '').replace(/[^0-9]/g, '');
-                const oMat = String(o[findKey(o, 'Matière')] || '').trim();
-                return oDay.toLowerCase() === sDay.toLowerCase() && oPer === sPer && (normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat));
-              });
-
-              // 2. Sinon chercher une ligne de la même matière ayant du contenu pédagogique saisi
-              if (!matched) {
-                matched = oldValidRows.find(o => {
-                  if (usedOld.has(o)) return false;
-                  const oMat = String(o[findKey(o, 'Matière')] || '').trim();
-                  if (!(normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat))) return false;
-                  const lec = String(o[findKey(o, 'Leçon')] || '').trim();
-                  const dev = String(o[findKey(o, 'Devoirs')] || '').trim();
-                  const tra = String(o[findKey(o, 'Travaux de classe')] || '').trim();
-                  return Boolean((lec && lec !== '—') || (dev && dev !== '—') || (tra && tra !== '—'));
-                });
-              }
-
-              // 3. Sinon chercher n'importe quelle ligne de la même matière non encore utilisée
-              if (!matched) {
-                matched = oldValidRows.find(o => {
-                  if (usedOld.has(o)) return false;
-                  const oMat = String(o[findKey(o, 'Matière')] || '').trim();
-                  return normSubj(oMat) === normSubj(sMat) || isEquivalentSubjectServer(oMat, sMat);
-                });
-              }
-
-              if (matched) {
-                usedOld.add(matched);
-                const jourK = findKey(matched, 'Jour') || 'Jour';
-                const perK = findKey(matched, 'Période') || 'Période';
-                const clsK = findKey(matched, 'Classe') || 'Classe';
-                const matK = findKey(matched, 'Matière') || 'Matière';
-                const ensK = findKey(matched, 'Enseignant') || 'Enseignant';
-                syncedClassRows.push({
-                  ...matched,
-                  [clsK]: targetCls,
-                  [jourK]: sDay,
-                  [perK]: sPer,
-                  [matK]: sMat,
-                  [ensK]: sEns || matched[ensK] || '',
-                  _section: section
-                });
-              } else {
-                syncedClassRows.push({
-                  'Enseignant': sEns || '',
-                  'Jour': sDay,
-                  'Période': sPer,
-                  'Classe': targetCls,
-                  'Matière': sMat,
-                  'Leçon': '',
-                  'Travaux de classe': '',
-                  'Support': '',
-                  'Devoirs': '',
-                  '_section': section
-                });
-              }
-            });
-
-            rawData = [...otherRows, ...syncedClassRows];
-          }
+        const existingSchedCount = await db.collection('class_schedules').countDocuments({ section });
+        if (!existingSchedCount && rawData.length > 0) {
+          await syncScheduleAndTeachersFromPlanRows(db, rawData, section);
         }
-      } catch (schedSyncErr) {
-        console.warn('Note sync class_schedules dans GET /api/plans/:week:', schedSyncErr.message);
-      }
+      } catch (e) {}
 
-      // Récupérer les liaisons Matière ➔ Enseignant configurées pour cette section
+      // Récupérer les liaisons Matière ➔ Enseignant configurées pour cette section uniquement
       const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
       const subTeacherMap = new Map();
       subTeacherDocs.forEach(d => {
         if (d.classe && d.matiere && d.enseignant) {
-          const k = `${d.classe.trim().toLowerCase()}_${d.matiere.trim().toLowerCase()}`;
+          const cleanC = cleanClassNameServer(d.classe) || d.classe.trim();
+          const k = `${cleanC.toLowerCase()}_${d.matiere.trim().toLowerCase()}`;
           subTeacherMap.set(k, d.enseignant.trim());
         }
       });
 
       const enrichedData = rawData.map(row => {
         const ensKey = findKey(row, 'Enseignant') || 'Enseignant';
-        let enseignant = row[ensKey] || '';
-        const classe = row[findKey(row, 'Classe')] || '';
+        const clsKey = findKey(row, 'Classe') || 'Classe';
+        let enseignant = String(row[ensKey] || '').trim();
+        const classe = cleanClassNameServer(row[clsKey]) || String(row[clsKey] || '').trim();
+        if (classe) row[clsKey] = classe;
         const matiere = row[findKey(row, 'Matière')] || '';
         const periode = row[findKey(row, 'Période')] || '';
         const jour = row[findKey(row, 'Jour')] || '';
 
         const isPlaceholderSubj = !matiere || !String(matiere).trim() || String(matiere).trim() === '—' || String(matiere).trim() === '-';
 
-        // Si l'enseignant n'est pas déjà défini sur la ligne ou si une liaison spécifique à la classe a été modifiée dans l'emploi du temps
-        if (!isPlaceholderSubj && classe && matiere && subTeacherDocs.length > 0) {
+        // Si l'enseignant est déjà défini dans l'Excel / le plan, on le conserve tel quel.
+        // On n'utilise class_subject_teachers que si l'enseignant de la ligne est vide.
+        if (!isPlaceholderSubj && (!enseignant || enseignant === '—' || enseignant === '-') && classe && matiere && subTeacherDocs.length > 0) {
           const exactClassLinkedDoc = subTeacherDocs.find(d =>
             d.enseignant && d.enseignant.trim() &&
             d.classe && d.classe !== 'all' &&
-            (String(d.classe).trim().toLowerCase() === String(classe).trim().toLowerCase() || isClassMatchServer(d.classe, classe)) &&
+            (cleanClassNameServer(d.classe).toLowerCase() === classe.toLowerCase() || isClassMatchServer(d.classe, classe)) &&
             isEquivalentSubjectServer(d.matiere, matiere)
           );
           if (exactClassLinkedDoc && exactClassLinkedDoc.enseignant && exactClassLinkedDoc.enseignant.trim()) {
             enseignant = exactClassLinkedDoc.enseignant.trim();
             row[ensKey] = enseignant;
-          } else if (!enseignant || !String(enseignant).trim() || String(enseignant).trim() === '—') {
+          } else {
             const globalLinkedDoc = subTeacherDocs.find(d =>
               d.enseignant && d.enseignant.trim() &&
               (d.classe === 'all' || !d.classe) &&
@@ -5822,12 +5839,6 @@ app.get('/api/plans/:week', async (req, res) => {
               enseignant = globalLinkedDoc.enseignant.trim();
               row[ensKey] = enseignant;
             }
-          }
-        } else if (!isPlaceholderSubj && (!enseignant || !enseignant.trim()) && classe && matiere) {
-          const k = `${classe.trim().toLowerCase()}_${matiere.trim().toLowerCase()}`;
-          if (subTeacherMap.has(k)) {
-            enseignant = subTeacherMap.get(k);
-            row[ensKey] = enseignant;
           }
         }
         
@@ -5884,18 +5895,39 @@ app.get('/api/plans/:week', async (req, res) => {
       });
     } else {
       // Chercher si un emploi du temps canonique existe déjà pour les classes de cette section afin de pré-peupler proprement la semaine
-      const canonicalTemplatesDocs = await db.collection('class_schedules').find({ section }).toArray();
+      let canonicalTemplatesDocs = await db.collection('class_schedules').find({ section }).toArray();
+      if (!canonicalTemplatesDocs || canonicalTemplatesDocs.length === 0) {
+        // Chercher un autre plan de la même section pour en extraire la structure d'emploi du temps
+        const otherSecPlans = await db.collection('plans').find({ section }).toArray();
+        let bestPlan = null;
+        let bestCount = 0;
+        for (const sp of otherSecPlans) {
+          const validCount = (sp.data || []).filter(r => {
+            const m = String(r[findKey(r, 'Matière')] || r.Matière || '').trim();
+            return m && m !== '—' && m !== '-';
+          }).length;
+          if (validCount > bestCount) {
+            bestCount = validCount;
+            bestPlan = sp;
+          }
+        }
+        if (bestPlan && Array.isArray(bestPlan.data) && bestCount > 0) {
+          await syncScheduleAndTeachersFromPlanRows(db, bestPlan.data, section);
+          canonicalTemplatesDocs = await db.collection('class_schedules').find({ section }).toArray();
+        }
+      }
       const templateRows = [];
       if (canonicalTemplatesDocs && canonicalTemplatesDocs.length > 0) {
         canonicalTemplatesDocs.forEach(tDoc => {
-          if (tDoc.classe && Array.isArray(tDoc.slots)) {
+          const cleanCls = cleanClassNameServer(tDoc.classe) || tDoc.classe;
+          if (cleanCls && Array.isArray(tDoc.slots)) {
             tDoc.slots.forEach(s => {
               if (s.matiere && String(s.matiere).trim() && String(s.matiere).trim() !== '—' && String(s.matiere).trim() !== '-') {
                 templateRows.push({
                   'Enseignant': s.enseignant || '',
                   'Jour': s.jour,
                   'Période': String(s.periode),
-                  'Classe': tDoc.classe,
+                  'Classe': cleanCls,
                   'Matière': s.matiere,
                   'Leçon': '',
                   'Travaux de classe': '',
@@ -5954,7 +5986,8 @@ async function syncScheduleAndTeachersFromPlanRows(db, rows, section) {
 
     rows.forEach(row => {
       if (!row || typeof row !== 'object') return;
-      const rawCls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
+      const rawClsInput = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
+      const rawCls = cleanClassNameServer(rawClsInput);
       if (!rawCls || rawCls === '—' || rawCls === '-') return;
 
       const clsLow = rawCls.toLowerCase();
@@ -7700,19 +7733,16 @@ app.get('/api/all-classes', async (req, res) => {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
 
-    // Vérifier les paramètres de visibilité enregistrés
-    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
-    const hiddenSet = new Set((visDoc && Array.isArray(visDoc.hiddenClasses)) ? visDoc.hiddenClasses.map(c => String(c).trim().toLowerCase()) : []);
-
-    // 1. Extraire les classes réellement présentes dans le Tableau de Saisie (plans hebdomadaires de la section)
+    // 1. Extraire les classes réellement présentes dans le Tableau de Saisie (plans hebdomadaires de la section) en normalisant leurs noms
     const planDocs = await db.collection('plans').find({ section }).toArray();
     const planClassMap = new Map();
     planDocs.forEach(p => {
       if (Array.isArray(p.data)) {
         p.data.forEach(r => {
           if (!r || typeof r !== 'object') return;
-          const c = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
-          if (c && c !== '—' && c !== '-' && !hiddenSet.has(c.toLowerCase())) {
+          const rawC = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
+          const c = cleanClassNameServer(rawC);
+          if (c && c !== '—' && c !== '-') {
             if (!planClassMap.has(c.toLowerCase())) {
               planClassMap.set(c.toLowerCase(), c);
             }
@@ -7725,13 +7755,17 @@ app.get('/api/all-classes', async (req, res) => {
       return res.status(200).json(Array.from(planClassMap.values()).sort());
     }
 
-    // 2. Fallback vers explicitVisible ou classes par défaut uniquement si aucun plan n'existe encore
-    const explicitVisible = (visDoc && Array.isArray(visDoc.visibleClasses) && visDoc.visibleClasses.length > 0)
-      ? visDoc.visibleClasses.filter(c => c && !hiddenSet.has(String(c).trim().toLowerCase()))
-      : null;
-
-    if (explicitVisible && explicitVisible.length > 0) {
-      return res.status(200).json(explicitVisible);
+    // 2. Fallback vers class_schedules de la section
+    const schedDocs = await db.collection('class_schedules').find({ section }).toArray();
+    if (schedDocs && schedDocs.length > 0) {
+      const schedClassSet = new Set();
+      schedDocs.forEach(d => {
+        const c = cleanClassNameServer(d.classe);
+        if (c) schedClassSet.add(c);
+      });
+      if (schedClassSet.size > 0) {
+        return res.status(200).json(Array.from(schedClassSet).sort());
+      }
     }
 
     let baseList = [];
@@ -7739,13 +7773,11 @@ app.get('/api/all-classes', async (req, res) => {
       baseList = ['PS', 'MS', 'GS'];
     } else if (section === 'primaire') {
       baseList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-    } else if (section === 'garcons') {
-      baseList = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
-    } else if (section === 'filles') {
+    } else {
       baseList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     }
 
-    res.status(200).json(baseList.filter(c => !hiddenSet.has(c.toLowerCase())).sort());
+    res.status(200).json(baseList.sort());
   } catch (error) {
     console.error('Erreur MongoDB /api/all-classes:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
@@ -7759,7 +7791,7 @@ app.get('/api/admin/classes', async (req, res) => {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
 
-    // 1. Récupérer toutes les classes distinctes réellement présentes dans les plans hebdomadaires (Tableau de saisie)
+    // 1. Récupérer toutes les classes distinctes réellement présentes dans les plans hebdomadaires (Tableau de saisie) de cette section
     const allPlans = await db.collection('plans').find({ section }).toArray();
     const countMap = {};
     const distinctInPlansMap = new Map();
@@ -7767,7 +7799,8 @@ app.get('/api/admin/classes', async (req, res) => {
       if (Array.isArray(p.data)) {
         p.data.forEach(r => {
           if (!r || typeof r !== 'object') return;
-          const c = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
+          const rawC = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
+          const c = cleanClassNameServer(rawC);
           if (c && c !== '—' && c !== '-') {
             const cLow = c.toLowerCase();
             if (!distinctInPlansMap.has(cLow)) {
@@ -7782,41 +7815,22 @@ app.get('/api/admin/classes', async (req, res) => {
 
     let allList = Array.from(distinctInPlansMap.values());
 
-    // Uniquement si aucun plan n'a de classes, utiliser la liste par défaut
+    // Uniquement si aucun plan n'a de classes, utiliser la liste par défaut propre
     if (allList.length === 0) {
       if (section === 'maternelle') allList = ['PS', 'MS', 'GS'];
       else if (section === 'primaire') allList = ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'];
-      else if (section === 'garcons') allList = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
       else allList = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     }
 
-    // 2. Lire les paramètres de visibilité enregistrés
-    const visDoc = await db.collection('settings').findOne({ _id: `classes_visibility_${section}` });
-    const hiddenSet = new Set((visDoc && Array.isArray(visDoc.hiddenClasses)) ? visDoc.hiddenClasses.map(c => String(c).trim().toLowerCase()) : []);
-
-    // Détecter les doublons potentiels
     const duplicates = [];
     const classItems = allList.sort().map(name => {
-      const lower = name.toLowerCase();
       const count = countMap[name] || 0;
-      const suggestedMerge = detectClassDuplicateTarget(name, allList);
-      const isDuplicate = !!suggestedMerge;
-      const isVisible = !hiddenSet.has(lower);
-
-      if (isDuplicate) {
-        duplicates.push({
-          duplicate: name,
-          target: suggestedMerge,
-          count: count
-        });
-      }
-
       return {
         name,
         count,
-        visible: isVisible,
-        isDuplicate,
-        suggestedMerge
+        visible: true,
+        isDuplicate: false,
+        suggestedMerge: null
       };
     });
 
@@ -7824,8 +7838,8 @@ app.get('/api/admin/classes', async (req, res) => {
       section,
       classes: classItems,
       duplicatesFound: duplicates,
-      visibleClasses: classItems.filter(c => c.visible).map(c => c.name),
-      hiddenClasses: classItems.filter(c => !c.visible).map(c => c.name)
+      visibleClasses: classItems.map(c => c.name),
+      hiddenClasses: []
     });
   } catch (error) {
     console.error('Erreur /api/admin/classes:', error);
@@ -8256,7 +8270,8 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
 
     candidateRows.forEach(row => {
       if (!row || typeof row !== 'object') return;
-      const rawCls = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
+      const rawClsInput = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
+      const rawCls = cleanClassNameServer(rawClsInput);
       if (!rawCls || rawCls === '—' || rawCls === '-') return;
 
       const clsLow = rawCls.toLowerCase();
@@ -8666,6 +8681,7 @@ app.post('/api/admin/class-subject-teachers', async (req, res) => {
       assignments[singleUpdate.matiere] = singleUpdate.enseignant || '';
     }
 
+    const cleanClasse = cleanClassNameServer(classe) || classe.trim();
     const db = await connectToDatabase();
     const now = new Date();
     for (const [matiere, enseignant] of Object.entries(assignments)) {
@@ -8673,19 +8689,18 @@ app.post('/api/admin/class-subject-teachers', async (req, res) => {
       const cleanMat = matiere.trim();
       const cleanEns = (enseignant || '').trim();
       await db.collection('class_subject_teachers').updateOne(
-        { section, classe, matiere: cleanMat },
-        { $set: { section, classe, matiere: cleanMat, enseignant: cleanEns, updatedAt: now } },
+        { section, classe: cleanClasse, matiere: cleanMat },
+        { $set: { section, classe: cleanClasse, matiere: cleanMat, enseignant: cleanEns, updatedAt: now } },
         { upsert: true }
       );
     }
 
-    // Répercuter immédiatement les enseignants liés sur toutes les semaines de cette classe dans le tableau
+    // Répercuter immédiatement les enseignants liés UNIQUEMENT sur les semaines de CETTE section
     try {
       const planDocs = await db.collection('plans').find({
         $or: [
           { section: section },
-          { _id: { $regex: new RegExp(`^${section}_`, 'i') } },
-          { 'data.Classe': { $exists: true } }
+          { _id: { $regex: new RegExp(`^${section}_`, 'i') } }
         ]
       }).toArray();
 
@@ -8860,12 +8875,14 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
 
     const schedulesToApply = {};
     if (targetClasse && Array.isArray(slots)) {
-      schedulesToApply[String(targetClasse).trim()] = slots;
+      const cleanTarget = cleanClassNameServer(targetClasse) || String(targetClasse).trim();
+      schedulesToApply[cleanTarget] = slots;
     }
     if (classSchedules && typeof classSchedules === 'object') {
       for (const [cls, clsSlots] of Object.entries(classSchedules)) {
         if (cls && Array.isArray(clsSlots)) {
-          schedulesToApply[String(cls).trim()] = clsSlots;
+          const cleanCls = cleanClassNameServer(cls) || String(cls).trim();
+          schedulesToApply[cleanCls] = clsSlots;
         }
       }
     }
