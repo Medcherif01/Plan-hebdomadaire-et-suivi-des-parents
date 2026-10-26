@@ -15869,11 +15869,63 @@ function openAdminSchedulePanel() {
 }
 window.openAdminSchedulePanel = openAdminSchedulePanel;
 
+function updateAdminScheduleActiveSectionBadge() {
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    const sec = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+    const badge = document.getElementById('adminScheduleActiveSectionBadge');
+    if (!badge) return;
+    if (sec === 'filles') {
+        badge.style.background = '#FCE7F3';
+        badge.style.color = '#9D174D';
+        badge.style.borderColor = '#F9A8D4';
+        badge.innerHTML = '👧 Section Filles (100% Indépendante)';
+    } else if (sec === 'primaire') {
+        badge.style.background = '#FEF3C7';
+        badge.style.color = '#92400E';
+        badge.style.borderColor = '#FCD34D';
+        badge.innerHTML = '🎒 Section Primaire (100% Indépendante)';
+    } else if (sec === 'maternelle') {
+        badge.style.background = '#F3E8FF';
+        badge.style.color = '#6B21A8';
+        badge.style.borderColor = '#D8B4FE';
+        badge.innerHTML = '🧸 Section Maternelle (100% Indépendante)';
+    } else {
+        badge.style.background = '#DBEAFE';
+        badge.style.color = '#1E40AF';
+        badge.style.borderColor = '#93C5FD';
+        badge.innerHTML = '👦 Section Garçons (100% Indépendante)';
+    }
+}
+
+function renderScheduleMultiWeeksCheckboxes() {
+    const container = document.getElementById('adminScheduleMultiWeeksCheckboxes');
+    if (!container) return;
+    const weekSel = document.getElementById('adminScheduleWeekSelect');
+    const curW = parseInt(weekSel?.value || currentWeek || '1', 10) || 1;
+    let html = '';
+    for (let w = 1; w <= 38; w++) {
+        const isChecked = (w === curW) ? 'checked' : '';
+        html += `<label style="display:inline-flex; align-items:center; gap:5px; padding:5px 8px; border-radius:6px; border:1px solid #CBD5E1; background:#F8FAFC; font-weight:700; font-size:0.8rem; color:#1E293B; cursor:pointer;">
+            <input type="checkbox" class="schedule-multi-week-chk" value="${w}" ${isChecked} onchange="updateAdminScheduleScopeInfo()">
+            <span>S${w}</span>
+        </label>`;
+    }
+    container.innerHTML = html;
+}
+
+function toggleAllScheduleMultiWeeks(checkAll) {
+    const chks = document.querySelectorAll('.schedule-multi-week-chk');
+    chks.forEach(c => { c.checked = Boolean(checkAll); });
+    updateAdminScheduleScopeInfo();
+}
+window.toggleAllScheduleMultiWeeks = toggleAllScheduleMultiWeeks;
+
 async function initAdminScheduleTab() {
     const sectionSel = document.getElementById('adminScheduleSectionSelect');
     if (sectionSel) {
         sectionSel.value = currentSection || 'garcons';
     }
+    updateAdminScheduleActiveSectionBadge();
 
     const weekSel = document.getElementById('adminScheduleWeekSelect');
     if (weekSel) {
@@ -15891,24 +15943,12 @@ async function initAdminScheduleTab() {
     const rangeStartSel = document.getElementById('adminScheduleRangeStart');
     const rangeEndSel = document.getElementById('adminScheduleRangeEnd');
     if (rangeStartSel && rangeEndSel) {
-        rangeStartSel.innerHTML = '';
-        rangeEndSel.innerHTML = '';
         const curW = parseInt(currentWeek, 10) || 1;
-        for (let w = 1; w <= 38; w++) {
-            const opt1 = document.createElement('option');
-            opt1.value = String(w);
-            opt1.textContent = 'S' + w;
-            if (w === 1) opt1.selected = true;
-            rangeStartSel.appendChild(opt1);
-
-            const opt2 = document.createElement('option');
-            opt2.value = String(w);
-            opt2.textContent = 'S' + w;
-            if (w === curW) opt2.selected = true;
-            rangeEndSel.appendChild(opt2);
-        }
+        rangeStartSel.value = String(curW);
+        rangeEndSel.value = String(Math.min(38, curW + 4));
     }
 
+    renderScheduleMultiWeeksCheckboxes();
     updateAdminScheduleScopeInfo();
     await populateAdminScheduleClasses();
 }
@@ -15923,14 +15963,15 @@ async function populateAdminScheduleClasses() {
 
     try {
         let classes = [];
-        // RÈGLE STRICTE : Les classes de l'emploi du temps sont obligatoirement les mêmes que celles du tableau de saisie (aucun ajout/suppression de classe)
+        // RÈGLE STRICTE : Les classes de l'emploi du temps sont obligatoirement les mêmes que celles de la section active
         if (targetSection === currentSection && Array.isArray(window.planData) && window.planData.length > 0) {
             const clsK = typeof findHKey === 'function' ? findHKey('Classe') : 'Classe';
             const planClassesMap = new Map();
             window.planData.forEach(r => {
                 if (!r || r.isReadOnlyCrossSection) return;
-                const c = String(r[clsK] || r.Classe || r.classe || '').trim();
-                if (c && c !== '—' && c !== '-' && !planClassesMap.has(c.toLowerCase())) {
+                const rawC = String(r[clsK] || r.Classe || r.classe || '').trim();
+                const c = cleanClassNameClient(rawC) || rawC;
+                if (c && c !== '—' && c !== '-' && isClassAllowedInSectionClient(c, targetSection) && !planClassesMap.has(c.toLowerCase())) {
                     planClassesMap.set(c.toLowerCase(), c);
                 }
             });
@@ -15943,13 +15984,17 @@ async function populateAdminScheduleClasses() {
             const response = await fetch('/api/all-classes?section=' + encodeURIComponent(targetSection));
             if (response.ok) {
                 const apiClasses = await response.json();
-                if (Array.isArray(apiClasses)) classes = apiClasses;
+                if (Array.isArray(apiClasses)) {
+                    classes = apiClasses
+                        .map(c => cleanClassNameClient(c) || c)
+                        .filter(c => c && isClassAllowedInSectionClient(c, targetSection));
+                }
             }
         }
 
         window.adminScheduleClassesCache = classes || [];
 
-        classSel.innerHTML = '<option value="">-- Sélectionnez une classe du tableau --</option>';
+        classSel.innerHTML = '<option value="">-- Sélectionnez une classe de la section --</option>';
         window.adminScheduleClassesCache.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c;
@@ -15957,7 +16002,7 @@ async function populateAdminScheduleClasses() {
             classSel.appendChild(opt);
         });
 
-        const mainClassFilter = document.getElementById('classFilter');
+        const mainClassFilter = document.getElementById('filterClasse') || document.getElementById('classFilter');
         if (mainClassFilter && mainClassFilter.value && window.adminScheduleClassesCache.includes(mainClassFilter.value)) {
             classSel.value = mainClassFilter.value;
         } else if (window.adminScheduleClassesCache.length > 0) {
@@ -15982,10 +16027,24 @@ async function populateAdminScheduleClasses() {
 }
 
 function onAdminScheduleSectionChange() {
+    // Séparation stricte : vider tout cache d'importation Excel d'une autre section
+    window.importedScheduleByClassForSection = null;
+    const statusBox = document.getElementById('scheduleExcelImportStatusBox');
+    if (statusBox) statusBox.style.display = 'none';
+    updateAdminScheduleActiveSectionBadge();
     populateAdminScheduleClasses();
 }
 
 function onAdminScheduleWeekChange() {
+    const weekSel = document.getElementById('adminScheduleWeekSelect');
+    const selW = parseInt(weekSel?.value || '1', 10) || 1;
+    const chks = document.querySelectorAll('.schedule-multi-week-chk');
+    if (chks.length > 0) {
+        const checkedCount = Array.from(chks).filter(c => c.checked).length;
+        if (checkedCount <= 1) {
+            chks.forEach(c => { c.checked = (parseInt(c.value, 10) === selW); });
+        }
+    }
     updateAdminScheduleScopeInfo();
     loadAdminScheduleForClass();
 }
@@ -15999,24 +16058,43 @@ function updateAdminScheduleScopeInfo() {
         if (r.checked) { mode = r.value; break; }
     }
 
+    const customRangeBox = document.getElementById('adminScheduleCustomRangeBox');
+    if (customRangeBox) {
+        customRangeBox.style.display = (mode === 'range') ? 'flex' : 'none';
+    }
+    const multiWeeksBox = document.getElementById('adminScheduleMultiWeeksBox');
+    if (multiWeeksBox) {
+        multiWeeksBox.style.display = (mode === 'custom_weeks') ? 'flex' : 'none';
+    }
+
     const summaryText = document.getElementById('adminScheduleScopeSummaryText');
     if (!summaryText) return;
 
     if (mode === 'all_year') {
-        summaryText.innerHTML = '🌟 <strong>Toute l\'année (S1 à S38) :</strong> La réorganisation des séances et des enseignants sera appliquée sur toutes les semaines existantes de l\'année, <span style="color:#15803D; font-weight:800;">en conservant 100% des leçons et devoirs déjà saisis et sans jamais ajouter ni supprimer de classes.</span>';
+        summaryText.innerHTML = '🌟 <strong>Toute l\'année (S1 à S38) :</strong> L\'emploi du temps sera appliqué sur toutes les semaines de la section, <span style="color:#15803D; font-weight:800;">en conservant 100% des leçons et devoirs déjà saisis.</span>';
     } else if (mode === 'single') {
-        summaryText.innerHTML = '📌 <strong>Cette semaine uniquement :</strong> La réorganisation (changement de jour/période ou d\'enseignant) s\'appliquera <u>exclusivement à la Semaine ' + selWeek + '</u>, avec déplacement automatique des leçons et devoirs déjà saisis.';
+        summaryText.innerHTML = '📌 <strong>Une seule semaine :</strong> L\'emploi du temps s\'appliquera <u>exclusivement à la Semaine ' + selWeek + '</u> de cette section, en gardant toutes les données déjà saisies.';
+    } else if (mode === 'custom_weeks') {
+        const checkedWeeks = Array.from(document.querySelectorAll('.schedule-multi-week-chk'))
+            .filter(c => c.checked)
+            .map(c => parseInt(c.value, 10))
+            .filter(w => !isNaN(w));
+        if (checkedWeeks.length === 0) {
+            summaryText.innerHTML = '⚠️ <strong>Aucune semaine cochée :</strong> Veuillez cocher au moins une semaine ci-dessus (par défaut Semaine ' + selWeek + ').';
+        } else {
+            summaryText.innerHTML = '☑️ <strong>' + checkedWeeks.length + ' semaine(s) sélectionnée(s) (' + checkedWeeks.map(w => 'S' + w).join(', ') + ') :</strong> L\'emploi du temps sera appliqué sur ces semaines tout en conservant 100% des données déjà saisies.';
+        }
     } else if (mode === 'previous') {
-        summaryText.innerHTML = '⏪ <strong>Semaines précédentes (S1 à S' + selWeek + ') :</strong> La réorganisation sera appliquée de la <strong>Semaine 1</strong> jusqu\'à la <strong>Semaine ' + selWeek + '</strong> incluse, tout en préservant les saisies existantes.';
+        summaryText.innerHTML = '⏪ <strong>Semaines précédentes (S1 à S' + selWeek + ') :</strong> L\'emploi du temps sera appliqué de la <strong>Semaine 1</strong> jusqu\'à la <strong>Semaine ' + selWeek + '</strong> incluse, tout en préservant les saisies existantes.';
     } else if (mode === 'range') {
         const rStart = parseInt(document.getElementById('adminScheduleRangeStart')?.value || '1', 10) || 1;
         const rEnd = parseInt(document.getElementById('adminScheduleRangeEnd')?.value || String(selWeek), 10) || selWeek;
         const wMin = Math.min(rStart, rEnd);
         const wMax = Math.max(rStart, rEnd);
-        summaryText.innerHTML = '🎯 <strong>Plage personnalisée (S' + wMin + ' à S' + wMax + ') :</strong> La réorganisation s\'appliquera de la <strong>Semaine ' + wMin + '</strong> à la <strong>Semaine ' + wMax + '</strong> (' + (wMax - wMin + 1) + ' semaine(s)), sans toucher aux autres classes.';
+        summaryText.innerHTML = '🎯 <strong>Plage personnalisée (S' + wMin + ' à S' + wMax + ') :</strong> L\'emploi du temps s\'appliquera de la <strong>Semaine ' + wMin + '</strong> à la <strong>Semaine ' + wMax + '</strong> (' + (wMax - wMin + 1) + ' semaine(s)), en gardant les données déjà saisies.';
     } else {
         const remainingCount = 38 - selWeek + 1;
-        summaryText.innerHTML = '⏩ <strong>Semaines suivantes (S' + selWeek + ' à S38) :</strong> La réorganisation s\'appliquera à <u>' + remainingCount + ' semaine(s)</u> (de la <strong>Semaine ' + selWeek + '</strong> jusqu\'à la <strong>Semaine 38</strong>).';
+        summaryText.innerHTML = '⏩ <strong>Semaines suivantes (S' + selWeek + ' à S38) :</strong> L\'emploi du temps s\'appliquera à <u>' + remainingCount + ' semaine(s)</u> (de la <strong>Semaine ' + selWeek + '</strong> jusqu\'à la <strong>Semaine 38</strong>).';
     }
 }
 
@@ -16152,22 +16230,41 @@ function getSelectedScheduleWeekBounds() {
 
     let startW = selectedWeek;
     let endW = selectedWeek;
+    let targetWeeks = [];
+
     if (targetMode === 'all_year') {
         startW = 1;
         endW = 38;
+        for (let w = 1; w <= 38; w++) targetWeeks.push(w);
     } else if (targetMode === 'remaining') {
         startW = selectedWeek;
         endW = 38;
+        for (let w = startW; w <= 38; w++) targetWeeks.push(w);
     } else if (targetMode === 'previous') {
         startW = 1;
         endW = selectedWeek;
+        for (let w = 1; w <= endW; w++) targetWeeks.push(w);
     } else if (targetMode === 'range') {
         const r1 = parseInt(document.getElementById('adminScheduleRangeStart')?.value || '1', 10) || 1;
         const r2 = parseInt(document.getElementById('adminScheduleRangeEnd')?.value || String(selectedWeek), 10) || selectedWeek;
         startW = Math.min(r1, r2);
         endW = Math.max(r1, r2);
+        for (let w = startW; w <= endW; w++) targetWeeks.push(w);
+    } else if (targetMode === 'custom_weeks') {
+        targetWeeks = Array.from(document.querySelectorAll('.schedule-multi-week-chk'))
+            .filter(c => c.checked)
+            .map(c => parseInt(c.value, 10))
+            .filter(w => !isNaN(w) && w >= 1 && w <= 38)
+            .sort((a, b) => a - b);
+        if (targetWeeks.length === 0) {
+            targetWeeks = [selectedWeek];
+        }
+        startW = targetWeeks[0];
+        endW = targetWeeks[targetWeeks.length - 1];
+    } else {
+        targetWeeks = [selectedWeek];
     }
-    return { selectedWeek, targetMode, startW, endW };
+    return { selectedWeek, targetMode, startW, endW, targetWeeks };
 }
 
 /**
@@ -16181,11 +16278,11 @@ async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
 
     if (!selectedClass) return;
 
-    const { selectedWeek, targetMode, startW, endW } = getSelectedScheduleWeekBounds();
+    const { selectedWeek, targetMode, startW, endW, targetWeeks } = getSelectedScheduleWeekBounds();
     const curW = parseInt(currentWeek, 10) || selectedWeek;
 
-    // 1. Mise à jour locale immédiate du tableau en mémoire si la semaine active fait partie de la plage ciblée
-    if (targetSection === currentSection && Array.isArray(window.planData) && curW >= startW && curW <= endW) {
+    // 1. Mise à jour locale immédiate du tableau en mémoire si la semaine active fait partie des semaines ciblées
+    if (targetSection === currentSection && Array.isArray(window.planData) && targetWeeks.includes(curW)) {
         applyClassScheduleDirectlyToLocalPlanData(selectedClass, window.currentAdminScheduleSlots || []);
     }
 
@@ -16199,9 +16296,11 @@ async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
                 classe: selectedClass,
                 startWeek: startW,
                 endWeek: endW,
+                weeks: targetWeeks,
                 targetMode: targetMode,
                 slots: window.currentAdminScheduleSlots || [],
-                deletedSubjects: window.currentAdminScheduleDeletedSubjects || []
+                deletedSubjects: window.currentAdminScheduleDeletedSubjects || [],
+                applyFilledSchedule: true
             })
         });
         if (res.ok) {
@@ -16214,7 +16313,8 @@ async function syncCurrentClassScheduleDirectlyToTable(silent = true) {
                 await fetchPlanData(currentWeek);
             }
             if (!silent && typeof showToastNotification === 'function') {
-                showToastNotification(`Séances de ${selectedClass} réorganisées avec succès (Semaine(s) ${startW}${endW !== startW ? ' à ' + endW : ''}) !`, 'success');
+                const weeksLabel = targetWeeks.length === 1 ? `Semaine ${targetWeeks[0]}` : `${targetWeeks.length} semaines`;
+                showToastNotification(`Séances de ${selectedClass} appliquées avec succès (${weeksLabel}) !`, 'success');
             }
         }
     } catch (err) {
@@ -16262,12 +16362,11 @@ function applyClassScheduleDirectlyToLocalPlanData(classeName, newSlots) {
             }
         });
 
-        // RÈGLE STRICTE : Si la classe n'existe pas dans le tableau, ne jamais l'ajouter !
-        if (oldClassRows.length === 0) {
+        // RÈGLE STRICTE : Vérifier que la classe appartient strictement à la section courante
+        if (typeof isClassAllowedInSectionClient === 'function' && !isClassAllowedInSectionClient(classeName, currentSection)) {
             return sourceArray;
         }
-
-        const canonicalClassName = oldClassRows[0][clsK] || classeName;
+        const canonicalClassName = oldClassRows.length > 0 ? (oldClassRows[0][clsK] || classeName) : (typeof normalizeClassDisplayNameClient === 'function' ? normalizeClassDisplayNameClient(classeName, currentSection) : classeName);
         const validOldRows = oldClassRows.filter(r => !isPlaceholder(r[matK]));
         const usedOld = new Set();
         const rebuiltClassRows = [];
@@ -16346,6 +16445,19 @@ function applyClassScheduleDirectlyToLocalPlanData(classeName, newSlots) {
                     [devK]: '',
                     _section: currentSection || 'garcons'
                 });
+            }
+        });
+
+        // Préserver toute ancienne ligne ayant déjà des données saisies (Leçon, Devoirs, Travaux, Support) non encore utilisée
+        const deletedSubs = (window.currentAdminScheduleDeletedSubjects || []).map(d => String(d || '').trim().toLowerCase());
+        validOldRows.forEach(oldRow => {
+            if (usedOld.has(oldRow)) return;
+            const oMat = String(oldRow[matK] || '').trim().toLowerCase();
+            if (deletedSubs.includes(oMat)) return;
+            const hasContent = !isPlaceholder(oldRow[lecK]) || !isPlaceholder(oldRow[devK]) || !isPlaceholder(oldRow[traK]) || !isPlaceholder(oldRow[supK]);
+            if (hasContent) {
+                usedOld.add(oldRow);
+                rebuiltClassRows.push(oldRow);
             }
         });
 
@@ -17385,6 +17497,20 @@ async function applyDuplicateScheduleToClass() {
     }
 }
 
+function normalizeDayNameScheduleImport(raw) {
+    if (!raw) return '';
+    const s = String(raw).trim().toLowerCase();
+    if (s.includes('dim') || s.includes('sun') || s.includes('أحد') || s.includes('احد')) return 'Dimanche';
+    if (s.includes('lun') || s.includes('mon') || s.includes('إثنين') || s.includes('اثنين')) return 'Lundi';
+    if (s.includes('mar') || s.includes('tue') || s.includes('ثلاثاء')) return 'Mardi';
+    if (s.includes('mer') || s.includes('wed') || s.includes('أربعاء') || s.includes('اربعاء')) return 'Mercredi';
+    if (s.includes('jeu') || s.includes('thu') || s.includes('خميس')) return 'Jeudi';
+    if (typeof extractDayNameFromString === 'function') {
+        return extractDayNameFromString(raw) || '';
+    }
+    return '';
+}
+
 function handleScheduleExcelImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -17393,77 +17519,302 @@ function handleScheduleExcelImport(event) {
         event.target.value = '';
         return;
     }
+
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+    const classSel = document.getElementById('adminScheduleClassSelect');
+    let selectedClass = classSel ? classSel.value : '';
+
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
             const data = e.target.result;
             const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            const jsonDataRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false });
-            if (!jsonDataRaw || jsonDataRaw.length < 2) {
-                throw new Error("Le fichier Excel est vide ou ne contient pas de données.");
-            }
-            const headersRaw = jsonDataRaw[0];
-            if (!headersRaw || !Array.isArray(headersRaw)) {
-                throw new Error("En-têtes non trouvés dans le fichier Excel.");
-            }
-            const headerIndices = {};
-            headersRaw.forEach((h, idx) => {
-                if (!h) return;
-                const norm = String(h).trim().toLowerCase();
-                if (norm.includes('enseign') || norm.includes('teacher') || norm.includes('معلم')) headerIndices.enseignant = idx;
-                else if (norm.includes('jour') || norm.includes('day') || norm.includes('يوم')) headerIndices.jour = idx;
-                else if (norm.includes('périod') || norm.includes('period') || norm.includes('periode') || norm.includes('حصة')) headerIndices.periode = idx;
-                else if (norm.includes('matièr') || norm.includes('matiere') || norm.includes('subject') || norm.includes('مادة')) headerIndices.matiere = idx;
-            });
-
-            if (headerIndices.jour === undefined || headerIndices.periode === undefined || headerIndices.matiere === undefined) {
-                throw new Error("Colonnes obligatoires manquantes. Veuillez inclure au moins : Jour, Période, Matière (et Enseignant optionnel).");
+            if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                throw new Error("Le fichier Excel est vide.");
             }
 
-            const rows = jsonDataRaw.slice(1);
-            let importedCount = 0;
-            if (!window.currentAdminScheduleSlots) window.currentAdminScheduleSlots = [];
+            const allowedSectionClasses = (window.adminScheduleClassesCache && window.adminScheduleClassesCache.length > 0)
+                ? window.adminScheduleClassesCache
+                : (targetSection === 'maternelle' ? ['PS', 'MS', 'GS'] : (targetSection === 'primaire' ? ['PP1', 'PP2', 'PP3', 'PP4', 'PP5'] : ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2']));
 
-            rows.forEach(row => {
-                if (!Array.isArray(row)) return;
-                const jourVal = row[headerIndices.jour] ? String(row[headerIndices.jour]).trim() : '';
-                const periodeVal = row[headerIndices.periode] !== undefined && row[headerIndices.periode] !== null ? String(row[headerIndices.periode]).replace(/[^0-9]/g, '') : '';
-                const matiereVal = headerIndices.matiere !== undefined && row[headerIndices.matiere] ? String(row[headerIndices.matiere]).trim() : '';
-                const enseignantVal = headerIndices.enseignant !== undefined && row[headerIndices.enseignant] ? String(row[headerIndices.enseignant]).trim() : '';
+            const resolveAllowedClass = (rawCls) => {
+                if (!rawCls) return '';
+                const cleaned = cleanClassNameClient(String(rawCls).trim());
+                if (!cleaned || !isClassAllowedInSectionClient(cleaned, targetSection)) return '';
+                const matched = allowedSectionClasses.find(c => c.toLowerCase() === cleaned.toLowerCase());
+                return matched || cleaned;
+            };
 
-                if (!jourVal || !periodeVal || !matiereVal) return;
+            const importedByClass = {};
+            let totalImportedSlots = 0;
+            let ignoredForeignTeachers = 0;
+            let ignoredForeignClasses = 0;
 
-                let existingSlot = window.currentAdminScheduleSlots.find(s => {
-                    const sDay = (s.jour || '').trim().toLowerCase();
-                    const sPer = String(s.periode || '').replace(/[^0-9]/g, '');
-                    return sDay.startsWith(jourVal.toLowerCase()) && sPer === periodeVal;
-                });
+            workbook.SheetNames.forEach(sheetName => {
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonDataRaw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false });
+                if (!jsonDataRaw || jsonDataRaw.length < 2) return;
 
-                if (existingSlot) {
-                    existingSlot.matiere = matiereVal;
-                    if (enseignantVal) existingSlot.enseignant = enseignantVal;
+                // Vérifier si le nom de la feuille correspond à une classe de la section
+                const sheetClassCandidate = resolveAllowedClass(sheetName);
+
+                // Trouver la ligne d'en-tête dans les 10 premières lignes
+                let headerRowIdx = -1;
+                const headerIndices = {};
+                let isGridFormat = false;
+                const gridDayCols = {};
+
+                for (let rIdx = 0; rIdx < Math.min(10, jsonDataRaw.length); rIdx++) {
+                    const row = jsonDataRaw[rIdx];
+                    if (!Array.isArray(row)) continue;
+                    const tempIndices = {};
+                    const tempDayCols = {};
+                    row.forEach((h, idx) => {
+                        if (!h) return;
+                        const norm = String(h).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                        if (norm.includes('enseign') || norm.includes('prof') || norm.includes('teacher') || norm.includes('معلم') || norm.includes('استاذ')) tempIndices.enseignant = idx;
+                        else if (norm.includes('jour') || norm.includes('day') || norm.includes('يوم')) tempIndices.jour = idx;
+                        else if (norm.includes('period') || norm.includes('seance') || norm.includes('heure') || norm.includes('حصة') || norm.includes('فترة')) tempIndices.periode = idx;
+                        else if (norm.includes('matier') || norm.includes('subject') || norm.includes('cours') || norm.includes('disciplin') || norm.includes('مادة')) tempIndices.matiere = idx;
+                        else if (norm.includes('class') || norm.includes('صف') || norm.includes('قسم')) tempIndices.classe = idx;
+
+                        const dName = normalizeDayNameScheduleImport(h);
+                        if (dName) tempDayCols[idx] = dName;
+                    });
+
+                    if (tempIndices.jour !== undefined && tempIndices.periode !== undefined && tempIndices.matiere !== undefined) {
+                        headerRowIdx = rIdx;
+                        Object.assign(headerIndices, tempIndices);
+                        break;
+                    }
+                    if (Object.keys(tempDayCols).length >= 3) {
+                        headerRowIdx = rIdx;
+                        isGridFormat = true;
+                        Object.assign(gridDayCols, tempDayCols);
+                        break;
+                    }
+                }
+
+                if (headerRowIdx === -1) return;
+
+                const dataRows = jsonDataRaw.slice(headerRowIdx + 1);
+
+                const addSlotToClass = (cls, jour, periode, matiere, enseignant) => {
+                    if (!cls || !jour || !periode || !matiere) return;
+                    const mTrim = String(matiere).trim();
+                    if (!mTrim || mTrim === '—' || mTrim === '-' || mTrim === '–') return;
+
+                    let cleanEns = String(enseignant || '').trim();
+                    if (cleanEns === '—' || cleanEns === '-') cleanEns = '';
+                    // Séparation stricte des enseignants entre les sections (seule Amal est autorisée en Filles et Primaire)
+                    if (cleanEns && !isTeacherAllowedInSectionClient(cleanEns, targetSection)) {
+                        ignoredForeignTeachers++;
+                        cleanEns = '';
+                    }
+
+                    if (!importedByClass[cls]) {
+                        importedByClass[cls] = new Map();
+                    }
+                    const slotKey = `${jour.toLowerCase()}_${periode}`;
+                    importedByClass[cls].set(slotKey, {
+                        jour: jour,
+                        periode: String(periode),
+                        originalJour: jour,
+                        originalPeriode: String(periode),
+                        matiere: mTrim,
+                        enseignant: cleanEns
+                    });
+                    totalImportedSlots++;
+                };
+
+                if (!isGridFormat) {
+                    dataRows.forEach(row => {
+                        if (!Array.isArray(row)) return;
+                        const rawJour = row[headerIndices.jour];
+                        const jourVal = normalizeDayNameScheduleImport(rawJour);
+                        const rawPer = row[headerIndices.periode];
+                        const periodeVal = (rawPer !== undefined && rawPer !== null) ? String(rawPer).replace(/[^0-9]/g, '') : '';
+                        const matiereVal = (headerIndices.matiere !== undefined && row[headerIndices.matiere]) ? String(row[headerIndices.matiere]).trim() : '';
+                        const enseignantVal = (headerIndices.enseignant !== undefined && row[headerIndices.enseignant]) ? String(row[headerIndices.enseignant]).trim() : '';
+
+                        let targetCls = selectedClass || sheetClassCandidate || allowedSectionClasses[0] || '';
+                        if (headerIndices.classe !== undefined && row[headerIndices.classe]) {
+                            const rawRowCls = String(row[headerIndices.classe]).trim();
+                            if (rawRowCls && rawRowCls !== '—' && rawRowCls !== '-') {
+                                const resolved = resolveAllowedClass(rawRowCls);
+                                if (!resolved) {
+                                    ignoredForeignClasses++;
+                                    return;
+                                }
+                                targetCls = resolved;
+                            }
+                        } else if (sheetClassCandidate) {
+                            targetCls = sheetClassCandidate;
+                        }
+
+                        if (!targetCls || !jourVal || !periodeVal || !matiereVal) return;
+                        addSlotToClass(targetCls, jourVal, periodeVal, matiereVal, enseignantVal);
+                    });
                 } else {
-                    window.currentAdminScheduleSlots.push({
-                        jour: jourVal,
-                        periode: periodeVal,
-                        matiere: matiereVal,
-                        enseignant: enseignantVal || ''
+                    // Format Grille (Jours en colonnes, Périodes en lignes)
+                    const defaultCls = sheetClassCandidate || selectedClass || allowedSectionClasses[0] || '';
+                    if (!defaultCls) return;
+                    dataRows.forEach((row, rOffset) => {
+                        if (!Array.isArray(row)) return;
+                        const firstCell = row[0] !== null && row[0] !== undefined ? String(row[0]).trim() : '';
+                        const perMatch = firstCell.match(/([1-8])/);
+                        const periodeVal = perMatch ? perMatch[1] : String(rOffset + 1);
+                        if (parseInt(periodeVal, 10) < 1 || parseInt(periodeVal, 10) > 10) return;
+
+                        for (const [colIdxStr, dayName] of Object.entries(gridDayCols)) {
+                            const colIdx = parseInt(colIdxStr, 10);
+                            const cellVal = row[colIdx] ? String(row[colIdx]).trim() : '';
+                            if (!cellVal || cellVal === '—' || cellVal === '-') continue;
+
+                            // Permet "Matière (Enseignant)" ou "Matière - Enseignant" ou "Matière / Enseignant"
+                            let matPart = cellVal;
+                            let ensPart = '';
+                            const parenMatch = cellVal.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+                            if (parenMatch) {
+                                matPart = parenMatch[1].trim();
+                                ensPart = parenMatch[2].trim();
+                            } else if (cellVal.includes(' - ')) {
+                                const parts = cellVal.split(' - ');
+                                matPart = parts[0].trim();
+                                ensPart = parts.slice(1).join(' - ').trim();
+                            } else if (cellVal.includes('\n')) {
+                                const lines = cellVal.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                                if (lines.length >= 2) {
+                                    matPart = lines[0];
+                                    ensPart = lines[1];
+                                }
+                            }
+                            addSlotToClass(defaultCls, dayName, periodeVal, matPart, ensPart);
+                        }
                     });
                 }
-                importedCount++;
             });
 
-            if (importedCount === 0) {
-                throw new Error("Aucun créneau valide n'a pu être extrait du fichier Excel.");
+            const importedClassNames = Object.keys(importedByClass);
+            if (importedClassNames.length === 0 || totalImportedSlots === 0) {
+                throw new Error("Aucun créneau valide pour la section sélectionnée n'a été trouvé. Vérifiez que le fichier contient les colonnes : Enseignant, Jour, Période, Matière (et que les classes/enseignants correspondent à la section active).");
             }
 
+            // Convertir les Maps en tableaux de slots et compléter les liaisons Matière ➔ Enseignant
+            const cleanSchedulesMap = {};
+            importedClassNames.forEach(cls => {
+                const slotsArr = Array.from(importedByClass[cls].values());
+                // Déduire les liaisons Matière -> Enseignant au sein de la classe
+                const localSubjTeacher = {};
+                slotsArr.forEach(s => {
+                    if (s.matiere && s.enseignant) {
+                        localSubjTeacher[s.matiere.toLowerCase()] = s.enseignant;
+                    }
+                });
+                slotsArr.forEach(s => {
+                    if (s.matiere && !s.enseignant) {
+                        const autoEns = localSubjTeacher[s.matiere.toLowerCase()] || findLinkedTeacherForSubject(s.matiere);
+                        if (autoEns && isTeacherAllowedInSectionClient(autoEns, targetSection)) {
+                            s.enseignant = autoEns;
+                        }
+                    }
+                });
+                cleanSchedulesMap[cls] = slotsArr;
+            });
+
+            window.importedScheduleByClassForSection = {
+                section: targetSection,
+                classes: cleanSchedulesMap
+            };
+
+            // Si la classe sélectionnée fait partie des classes importées (ou sinon basculer sur la première classe importée)
+            if (!selectedClass || !cleanSchedulesMap[selectedClass]) {
+                selectedClass = importedClassNames[0];
+                if (classSel) {
+                    if (!Array.from(classSel.options).some(o => o.value === selectedClass)) {
+                        const opt = document.createElement('option');
+                        opt.value = selectedClass;
+                        opt.textContent = selectedClass;
+                        classSel.appendChild(opt);
+                    }
+                    classSel.value = selectedClass;
+                }
+            }
+
+            window.currentAdminScheduleClass = selectedClass;
+            const currentSlotsBeforeImport = Array.isArray(window.currentAdminScheduleSlots) ? window.currentAdminScheduleSlots : [];
+
+            // Fusionner avec les créneaux existants de la classe sélectionnée tout en conservant hasContent / originalJour / originalPeriode
+            const newActiveSlots = (cleanSchedulesMap[selectedClass] || []).map(newS => {
+                const prevSamePos = currentSlotsBeforeImport.find(oldS =>
+                    String(oldS.jour || '').toLowerCase() === newS.jour.toLowerCase() &&
+                    String(oldS.periode || '') === String(newS.periode)
+                );
+                const prevSameSubj = currentSlotsBeforeImport.find(oldS =>
+                    oldS.matiere && (typeof isEquivalentSubject === 'function' ? isEquivalentSubject(oldS.matiere, newS.matiere) : oldS.matiere.toLowerCase() === newS.matiere.toLowerCase())
+                );
+                return {
+                    ...newS,
+                    originalJour: (prevSamePos && prevSamePos.originalJour) || (prevSameSubj && prevSameSubj.originalJour) || newS.jour,
+                    originalPeriode: (prevSamePos && prevSamePos.originalPeriode) || (prevSameSubj && prevSameSubj.originalPeriode) || newS.periode,
+                    hasContent: Boolean((prevSamePos && prevSamePos.hasContent) || (prevSameSubj && prevSameSubj.hasContent)),
+                    lessonPreview: (prevSamePos && prevSamePos.lessonPreview) || (prevSameSubj && prevSameSubj.lessonPreview) || '',
+                    homeworkPreview: (prevSamePos && prevSamePos.homeworkPreview) || (prevSameSubj && prevSameSubj.homeworkPreview) || ''
+                };
+            });
+
+            window.currentAdminScheduleSlots = newActiveSlots;
+
+            // Mettre à jour les liaisons Matière ➔ Enseignant et le cache des enseignants de la section
+            if (!window.currentClassSubjectTeachersMap) window.currentClassSubjectTeachersMap = {};
+            if (!window.adminScheduleTeachersCache) window.adminScheduleTeachersCache = [];
+
+            newActiveSlots.forEach(s => {
+                if (s.matiere && s.enseignant && isTeacherAllowedInSectionClient(s.enseignant, targetSection)) {
+                    window.currentClassSubjectTeachersMap[s.matiere] = s.enseignant;
+                    if (!window.adminScheduleTeachersCache.some(t => t.toLowerCase() === s.enseignant.toLowerCase())) {
+                        window.adminScheduleTeachersCache.push(s.enseignant);
+                    }
+                }
+            });
+            window.adminScheduleTeachersCache.sort();
+
+            const msgEl = document.getElementById('adminScheduleGridMessage');
+            const tblEl = document.getElementById('adminScheduleTable');
+            if (msgEl) msgEl.style.display = 'none';
+            if (tblEl) tblEl.style.display = 'table';
+
+            updateScheduleModalDatalists();
+            renderSubjectTeacherLinkingList();
             renderAdminScheduleGrid();
+
+            // Afficher la boîte de confirmation et d'application directe
+            const statusBox = document.getElementById('scheduleExcelImportStatusBox');
+            const summaryEl = document.getElementById('scheduleExcelImportSummaryText');
+            const allClassesLabel = document.getElementById('scheduleExcelApplyAllClassesLabel');
+            const allClassesCheck = document.getElementById('scheduleExcelApplyAllClassesCheck');
+
+            if (statusBox && summaryEl) {
+                statusBox.style.display = 'block';
+                let extraInfo = '';
+                if (ignoredForeignTeachers > 0 || ignoredForeignClasses > 0) {
+                    extraInfo = ` <span style="color:#B45309; font-weight:600;">(Séparation stricte : ${ignoredForeignClasses} classe(s) et ${ignoredForeignTeachers} enseignant(s) d'autres sections ignorés)</span>`;
+                }
+                summaryEl.innerHTML = `<i class="fas fa-check-circle" style="color:#059669;"></i> <strong>Emploi du temps Excel chargé :</strong> ${totalImportedSlots} séance(s) pour <strong>${importedClassNames.join(', ')}</strong> (Section : <strong>${targetSection.toUpperCase()}</strong>).${extraInfo}`;
+            }
+            if (allClassesLabel && allClassesCheck) {
+                if (importedClassNames.length > 1) {
+                    allClassesLabel.style.display = 'inline-flex';
+                    allClassesCheck.checked = true;
+                } else {
+                    allClassesLabel.style.display = 'none';
+                    allClassesCheck.checked = false;
+                }
+            }
+
             if (typeof showToastNotification === 'function') {
-                showToastNotification(`Emploi du temps importé avec succès (${importedCount} créneaux) ! Cliquez sur 'Enregistrer & Réorganiser' pour appliquer.`, 'success');
-            } else {
-                alert(`Emploi du temps importé avec succès (${importedCount} créneaux) !`);
+                showToastNotification(`Emploi du temps Excel chargé (${totalImportedSlots} créneaux pour ${importedClassNames.join(', ')}) ! Choisissez la ou les semaines puis cliquez sur "Appliquer".`, 'success');
             }
         } catch (err) {
             console.error("Erreur import Excel emploi du temps:", err);
@@ -17480,31 +17831,112 @@ function handleScheduleExcelImport(event) {
     reader.readAsArrayBuffer(file);
 }
 
-async function saveAndReorganizeSchedule() {
+function downloadScheduleExcelTemplate() {
+    if (typeof XLSX === 'undefined') {
+        alert("La bibliothèque Excel (XLSX) n'est pas encore chargée.");
+        return;
+    }
+    const sectionSel = document.getElementById('adminScheduleSectionSelect');
+    const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
+    const classSel = document.getElementById('adminScheduleClassSelect');
+    const selectedClass = (classSel && classSel.value) ? classSel.value : (targetSection === 'maternelle' ? 'PS' : (targetSection === 'primaire' ? 'PP1' : 'PEI1'));
+
+    const days = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi"];
+    const slots = Array.isArray(window.currentAdminScheduleSlots) ? window.currentAdminScheduleSlots : [];
+
+    const rows = [
+        ["Enseignant", "Jour", "Période", "Classe", "Matière"]
+    ];
+
+    if (slots.length > 0) {
+        days.forEach(d => {
+            for (let p = 1; p <= 8; p++) {
+                const found = slots.find(s =>
+                    String(s.jour || '').toLowerCase().startsWith(d.toLowerCase()) &&
+                    String(s.periode || '').replace(/[^0-9]/g, '') === String(p)
+                );
+                if (found && found.matiere && found.matiere !== '—') {
+                    rows.push([
+                        found.enseignant || '',
+                        d,
+                        String(p),
+                        selectedClass,
+                        found.matiere
+                    ]);
+                }
+            }
+        });
+    } else {
+        days.forEach(d => {
+            for (let p = 1; p <= 7; p++) {
+                rows.push(["", d, String(p), selectedClass, ""]);
+            }
+        });
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+        { wch: 24 },
+        { wch: 16 },
+        { wch: 12 },
+        { wch: 14 },
+        { wch: 28 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, selectedClass);
+    XLSX.writeFile(wb, `Emploi_du_Temps_${targetSection.toUpperCase()}_${selectedClass}.xlsx`);
+}
+window.downloadScheduleExcelTemplate = downloadScheduleExcelTemplate;
+
+async function applyImportedExcelScheduleToPlans() {
+    await saveAndReorganizeSchedule(true);
+}
+window.applyImportedExcelScheduleToPlans = applyImportedExcelScheduleToPlans;
+
+async function saveAndReorganizeSchedule(fromExcelBanner = false) {
     const sectionSel = document.getElementById('adminScheduleSectionSelect');
     const targetSection = (sectionSel && sectionSel.value) ? sectionSel.value : (currentSection || 'garcons');
     const classSel = document.getElementById('adminScheduleClassSelect');
     const selectedClass = classSel ? classSel.value : '';
 
-    if (!selectedClass) {
+    const applyAllCheck = document.getElementById('scheduleExcelApplyAllClassesCheck');
+    const hasMultiImported = Boolean(
+        window.importedScheduleByClassForSection &&
+        window.importedScheduleByClassForSection.section === targetSection &&
+        window.importedScheduleByClassForSection.classes &&
+        Object.keys(window.importedScheduleByClassForSection.classes).length > 0
+    );
+    const applyAllImportedClasses = Boolean(hasMultiImported && (fromExcelBanner || (applyAllCheck && applyAllCheck.checked)));
+
+    if (!selectedClass && !applyAllImportedClasses) {
         alert("Veuillez sélectionner une classe.");
         return;
     }
 
-    const { selectedWeek, targetMode, startW, endW } = getSelectedScheduleWeekBounds();
+    const { selectedWeek, targetMode, startW, endW, targetWeeks } = getSelectedScheduleWeekBounds();
     const curW = parseInt(currentWeek, 10) || selectedWeek;
 
     const saveBtn = document.getElementById('btnSaveScheduleReorganize');
     const origBtnHtml = saveBtn ? saveBtn.innerHTML : '';
     if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Réorganisation en cours...';
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Application en cours...';
     }
 
     try {
-        // Appliquer immédiatement en local sur le tableau si la semaine active est dans la plage
-        if (targetSection === currentSection && curW >= startW && curW <= endW) {
-            applyClassScheduleDirectlyToLocalPlanData(selectedClass, window.currentAdminScheduleSlots || []);
+        const classSchedulesPayload = {};
+        if (applyAllImportedClasses) {
+            Object.assign(classSchedulesPayload, window.importedScheduleByClassForSection.classes);
+        }
+        if (selectedClass && Array.isArray(window.currentAdminScheduleSlots)) {
+            classSchedulesPayload[selectedClass] = window.currentAdminScheduleSlots;
+        }
+
+        // Appliquer immédiatement en local sur le tableau si la semaine active fait partie des semaines ciblées (de la même section)
+        if (targetSection === currentSection && targetWeeks.includes(curW)) {
+            for (const [clsName, clsSlots] of Object.entries(classSchedulesPayload)) {
+                applyClassScheduleDirectlyToLocalPlanData(clsName, clsSlots || []);
+            }
         }
 
         const response = await fetch('/api/admin/reorganize-schedule', {
@@ -17515,9 +17947,12 @@ async function saveAndReorganizeSchedule() {
                 classe: selectedClass,
                 startWeek: startW,
                 endWeek: endW,
+                weeks: targetWeeks,
                 targetMode: targetMode,
                 slots: window.currentAdminScheduleSlots || [],
-                deletedSubjects: window.currentAdminScheduleDeletedSubjects || []
+                classSchedules: classSchedulesPayload,
+                deletedSubjects: window.currentAdminScheduleDeletedSubjects || [],
+                applyFilledSchedule: true
             })
         });
 
@@ -17528,18 +17963,20 @@ async function saveAndReorganizeSchedule() {
 
         const resData = await response.json();
 
-        if (typeof fetchPlanData === 'function' && currentWeek) {
+        if (targetSection === currentSection && typeof fetchPlanData === 'function' && currentWeek) {
             await fetchPlanData(currentWeek);
         }
 
         await loadAdminScheduleForClass();
 
+        const appliedClassesLabel = Object.keys(classSchedulesPayload).join(', ') || selectedClass;
+        const weeksDesc = targetWeeks.length === 1 ? `Semaine ${targetWeeks[0]}` : `${resData.affectedWeeksCount || targetWeeks.length} semaine(s)`;
         if (typeof showToastNotification === 'function') {
-            showToastNotification(`Séances de ${selectedClass} réorganisées avec succès (${resData.affectedWeeksCount} semaine(s) actualisée(s), sans perturber le tableau ni les classes) !`, 'success');
+            showToastNotification(`Emploi du temps (${appliedClassesLabel}) appliqué avec succès sur ${weeksDesc} de la section ${targetSection.toUpperCase()} tout en conservant 100% des données déjà saisies !`, 'success');
         }
     } catch (err) {
         console.error("Erreur saveAndReorganizeSchedule:", err);
-        alert('❌ Erreur lors de la réorganisation : ' + err.message);
+        alert('❌ Erreur lors de l\'application de l\'emploi du temps : ' + err.message);
     } finally {
         if (saveBtn) {
             saveBtn.disabled = false;

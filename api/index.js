@@ -6842,11 +6842,12 @@ app.get('/api/plans/:week', async (req, res) => {
       if (canonicalTemplatesDocs && canonicalTemplatesDocs.length > 0) {
         canonicalTemplatesDocs.forEach(tDoc => {
           const cleanCls = cleanClassNameServer(tDoc.classe) || tDoc.classe;
-          if (cleanCls && Array.isArray(tDoc.slots)) {
+          if (cleanCls && isClassAllowedInSection(cleanCls, section) && Array.isArray(tDoc.slots)) {
             tDoc.slots.forEach(s => {
               if (s.matiere && String(s.matiere).trim() && String(s.matiere).trim() !== '—' && String(s.matiere).trim() !== '-') {
+                const cleanEns = (s.enseignant && isTeacherAllowedInSection(s.enseignant, section)) ? String(s.enseignant).trim() : '';
                 templateRows.push({
-                  'Enseignant': s.enseignant || '',
+                  'Enseignant': cleanEns,
                   'Jour': s.jour,
                   'Période': String(s.periode),
                   'Classe': cleanCls,
@@ -8681,7 +8682,7 @@ app.get('/api/all-classes', async (req, res) => {
           if (!r || typeof r !== 'object') return;
           const rawC = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
           const c = cleanClassNameServer(rawC);
-          if (c && c !== '—' && c !== '-') {
+          if (c && c !== '—' && c !== '-' && isClassAllowedInSection(c, section)) {
             if (!planClassMap.has(c.toLowerCase())) {
               planClassMap.set(c.toLowerCase(), c);
             }
@@ -8700,7 +8701,7 @@ app.get('/api/all-classes', async (req, res) => {
       const schedClassSet = new Set();
       schedDocs.forEach(d => {
         const c = cleanClassNameServer(d.classe);
-        if (c) schedClassSet.add(c);
+        if (c && isClassAllowedInSection(c, section)) schedClassSet.add(c);
       });
       if (schedClassSet.size > 0) {
         return res.status(200).json(Array.from(schedClassSet).sort());
@@ -8740,7 +8741,7 @@ app.get('/api/admin/classes', async (req, res) => {
           if (!r || typeof r !== 'object') return;
           const rawC = String(r[findKey(r, 'Classe')] || r.Classe || r.classe || '').trim();
           const c = cleanClassNameServer(rawC);
-          if (c && c !== '—' && c !== '-') {
+          if (c && c !== '—' && c !== '-' && isClassAllowedInSection(c, section)) {
             const cLow = c.toLowerCase();
             if (!distinctInPlansMap.has(cLow)) {
               distinctInPlansMap.set(cLow, c);
@@ -9623,7 +9624,10 @@ app.get('/api/admin/class-subject-teachers', async (req, res) => {
 
 app.post('/api/admin/class-subject-teachers', async (req, res) => {
   try {
-    const { section = 'garcons', classe = '', assignments = {}, singleUpdate = null } = req.body;
+    const { section: rawSec = 'garcons', classe = '', assignments = {}, singleUpdate = null } = req.body;
+    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSec).toLowerCase().trim())
+      ? String(rawSec).toLowerCase().trim()
+      : 'garcons';
     if (!classe) return res.status(400).json({ error: 'Classe requise.' });
 
     // Fusionner singleUpdate si fourni
@@ -9632,12 +9636,16 @@ app.post('/api/admin/class-subject-teachers', async (req, res) => {
     }
 
     const cleanClasse = cleanClassNameServer(classe) || classe.trim();
+    if (!isClassAllowedInSection(cleanClasse, section)) {
+      return res.status(400).json({ error: `La classe "${cleanClasse}" n'appartient pas à la section ${section}.` });
+    }
     const db = await connectToDatabase();
     const now = new Date();
     for (const [matiere, enseignant] of Object.entries(assignments)) {
       if (!matiere || !matiere.trim() || matiere.trim() === '—' || matiere.trim() === '-') continue;
       const cleanMat = matiere.trim();
-      const cleanEns = (enseignant || '').trim();
+      const rawEns = (enseignant || '').trim();
+      const cleanEns = isTeacherAllowedInSection(rawEns, section) ? rawEns : '';
       await db.collection('class_subject_teachers').updateOne(
         { section, classe: cleanClasse, matiere: cleanMat },
         { $set: { section, classe: cleanClasse, matiere: cleanMat, enseignant: cleanEns, updatedAt: now } },
@@ -9794,35 +9802,62 @@ app.post('/api/admin/delete-subject-from-schedule', async (req, res) => {
 app.post('/api/admin/reorganize-schedule', async (req, res) => {
   try {
     const {
-      section = 'garcons',
+      section: rawSection = 'garcons',
       classe: targetClasse,
       startWeek = 1,
       endWeek = 1,
+      weeks: explicitWeeks = null,
       targetMode = 'single',
       slots = [],
       classSchedules = {},
-      deletedSubjects = []
+      deletedSubjects = [],
+      applyFilledSchedule = false
     } = req.body;
+
+    const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(String(rawSection).toLowerCase().trim())
+      ? String(rawSection).toLowerCase().trim()
+      : 'garcons';
 
     let sWeek = parseInt(startWeek, 10) || 1;
     let eWeek = parseInt(endWeek, 10) || sWeek;
-    if (targetMode === 'all_year' || targetMode === 'all') {
-      sWeek = 1;
-      eWeek = 38;
-    } else if (targetMode === 'remaining') {
-      sWeek = Math.max(1, Math.min(38, sWeek));
-      eWeek = 38;
-    } else if (targetMode === 'previous') {
-      eWeek = Math.max(1, Math.min(38, parseInt(endWeek || startWeek, 10) || 1));
-      sWeek = 1;
-    } else if (targetMode === 'range') {
-      const w1 = Math.max(1, Math.min(38, sWeek));
-      const w2 = Math.max(1, Math.min(38, eWeek));
-      sWeek = Math.min(w1, w2);
-      eWeek = Math.max(w1, w2);
-    } else {
-      sWeek = Math.max(1, Math.min(38, sWeek));
-      eWeek = sWeek;
+    let targetWeeksList = [];
+
+    if (Array.isArray(explicitWeeks) && explicitWeeks.length > 0) {
+      targetWeeksList = Array.from(
+        new Set(
+          explicitWeeks
+            .map(w => parseInt(w, 10))
+            .filter(w => !isNaN(w) && w >= 1 && w <= 38)
+        )
+      ).sort((a, b) => a - b);
+      if (targetWeeksList.length > 0) {
+        sWeek = targetWeeksList[0];
+        eWeek = targetWeeksList[targetWeeksList.length - 1];
+      }
+    }
+
+    if (targetWeeksList.length === 0) {
+      if (targetMode === 'all_year' || targetMode === 'all') {
+        sWeek = 1;
+        eWeek = 38;
+      } else if (targetMode === 'remaining') {
+        sWeek = Math.max(1, Math.min(38, sWeek));
+        eWeek = 38;
+      } else if (targetMode === 'previous') {
+        eWeek = Math.max(1, Math.min(38, parseInt(endWeek || startWeek, 10) || 1));
+        sWeek = 1;
+      } else if (targetMode === 'range') {
+        const w1 = Math.max(1, Math.min(38, sWeek));
+        const w2 = Math.max(1, Math.min(38, eWeek));
+        sWeek = Math.min(w1, w2);
+        eWeek = Math.max(w1, w2);
+      } else {
+        sWeek = Math.max(1, Math.min(38, sWeek));
+        eWeek = sWeek;
+      }
+      for (let w = sWeek; w <= eWeek; w++) {
+        targetWeeksList.push(w);
+      }
     }
 
     const isPlaceholderMat = (m) => {
@@ -9833,19 +9868,23 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
     const schedulesToApply = {};
     if (targetClasse && Array.isArray(slots)) {
       const cleanTarget = cleanClassNameServer(targetClasse) || String(targetClasse).trim();
-      schedulesToApply[cleanTarget] = slots;
+      if (cleanTarget && isClassAllowedInSection(cleanTarget, section)) {
+        schedulesToApply[cleanTarget] = slots;
+      }
     }
     if (classSchedules && typeof classSchedules === 'object') {
       for (const [cls, clsSlots] of Object.entries(classSchedules)) {
         if (cls && Array.isArray(clsSlots)) {
           const cleanCls = cleanClassNameServer(cls) || String(cls).trim();
-          schedulesToApply[cleanCls] = clsSlots;
+          if (cleanCls && isClassAllowedInSection(cleanCls, section)) {
+            schedulesToApply[cleanCls] = clsSlots;
+          }
         }
       }
     }
 
     if (Object.keys(schedulesToApply).length === 0) {
-      return res.status(400).json({ error: 'Aucune classe fournie pour la mise à jour de l\'emploi du temps.' });
+      return res.status(400).json({ error: `Aucune classe valide pour la section ${section} n'a été fournie.` });
     }
 
     const db = await connectToDatabase();
@@ -9854,7 +9893,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
     const getPerNum = (p) => { const n = parseInt(p, 10); return isNaN(n) ? 99 : n; };
 
     // Nettoyer et dédupliquer strictement les créneaux soumis par (Jour, Période) en ignorant les placeholders "—"
-    // tout en conservant originalJour / originalPeriode pour déplacer les séances déjà saisies avec leurs leçons/devoirs !
+    // et en filtrant strictement les enseignants pour que chaque section reste 100% indépendante !
     for (const [cls, rawSlots] of Object.entries(schedulesToApply)) {
       const dedupedSlotMap = new Map();
       (rawSlots || []).forEach(slot => {
@@ -9864,6 +9903,8 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
         if (!cleanDay) return;
         const origDay = extractDayNameFromString(slot.originalJour || slot.jour) || cleanDay;
         const origPer = String(slot.originalPeriode || slot.periode || '1').replace(/[^0-9]/g, '') || cleanPer;
+        const rawEns = String(slot.enseignant || '').trim();
+        const cleanEns = (rawEns && rawEns !== '—' && rawEns !== '-' && isTeacherAllowedInSection(rawEns, section)) ? rawEns : '';
         const slotKey = `${cleanDay.toLowerCase()}_${cleanPer}`;
         dedupedSlotMap.set(slotKey, {
           jour: cleanDay,
@@ -9871,7 +9912,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
           originalJour: origDay,
           originalPeriode: origPer,
           matiere: String(slot.matiere).trim(),
-          enseignant: String(slot.enseignant || '').trim()
+          enseignant: cleanEns
         });
       });
 
@@ -9884,7 +9925,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
       schedulesToApply[cls] = cleanSlotsList;
     }
 
-    // Sauvegarder l'emploi du temps canonique dans class_schedules et les liaisons Matière ➔ Enseignant
+    // Sauvegarder l'emploi du temps canonique dans class_schedules et les liaisons Matière ➔ Enseignant (strictement pour cette section)
     const nowAuto = new Date();
     try {
       for (const [cls, clsSlots] of Object.entries(schedulesToApply)) {
@@ -9907,9 +9948,9 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
           { upsert: true }
         );
 
-        // Mettre à jour les liaisons actives Matière ➔ Enseignant
+        // Mettre à jour les liaisons actives Matière ➔ Enseignant de cette section
         for (const slot of clsSlots) {
-          if (slot.matiere && slot.enseignant && slot.enseignant.trim()) {
+          if (slot.matiere && slot.enseignant && slot.enseignant.trim() && isTeacherAllowedInSection(slot.enseignant, section)) {
             await db.collection('class_subject_teachers').updateOne(
               { section, classe: cls, matiere: slot.matiere.trim() },
               { $set: { section, classe: cls, matiere: slot.matiere.trim(), enseignant: slot.enseignant.trim(), updatedAt: nowAuto } },
@@ -9927,7 +9968,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
     const now = new Date();
     const normSubj = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-    for (let w = sWeek; w <= eWeek; w++) {
+    for (const w of targetWeeksList) {
       const docId = `${section}_${w}`;
 
       await withPlanLock(docId, async () => {
@@ -9940,28 +9981,35 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
           ]
         });
 
-        // RÈGLE STRICTE : L'emploi du temps ne doit JAMAIS créer ni ajouter des classes dans des semaines vides ou inexistantes
-        if (!planDoc || !Array.isArray(planDoc.data) || planDoc.data.length === 0) {
+        const hasExistingPlanData = Boolean(planDoc && Array.isArray(planDoc.data) && planDoc.data.length > 0);
+        // Si la semaine est vide et qu'on n'est pas en mode d'application explicite sur cette semaine/plage, ne pas créer de semaine vide
+        const isExplicitTarget = Boolean(applyFilledSchedule || targetMode === 'single' || targetMode === 'range' || targetMode === 'custom_weeks');
+        if (!hasExistingPlanData && !isExplicitTarget) {
           return;
         }
 
-        let weekRows = [...planDoc.data];
+        let weekRows = hasExistingPlanData ? [...planDoc.data] : [];
         let weekModified = false;
 
         for (const [clsName, newSlots] of Object.entries(schedulesToApply)) {
+          if (!isClassAllowedInSection(clsName, section)) continue;
+
           const isTargetClass = (row) => {
             const rowCls = row[findKey(row, 'Classe')];
             return rowCls && isClassMatchServer(rowCls, clsName);
           };
 
           const oldClassRows = weekRows.filter(isTargetClass);
-          // RÈGLE STRICTE : Ne jamais ajouter une classe qui n'existe pas déjà dans le tableau de saisie de cette semaine !
-          if (oldClassRows.length === 0) {
+          // Si la classe n'est pas présente dans cette semaine et qu'on n'a pas demandé d'appliquer l'emploi rempli, ne pas ajouter de classe
+          if (oldClassRows.length === 0 && !applyFilledSchedule) {
+            continue;
+          }
+          if (newSlots.length === 0 && oldClassRows.length === 0) {
             continue;
           }
 
           const otherRows = weekRows.filter(r => !isTargetClass(r));
-          const canonicalClassNameInWeek = oldClassRows[0][findKey(oldClassRows[0], 'Classe')] || clsName;
+          const canonicalClassNameInWeek = (oldClassRows[0] && cleanClassNameServer(oldClassRows[0][findKey(oldClassRows[0], 'Classe')])) || clsName;
 
           const oldValidRows = oldClassRows.filter(r => {
             const m = r[findKey(r, 'Matière')];
@@ -9971,9 +10019,8 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
           const usedOldRows = new Set();
           const remappedClassRows = [];
 
-          // 1. D'abord associer chaque créneau avec sa position d'origine (originalJour + originalPeriode) ou actuelle (jour + periode)
-          // Cela garantit que lorsqu'une séance déjà saisie (avec Leçon, Devoirs, Travaux) est déplacée (changement de jour ou période),
-          // son contenu pédagogique se déplace exactement avec elle !
+          // 1. Associer chaque créneau avec sa position d'origine (originalJour + originalPeriode) ou actuelle (jour + periode)
+          // Cela garantit que toutes les données déjà saisies (Leçon, Devoirs, Travaux de classe, Support, Objectifs) sont 100% conservées !
           const exactMatchesMap = new Map();
           newSlots.forEach((slot, idx) => {
             const origDay = extractDayNameFromString(slot.originalJour || slot.jour) || slot.originalJour || slot.jour;
@@ -10029,7 +10076,8 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
                 const lec = String(oldRow[findKey(oldRow, 'Leçon')] || '').trim();
                 const dev = String(oldRow[findKey(oldRow, 'Devoirs')] || '').trim();
                 const tra = String(oldRow[findKey(oldRow, 'Travaux de classe')] || '').trim();
-                return Boolean((lec && lec !== '—') || (dev && dev !== '—') || (tra && tra !== '—'));
+                const sup = String(oldRow[findKey(oldRow, 'Support')] || '').trim();
+                return Boolean((lec && lec !== '—') || (dev && dev !== '—') || (tra && tra !== '—') || (sup && sup !== '—'));
               });
 
               // Sinon, n'importe quelle ancienne ligne de la même matière non encore utilisée
@@ -10053,23 +10101,25 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
               const matKey = findKey(matchedOldRow, 'Matière') || 'Matière';
               const clsKey = findKey(matchedOldRow, 'Classe') || 'Classe';
 
+              const existingEns = String(matchedOldRow[ensKey] || '').trim();
+              const resolvedEns = (slot.enseignant && slot.enseignant.trim() && isTeacherAllowedInSection(slot.enseignant, section))
+                ? slot.enseignant.trim()
+                : (isTeacherAllowedInSection(existingEns, section) ? existingEns : '');
+
               const updatedRow = {
                 ...matchedOldRow,
                 [clsKey]: canonicalClassNameInWeek,
                 [jourKey]: slot.jour,
                 [perKey]: String(slot.periode),
                 [matKey]: slot.matiere,
+                [ensKey]: resolvedEns,
                 _section: section,
                 updatedAt: now
               };
 
-              if (slot.enseignant && slot.enseignant.trim()) {
-                updatedRow[ensKey] = slot.enseignant.trim();
-              }
-
               remappedClassRows.push(updatedRow);
             } else {
-              const sampleRow = oldClassRows[0] || {};
+              const sampleRow = oldClassRows[0] || weekRows[0] || {};
               const jourKey = findKey(sampleRow, 'Jour') || 'Jour';
               const perKey = findKey(sampleRow, 'Période') || 'Période';
               const ensKey = findKey(sampleRow, 'Enseignant') || 'Enseignant';
@@ -10082,7 +10132,7 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
               const supKey = findKey(sampleRow, 'Support') || 'Support';
 
               const newRow = {
-                [ensKey]: slot.enseignant || '',
+                [ensKey]: (slot.enseignant && isTeacherAllowedInSection(slot.enseignant, section)) ? slot.enseignant : '',
                 [jourKey]: slot.jour,
                 [perKey]: String(slot.periode),
                 [clsKey]: canonicalClassNameInWeek,
@@ -10099,8 +10149,8 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
             }
           });
 
-          // Préserver également toute ancienne ligne ayant une leçon ou un devoir saisi d'une matière qui n'était pas dans newSlots
-          // (sauf si explicitement supprimée via deletedSubjects) pour ne jamais perdre de travail enseignant
+          // Préserver également toute ancienne ligne ayant une leçon, un devoir, un travail de classe ou un support déjà saisi
+          // (sauf si explicitement supprimée via deletedSubjects) pour ne jamais perdre de données déjà saisies !
           const deletedNormSet = new Set((deletedSubjects || []).map(d => normSubj(d)));
           oldValidRows.forEach(oldRow => {
             if (usedOldRows.has(oldRow)) return;
@@ -10109,7 +10159,8 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
             const lec = String(oldRow[findKey(oldRow, 'Leçon')] || '').trim();
             const dev = String(oldRow[findKey(oldRow, 'Devoirs')] || '').trim();
             const tra = String(oldRow[findKey(oldRow, 'Travaux de classe')] || '').trim();
-            if ((lec && lec !== '—') || (dev && dev !== '—') || (tra && tra !== '—')) {
+            const sup = String(oldRow[findKey(oldRow, 'Support')] || '').trim();
+            if ((lec && lec !== '—') || (dev && dev !== '—') || (tra && tra !== '—') || (sup && sup !== '—')) {
               usedOldRows.add(oldRow);
               remappedClassRows.push(oldRow);
             }
@@ -10131,12 +10182,12 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
         }
 
         if (weekModified) {
-          // Ne JAMAIS injecter de fausses lignes vides "—" ni ajouter/supprimer d'autres classes : sauvegarder weekRows tel quel
           const targetDocId = planDoc ? planDoc._id : docId;
           await db.collection('plans').updateOne(
             { _id: targetDocId },
             {
               $set: {
+                _id: targetDocId,
                 week: w,
                 section: section,
                 data: weekRows,
@@ -10145,6 +10196,9 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
             },
             { upsert: true }
           );
+          try {
+            await syncHomeworksFromPlanRowsToSuivi(db, weekRows, section, w);
+          } catch (e) {}
           affectedWeeksCount++;
         }
       });
@@ -10154,16 +10208,18 @@ app.post('/api/admin/reorganize-schedule', async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Emploi du temps réorganisé avec succès (${affectedWeeksCount} semaine(s) actualisée(s) sans perturber le tableau ni les classes).`,
+      message: `Emploi du temps appliqué avec succès pour la section ${section} (${affectedWeeksCount} semaine(s) actualisée(s) tout en conservant 100% des données déjà saisies).`,
       affectedWeeksCount,
       totalUpdatedRows,
       startWeek: sWeek,
       endWeek: eWeek,
+      weeks: targetWeeksList,
+      section,
       targetMode
     });
   } catch (error) {
     console.error('Erreur /api/admin/reorganize-schedule:', error);
-    res.status(500).json({ error: 'Erreur lors de la réorganisation de l\'emploi du temps: ' + error.message });
+    res.status(500).json({ error: 'Erreur lors de l\'application de l\'emploi du temps: ' + error.message });
   }
 });
 
