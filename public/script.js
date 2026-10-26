@@ -127,7 +127,7 @@
             return '';
         }
 
-        // Listes strictes des enseignants par section
+        // Listes strictes des enseignants par section (Séparation stricte ; seule Amal (Anglais) est dans Filles et Primaire)
         const maleTeachersList = [
             'Mohamed', 'Abas', 'Jaber', 'Imad', 'Kamel', 'Kenneh', 'Majed', 'Mohamed Ali', 'Morched', 
             'Saeed', 'Sami', 'Sylvano', 'Tonga', 'Oumarou', 'Zine', 'Youssouf'
@@ -135,15 +135,16 @@
 
         const femaleTeachersList = [
             'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-            'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe'
+            'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe',
+            'Asma', 'Doha', 'Hajer', 'Hana', 'Ines', 'Maha', 'Mervet', 'Nada', 'Nesrine', 'Racha', 'Rania', 'Safa', 'Samar', 'Soumaya', 'Wafa', 'Yasmine'
         ];
 
         const primaireTeachersList = [
-            'Mouna', 'Hajar', 'Meriem', 'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal'
+            'Mouna', 'Hajar', 'Meriem', 'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Amal'
         ];
 
         const maternelleTeachersList = [
-            'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Siham', 'Farah', 'Music', 'Musique', 'Amal'
+            'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Siham'
         ];
 
         const isMusicTeacher = (name) => {
@@ -165,9 +166,65 @@
             return n.includes('amal') || n.startsWith('amal');
         };
 
+        // Seule Amal (Anglais) intervient dans deux sections (Filles et Primaire)
         const isDualSectionTeacher = (username) => {
             if (!username) return false;
-            return isMusicTeacher(username) || isAmalSoleTeacher(username);
+            return isAmalSoleTeacher(username);
+        };
+
+        const isClassAllowedInSectionClient = (className, section) => {
+            const c = cleanClassNameClient(className || '');
+            if (!c) return false;
+            const up = c.toUpperCase();
+            const sec = String(section || '').trim().toLowerCase();
+            if (sec === 'garcons' || sec === 'filles') {
+                return /^(PEI[1-5]|DP[1-2])$/i.test(up);
+            }
+            if (sec === 'primaire') {
+                return /^PP[1-5]$/i.test(up);
+            }
+            if (sec === 'maternelle') {
+                return /^(PS|MS|GS)$/i.test(up);
+            }
+            return true;
+        };
+
+        const isTeacherAllowedInSectionClient = (teacherName, section) => {
+            const t = String(teacherName || '').trim();
+            if (!t || t === '—' || t === '-') return true;
+            const sec = String(section || '').trim().toLowerCase();
+            const low = t.toLowerCase();
+
+            // Exception unique : Amal (Anglais) autorisée uniquement dans 'filles' et 'primaire'
+            if (isAmalSoleTeacher(t)) {
+                return sec === 'filles' || sec === 'primaire';
+            }
+            if (isAmalArabeTeacher(t)) {
+                return sec === 'filles';
+            }
+
+            const inMale = maleTeachersList.some(m => m.toLowerCase() === low || low.startsWith(m.toLowerCase() + ' '));
+            const inFemale = femaleTeachersList.some(f => f.toLowerCase() === low || low.startsWith(f.toLowerCase() + ' '));
+            const inPrimaire = primaireTeachersList.some(p => p.toLowerCase() === low || low.startsWith(p.toLowerCase() + ' '));
+            const inMaternelle = maternelleTeachersList.some(k => k.toLowerCase() === low || low.startsWith(k.toLowerCase() + ' '));
+
+            if (sec === 'garcons') {
+                if (inFemale || inPrimaire || inMaternelle) return false;
+                return true;
+            }
+            if (sec === 'filles') {
+                if (inMale || inPrimaire || inMaternelle) return false;
+                return true;
+            }
+            if (sec === 'primaire') {
+                if (inMale || inFemale || inMaternelle) return false;
+                return true;
+            }
+            if (sec === 'maternelle') {
+                if (inMale || inFemale || inPrimaire) return false;
+                return true;
+            }
+            return true;
         };
 
         function isUserAdminOrSupervisor(user, role) {
@@ -675,7 +732,7 @@
             if (typeof updateCrossSectionToggleUI === 'function') updateCrossSectionToggleUI();
         }
 
-        // Mettre à jour l'affichage du commutateur de section pour les enseignantes multi-sections (Farah, Amal)
+        // Mettre à jour l'affichage du commutateur de section pour Amal (Anglais : Filles et Primaire uniquement)
         function updateDualTeacherSectionButtons() {
             const isDual = (typeof isDualSectionTeacher === 'function') && isDualSectionTeacher(loggedInUser);
             const dualSecSwitch = document.getElementById('dualTeacherSectionSwitch');
@@ -690,8 +747,7 @@
 
             if (isDual) {
                 const teacherDisplayName = (typeof loggedInTeacherTable !== 'undefined' && loggedInTeacherTable) ? loggedInTeacherTable : loggedInUser;
-                const isMusic = (typeof isMusicTeacher === 'function') && isMusicTeacher(loggedInUser);
-                const teacherIcon = isMusic ? 'fas fa-music' : 'fas fa-chalkboard-teacher';
+                const teacherIcon = 'fas fa-chalkboard-teacher';
                 
                 const secLabel = document.getElementById('dualSecTeacherLabel');
                 if (secLabel) {
@@ -709,13 +765,16 @@
                 }
             }
 
-            // Mise à jour des boutons dans l'en-tête
+            // Mise à jour des boutons dans l'en-tête (Amal : Filles et Primaire uniquement, Maternelle masquée)
             const btnFilles = document.getElementById('teacherSecBtn_filles');
             const btnPrimaire = document.getElementById('teacherSecBtn_primaire');
             const btnMaternelle = document.getElementById('teacherSecBtn_maternelle');
             if (btnFilles) btnFilles.classList.toggle('active', currentSection === 'filles');
             if (btnPrimaire) btnPrimaire.classList.toggle('active', currentSection === 'primaire');
-            if (btnMaternelle) btnMaternelle.classList.toggle('active', currentSection === 'maternelle');
+            if (btnMaternelle) {
+                btnMaternelle.style.display = 'none';
+                btnMaternelle.classList.remove('active');
+            }
 
             // Mise à jour des boutons dans la bannière
             const bannerBtnFilles = document.getElementById('dualBannerBtn_filles');
@@ -723,30 +782,31 @@
             const bannerBtnMaternelle = document.getElementById('dualBannerBtn_maternelle');
             if (bannerBtnFilles) bannerBtnFilles.classList.toggle('active', currentSection === 'filles');
             if (bannerBtnPrimaire) bannerBtnPrimaire.classList.toggle('active', currentSection === 'primaire');
-            if (bannerBtnMaternelle) bannerBtnMaternelle.classList.toggle('active', currentSection === 'maternelle');
+            if (bannerBtnMaternelle) {
+                bannerBtnMaternelle.style.display = 'none';
+                bannerBtnMaternelle.classList.remove('active');
+            }
 
             // Mise à jour du texte de statut dans la bannière
             const statusText = document.getElementById('dualCurrentSectionText');
             if (statusText) {
                 if (currentSection === 'primaire') {
                     statusText.innerHTML = `Section active : <span class="active-sec-pill pill-primaire">Section Primaire 🎒📚</span>`;
-                } else if (currentSection === 'maternelle') {
-                    statusText.innerHTML = `Section active : <span class="active-sec-pill pill-maternelle">Section Maternelle 🧸🎨</span>`;
                 } else {
                     statusText.innerHTML = `Section active : <span class="active-sec-pill pill-filles">Section Filles 👧</span>`;
                 }
             }
         }
 
-        // Permet aux enseignantes multi-sections (Farah, Amal) de basculer instantanément entre Section Filles, Section Primaire et Section Maternelle
+        // Permet à Amal (Anglais) de basculer instantanément entre Section Filles et Section Primaire
         async function switchDualTeacherSection(newSection) {
             if (!newSection) return;
-            if (newSection !== 'filles' && newSection !== 'primaire' && newSection !== 'maternelle') {
+            if (newSection !== 'filles' && newSection !== 'primaire') {
                 newSection = 'filles';
             }
             if (newSection === currentSection) return;
             
-            console.log(`🔄 Enseignante Multi-sections (${loggedInUser}) - Basculement de section: ${currentSection} ➔ ${newSection}`);
+            console.log(`🔄 Enseignante Amal (${loggedInUser}) - Basculement de section: ${currentSection} ➔ ${newSection}`);
             currentSection = newSection;
             localStorage.setItem('selectedSection', newSection);
             localStorage.setItem('currentSection', newSection);
@@ -763,9 +823,7 @@
                 await fetchPlanData(currentWeek);
             }
             
-            const secLabel = newSection === 'primaire' 
-                ? 'Section Primaire 🎒📚' 
-                : (newSection === 'maternelle' ? 'Section Maternelle 🧸🎨' : 'Section Filles 👧');
+            const secLabel = newSection === 'primaire' ? 'Section Primaire 🎒📚' : 'Section Filles 👧';
             displayAlert(`Section active : <strong>${secLabel}</strong>. Vous pouvez maintenant remplir et modifier le plan de cette section.`, false);
         }
 
@@ -3720,47 +3778,32 @@
                     window.availableWeeklyPlans = fetched.availableWeeklyPlans || [];
                 } 
 
-                primaryRows.forEach(row => {
-                    if (row) {
-                        row._section = currentSection;
-                        row.isReadOnlyCrossSection = false;
-                        Object.keys(row).forEach(k => {
-                            if (k.trim().toLowerCase() === 'classe' && row[k]) {
-                                row[k] = cleanClassNameClient(row[k]) || row[k];
+                // Filtrage strict par section : chaque section est totalement indépendante (aucun mélange de classes ni d'enseignants d'une autre section)
+                primaryRows = primaryRows.filter(row => {
+                    if (!row || typeof row !== 'object') return false;
+                    row._section = currentSection;
+                    row.isReadOnlyCrossSection = false;
+                    let clsVal = '';
+                    Object.keys(row).forEach(k => {
+                        const kl = k.trim().toLowerCase();
+                        if (kl === 'classe' && row[k]) {
+                            row[k] = cleanClassNameClient(row[k]) || row[k];
+                            clsVal = row[k];
+                        } else if ((kl === 'enseignant' || kl === 'enseignante') && row[k]) {
+                            if (!isTeacherAllowedInSectionClient(row[k], currentSection)) {
+                                row[k] = '';
                             }
-                        });
+                        }
+                    });
+                    if (clsVal && !isClassAllowedInSectionClient(clsVal, currentSection)) {
+                        return false;
                     }
+                    return true;
                 });
 
-                // Charger les données de la section opposée si la consultation inter-section est activée
-                let crossSectionRows = [];
-                if (showCrossSectionView) {
-                    let oppSection = (currentSection === 'garcons') ? 'filles' : (currentSection === 'filles' ? 'garcons' : (currentSection === 'primaire' ? 'maternelle' : 'primaire'));
-                    if (oppSection) {
-                        try {
-                            const rOpp = await fetch(`/api/plans/${week}?section=${oppSection}`);
-                            if (rOpp.ok) {
-                                const fetchedOpp = await rOpp.json();
-                                crossSectionRows = (fetchedOpp && fetchedOpp.planData) || [];
-                                crossSectionRows.forEach(row => {
-                                    if (row) {
-                                        row._section = oppSection;
-                                        row.isReadOnlyCrossSection = true;
-                                        Object.keys(row).forEach(k => {
-                                            if (k.trim().toLowerCase() === 'classe' && row[k]) {
-                                                row[k] = cleanClassNameClient(row[k]) || row[k];
-                                            }
-                                        });
-                                    }
-                                });
-                            }
-                        } catch (eOpp) {
-                            console.warn('Erreur chargement cross section:', eOpp);
-                        }
-                    }
-                }
-
-                planData = [...primaryRows, ...crossSectionRows];
+                // Séparation stricte entre les sections : ne jamais mélanger les lignes d'une autre section
+                showCrossSectionView = false;
+                planData = [...primaryRows];
                 updateProgressBar(90); 
 
                 if (planData.length > 0) {
@@ -4120,13 +4163,13 @@
                 } 
             }; 
 
-            let ens = ensK ? getUniq(ensK) : []; 
+            let ens = ensK ? getUniq(ensK).filter(t => isTeacherAllowedInSectionClient(t, currentSection)) : []; 
             if (isTeacherOnly) {
                 if (ens.length === 0) {
                     ens = [loggedInTeacherTable || loggedInUser];
                 }
             }
-            const cls = clsK ? getUniq(clsK).filter(c => (typeof isClassVisibleOnTable === 'function' ? isClassVisibleOnTable(c, currentSection) : true)) : []; 
+            const cls = clsK ? getUniq(clsK).filter(c => isClassAllowedInSectionClient(c, currentSection) && (typeof isClassVisibleOnTable === 'function' ? isClassVisibleOnTable(c, currentSection) : true)) : []; 
             const per = perK ? getUniq(perK) : []; 
             const mat = matK ? getUniq(matK) : []; 
             
@@ -8211,9 +8254,7 @@ function updateAdminSpecialDaysClassDropdown() {
     const sec = secSelect ? secSelect.value : (currentSection || 'garcons');
     
     let classes = [];
-    if (sec === 'garcons') {
-        classes = ['PEI1 Garçons', 'PEI2 Garçon', 'PEI3 Garçon', 'PEI4 Garçon', 'PEI5 Garçon', 'DP2 Garçons'];
-    } else if (sec === 'filles') {
+    if (sec === 'garcons' || sec === 'filles') {
         classes = ['PEI1', 'PEI2', 'PEI3', 'PEI4', 'PEI5', 'DP1', 'DP2'];
     } else if (sec === 'maternelle') {
         classes = ['PS', 'MS', 'GS'];
@@ -16038,13 +16079,16 @@ async function loadAdminScheduleForClass() {
             }
         });
 
-        window.currentAdminScheduleSlots = Array.from(dedupedMap.values());
-        window.adminScheduleTeachersCache = (data.teachers || []).filter(t => t && String(t).trim() !== '—');
+        window.currentAdminScheduleSlots = Array.from(dedupedMap.values()).map(s => ({
+            ...s,
+            enseignant: (s.enseignant && isTeacherAllowedInSectionClient(s.enseignant, targetSection)) ? s.enseignant : ''
+        }));
+        window.adminScheduleTeachersCache = (data.teachers || []).filter(t => t && String(t).trim() !== '—' && isTeacherAllowedInSectionClient(t, targetSection));
         window.adminScheduleSubjectsCache = (data.distinctSubjects || []).filter(m => !isPlaceholderMat(m));
         window.currentClassSubjectTeachersMap = {};
         if (data.subjectTeachersMap && typeof data.subjectTeachersMap === 'object') {
             for (const [m, t] of Object.entries(data.subjectTeachersMap)) {
-                if (!isPlaceholderMat(m) && t && String(t).trim() !== '—') {
+                if (!isPlaceholderMat(m) && t && String(t).trim() !== '—' && isTeacherAllowedInSectionClient(t, targetSection)) {
                     window.currentClassSubjectTeachersMap[m.trim()] = String(t).trim();
                 }
             }

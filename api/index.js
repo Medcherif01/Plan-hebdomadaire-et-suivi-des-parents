@@ -363,20 +363,17 @@ const maleTeachers = [
 
 const femaleTeachers = [
   'Amina', 'Fatima', 'Khadija', 'Mariam', 'Salma', 'Zainab', 'Nour', 'Houda', 
-  'Leila', 'Sarah', 'Zohra', 'Farah', 'Music', 'Musique', 'Amal', 'Amal Arabe',
-  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Mouna', 'Siham', 'Hajar', 'Meriem', 
-  'Salma P', 'Khadija P', 'Aicha', 'Hanane',
-  'أمينة', 'فاطمة', 'خديجة', 'مريم', 'سلمى', 'زينب', 'نور', 'هدى', 'ليلى', 'سارة', 'زهرة',
-  'نادية', 'سميرة', 'إيمان', 'فاطمة الزهراء', 'منى', 'سهام', 'هاجر', 'عائشة', 'حنان', 'أمل', 'فرح'
+  'Leila', 'Sarah', 'Zohra', 'Farah', 'Amal', 'Amal Arabe',
+  'أمينة', 'فاطمة', 'خديجة', 'مريم', 'سلمى', 'زينب', 'نور', 'هدى', 'ليلى', 'سارة', 'زهرة', 'أمل', 'فرح'
 ];
 
 const primaireTeachers = [
-  'Mouna', 'Hajar', 'Meriem', 'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Farah', 'Music', 'Musique', 'Amal',
-  'منى', 'هاجر', 'مريم', 'عائشة', 'حنان'
+  'Mouna', 'Hajar', 'Meriem', 'Salma P', 'Khadija P', 'Aicha', 'Hanane', 'Amal',
+  'منى', 'هاجر', 'مريم', 'عائشة', 'حنان', 'أمل'
 ];
 
 const maternelleTeachers = [
-  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Siham', 'Farah', 'Music', 'Musique', 'Amal',
+  'Nadia', 'Samira', 'Imane', 'Fatima Zahra', 'Siham',
   'نادية', 'سميرة', 'إيمان', 'فاطمة الزهراء', 'سهام'
 ];
 
@@ -407,7 +404,7 @@ const isAmalSoleTeacher = (name) => {
   if (!name) return false;
   const n = String(name).trim().toLowerCase();
   if (isAmalArabeTeacher(n)) return false;
-  return n.includes('amal') || n.startsWith('amal') || n.includes('أمل');
+  return n === 'amal' || n.startsWith('amal ') || n.includes('amal') || n === 'أمل';
 };
 
 function detectLessonLanguage(enseignant, matiere, lecon, travaux) {
@@ -430,19 +427,16 @@ function detectLessonLanguage(enseignant, matiere, lecon, travaux) {
   return 'fr';
 }
 
+// EXCEPTION UNIQUE : Seule Amal (Anglais) intervient dans deux sections (Filles et Primaire uniquement).
 const isDualSectionTeacher = (name) => {
   if (!name) return false;
-  return isMusicTeacher(name) || isAmalSoleTeacher(name);
+  return isAmalSoleTeacher(name);
 };
 
 const isDualMusicTeacher = isDualSectionTeacher;
 
 // ========================================================================
 // SÉPARATION STRICTE ET DÉFINITIVE DES SECTIONS
-// ========================================================================
-// ========================================================================
-// NORMALISATION CANONIQUE DES NOMS DE CLASSES (SANS "GARÇONS" / "FILLES")
-// ET INDÉPENDANCE STRICTE DES SECTIONS
 // ========================================================================
 function cleanClassNameServer(rawClass) {
   if (!rawClass) return '';
@@ -461,23 +455,86 @@ function cleanClassNameServer(rawClass) {
   return str;
 }
 
+function isClassAllowedInSection(className, section) {
+  const sec = String(section || 'garcons').toLowerCase().trim();
+  const c = cleanClassNameServer(className).toUpperCase();
+  if (!c) return false;
+  const isMat = isMaternelleClassServer(c) || /^(PS|MS|GS|KG\s*[1-3])$/i.test(c);
+  const isPrim = /^(PP\s*[1-5]|CP|CE\s*[1-2]|CM\s*[1-2])$/i.test(c);
+  const isSec = /^(PEI\s*[1-5]|DP\s*[1-2])$/i.test(c);
+
+  if (sec === 'maternelle') return isMat || (!isPrim && !isSec);
+  if (sec === 'primaire') return isPrim || (!isMat && !isSec);
+  if (sec === 'garcons' || sec === 'filles') return isSec || (!isMat && !isPrim);
+  return true;
+}
+
+function isTeacherAllowedInSection(teacherName, section) {
+  if (!teacherName) return true;
+  const t = String(teacherName).trim();
+  if (!t || t === '—' || t === '-' || t === '–') return true;
+  const sec = String(section || 'garcons').toLowerCase().trim();
+  const tLow = t.toLowerCase();
+
+  // Exception unique : Amal (Anglais) est autorisée UNIQUEMENT en Filles et Primaire
+  if (isAmalSoleTeacher(t)) {
+    return sec === 'filles' || sec === 'primaire';
+  }
+
+  const inMale = maleTeachers.some(m => m.toLowerCase() === tLow);
+  const inFemale = femaleTeachers.some(f => f.toLowerCase() === tLow) && !isAmalSoleTeacher(t);
+  const inPrimaire = primaireTeachers.some(p => p.toLowerCase() === tLow) && !isAmalSoleTeacher(t);
+  const inMaternelle = maternelleTeachers.some(m => m.toLowerCase() === tLow);
+
+  if (sec === 'garcons') {
+    if (inFemale || inPrimaire || inMaternelle || isAmalArabeTeacher(t)) return false;
+    return true;
+  }
+  if (sec === 'filles') {
+    if (inMale || inPrimaire || inMaternelle) return false;
+    return true;
+  }
+  if (sec === 'primaire') {
+    if (inMale || inFemale || inMaternelle || isAmalArabeTeacher(t)) return false;
+    return true;
+  }
+  if (sec === 'maternelle') {
+    if (inMale || inFemale || inPrimaire || isAmalArabeTeacher(t)) return false;
+    return true;
+  }
+  return true;
+}
+
 function isRowAllowedForSection(row, targetSection) {
   if (!row || typeof row !== 'object') return false;
   const sec = String(targetSection || 'garcons').toLowerCase().trim();
 
   // Si la ligne porte explicitement une AUTRE section valide, l'exclure pour ne jamais mélanger les sections
-  if (row._section) {
-    const rowSec = String(row._section).toLowerCase().trim();
+  if (row._section || row.Section || row.section) {
+    const rowSec = String(row._section || row.Section || row.section).toLowerCase().trim();
     if (['garcons', 'filles', 'primaire', 'maternelle'].includes(rowSec) && rowSec !== sec) {
       return false;
     }
   }
 
-  // Nettoyer le nom de la classe sur la ligne pour éviter toute répétition ("PEI1 Garçons" -> "PEI1")
   const clsKey = (typeof findKey === 'function' ? findKey(row, 'Classe') : null) || (row.Classe !== undefined ? 'Classe' : (row.classe !== undefined ? 'classe' : 'Classe'));
-  if (row[clsKey]) {
-    const cleaned = cleanClassNameServer(row[clsKey]);
-    if (cleaned) row[clsKey] = cleaned;
+  const rawClassStr = String(row[clsKey] || '').trim();
+  if (sec === 'garcons' && /\b(filles|fille|girls|banat)\b/i.test(rawClassStr)) return false;
+  if (sec === 'filles' && /\b(garçons|garçon|garcons|garcon|boys|banin)\b/i.test(rawClassStr)) return false;
+
+  if (rawClassStr) {
+    const cleaned = cleanClassNameServer(rawClassStr);
+    if (cleaned) {
+      if (!isClassAllowedInSection(cleaned, sec)) return false;
+      row[clsKey] = cleaned;
+    }
+  }
+
+  // Supprimer immédiatement tout nom d'enseignant appartenant à une autre section
+  const ensKey = (typeof findKey === 'function' ? findKey(row, 'Enseignant') : null) || (row.Enseignant !== undefined ? 'Enseignant' : (row.enseignant !== undefined ? 'enseignant' : 'Enseignant'));
+  const ensVal = String(row[ensKey] || '').trim();
+  if (ensVal && !isTeacherAllowedInSection(ensVal, sec)) {
+    row[ensKey] = '';
   }
 
   row._section = sec;
@@ -489,8 +546,8 @@ function resolveSectionTeacher(section, classe, subject, candidateTeacher, subTe
   const cleanCls = cleanClassNameServer(classe) || String(classe || '').trim();
 
   const cand = String(candidateTeacher || '').trim();
-  // Si un enseignant valide est déjà fourni (ex: import Excel ou tableau de saisie), le conserver strictement
-  if (cand && cand !== '—' && cand !== '-' && cand !== '–') {
+  // Si un enseignant valide de CETTE section est déjà fourni (ex: import Excel ou tableau de saisie), le conserver strictement
+  if (cand && cand !== '—' && cand !== '-' && cand !== '–' && isTeacherAllowedInSection(cand, sec)) {
     return cand;
   }
 
@@ -499,7 +556,8 @@ function resolveSectionTeacher(section, classe, subject, candidateTeacher, subTe
       (!d.section || d.section === sec) &&
       d.classe && isClassMatchServer(cleanClassNameServer(d.classe), cleanCls) &&
       isEquivalentSubjectServer(d.matiere, subject) &&
-      d.enseignant && String(d.enseignant).trim() && String(d.enseignant).trim() !== '—'
+      d.enseignant && String(d.enseignant).trim() && String(d.enseignant).trim() !== '—' &&
+      isTeacherAllowedInSection(d.enseignant, sec)
     );
     if (exactMatch && exactMatch.enseignant) return exactMatch.enseignant.trim();
 
@@ -507,20 +565,38 @@ function resolveSectionTeacher(section, classe, subject, candidateTeacher, subTe
       (!d.section || d.section === sec) &&
       (d.classe === 'all' || !d.classe) &&
       isEquivalentSubjectServer(d.matiere, subject) &&
-      d.enseignant && String(d.enseignant).trim() && String(d.enseignant).trim() !== '—'
+      d.enseignant && String(d.enseignant).trim() && String(d.enseignant).trim() !== '—' &&
+      isTeacherAllowedInSection(d.enseignant, sec)
     );
     if (fallbackMatch && fallbackMatch.enseignant) return fallbackMatch.enseignant.trim();
   }
 
-  return cand || '';
+  return (cand && isTeacherAllowedInSection(cand, sec)) ? cand : '';
 }
 
 function filterPlanDataBySection(rows, section) {
   if (!Array.isArray(rows)) return [];
   const sec = String(section || 'garcons').toLowerCase().trim();
+
+  let hasValidSectionTeachers = false;
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const ensKey = (typeof findKey === 'function' ? findKey(r, 'Enseignant') : null) || 'Enseignant';
+    const ens = String(r[ensKey] || r.Enseignant || r.enseignant || '').trim();
+    if (ens && ens !== '—' && ens !== '-' && isTeacherAllowedInSection(ens, sec)) {
+      hasValidSectionTeachers = true;
+      break;
+    }
+  }
+
   const result = [];
   for (const r of rows) {
     if (!r || typeof r !== 'object') continue;
+    const ensKey = (typeof findKey === 'function' ? findKey(r, 'Enseignant') : null) || 'Enseignant';
+    const ens = String(r[ensKey] || r.Enseignant || r.enseignant || '').trim();
+    if (hasValidSectionTeachers && ens && ens !== '—' && ens !== '-' && !isTeacherAllowedInSection(ens, sec)) {
+      continue;
+    }
     const copy = { ...r };
     if (isRowAllowedForSection(copy, sec)) {
       result.push(copy);
@@ -1915,33 +1991,20 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Ce compte a été supprimé par l\'administrateur.' });
     }
 
-    // 2. Contrôle de section strict (enseignantes / enseignants / primaire / maternelle)
-    if (isDualMusicTeacher(trimmedUsername)) {
-      if (section === 'garcons') {
-        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignante '${trimmedUsername}' n'appartient qu'aux sections Filles, Primaire et Maternelle.` });
+    // 2. Contrôle de section strict (indépendance totale entre Garçons, Filles, Primaire, Maternelle ; seule Amal Anglais est autorisée en Filles et Primaire)
+    if (!isTeacherAllowedInSection(trimmedUsername, section)) {
+      if (isAmalSoleTeacher(trimmedUsername)) {
+        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignante '${trimmedUsername}' n'appartient qu'aux sections Filles et Primaire.` });
       }
-      // Autorisé pour la Section Filles, la Section Primaire et la Section Maternelle
-    } else {
-      if (section === 'garcons' && (femaleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername) || maternelleTeachers.includes(trimmedUsername))) {
-        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Garçons.` });
-      }
-      if (section === 'filles' && (maleTeachers.includes(trimmedUsername) || primaireTeachers.includes(trimmedUsername) || maternelleTeachers.includes(trimmedUsername))) {
-        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Filles.` });
-      }
-      if (section === 'primaire' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername) || (maternelleTeachers.includes(trimmedUsername) && !primaireTeachers.includes(trimmedUsername)))) {
-        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Primaire.` });
-      }
-      if (section === 'maternelle' && (maleTeachers.includes(trimmedUsername) || femaleTeachers.includes(trimmedUsername) || (primaireTeachers.includes(trimmedUsername) && !maternelleTeachers.includes(trimmedUsername)))) {
-        return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à la Section Maternelle.` });
-      }
+      return res.status(403).json({ success: false, message: `Accès refusé : L'enseignant(e) '${trimmedUsername}' n'appartient pas à cette section.` });
     }
 
-    // 3. Recherche de l'utilisateur dans la base de données (par nom d'utilisateur d'accès ou nom d'enseignant dans le tableau)
-    const isDual = isDualMusicTeacher(trimmedUsername);
+    // 3. Recherche de l'utilisateur dans la base de données (uniquement dans sa section, ou Filles/Primaire pour Amal)
+    const isAmalDual = isAmalSoleTeacher(trimmedUsername);
     const userDoc = await db.collection('users').findOne(
-      isDual 
+      isAmalDual
         ? {
-            section: { $in: ['filles', 'primaire', 'maternelle'] },
+            section: { $in: ['filles', 'primaire'] },
             $or: [
               { username: trimmedUsername },
               { tableTeacherName: trimmedUsername },
@@ -1949,7 +2012,7 @@ app.post('/api/login', async (req, res) => {
               { tableTeacherName: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } }
             ]
           }
-        : { 
+        : {
             section: section,
             $or: [
               { username: trimmedUsername },
@@ -2014,13 +2077,19 @@ app.get('/api/admin/users', async (req, res) => {
 
     let users = await db.collection('users').find({ section: section }).toArray();
 
-    // Assurer que la liste par défaut des enseignants est visible dans le panel pour configuration facile
+    // Assurer que la liste par défaut des enseignants de CETTE section uniquement est visible dans le panel
     const defaultList = section === 'filles' ? femaleTeachers : (section === 'maternelle' ? maternelleTeachers : (section === 'primaire' ? primaireTeachers : maleTeachers));
     const existingUserMap = new Map();
-    users.forEach(u => existingUserMap.set(u.username, u));
+    users.forEach(u => {
+      if (isTeacherAllowedInSection(u.username, section)) {
+        existingUserMap.set(u.username, u);
+      }
+    });
 
     let completeList = [];
     for (const teacherName of defaultList) {
+      if (/[\u0600-\u06FF]/.test(teacherName)) continue;
+      if (!isTeacherAllowedInSection(teacherName, section)) continue;
       const uId = `${section}_${teacherName}`;
       if (deletedUserIds.has(uId)) continue;
       
@@ -2044,27 +2113,17 @@ app.get('/api/admin/users', async (req, res) => {
       }
     }
 
-    // Ajouter les utilisateurs personnalisés ajoutés par l'admin qui ne sont pas dans defaultList
+    // Ajouter les utilisateurs personnalisés ajoutés par l'admin qui appartiennent strictement à cette section
     for (const u of users) {
       if (!deletedUserIds.has(u._id) && !defaultList.includes(u.username)) {
-        if (section === 'garcons' && (femaleTeachers.includes(u.username) || primaireTeachers.includes(u.username) || maternelleTeachers.includes(u.username) || isDualMusicTeacher(u.username))) continue;
-        if (section === 'filles' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || primaireTeachers.includes(u.username) || maternelleTeachers.includes(u.username))) continue;
-        if (section === 'primaire' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || femaleTeachers.includes(u.username))) continue;
-        if (section === 'maternelle' && !isDualMusicTeacher(u.username) && (maleTeachers.includes(u.username) || femaleTeachers.includes(u.username))) continue;
+        if (!isTeacherAllowedInSection(u.username, section)) continue;
+        if (u.tableTeacherName && !isTeacherAllowedInSection(u.tableTeacherName, section)) continue;
         completeList.push(u);
       }
     }
 
     // Filtre de sécurité strict par section
-    if (section === 'garcons') {
-      completeList = completeList.filter(u => !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()) && !maternelleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !isDualMusicTeacher(u.username));
-    } else if (section === 'filles') {
-      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()) && !maternelleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase())));
-    } else if (section === 'primaire') {
-      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && (!maternelleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) || primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()))));
-    } else if (section === 'maternelle') {
-      completeList = completeList.filter(u => isDualMusicTeacher(u.username) || (!maleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()) && !femaleTeachers.some(f => f.toLowerCase() === u.username.toLowerCase()) && (!primaireTeachers.some(p => p.toLowerCase() === u.username.toLowerCase()) || maternelleTeachers.some(m => m.toLowerCase() === u.username.toLowerCase()))));
-    }
+    completeList = completeList.filter(u => isTeacherAllowedInSection(u.username, section) && (!u.tableTeacherName || isTeacherAllowedInSection(u.tableTeacherName, section)));
 
     res.status(200).json(completeList);
   } catch (error) {
@@ -2404,8 +2463,6 @@ function resolveTargetSectionsForImportedRow(row, rawClassVal, teacherVal, sheet
   const explicitRowSec = normalizeImportedSectionName(row?.Section || row?.section || row?._section) || normalizeImportedSectionName(sheetName);
   if (explicitRowSec) {
     if (isAllMode || validAllowed.includes(explicitRowSec)) return [explicitRowSec];
-    // Si l'admin a choisi explicitement UNE seule section (ex: 'garcons') et importe un fichier vers cette section,
-    // si la ligne est PEI/DP on l'accepte uniquement si ce n'est pas un export multi-sections
     if (!isAllMode && validAllowed.length === 1 && /^(PEI\s*[1-5]|DP\s*[1-2])$/i.test(cleanCls) && !row?.Section && !row?.section) {
       return [validAllowed[0]];
     }
@@ -2423,13 +2480,22 @@ function resolveTargetSectionsForImportedRow(row, rawClassVal, teacherVal, sheet
     return [];
   }
 
-  // 5. En mode "Toutes les sections" (ou multi-sections Garçons + Filles), distinguer Garçons et Filles par le nom de l'enseignant s'il est connu
+  // 5. Distinguer strictement la section par le nom de l'enseignant s'il est connu
   const tStr = String(teacherVal || '').trim();
   if (tStr && (isAllMode || validAllowed.length > 1)) {
-    const isMale = (typeof maleTeachers !== 'undefined' ? maleTeachers : []).some(m => m.toLowerCase() === tStr.toLowerCase());
-    const isFemale = (typeof femaleTeachers !== 'undefined' ? femaleTeachers : []).some(f => f.toLowerCase() === tStr.toLowerCase());
-    if (isMale && !isFemale && validAllowed.includes('garcons')) return ['garcons'];
-    if (isFemale && !isMale && validAllowed.includes('filles')) return ['filles'];
+    if (isAmalSoleTeacher(tStr)) {
+      if (/^(PP\s*[1-5]|CP|CE\s*[1-2]|CM\s*[1-2])$/i.test(cleanCls)) return validAllowed.includes('primaire') ? ['primaire'] : [];
+      if (/^(PEI\s*[1-5]|DP\s*[1-2])$/i.test(cleanCls)) return validAllowed.includes('filles') ? ['filles'] : [];
+      return validAllowed.filter(s => s === 'filles' || s === 'primaire');
+    }
+    const isMale = maleTeachers.some(m => m.toLowerCase() === tStr.toLowerCase());
+    const isFemale = femaleTeachers.some(f => f.toLowerCase() === tStr.toLowerCase());
+    const isPrim = primaireTeachers.some(p => p.toLowerCase() === tStr.toLowerCase());
+    const isMat = maternelleTeachers.some(m => m.toLowerCase() === tStr.toLowerCase());
+    if (isMale && validAllowed.includes('garcons')) return ['garcons'];
+    if (isFemale && validAllowed.includes('filles')) return ['filles'];
+    if (isPrim && validAllowed.includes('primaire')) return ['primaire'];
+    if (isMat && validAllowed.includes('maternelle')) return ['maternelle'];
   }
 
   // 6. Si la classe est PEI1..5 ou DP1..2, elle ne peut aller que dans garcons et/ou filles (jamais primaire/maternelle)
@@ -7922,7 +7988,7 @@ app.post('/api/annual-distribution/sync-from-weekly-plan', async (req, res) => {
       }
       if (!pSec) pSec = 'garcons';
 
-      const secMatch = (pSec === normSec) || (normSec === 'maternelle' && pSec === 'primaire' && !allPlanDocs.some(x => x.section === 'maternelle' && parseInt(x.week, 10) === parseInt(p.week, 10)));
+      const secMatch = (pSec === normSec);
       if (!secMatch) continue;
 
       let w = parseInt(p.week, 10);
@@ -9146,6 +9212,7 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       const rawClsInput = String(row[findKey(row, 'Classe')] || row.Classe || row.classe || '').trim();
       const rawCls = cleanClassNameServer(rawClsInput);
       if (!rawCls || rawCls === '—' || rawCls === '-') return;
+      if (!isClassAllowedInSection(rawCls, section)) return;
 
       const clsLow = rawCls.toLowerCase();
       if (!canonicalClassNames.has(clsLow)) {
@@ -9163,7 +9230,8 @@ app.post('/api/admin/import-schedule-from-plan', async (req, res) => {
       const day = (typeof extractDayNameFromString === 'function' ? extractDayNameFromString(rawJour) : rawJour) || String(rawJour).trim();
       const rawPer = row[findKey(row, 'Période')] || row['Période'] || row.periode || '1';
       const per = String(rawPer).replace(/[^0-9]/g, '') || '1';
-      const ens = String(row[findKey(row, 'Enseignant')] || row['Enseignant'] || row.enseignant || '').trim();
+      const rawEns = String(row[findKey(row, 'Enseignant')] || row['Enseignant'] || row.enseignant || '').trim();
+      const ens = isTeacherAllowedInSection(rawEns, section) ? rawEns : '';
 
       const slotKey = `${day.toLowerCase()}_${per}`;
       const existing = classSlotsMap.get(targetClass).get(slotKey);
@@ -9330,10 +9398,10 @@ app.get('/api/admin/schedule-class', async (req, res) => {
       }
     }
 
-    const classRows = classe
+    const classRows = (classe && isClassAllowedInSection(classe, section))
       ? sourceRows.filter(r => {
           const c = r[findKey(r, 'Classe')];
-          return c && isClassMatchServer(c, classe);
+          return c && isClassAllowedInSection(c, section) && isClassMatchServer(c, classe);
         })
       : [];
 
@@ -9355,7 +9423,8 @@ app.get('/api/admin/schedule-class', async (req, res) => {
       const day = extractDayNameFromString(rawJour) || String(rawJour).trim();
       const rawPer = row[findKey(row, 'Période')] || '1';
       const per = String(rawPer).replace(/[^0-9]/g, '') || String(rawPer).trim();
-      const ens = String(row[findKey(row, 'Enseignant')] || '').trim();
+      const rawEns = String(row[findKey(row, 'Enseignant')] || '').trim();
+      const ens = isTeacherAllowedInSection(rawEns, section) ? rawEns : '';
       const lec = String(row[findKey(row, 'Leçon')] || '').trim();
       const dev = String(row[findKey(row, 'Devoirs')] || '').trim();
       const obj = String(row[findKey(row, 'Objectifs')] || '').trim();
@@ -9391,7 +9460,7 @@ app.get('/api/admin/schedule-class', async (req, res) => {
     });
 
     // Si aucun créneau trouvé dans les plans pour cette classe, vérifier la sauvegarde canonique dans class_schedules
-    if (slotDedupeMap.size === 0 && classe) {
+    if (slotDedupeMap.size === 0 && classe && isClassAllowedInSection(classe, section)) {
       try {
         const savedSched = await db.collection('class_schedules').findOne({
           section,
@@ -9403,12 +9472,14 @@ app.get('/api/admin/schedule-class', async (req, res) => {
               const day = extractDayNameFromString(s.jour) || String(s.jour || '').trim();
               const per = String(s.periode || '1').replace(/[^0-9]/g, '') || '1';
               const slotKey = `${day.toLowerCase()}_${per}`;
+              const rawEns = String(s.enseignant || '').trim();
+              const ens = isTeacherAllowedInSection(rawEns, section) ? rawEns : '';
               if (!slotDedupeMap.has(slotKey)) {
                 slotDedupeMap.set(slotKey, {
                   jour: day,
                   periode: per,
                   matiere: String(s.matiere).trim(),
-                  enseignant: String(s.enseignant || '').trim(),
+                  enseignant: ens,
                   hasContent: false,
                   lessonPreview: '',
                   homeworkPreview: ''
@@ -9441,7 +9512,7 @@ app.get('/api/admin/schedule-class', async (req, res) => {
     classRows.forEach(r => {
       const m = String(r[findKey(r, 'Matière')] || '').trim();
       const e = String(r[findKey(r, 'Enseignant')] || '').trim();
-      if (!isPlaceholderMat(m) && e && e !== '—' && e !== '-' && !subjectTeachersMap[m]) {
+      if (!isPlaceholderMat(m) && e && e !== '—' && e !== '-' && isTeacherAllowedInSection(e, section) && !subjectTeachersMap[m]) {
         subjectTeachersMap[m] = e;
       }
     });
@@ -9452,7 +9523,7 @@ app.get('/api/admin/schedule-class', async (req, res) => {
         $or: [{ classe: classe }, { classe: 'all' }, { classe: '' }, { classe: { $exists: false } }]
       }).toArray();
       savedMappings.forEach(m => {
-        if (!isPlaceholderMat(m.matiere) && m.enseignant && String(m.enseignant).trim() && String(m.enseignant).trim() !== '—') {
+        if (!isPlaceholderMat(m.matiere) && m.enseignant && String(m.enseignant).trim() && String(m.enseignant).trim() !== '—' && isTeacherAllowedInSection(m.enseignant, section)) {
           if (m.classe && isClassMatchServer(m.classe, classe)) {
             subjectTeachersMap[m.matiere.trim()] = m.enseignant.trim();
           } else if (!subjectTeachersMap[m.matiere.trim()]) {
@@ -9474,7 +9545,7 @@ app.get('/api/admin/schedule-class', async (req, res) => {
             }
           }
         }
-        if (linkedTeacher && linkedTeacher.trim() && (!s.enseignant || !s.enseignant.trim() || s.enseignant === '—')) {
+        if (linkedTeacher && linkedTeacher.trim() && isTeacherAllowedInSection(linkedTeacher, section) && (!s.enseignant || !s.enseignant.trim() || s.enseignant === '—')) {
           s.enseignant = linkedTeacher.trim();
         }
       }
@@ -9488,18 +9559,24 @@ app.get('/api/admin/schedule-class', async (req, res) => {
       }).toArray();
       users.forEach(u => {
         const name = (u.nom || u.username || '').trim();
-        if (name) teachersSet.add(name);
+        if (name && isTeacherAllowedInSection(name, section)) teachersSet.add(name);
       });
     } catch (e) {}
 
-    // Toujours inclure tous les enseignants présents dans le plan hebdomadaire / Excel importé
+    // Toujours inclure tous les enseignants de cette section présents dans le plan hebdomadaire / Excel importé
     sourceRows.forEach(r => {
       const e = String(r[findKey(r, 'Enseignant')] || '').trim();
-      if (e && e !== '—' && e !== '-') teachersSet.add(e);
+      if (e && e !== '—' && e !== '-' && isTeacherAllowedInSection(e, section)) teachersSet.add(e);
     });
     const teachers = Array.from(teachersSet).sort();
 
-    const distinctClasses = Array.from(new Set(sourceRows.map(r => String(r[findKey(r, 'Classe')] || '').trim()).filter(c => c && c !== '—' && c !== '-'))).sort();
+    const distinctClasses = Array.from(
+      new Set(
+        sourceRows
+          .map(r => cleanClassNameServer(String(r[findKey(r, 'Classe')] || '').trim()))
+          .filter(c => c && c !== '—' && c !== '-' && isClassAllowedInSection(c, section))
+      )
+    ).sort();
     const filledSlotsCount = slots.filter(s => s.hasContent).length;
 
     res.status(200).json({
@@ -9533,7 +9610,7 @@ app.get('/api/admin/class-subject-teachers', async (req, res) => {
     const docs = await db.collection('class_subject_teachers').find(query).toArray();
     const mapping = {};
     docs.forEach(d => {
-      if (d.matiere && d.enseignant && d.matiere.trim() !== '—' && d.matiere.trim() !== '-') {
+      if (d.matiere && d.enseignant && d.matiere.trim() !== '—' && d.matiere.trim() !== '-' && isTeacherAllowedInSection(d.enseignant, section)) {
         mapping[d.matiere.trim()] = d.enseignant.trim();
       }
     });
