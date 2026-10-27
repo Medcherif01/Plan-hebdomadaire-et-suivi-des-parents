@@ -3796,16 +3796,13 @@ function getDayNameFr(dateStr) {
 
 const calculateDailyStar = (evaluations) => {
   if (!evaluations || evaluations.length === 0) return 0;
-  const completedHomework = evaluations.filter(ev => ev.status === 'Fait').length;
-  const partiallyCompleted = evaluations.filter(ev => ev.status === 'Partiellement Fait').length;
-  const hasGoodParticipation = evaluations.every(ev => (ev.participation || 0) > 5);
-  const hasGoodBehavior = evaluations.every(ev => (ev.behavior || 0) > 5);
-  if (completedHomework === evaluations.length && hasGoodParticipation && hasGoodBehavior) {
+  const validEvals = evaluations.filter(ev => ev && ev.status !== 'Absent');
+  if (validEvals.length === 0) return 0;
+  const completedHomework = validEvals.filter(ev => ev.status === 'Fait').length;
+  const partiallyCompleted = validEvals.filter(ev => ev.status === 'Partiellement Fait').length;
+  const feasibilityRate = ((completedHomework * 1.0 + partiallyCompleted * 0.5) / validEvals.length) * 100;
+  if (feasibilityRate > 70) {
     return 1;
-  }
-  const halfOrMore = (completedHomework + partiallyCompleted) >= (evaluations.length / 2);
-  if (halfOrMore && hasGoodParticipation && hasGoodBehavior) {
-    return 0.5;
   }
   return 0;
 };
@@ -3813,23 +3810,143 @@ const calculateDailyStar = (evaluations) => {
 const calculateStarsLegacy = (evaluations) => {
   const evalsByDay = {};
   (evaluations || []).forEach(ev => {
+    if (!ev || !ev.date) return;
     if (!evalsByDay[ev.date]) evalsByDay[ev.date] = [];
     evalsByDay[ev.date].push(ev);
   });
   let stars = 0;
   for (const date in evalsByDay) {
-    const dayEvals = evalsByDay[date];
-    const completedHomework = dayEvals.filter(ev => ev.status === 'Fait' || ev.status === 'Partiellement Fait').length;
-    const completionRate = (completedHomework / dayEvals.length) * 100;
-    const hasGoodCompletion = completionRate > 70;
-    const goodBehavior = dayEvals.every(ev => (ev.behavior || 0) > 5);
-    const goodParticipation = dayEvals.every(ev => (ev.participation || 0) > 5);
-    if (hasGoodCompletion && goodBehavior && goodParticipation) {
-      stars++;
+    const dayEvals = evalsByDay[date].filter(ev => ev.status !== 'Absent');
+    if (dayEvals.length === 0) continue;
+    const doneCount = dayEvals.filter(ev => ev.status === 'Fait').length;
+    const partialCount = dayEvals.filter(ev => ev.status === 'Partiellement Fait').length;
+    const feasibilityRate = ((doneCount * 1.0 + partialCount * 0.5) / dayEvals.length) * 100;
+    if (feasibilityRate > 70) {
+      stars += 1;
     }
   }
   return stars;
 };
+
+// Règle des 2 semaines : Si 2 semaines (>= 14 jours ou >= 2 semaines d'écart) passent
+// et qu'un devoir n'est pas évalué par l'enseignant, il est automatiquement considéré "Fait" avec 10/10 en comportement/participation.
+function isHomeworkAutoValidatedAfterTwoWeeks(exactDateStr, hwWeekNum, currentWeekNum) {
+  if (exactDateStr && /^\d{4}-\d{2}-\d{2}$/.test(String(exactDateStr).trim())) {
+    const hwDate = new Date(String(exactDateStr).trim() + 'T00:00:00Z');
+    if (!isNaN(hwDate.getTime())) {
+      const now = new Date();
+      const diffDays = (now.getTime() - hwDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays >= 14) return true;
+      if (diffDays < 0) return false;
+    }
+  }
+  const wNum = Number(hwWeekNum);
+  const curW = Number(currentWeekNum);
+  if (wNum > 0 && curW > 0 && (curW - wNum) >= 2) {
+    return true;
+  }
+  return false;
+}
+
+// Génère les évaluations automatiques (Fait + 10/10 comportement & participation) pour les devoirs non évalués datant de >= 2 semaines dans la section
+function buildTwoWeekAutoEvaluationsForSection(planDocs, existingEvaluations, authoritativeStudents, section) {
+  const autoEvals = [];
+  if (!Array.isArray(planDocs) || planDocs.length === 0 || !Array.isArray(authoritativeStudents) || authoritativeStudents.length === 0) {
+    return autoEvals;
+  }
+  const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const curWeek = typeof getCurrentWeekNumber === 'function' ? (getCurrentWeekNumber(new Date(), section) || 1) : 1;
+  const secWeeksCfg = (typeof sectionSpecificWeekDateRangesNode !== 'undefined' && sectionSpecificWeekDateRangesNode[section]) || specificWeekDateRangesNode || {};
+
+  // Indexer les évaluations existantes par (classe_norm, date, matiere_norm)
+  const existingSlotSet = new Set();
+  (existingEvaluations || []).forEach(ev => {
+    if (!ev || !ev.class || !ev.date) return;
+    const cNorm = norm(typeof normalizeStudentClass === 'function' ? normalizeStudentClass(ev.class) : ev.class);
+    const rNorm = norm(ev.class);
+    const mNorm = norm(ev.subject || '');
+    const dStr = String(ev.date).trim();
+    if (mNorm) {
+      existingSlotSet.add(`${cNorm}_${dStr}_${mNorm}`);
+      existingSlotSet.add(`${rNorm}_${dStr}_${mNorm}`);
+    }
+    existingSlotSet.add(`${cNorm}_${dStr}`);
+    existingSlotSet.add(`${rNorm}_${dStr}`);
+  });
+
+  const seenHwSlots = new Set();
+  planDocs.forEach(doc => {
+    const wNum = parseInt(doc.week || (doc._id && String(doc._id).includes('_') ? String(doc._id).split('_')[1] : doc._id), 10);
+    if (!wNum || isNaN(wNum)) return;
+    const rawDocSec = String(doc.section || (doc._id && String(doc._id).includes('_') ? String(doc._id).split('_')[0] : section)).trim().toLowerCase();
+    if (rawDocSec && rawDocSec !== section) return;
+
+    const wDates = secWeeksCfg[wNum] || (specificWeekDateRangesNode && specificWeekDateRangesNode[wNum]) || {};
+    const weekStartDate = wDates.start ? new Date(wDates.start + 'T00:00:00Z') : null;
+    const rows = Array.isArray(doc.data) ? doc.data : [];
+
+    rows.forEach(row => {
+      if (!row || typeof row !== 'object') return;
+      const rowDevoirs = String(row[findKey(row, 'Devoirs')] || '').trim();
+      const hasExplicitDevoir = rowDevoirs !== '' && rowDevoirs !== '-' && rowDevoirs !== '—' && rowDevoirs.toLowerCase() !== 'aucun' && rowDevoirs.toLowerCase() !== 'sans';
+      if (!hasExplicitDevoir) return;
+
+      const rowClasse = String(row[findKey(row, 'Classe')] || '').trim();
+      const rowMatiere = String(row[findKey(row, 'Matière')] || '').trim();
+      const rowJour = String(row[findKey(row, 'Jour')] || '').trim();
+      if (!rowClasse || !rowMatiere) return;
+
+      const canonCls = typeof normalizeStudentClass === 'function' ? normalizeStudentClass(rowClasse) : rowClasse;
+      if (section === 'maternelle' && !['PS', 'MS', 'GS'].includes(String(canonCls).toUpperCase())) return;
+      if (section === 'primaire' && ['PS', 'MS', 'GS'].includes(String(canonCls).toUpperCase())) return;
+
+      const dayName = extractDayNameFromString(rowJour) || rowJour;
+      let exactDate = '';
+      if (weekStartDate && dayName) {
+        const dObj = getDateForDayNameNode(weekStartDate, dayName);
+        if (dObj && !isNaN(dObj.getTime())) {
+          exactDate = dObj.toISOString().split('T')[0];
+        }
+      }
+      if (!exactDate && wDates.start) exactDate = wDates.start;
+      if (!exactDate) return;
+
+      if (!isHomeworkAutoValidatedAfterTwoWeeks(exactDate, wNum, curWeek)) return;
+
+      const cNorm = norm(canonCls || rowClasse);
+      const mNorm = norm(rowMatiere);
+      const slotKey = `${cNorm}_${exactDate}_${mNorm}`;
+      if (seenHwSlots.has(slotKey)) return;
+      seenHwSlots.add(slotKey);
+
+      if (existingSlotSet.has(slotKey) || existingSlotSet.has(`${norm(rowClasse)}_${exactDate}_${mNorm}`)) {
+        return; // Déjà évalué par l'enseignant
+      }
+
+      // Ajouter l'évaluation automatique (Fait + 10/10 comportement & participation) pour tous les élèves de cette classe dans cette section
+      const classStudents = authoritativeStudents.filter(st => {
+        const stClsNorm = norm(typeof normalizeStudentClass === 'function' ? normalizeStudentClass(st.class) : st.class);
+        return stClsNorm === cNorm || (typeof isClassMatchServer === 'function' && isClassMatchServer(st.class, rowClasse));
+      });
+
+      classStudents.forEach(st => {
+        autoEvals.push({
+          studentName: st.name,
+          class: st.class,
+          date: exactDate,
+          subject: rowMatiere,
+          status: 'Fait',
+          behavior: 10,
+          participation: 10,
+          section: section,
+          isAutoValidated: true
+        });
+      });
+    });
+  });
+
+  return autoEvals;
+}
 
 const defaultBoysStudents = {
   'PEI1': [
@@ -4724,23 +4841,19 @@ app.get('/api/teacher-homeworks', async (req, res) => {
     const isAllSections = !cleanSectionReq || ['all', 'toutes', 'tous'].includes(cleanSectionReq);
     const weekFilterNum = (week && !isNaN(parseInt(week, 10))) ? parseInt(week, 10) : null;
 
-    // 1. Requête DB rapide et ciblée sur la section active uniquement (évite de charger toutes les sections)
+    // 1. Requête DB rapide et STRICTEMENT isolée sur la section active uniquement (aucun mélange entre sections)
     const planQuery = isAllSections
       ? {}
-      : (cleanSectionReq === 'maternelle'
-          ? { $or: [{ section: 'maternelle' }, { _id: /^maternelle_/ }, { section: 'primaire' }, { _id: /^primaire_/ }] }
-          : { $or: [{ section: cleanSectionReq }, { _id: new RegExp(`^${cleanSectionReq}_`) }, { _id: cleanSectionReq }] });
+      : { $or: [{ section: cleanSectionReq }, { _id: new RegExp(`^${cleanSectionReq}_`) }, { _id: cleanSectionReq }] };
 
     const evalQuery = isAllSections
       ? {}
-      : (cleanSectionReq === 'maternelle'
-          ? { section: { $in: ['maternelle', 'primaire'] } }
-          : { section: cleanSectionReq });
+      : { section: cleanSectionReq };
 
     // Exécuter toutes les requêtes en parallèle pour un chargement ultra-rapide
     const [allPlanDocs, subTeacherDocs, weeksConfigDoc, photosDocs, allUsers, allEvaluations] = await Promise.all([
       db.collection('plans').find(planQuery).toArray(),
-      db.collection('class_subject_teachers').find(isAllSections ? {} : { section: { $in: [cleanSectionReq, 'primaire'] } }).toArray(),
+      db.collection('class_subject_teachers').find(isAllSections ? {} : { section: cleanSectionReq }).toArray(),
       db.collection('school_weeks_config').find({}).toArray(),
       db.collection('teachers_photos').find({}).toArray(),
       db.collection('users').find({}).toArray().catch(() => []),
@@ -4890,7 +5003,7 @@ app.get('/api/teacher-homeworks', async (req, res) => {
         if (!rowEns && rowClasse && rowMatiere && subTeacherDocs.length > 0) {
           const linkedDoc = subTeacherDocs.find(d =>
             d.enseignant && d.enseignant.trim() &&
-            (!d.section || d.section === effectiveSection || (effectiveSection === 'maternelle' && d.section === 'primaire')) &&
+            (!d.section || d.section === effectiveSection) &&
             ((typeof isClassMatchServer === 'function' && isClassMatchServer(d.classe, rowClasse)) || d.classe === 'all' || !d.classe) &&
             (typeof isEquivalentSubjectServer === 'function' ? isEquivalentSubjectServer(d.matiere, rowMatiere) : norm(d.matiere) === norm(rowMatiere))
           );
@@ -4900,6 +5013,11 @@ app.get('/api/teacher-homeworks', async (req, res) => {
         }
 
         if (!rowEns) return;
+
+        // Filtrer strictement les enseignants pour qu'ils appartiennent à la section active
+        if (!isAllSections && typeof isTeacherAllowedInSection === 'function' && !isTeacherAllowedInSection(rowEns, effectiveSection)) {
+          return;
+        }
 
         // Comptabiliser rapidement les enseignants de la section
         if (!sectionTeachersMap.has(rowEns)) {
@@ -4915,24 +5033,28 @@ app.get('/api/teacher-homeworks', async (req, res) => {
         const rowTravaux = String(row[findKey(row, 'Travaux de classe')] || '').trim();
         const rowSupport = String(row[findKey(row, 'Support')] || '').trim();
 
+        const hasExplicitDevoir = Boolean(
+          rowDevoirs &&
+          rowDevoirs !== '-' &&
+          rowDevoirs !== '—' &&
+          rowDevoirs.toLowerCase() !== 'aucun' &&
+          rowDevoirs.toLowerCase() !== 'sans'
+        );
         const hasPedagogicalContent = Boolean(
-          (rowDevoirs && rowDevoirs !== '-') ||
-          (rowLecon && rowLecon !== '-') ||
-          (rowTravaux && rowTravaux !== '-') ||
-          (rowSupport && rowSupport !== '-')
+          hasExplicitDevoir ||
+          (rowLecon && rowLecon !== '-' && rowLecon !== '—') ||
+          (rowTravaux && rowTravaux !== '-' && rowTravaux !== '—') ||
+          (rowSupport && rowSupport !== '-' && rowSupport !== '—')
         );
         if (!hasPedagogicalContent) return;
 
-        sectionTeachersMap.get(rowEns).count += 1;
-
-        // Filtrer immédiatement : ne construire les objets détaillés QUE pour l'enseignant demandé !
+        // Filtrer immédiatement : chaque enseignant ne peut afficher ou évaluer QUE ses propres devoirs !
         const isMatch = isRowMatchingTeacherExact(rowEns, targetTeacher, tableTeacher, extraTeacherAliases);
-        if (!isMatch) return;
 
         const rowJour = String(row[findKey(row, 'Jour')] || '').trim();
         const rowPeriode = String(row[findKey(row, 'Période')] || '').trim();
 
-        const effectiveDevoirText = (rowDevoirs && rowDevoirs !== '-')
+        const effectiveDevoirText = hasExplicitDevoir
           ? rowDevoirs
           : (rowTravaux && rowTravaux !== '-'
               ? (rowLecon && rowLecon !== '-' ? `${rowLecon} — ${rowTravaux}` : rowTravaux)
@@ -4968,11 +5090,17 @@ app.get('/api/teacher-homeworks', async (req, res) => {
         const evalKeyCanonFull = `${norm(canonRowCls)}_${exactDate}_${norm(rowMatiere)}`;
         const evalKeyClassDate = `${norm(rowClasse)}_${exactDate}`;
         const evalKeyCanonDate = `${norm(canonRowCls)}_${exactDate}`;
-        const isEvaluated = evalMap.has(evalKeyFull) || evalMap.has(evalKeyCanonFull) || evalMap.has(evalKeyClassDate) || evalMap.has(evalKeyCanonDate);
+        const isManuallyEvaluated = evalMap.has(evalKeyFull) || evalMap.has(evalKeyCanonFull) || evalMap.has(evalKeyClassDate) || evalMap.has(evalKeyCanonDate);
+        const curWeekForSec = typeof getCurrentWeekNumber === 'function' ? (getCurrentWeekNumber(new Date(), effectiveSection) || 1) : 1;
+        const isAutoValidated = !isManuallyEvaluated && isHomeworkAutoValidatedAfterTwoWeeks(exactDate, wNum, curWeekForSec);
+        const isEvaluated = isManuallyEvaluated || isAutoValidated;
 
+        sectionTeachersMap.get(rowEns).count += 1;
         if (isEvaluated) {
           sectionTeachersMap.get(rowEns).evaluatedCount += 1;
         }
+
+        if (!isMatch) return;
 
         teacherHws.push({
           week: wNum,
@@ -4990,14 +5118,24 @@ app.get('/api/teacher-homeworks', async (req, res) => {
           lecon: rowLecon,
           travaux: rowTravaux,
           devoir: effectiveDevoirText,
+          hasExplicitDevoir: hasExplicitDevoir,
           enseignant: rowEns,
           teacherPhotoUrl: teachersPhotosMap[rowEns] || '',
           date: exactDate,
           formattedDateFr: formattedDateFr || `${dayName || rowJour} (S${wNum})`,
-          isEvaluated: isEvaluated
+          isEvaluated: isEvaluated,
+          isManuallyEvaluated: isManuallyEvaluated,
+          isAutoValidated: isAutoValidated
         });
       });
     });
+
+    // Si l'enseignant a des devoirs explicites (colonne Devoirs remplie), prioriser uniquement ses vrais devoirs donnés
+    const explicitOnly = teacherHws.filter(h => h.hasExplicitDevoir);
+    if (explicitOnly.length > 0) {
+      teacherHws.length = 0;
+      explicitOnly.forEach(h => teacherHws.push(h));
+    }
 
     // 2. Fallback rapide si l'enseignant ciblé n'a pas encore de plan saisi dans la base
     if (teacherHws.length === 0 && targetTeacher) {
@@ -5317,7 +5455,7 @@ app.get('/api/evaluations', async (req, res) => {
       }
     });
 
-    // 2. RÉCUPÉRER LES ÉVALUATIONS DÉJÀ ENREGISTRÉES
+    // 2. RÉCUPÉRER LES ÉVALUATIONS DÉJÀ ENREGISTRÉES (STRICTEMENT ISOLÉES PAR SECTION)
     let evalDates = [dateQuery];
     if (isWeekendRedirect && effectiveDateQuery && effectiveDateQuery !== dateQuery) {
       evalDates.push(effectiveDateQuery);
@@ -5337,24 +5475,70 @@ app.get('/api/evaluations', async (req, res) => {
 
     let evaluations = await db.collection('evaluations').find(query).toArray();
     if ((!evaluations || evaluations.length === 0) && section === 'garcons') {
-      delete query.section;
-      evaluations = await db.collection('evaluations').find(query).toArray();
+      const legacyQuery = { ...query, section: { $exists: false } };
+      evaluations = await db.collection('evaluations').find(legacyQuery).toArray();
     }
 
     // Harmonisation stricte des évaluations retournées avec les noms officiels enregistrés par l'admin
     evaluations = (evaluations || []).map(ev => {
       const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
       if (matched) {
-        return { ...ev, studentName: matched.name, class: matched.class };
+        return { ...ev, studentName: matched.name, class: matched.class, section: section };
       }
-      return ev;
+      return { ...ev, section: section };
     });
+
+    // Règle des 2 semaines : si 2 semaines passent et qu'un devoir n'est pas évalué, il est considéré Fait avec 10/10 de comportement
+    const curWeekNumForSection = getCurrentWeekNumber(new Date(), section);
+    const classStudentsInSection = authoritativeList.filter(s => {
+      const scNorm = normClass(s.class);
+      return scNorm === targetNormClass || scNorm.includes(targetNormClass) || targetNormClass.includes(scNorm) || isClassMatchServer(s.class, className);
+    });
+    const targetStudentsForAuto = studentName
+      ? classStudentsInSection.filter(s => s.name.toLowerCase() === (matchAdminStudent(studentName, className, authoritativeList)?.name || studentName.trim()).toLowerCase())
+      : classStudentsInSection;
+
+    homeworks.forEach(hw => {
+      const hwDate = hw.exactDate || effectiveDateQuery;
+      if (isHomeworkAutoValidatedAfterTwoWeeks(hwDate, hw.week, curWeekNumForSection)) {
+        hw.isAutoValidated = true;
+        targetStudentsForAuto.forEach(st => {
+          const alreadyHas = evaluations.some(ev =>
+            ev.studentName && ev.studentName.toLowerCase() === st.name.toLowerCase() &&
+            isEquivalentSubjectServer(ev.subject, hw.subject)
+          );
+          if (!alreadyHas) {
+            evaluations.push({
+              date: hwDate,
+              studentName: st.name,
+              class: st.class || className,
+              subject: hw.subject,
+              status: 'Fait',
+              behavior: 10,
+              participation: 10,
+              section: section,
+              autoValidated: true,
+              notes: 'Validé automatiquement (délai de 2 semaines dépassé)'
+            });
+          }
+        });
+      }
+    });
+
+    // Calcul de la faisabilité du jour et de l'étoile quotidienne (> 70% faisabilité -> 1 étoile ⭐)
+    const activeStatusesToday = evaluations.filter(ev => ev.status && ev.status !== 'Absent');
+    const dailyFeasibilityRate = activeStatusesToday.length > 0
+      ? Math.round(((activeStatusesToday.filter(e => e.status === 'Fait').length + activeStatusesToday.filter(e => e.status === 'Partiellement Fait').length * 0.5) / activeStatusesToday.length) * 100)
+      : 0;
+    const earnedDailyStar = calculateDailyStar(evaluations);
 
     let responseData = { 
       homeworks, 
       weeklyHomeworks,
       schoolDays,
       evaluations: evaluations || [],
+      dailyFeasibilityRate,
+      earnedDailyStar,
       targetWeek: targetWeekNumber,
       availableWeeks,
       isWeekendRedirect,
@@ -5378,12 +5562,13 @@ app.get('/api/evaluations', async (req, res) => {
       const rawWeeklyEvals = await db.collection('evaluations').find({
         studentName: { $regex: new RegExp(`^${weeklyStudentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
         class: classFilter,
+        section: section,
         date: { $gte: firstDayStr, $lte: lastDayStr }
       }).toArray();
 
       responseData.weeklyEvaluations = (rawWeeklyEvals || []).map(ev => {
         const m = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
-        return m ? { ...ev, studentName: m.name, class: m.class } : ev;
+        return m ? { ...ev, studentName: m.name, class: m.class, section: section } : { ...ev, section: section };
       });
     }
 
@@ -5407,15 +5592,20 @@ app.post('/api/evaluations', async (req, res) => {
       const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
       const finalStudentName = matched ? matched.name : (ev.studentName || '').trim();
       const finalClass = matched ? matched.class : (normalizeStudentClass(ev.class) || ev.class);
+      // Note de comportement sur 10 synchronisée avec participation si l'un des deux est fourni
+      const behaviorVal = ev.behavior !== undefined && ev.behavior !== null && ev.behavior !== '' ? Math.min(10, Math.max(0, Number(ev.behavior))) : 10;
+      const participationVal = ev.participation !== undefined && ev.participation !== null && ev.participation !== '' ? Math.min(10, Math.max(0, Number(ev.participation))) : behaviorVal;
 
       return {
         updateOne: {
-          filter: { date: ev.date, studentName: finalStudentName, class: finalClass, subject: ev.subject },
+          filter: { date: ev.date, studentName: finalStudentName, class: finalClass, subject: ev.subject, section: section },
           update: { 
             $set: { 
               ...ev, 
               studentName: finalStudentName, 
               class: finalClass, 
+              behavior: behaviorVal,
+              participation: participationVal,
               section: section, 
               updatedAt: new Date() 
             } 
@@ -5425,6 +5615,57 @@ app.post('/api/evaluations', async (req, res) => {
       };
     });
     await db.collection('evaluations').bulkWrite(operations);
+
+    // Mettre à jour automatiquement les étoiles quotidiennes (daily_stars) pour les élèves évalués de cette section (> 70% faisabilité = 1 étoile)
+    try {
+      const affectedPairs = new Map();
+      evaluations.forEach(ev => {
+        const matched = matchAdminStudent(ev.studentName, ev.class, authoritativeList);
+        const sName = matched ? matched.name : (ev.studentName || '').trim();
+        const cName = matched ? matched.class : (normalizeStudentClass(ev.class) || ev.class);
+        if (ev.date && sName && cName) {
+          affectedPairs.set(`${ev.date}|||${sName}|||${cName}`, { date: ev.date, studentName: sName, className: cName });
+        }
+      });
+
+      const starOps = [];
+      for (const item of affectedPairs.values()) {
+        const dayEvals = await db.collection('evaluations').find({
+          date: item.date,
+          studentName: item.studentName,
+          class: item.className,
+          section: section
+        }).toArray();
+        const earnedStar = calculateDailyStar(dayEvals);
+        const validEvals = dayEvals.filter(e => e.status && e.status !== 'Absent');
+        const feasibilityRate = validEvals.length > 0
+          ? Math.round(((validEvals.filter(e => e.status === 'Fait').length + validEvals.filter(e => e.status === 'Partiellement Fait').length * 0.5) / validEvals.length) * 100)
+          : 0;
+        starOps.push({
+          updateOne: {
+            filter: { date: item.date, studentName: item.studentName, className: item.className, section: section },
+            update: {
+              $set: {
+                date: item.date,
+                studentName: item.studentName,
+                className: item.className,
+                section: section,
+                earnedStar,
+                feasibilityRate,
+                updatedAt: new Date()
+              }
+            },
+            upsert: true
+          }
+        });
+      }
+      if (starOps.length > 0) {
+        await db.collection('daily_stars').bulkWrite(starOps);
+      }
+    } catch (starErr) {
+      console.warn('Avertissement mise à jour daily_stars:', starErr.message);
+    }
+
     res.status(200).json({ message: 'Évaluations enregistrées avec succès.' });
   } catch (error) {
     console.error('Erreur POST /api/evaluations:', error);
@@ -5432,143 +5673,192 @@ app.post('/api/evaluations', async (req, res) => {
   }
 });
 
+// Fonction utilitaire pour sélectionner chaque dimanche les 3 élèves ayant le plus d'étoiles dans la section
+async function computeTop3StudentsOfWeekForSection(db, section, authList) {
+  const sectionFilter = section === 'garcons'
+    ? { $or: [{ section: 'garcons' }, { section: { $exists: false } }] }
+    : { section: section };
+
+  const allSectionEvalsRaw = await db.collection('evaluations').find(sectionFilter).toArray();
+  const planDocs = await db.collection('plans').find({
+    $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }, { _id: section }]
+  }).toArray().catch(() => []);
+
+  // Inclure les devoirs auto-validés après 2 semaines (Fait + 10/10)
+  const allSectionEvals = buildTwoWeekAutoEvaluationsForSection(planDocs, allSectionEvalsRaw, authList, section);
+
+  // Déterminer la fenêtre de la semaine écoulée (ou toutes les évaluations récentes si la semaine écoulée n'en a pas encore)
+  const today = moment().startOf('day');
+  // Si on est Dimanche (day === 0), on regarde la semaine précédente (Dimanche à Jeudi derniers), sinon la semaine courante + précédente
+  const lastSunday = today.day() === 0 ? today.clone().subtract(7, 'days') : today.clone().day(0);
+  const lastSundayStr = lastSunday.format('YYYY-MM-DD');
+
+  const recentEvals = allSectionEvals.filter(ev => ev.date && ev.date >= lastSundayStr);
+  const effectiveEvals = recentEvals.length > 0 ? recentEvals : allSectionEvals;
+
+  const studentMap = new Map();
+  // Initialiser avec les élèves officiels de la section
+  (authList || []).forEach(st => {
+    const key = `${st.class}|||${st.name}`;
+    studentMap.set(key, {
+      name: st.name,
+      class: st.class,
+      photo: st.photo || st.photoUrl || '',
+      evals: []
+    });
+  });
+
+  effectiveEvals.forEach(ev => {
+    const matched = matchAdminStudent(ev.studentName, ev.class, authList);
+    const sName = matched ? matched.name : (ev.studentName || '').trim();
+    const cName = matched ? matched.class : (normalizeStudentClass(ev.class) || ev.class || '');
+    if (!sName || !cName) return;
+    const key = `${cName}|||${sName}`;
+    if (!studentMap.has(key)) {
+      studentMap.set(key, {
+        name: sName,
+        class: cName,
+        photo: matched ? (matched.photo || matched.photoUrl || '') : '',
+        evals: []
+      });
+    }
+    studentMap.get(key).evals.push(ev);
+  });
+
+  const rankedStudents = [];
+  for (const stObj of studentMap.values()) {
+    if (stObj.evals.length === 0) continue;
+    // Calculer le nombre d'étoiles (1 étoile par jour où la faisabilité des devoirs > 70%)
+    const stars = calculateStarsLegacy(stObj.evals);
+    const validEvals = stObj.evals.filter(e => e.status && e.status !== 'Absent');
+    const doneCount = validEvals.filter(e => e.status === 'Fait').length;
+    const partialCount = validEvals.filter(e => e.status === 'Partiellement Fait').length;
+    const feasibilityRate = validEvals.length > 0 ? Math.round(((doneCount + partialCount * 0.5) / validEvals.length) * 100) : 100;
+    const avgBehavior = validEvals.length > 0
+      ? validEvals.reduce((sum, e) => sum + (Number(e.behavior ?? 10) || 10), 0) / validEvals.length
+      : 10;
+
+    if (stars > 0 || feasibilityRate > 70) {
+      const displayStars = Math.max(1, stars);
+      const cleanPhoto = convertGoogleDriveUrl(stObj.photo || '');
+      rankedStudents.push({
+        name: stObj.name,
+        class: stObj.class,
+        stars: displayStars,
+        feasibilityRate,
+        avgBehavior: Math.round(avgBehavior),
+        progressPercentage: Math.round(feasibilityRate * 0.6 + (avgBehavior / 10) * 40),
+        photo: cleanPhoto,
+        photoUrl: cleanPhoto,
+        section: section
+      });
+    }
+  }
+
+  // Trier par nombre d'étoiles décroissant, puis taux de faisabilité des devoirs, puis comportement
+  rankedStudents.sort((a, b) => {
+    if (b.stars !== a.stars) return b.stars - a.stars;
+    if (b.feasibilityRate !== a.feasibilityRate) return b.feasibilityRate - a.feasibilityRate;
+    return b.avgBehavior - a.avgBehavior;
+  });
+
+  const top3 = rankedStudents.slice(0, 3).map((st, idx) => {
+    const rankLabelsFr = ['1er Prix d\'Excellence', '2ème Prix d\'Excellence', '3ème Prix d\'Excellence'];
+    const rankLabelsAr = ['المركز الأول في التميز', 'المركز الثاني في التميز', 'المركز الثالث في التميز'];
+    return {
+      ...st,
+      rank: idx + 1,
+      rankLabelFr: rankLabelsFr[idx] || `Top ${idx + 1}`,
+      rankLabelAr: rankLabelsAr[idx] || `المركز ${idx + 1}`,
+      congratsMessageFr: `Toutes nos chaleureuses félicitations à ${st.name} (${st.class}) — ${rankLabelsFr[idx]} avec ${st.stars} étoile${st.stars > 1 ? 's' : ''} ⭐ et ${st.feasibilityRate}% de réussite dans ses devoirs cette semaine !`,
+      congratsMessageAr: `ألف مبروك للطالب(ة) المتميز(ة) ${st.name} (${st.class}) لحصوله على ${rankLabelsAr[idx]} برصيد ${st.stars} نجوم ⭐ وانضباطه المثالي خلال هذا الأسبوع!`
+    };
+  });
+
+  return top3;
+}
+
 app.get('/api/weekly-summary', async (req, res) => {
   try {
     const section = req.query.section || 'garcons';
     const db = await connectToDatabase();
-    const today = moment().startOf('day');
-    const weekIdentifier = today.format('YYYY-[W]WW');
     const authList = await getAuthoritativeStudents(db, section);
 
-    // 1. Chercher si un élève de la semaine a été configuré spécifiquement
-    let existing = await db.collection('students_of_the_week').find({ section }).sort({ updatedAt: -1, createdAt: -1 }).limit(1).toArray();
-    if (existing && existing.length > 0) {
-      const enriched = existing.map(st => {
-        let photo = st.photo || st.photoUrl || '';
-        if (!photo) {
-          const matched = matchAdminStudent(st.name || st.studentName, st.class || st.className, authList);
-          if (matched && (matched.photo || matched.photoUrl)) {
-            photo = matched.photo || matched.photoUrl;
-          }
-        }
-        return {
-          ...st,
-          name: st.name || st.studentName || 'Élève d\'Excellence',
-          class: st.class || st.className || 'Classe d\'Honneur',
-          stars: st.stars || 5,
-          photo: convertGoogleDriveUrl(photo),
-          photoUrl: convertGoogleDriveUrl(photo),
-          congratsMessageFr: st.congratsMessageFr || `Toutes nos chaleureuses félicitations à ${st.name || 'notre élève'} pour son assiduité exemplaire, son engagement remarquable et son comportement d'excellence cette semaine ! Continue ainsi vers les sommets du succès !`,
-          congratsMessageAr: st.congratsMessageAr || "ألف مبروك للطالب المتميز على تفوقه الدراسي وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع! متمنين له دوام التألق والنجاح المستمر."
-        };
-      });
-      return res.status(200).json({ studentsOfWeek: enriched, showDisplay: true, isLastWeek: false });
-    }
+    // 1. Calculer automatiquement les 3 meilleurs élèves de la semaine ayant le plus d'étoiles (> 70% faisabilité quotidienne) dans cette section
+    const autoTop3 = await computeTop3StudentsOfWeekForSection(db, section, authList);
 
-    // 2. Calcul automatique basé sur les étoiles et évaluations
-    let targetWeekStart = today.clone().subtract(7, 'days').day(0);
-    let targetWeekEnd = today.clone().subtract(7, 'days').day(4);
-    const dateQuery = {
-      $gte: targetWeekStart.format('YYYY-MM-DD'),
-      $lte: targetWeekEnd.format('YYYY-MM-DD')
-    };
-
-    const dailyStars = await db.collection('daily_stars').find({ date: dateQuery, section }).toArray();
-    const allEvals = await db.collection('evaluations').find({ date: dateQuery, section }).toArray();
-
-    const studentsByClass = {};
-    dailyStars.forEach(starRecord => {
-      const classKey = starRecord.className;
-      if (!studentsByClass[classKey]) studentsByClass[classKey] = {};
-      if (!studentsByClass[classKey][starRecord.studentName]) {
-        studentsByClass[classKey][starRecord.studentName] = { stars: 0, dailyRecords: [], progressPercentage: 0 };
-      }
-      if (starRecord.earnedStar) studentsByClass[classKey][starRecord.studentName].stars += starRecord.earnedStar;
-      studentsByClass[classKey][starRecord.studentName].dailyRecords.push(starRecord);
-    });
-
-    allEvals.forEach(ev => {
-      const classKey = ev.class;
-      if (!studentsByClass[classKey]) studentsByClass[classKey] = {};
-      if (!studentsByClass[classKey][ev.studentName]) {
-        studentsByClass[classKey][ev.studentName] = { evals: [], class: ev.class };
-      }
-      if (!studentsByClass[classKey][ev.studentName].evals) {
-        studentsByClass[classKey][ev.studentName].evals = [];
-      }
-      studentsByClass[classKey][ev.studentName].evals.push(ev);
-    });
-
-    let topStudentOverall = null;
-    let topStarsOverall = -1;
-
-    for (const classKey in studentsByClass) {
-      const students = studentsByClass[classKey];
-      for (const studentName in students) {
-        const studentData = students[studentName];
-        const studentEvals = allEvals.filter(ev => ev.class === classKey && ev.studentName === studentName);
-        let totalScore = 0, maxScore = 0;
-
-        studentEvals.forEach(ev => {
-          const d = moment(ev.date).day();
-          if (d >= 0 && d <= 4 && ev.status !== 'Absent') {
-            totalScore += (ev.status === 'Fait' ? 10 : ev.status === 'Partiellement Fait' ? 5 : 0) + (ev.participation || 0) + (ev.behavior || 0);
-            maxScore += 30;
-          }
-        });
-
-        const progress = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
-        const stars = studentData.stars || calculateStarsLegacy(studentEvals);
-
-        if (stars >= 3 && progress > 79) {
-          if (stars > topStarsOverall) {
-            topStarsOverall = stars;
-            const matched = matchAdminStudent(studentName, classKey, authList);
-            const photo = matched ? (matched.photo || matched.photoUrl || '') : '';
-            topStudentOverall = {
-              name: studentName,
-              class: classKey,
-              stars: stars,
-              progressPercentage: progress,
-              photo: convertGoogleDriveUrl(photo),
-              photoUrl: convertGoogleDriveUrl(photo),
-              congratsMessageFr: `Toutes nos félicitations à ${studentName} pour ses excellents résultats et sa persévérance remarquable cette semaine !`,
-              congratsMessageAr: "ألف مبروك للطالب المتميز على تفوقه الدراسي وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع!",
-              progressComment: { fr: 'Excellent', ar: 'ممتاز' },
-              weekIdentifier: weekIdentifier,
-              section: section,
-              createdAt: new Date()
-            };
-          }
+    // 2. Chercher si des élèves de la semaine ont aussi été configurés manuellement dans cette section
+    let existing = await db.collection('students_of_the_week').find({ section: section }).sort({ updatedAt: -1, createdAt: -1 }).limit(3).toArray();
+    const manualEnriched = (existing || []).map((st, idx) => {
+      let photo = st.photo || st.photoUrl || '';
+      if (!photo) {
+        const matched = matchAdminStudent(st.name || st.studentName, st.class || st.className, authList);
+        if (matched && (matched.photo || matched.photoUrl)) {
+          photo = matched.photo || matched.photoUrl;
         }
       }
-    }
-
-    if (topStudentOverall) {
-      await db.collection('students_of_the_week').insertOne(topStudentOverall);
-      return res.status(200).json({ studentsOfWeek: [topStudentOverall], showDisplay: true, isLastWeek: true });
-    }
-
-    // 3. Fallback élégant : sélectionner le premier élève actif du tableau avec photo
-    if (authList && authList.length > 0) {
-      const withPhoto = authList.find(s => s.photo && s.photo.trim() !== '');
-      const chosen = withPhoto || authList[0];
-      const fallbackDoc = {
-        name: chosen.name,
-        class: chosen.class,
-        stars: 5,
-        photo: convertGoogleDriveUrl(chosen.photo || ''),
-        photoUrl: convertGoogleDriveUrl(chosen.photo || ''),
-        congratsMessageFr: `Toutes nos félicitations à ${chosen.name} pour son assiduité exemplaire, son engagement remarquable et sa motivation continue !`,
-        congratsMessageAr: "ألف مبروك للطالب المتميز على تفوقه الدراسي وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع! متمنين له دوام التألق والنجاح.",
-        weekIdentifier: weekIdentifier,
+      const cleanName = st.name || st.studentName || 'Élève d\'Excellence';
+      const cleanClass = st.class || st.className || 'Classe d\'Honneur';
+      const starsCount = Number(st.stars) || 5;
+      return {
+        ...st,
+        rank: idx + 1,
+        name: cleanName,
+        class: cleanClass,
+        stars: starsCount,
+        photo: convertGoogleDriveUrl(photo),
+        photoUrl: convertGoogleDriveUrl(photo),
         section: section,
-        createdAt: new Date()
+        congratsMessageFr: st.congratsMessageFr || st.congratulations || `Toutes nos chaleureuses félicitations à ${cleanName} (${cleanClass}) pour son assiduité exemplaire et ses ${starsCount} étoiles ⭐ cette semaine !`,
+        congratsMessageAr: st.congratsMessageAr || st.congratulationsAr || "ألف مبروك للطالب المتميز على تفوقه الدراسي وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع!"
       };
-      return res.status(200).json({ studentsOfWeek: [fallbackDoc], showDisplay: true, isLastWeek: false });
+    });
+
+    // Fusionner pour toujours proposer jusqu'à 3 élèves de la semaine (strictement de la section active)
+    const combinedTop3 = [];
+    const seenNames = new Set();
+
+    // Prioriser le classement automatique des 3 élèves ayant le plus d'étoiles chaque dimanche, complété par les entrées manuelles
+    [...autoTop3, ...manualEnriched].forEach(st => {
+      const nKey = String(st.name || '').trim().toLowerCase();
+      if (!nKey || seenNames.has(nKey)) return;
+      if (combinedTop3.length < 3) {
+        seenNames.add(nKey);
+        combinedTop3.push({
+          ...st,
+          rank: combinedTop3.length + 1
+        });
+      }
+    });
+
+    // 3. Fallback si moins de 3 élèves trouvés : compléter avec les élèves de la section
+    if (combinedTop3.length < 3 && authList && authList.length > 0) {
+      const sortedWithPhotos = [...authList].sort((a, b) => (b.photo ? 1 : 0) - (a.photo ? 1 : 0));
+      for (const chosen of sortedWithPhotos) {
+        if (combinedTop3.length >= 3) break;
+        const nKey = String(chosen.name || '').trim().toLowerCase();
+        if (!nKey || seenNames.has(nKey)) continue;
+        seenNames.add(nKey);
+        const rnk = combinedTop3.length + 1;
+        combinedTop3.push({
+          rank: rnk,
+          name: chosen.name,
+          class: chosen.class,
+          stars: 5 - (rnk - 1),
+          photo: convertGoogleDriveUrl(chosen.photo || ''),
+          photoUrl: convertGoogleDriveUrl(chosen.photo || ''),
+          congratsMessageFr: `Toutes nos félicitations à ${chosen.name} (${chosen.class}) pour son assiduité exemplaire, son engagement remarquable et sa motivation continue !`,
+          congratsMessageAr: "ألف مبروك للطالب المتميز على تفوقه الدراسي وانضباطه المثالي وجهوده الرائعة خلال هذا الأسبوع! متمنين له دوام التألق والنجاح.",
+          section: section
+        });
+      }
     }
 
-    res.status(200).json({ studentsOfWeek: [], showDisplay: false });
+    return res.status(200).json({
+      studentsOfWeek: combinedTop3,
+      showDisplay: combinedTop3.length > 0,
+      isLastWeek: moment().day() === 0
+    });
   } catch (error) {
     console.error('Erreur GET /api/weekly-summary:', error);
     res.status(500).json({ studentsOfWeek: [], showDisplay: false });
@@ -5579,37 +5869,72 @@ app.get('/api/student-of-the-week', async (req, res) => {
   try {
     const { section = 'garcons' } = req.query;
     const db = await connectToDatabase();
-    const doc = await db.collection('students_of_the_week').findOne(
-      { section: section },
-      { sort: { updatedAt: -1 } }
-    );
-    if (!doc) {
-      return res.status(200).json({ name: '', class: '', stars: 5, photoUrl: '', congratulations: '', congratulationsAr: '' });
-    }
+    const authList = await getAuthoritativeStudents(db, section);
 
-    const studentName = (doc.name || doc.studentName || '').trim();
-    const studentClass = (doc.class || doc.className || '').trim();
+    // Calculer les 3 élèves de la semaine ayant le plus d'étoiles dans cette section
+    const autoTop3 = await computeTop3StudentsOfWeekForSection(db, section, authList);
 
-    // Récupérer la photo de profil EXACTE de l'élève depuis son profil devoirs (collection students)
-    let profilePhoto = '';
-    if (studentName) {
-      const authList = await getAuthoritativeStudents(db, section);
-      const matched = matchAdminStudent(studentName, studentClass, authList);
-      if (matched && (matched.photo || matched.photoUrl)) {
-        profilePhoto = convertGoogleDriveUrl(matched.photo || matched.photoUrl);
+    const manualDocs = await db.collection('students_of_the_week').find(
+      { section: section }
+    ).sort({ updatedAt: -1, createdAt: -1 }).limit(3).toArray();
+
+    const manualFormatted = (manualDocs || []).map(doc => {
+      const studentName = (doc.name || doc.studentName || '').trim();
+      const studentClass = (doc.class || doc.className || '').trim();
+      let profilePhoto = '';
+      if (studentName) {
+        const matched = matchAdminStudent(studentName, studentClass, authList);
+        if (matched && (matched.photo || matched.photoUrl)) {
+          profilePhoto = convertGoogleDriveUrl(matched.photo || matched.photoUrl);
+        }
       }
+      const finalPhoto = profilePhoto || convertGoogleDriveUrl(doc.photoUrl || doc.photo || '');
+      return {
+        name: studentName,
+        class: studentClass,
+        stars: doc.stars || 5,
+        photoUrl: finalPhoto,
+        photo: finalPhoto,
+        congratulations: doc.congratsMessageFr || doc.congratulations || '',
+        congratulationsAr: doc.congratsMessageAr || doc.congratulationsAr || '',
+        section: section,
+        updatedAt: doc.updatedAt
+      };
+    });
+
+    const top3List = [];
+    const seen = new Set();
+    [...autoTop3, ...manualFormatted].forEach(item => {
+      const k = String(item.name || '').trim().toLowerCase();
+      if (!k || seen.has(k)) return;
+      if (top3List.length < 3) {
+        seen.add(k);
+        top3List.push({
+          rank: top3List.length + 1,
+          name: item.name,
+          class: item.class,
+          stars: item.stars || 5,
+          photoUrl: item.photoUrl || item.photo || '',
+          congratulations: item.congratulations || item.congratsMessageFr || '',
+          congratulationsAr: item.congratulationsAr || item.congratsMessageAr || '',
+          section: section
+        });
+      }
+    });
+
+    if (top3List.length === 0) {
+      return res.status(200).json({ name: '', class: '', stars: 5, photoUrl: '', congratulations: '', congratulationsAr: '', top3: [] });
     }
 
-    const finalPhoto = profilePhoto || convertGoogleDriveUrl(doc.photoUrl || doc.photo || '');
-
+    const first = top3List[0];
     res.status(200).json({
-      name: studentName,
-      class: studentClass,
-      stars: doc.stars || 5,
-      photoUrl: finalPhoto,
-      congratulations: doc.congratsMessageFr || doc.congratulations || '',
-      congratulationsAr: doc.congratsMessageAr || doc.congratulationsAr || '',
-      updatedAt: doc.updatedAt
+      name: first.name,
+      class: first.class,
+      stars: first.stars,
+      photoUrl: first.photoUrl,
+      congratulations: first.congratulations,
+      congratulationsAr: first.congratulationsAr,
+      top3: top3List
     });
   } catch (err) {
     console.error('Erreur GET /api/student-of-the-week:', err);
@@ -6415,22 +6740,22 @@ app.get('/api/general-evaluations', async (req, res) => {
     const db = await connectToDatabase();
     const authoritativeList = await getAuthoritativeStudents(db, section);
 
-    // Cumulation continue sur toute l'année scolaire (toutes les évaluations de suivi + notes continues CW/HW)
-    const evaluations = await db.collection('evaluations').find({
-      $or: [{ section: section }, { section: { $exists: false } }]
-    }).toArray();
+    // Cumulation continue sur toute l'année scolaire (strictement isolée par section)
+    const evalSectionFilter = section === 'garcons'
+      ? { $or: [{ section: 'garcons' }, { section: { $exists: false } }] }
+      : { section: section };
+    const rawEvaluations = await db.collection('evaluations').find(evalSectionFilter).toArray();
 
-    const studentGradesDocs = await db.collection('student_grades').find({
-      $or: [{ section: section }, { section: { $exists: false } }]
-    }).toArray().catch(() => []);
-    const directStudentGradesColDocs = await db.collection('studentGrades').find({
-      $or: [{ section: section }, { section: { $exists: false } }]
-    }).toArray().catch(() => []);
+    const studentGradesDocs = await db.collection('student_grades').find(evalSectionFilter).toArray().catch(() => []);
+    const directStudentGradesColDocs = await db.collection('studentGrades').find(evalSectionFilter).toArray().catch(() => []);
 
-    // Récupérer les matières des classes depuis les plans hebdomadaires pour garantir un affichage complet par matière
+    // Récupérer les matières et devoirs des classes depuis les plans hebdomadaires de la section
     const planDocs = await db.collection('plans').find({
-      $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }]
-    }).project({ data: 1 }).toArray().catch(() => []);
+      $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }, { _id: section }]
+    }).project({ week: 1, data: 1 }).toArray().catch(() => []);
+
+    // Appliquer la règle des 2 semaines : tout devoir non évalué après 2 semaines est considéré Fait avec 10/10
+    const evaluations = buildTwoWeekAutoEvaluationsForSection(planDocs, rawEvaluations, authoritativeList, section);
 
     const classSubjectsMap = {};
     planDocs.forEach(doc => {
@@ -6567,27 +6892,30 @@ app.get('/api/general-evaluations', async (req, res) => {
       } else if (!hasDailyPB) {
         rawPB = maxPB;
       }
-      const participationBehaviorScore = Math.min(maxPB, Math.max(0, parseFloat(rawPB.toFixed(2))));
+      // Arrondi à un chiffre d'unité (pas de virgule) pour CW
+      const participationBehaviorScore = Math.min(maxPB, Math.max(0, Math.round(rawPB)));
       
-      const total = statuses.length;
-      const done = statuses.filter(s => s === 'Fait').length;
-      const partial = statuses.filter(s => s === 'Partiellement Fait').length;
-      const nonFait = statuses.filter(s => s === 'Non Fait').length;
+      const activeStatuses = statuses.filter(s => s !== 'Absent');
+      const total = activeStatuses.length;
+      const done = activeStatuses.filter(s => s === 'Fait').length;
+      const partial = activeStatuses.filter(s => s === 'Partiellement Fait').length;
+      const nonFait = activeStatuses.filter(s => s === 'Non Fait').length;
       let homeworkRate = total > 0 ? Math.round(((done + partial * 0.5) / total) * 100) : 100;
-      let rawHW = (homeworkRate / 100) * 20;
+      let rawHW = total > 0 ? (((done + partial * 0.5) / total) * 20) : 20;
 
       if (directHwScores.length > 0) {
         const avgDirectHw = directHwScores.reduce((a, b) => a + b, 0) / directHwScores.length;
         rawHW = total > 0 ? ((rawHW + avgDirectHw) / 2) : avgDirectHw;
         homeworkRate = Math.min(100, Math.max(0, Math.round((rawHW / 20) * 100)));
       }
-      const homeworkScore = Math.min(20, Math.max(0, parseFloat(rawHW.toFixed(2))));
+      // Arrondi à un chiffre d'unité (pas de virgule) pour HW
+      const homeworkScore = Math.min(20, Math.max(0, Math.round(rawHW)));
 
       const participationRate = Math.min(100, Math.max(0, Math.round((avgP / 10) * 100)));
       const behaviorRate = Math.min(100, Math.max(0, Math.round((avgB / 10) * 100)));
       const cwRate = Math.min(100, Math.max(0, Math.round((participationBehaviorScore / maxPB) * 100)));
 
-      // Calcul de la progression globale sur 100% : Devoirs (40%), Participation (30%), Comportement (30%)
+      // Calcul de la progression globale sur 100% : Devoirs (40%), Participation & Comportement (60%)
       let overallProgress = Math.round(homeworkRate * 0.40 + cwRate * 0.60);
       overallProgress = Math.min(100, Math.max(0, overallProgress));
 
@@ -6599,17 +6927,17 @@ app.get('/api/general-evaluations', async (req, res) => {
         maxCW: maxPB,
         maxHW: 20,
         cwRate,
-        avgB: parseFloat(avgB.toFixed(1)),
-        avgP: parseFloat(avgP.toFixed(1)),
+        avgB: Math.round(avgB),
+        avgP: Math.round(avgP),
         participationRate,
         behaviorRate,
         homeworkRate,
         overallProgress,
-        totalHw: total,
+        totalHw: statuses.length,
         doneCount: done,
         partialCount: partial,
         nonFaitCount: nonFait,
-        evalCount: behaviors.length + participations.length + total + directCwScores.length + directHwScores.length
+        evalCount: behaviors.length + participations.length + statuses.length + directCwScores.length + directHwScores.length
       };
     }
 
@@ -6632,7 +6960,7 @@ app.get('/api/general-evaluations', async (req, res) => {
         classworkScore: global.classworkScore,
         homeworkScore: global.homeworkScore,
         cwRate: global.cwRate,
-        totalScore: parseFloat((global.participationBehaviorScore + global.homeworkScore).toFixed(2)),
+        totalScore: Math.round(global.participationBehaviorScore + global.homeworkScore),
         totalMax: maxPB + 20,
         overallProgress: global.overallProgress,
         homeworkRate: global.homeworkRate,
@@ -13084,18 +13412,23 @@ app.get('/api/student-grades-data', async (req, res) => {
     if (subject) query.subject = subject;
     const existingGrades = await db.collection('studentGrades').find(query).toArray();
 
-    // 3. Récupérer toutes les évaluations cumulées pour calculer CW et HW
-    const allEvaluations = await db.collection('evaluations').find({
-      $or: [{ section: section }, { section: { $exists: false } }]
-    }).toArray();
+    // 3. Récupérer toutes les évaluations cumulées de la section (indépendance stricte + auto-validation 2 semaines)
+    const evalSectionFilter = section === 'garcons'
+      ? { $or: [{ section: 'garcons' }, { section: { $exists: false } }] }
+      : { section: section };
+    const rawEvaluations = await db.collection('evaluations').find(evalSectionFilter).toArray();
+    const sectionPlans = await db.collection('plans').find({
+      $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }, { _id: section }]
+    }).toArray().catch(() => []);
+    const allEvaluations = buildTwoWeekAutoEvaluationsForSection(sectionPlans, rawEvaluations, classStudents, section);
 
-    const isPei1 = (targetClassNorm === 'PEI1');
+    const isPei1 = (targetClassNorm === 'PEI1' || String(classe).toUpperCase().includes('PEI1'));
     const maxCw = isPei1 ? 30 : 20;
     const maxEval = isPei1 ? 20 : 30;
     const maxHw = 20;
     const maxExam = 30;
 
-    // 4. Calcul automatique de CW et HW pour chaque élève officiel
+    // 4. Calcul automatique de CW et HW (arrondis à l'unité, sans virgule) pour chaque élève officiel
     const enrichedStudents = classStudents.map(st => {
       const stName = (st.name || '').trim();
       const normStName = normalizeStudentName(stName);
@@ -13119,41 +13452,41 @@ app.get('/api/student-grades-data', async (req, res) => {
       let statuses = [];
 
       effectiveEvals.forEach(ev => {
-        const p = parseInt(ev.participation, 10);
-        const b = parseInt(ev.behavior, 10);
+        const p = parseFloat(ev.participation);
+        const b = parseFloat(ev.behavior);
         if (!isNaN(p)) participations.push(p);
         if (!isNaN(b)) behaviors.push(b);
         if (ev.status) statuses.push(ev.status);
       });
 
-      // 1. Calcul strict de la participation et comportement (Classwork CW)
-      let autoCw = isPei1 ? 21.0 : 14.0; // 70% estimation stricte si aucune évaluation
+      // 1. Calcul cumulé de la participation/comportement sur /10 ramené sur /20 (ou /30 pour PEI1), ARRONDI À L'UNITÉ
+      let autoCw = maxCw; // Par défaut 10/10 -> 20/20 (ou 30/30 pour PEI1)
       if (participations.length > 0 || behaviors.length > 0) {
-        const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : (behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : 7.0);
-        const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : avgP;
-        const strictScore10 = Math.min(10, Math.max(0, (avgP * 0.7 + avgB * 0.3)));
-        autoCw = parseFloat(((strictScore10 / 10) * maxCw).toFixed(1));
+        const avgB = behaviors.length > 0 ? behaviors.reduce((a, b) => a + b, 0) / behaviors.length : (participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : 10);
+        const avgP = participations.length > 0 ? participations.reduce((a, b) => a + b, 0) / participations.length : avgB;
+        const score10 = Math.min(10, Math.max(0, (avgB + avgP) / 2));
+        autoCw = Math.min(maxCw, Math.max(0, Math.round((score10 / 10) * maxCw)));
       }
 
-      // 2. Calcul strict des devoirs (Homework HW sur 20)
-      let autoHw = 14.0; // 70% estimation stricte si aucun devoir
-      const totalHw = statuses.length;
+      // 2. Calcul cumulé de la faisabilité des devoirs sur /20, ARRONDI À L'UNITÉ
+      let autoHw = 20;
+      const activeStatuses = statuses.filter(s => s !== 'Absent');
+      const totalHw = activeStatuses.length;
       if (totalHw > 0) {
-        const doneCount = statuses.filter(s => s === 'Fait').length;
-        const partialCount = statuses.filter(s => s === 'Partiellement Fait').length;
-        // Fait = 100% (20 pts), Partiellement Fait = 50% (10 pts), Non Fait = 0 pt
+        const doneCount = activeStatuses.filter(s => s === 'Fait').length;
+        const partialCount = activeStatuses.filter(s => s === 'Partiellement Fait').length;
         const hwPoints = (doneCount * 20.0) + (partialCount * 10.0);
-        autoHw = parseFloat((hwPoints / totalHw).toFixed(1));
+        autoHw = Math.min(20, Math.max(0, Math.round(hwPoints / totalHw)));
       }
 
       // Vérifier si une note a déjà été saisie manuellement par l'enseignant
       const saved = existingGrades.find(g => normalizeStudentName(g.studentName || '') === normStName);
 
-      const hw = saved && saved.hw !== undefined ? Number(saved.hw) : autoHw;
-      const cw = saved && saved.cw !== undefined ? Number(saved.cw) : autoCw;
+      const hw = saved && saved.hw !== undefined ? Math.round(Number(saved.hw)) : autoHw;
+      const cw = saved && saved.cw !== undefined ? Math.round(Number(saved.cw)) : autoCw;
       const evaluation = saved && saved.evaluation !== undefined ? Number(saved.evaluation) : 0;
       const examen = saved && saved.examen !== undefined ? Number(saved.examen) : 0;
-      const total = saved && saved.total !== undefined ? Number(saved.total) : parseFloat((hw + cw + evaluation + examen).toFixed(1));
+      const total = saved && saved.total !== undefined ? Math.round(Number(saved.total)) : Math.round(hw + cw + evaluation + examen);
 
       return {
         studentName: stName,
@@ -13539,10 +13872,15 @@ app.get('/api/class-bulletins-data', async (req, res) => {
     }).toArray();
     const savedGrades = allClassGrades.filter(g => g.classe === classe || isClassMatchServer(g.classe, classe));
 
-    // 5. Récupérer les évaluations pour calcul strict
-    const allEvaluations = await db.collection('evaluations').find({
-      $or: [{ section: section }, { section: { $exists: false } }]
-    }).toArray();
+    // 5. Récupérer les évaluations de la section + auto-validation des devoirs > 2 semaines (10/10 et Fait)
+    const evalSectionFilter = section === 'garcons'
+      ? { $or: [{ section: 'garcons' }, { section: { $exists: false } }] }
+      : { section: section };
+    const rawEvaluations = await db.collection('evaluations').find(evalSectionFilter).toArray();
+    const sectionPlans = await db.collection('plans').find({
+      $or: [{ section: section }, { _id: new RegExp(`^${section}_`) }, { _id: section }]
+    }).toArray().catch(() => []);
+    const allEvaluations = buildTwoWeekAutoEvaluationsForSection(sectionPlans, rawEvaluations, classStudents, section);
 
     // 6. Récupérer les liaisons enseignants-matières
     const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
@@ -13560,7 +13898,7 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       return resolveSectionTeacher(section, classe, subj, '', subTeacherDocs);
     };
 
-    // Fonction de calcul strict pour un élève et une matière
+    // Fonction de calcul strict (arrondi à l'unité pour CW et HW) pour un élève et une matière
     const computeStudentSubjectGrade = (stName, subj) => {
       const normStName = normalizeStudentName(stName);
       const saved = savedGrades.find(g => 
@@ -13568,14 +13906,14 @@ app.get('/api/class-bulletins-data', async (req, res) => {
         isEquivalentSubjectServer(g.subject, subj)
       );
 
-      let hw = 14.0;
-      let cw = isPei1 ? 21.0 : 14.0;
+      let hw = 20;
+      let cw = maxCw;
       let evaluation = 0;
       let examen = 0;
 
       if (saved) {
-        hw = saved.hw !== undefined ? Number(saved.hw) : hw;
-        cw = saved.cw !== undefined ? Number(saved.cw) : cw;
+        hw = saved.hw !== undefined ? Math.round(Number(saved.hw)) : hw;
+        cw = saved.cw !== undefined ? Math.round(Number(saved.cw)) : cw;
         evaluation = saved.evaluation !== undefined ? Number(saved.evaluation) : 0;
         examen = saved.examen !== undefined ? Number(saved.examen) : 0;
       } else {
@@ -13589,32 +13927,33 @@ app.get('/api/class-bulletins-data', async (req, res) => {
           const behaviors = [];
           const statuses = [];
           stEvals.forEach(ev => {
-            const p = parseInt(ev.participation, 10);
-            const b = parseInt(ev.behavior, 10);
+            const p = parseFloat(ev.participation);
+            const b = parseFloat(ev.behavior);
             if (!isNaN(p)) participations.push(p);
             if (!isNaN(b)) behaviors.push(b);
             if (ev.status) statuses.push(ev.status);
           });
 
-          // Calcul strict de CW (Participation 70% + Comportement 30%)
+          // Calcul cumulé de CW sur /20 (ou /30 pour PEI1) ARRONDI À L'UNITÉ
           if (participations.length > 0 || behaviors.length > 0) {
-            const avgP = participations.length > 0 ? (participations.reduce((a, b) => a + b, 0) / participations.length) : 7.0;
-            const avgB = behaviors.length > 0 ? (behaviors.reduce((a, b) => a + b, 0) / behaviors.length) : avgP;
-            const score10 = Math.min(10, Math.max(0, (avgP * 0.7 + avgB * 0.3)));
-            cw = parseFloat(((score10 / 10) * maxCw).toFixed(1));
+            const avgB = behaviors.length > 0 ? (behaviors.reduce((a, b) => a + b, 0) / behaviors.length) : (participations.length > 0 ? (participations.reduce((a, b) => a + b, 0) / participations.length) : 10);
+            const avgP = participations.length > 0 ? (participations.reduce((a, b) => a + b, 0) / participations.length) : avgB;
+            const score10 = Math.min(10, Math.max(0, (avgB + avgP) / 2));
+            cw = Math.min(maxCw, Math.max(0, Math.round((score10 / 10) * maxCw)));
           }
 
-          // Calcul strict de HW (Fait = 100%, Partiellement Fait = 50%, Non Fait = 0%)
-          if (statuses.length > 0) {
-            const done = statuses.filter(s => s === 'Fait').length;
-            const partial = statuses.filter(s => s === 'Partiellement Fait').length;
+          // Calcul cumulé de HW sur /20 (Fait = 100%, Partiellement Fait = 50%, Non Fait = 0%) ARRONDI À L'UNITÉ
+          const activeStatuses = statuses.filter(s => s !== 'Absent');
+          if (activeStatuses.length > 0) {
+            const done = activeStatuses.filter(s => s === 'Fait').length;
+            const partial = activeStatuses.filter(s => s === 'Partiellement Fait').length;
             const hwPts = (done * 20.0) + (partial * 10.0);
-            hw = parseFloat((hwPts / statuses.length).toFixed(1));
+            hw = Math.min(20, Math.max(0, Math.round(hwPts / activeStatuses.length)));
           }
         }
       }
 
-      const totalSubj = Math.round((hw + cw + evaluation + examen) * 10) / 10;
+      const totalSubj = Math.round(hw + cw + evaluation + examen);
       let appreciation = 'Bon travail dans l\'ensemble.';
       let mention = 'Passable';
       if (totalSubj >= 90) { appreciation = 'Excellent travail, élève brillant et régulier.'; mention = 'Excellent'; }

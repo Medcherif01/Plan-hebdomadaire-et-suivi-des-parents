@@ -9226,74 +9226,93 @@ async function loadHomeworkShowcase() {
             fetch(`/api/photo-2?section=${section}`).then(r => r.ok ? r.json() : null),
             fetch(`/api/photo-3?section=${section}`).then(r => r.ok ? r.json() : null)
         ]).then(([sotwDirectRes, summaryRes, p1Res, p2Res, p3Res]) => {
-            // Élève de la semaine avec photo, étoiles, mots de félicitations et animation festive
+            // Les 3 Élèves de la semaine (choisis chaque dimanche selon le plus grand nombre d'étoiles ⭐ > 70% faisabilité)
             const sotwEl = document.getElementById('sotw-content');
             if (sotwEl) {
-                let st = null;
-                if (sotwDirectRes.status === 'fulfilled' && sotwDirectRes.value && sotwDirectRes.value.name) {
-                    st = sotwDirectRes.value;
-                } else if (summaryRes.status === 'fulfilled' && summaryRes.value && summaryRes.value.studentsOfWeek && summaryRes.value.studentsOfWeek.length > 0) {
-                    st = summaryRes.value.studentsOfWeek[0];
+                let topStudents = [];
+                if (summaryRes.status === 'fulfilled' && summaryRes.value && Array.isArray(summaryRes.value.studentsOfWeek) && summaryRes.value.studentsOfWeek.length > 0) {
+                    topStudents = summaryRes.value.studentsOfWeek.slice(0, 3);
+                } else if (sotwDirectRes.status === 'fulfilled' && sotwDirectRes.value) {
+                    if (Array.isArray(sotwDirectRes.value.top3) && sotwDirectRes.value.top3.length > 0) {
+                        topStudents = sotwDirectRes.value.top3.slice(0, 3);
+                    } else if (sotwDirectRes.value.name) {
+                        topStudents = [sotwDirectRes.value];
+                    }
                 }
 
-                if (st && st.name) {
-                    const starsCount = Math.max(1, Math.min(5, Number(st.stars) || 5));
-                    let starsHtml = '';
-                    for (let i = 0; i < starsCount; i++) {
-                        starsHtml += '<i class="fas fa-star"></i> ';
-                    }
-                    // Récupérer la photo de l'élève : exactement la même que dans son profil devoirs
-                    let rawPhoto = st.photoUrl || '';
-                    if (!rawPhoto && window.currentLoadedStudentsMap) {
-                        const norm = (st.name || '').trim().toLowerCase();
-                        const stObj = window.currentLoadedStudentsMap.get(norm);
-                        if (stObj && stObj.photo) {
-                            rawPhoto = stObj.photo;
+                if (topStudents.length > 0) {
+                    const medals = ['🥇 1er', '🥈 2ème', '🥉 3ème'];
+                    const medalColors = ['#F59E0B', '#94A3B8', '#D97706'];
+                    const cardsHtml = topStudents.map((st, idx) => {
+                        const starsCount = Math.max(1, Math.min(7, Number(st.stars) || 5));
+                        let starsHtml = '';
+                        for (let i = 0; i < starsCount; i++) {
+                            starsHtml += '<i class="fas fa-star"></i> ';
                         }
-                    }
-                    const photoSrc = rawPhoto ? (typeof formatDriveImageUrl === 'function' ? formatDriveImageUrl(rawPhoto) : rawPhoto) : getStudentFallbackAvatar(section);
-                    const congratsFr = st.congratulations || "Toutes nos chaleureuses félicitations pour son excellence académique, sa régularité et son attitude exemplaire !";
-                    const congratsAr = st.congratulationsAr || "ألف مبروك للطالب المتميز على تفوقه واجتهاده المستمر وأخلاقه العالية !";
+                        let rawPhoto = st.photoUrl || st.photo || '';
+                        if (!rawPhoto && window.currentLoadedStudentsMap) {
+                            const norm = (st.name || '').trim().toLowerCase();
+                            const stObj = window.currentLoadedStudentsMap.get(norm);
+                            if (stObj && stObj.photo) {
+                                rawPhoto = stObj.photo;
+                            }
+                        }
+                        const photoSrc = rawPhoto ? (typeof formatDriveImageUrl === 'function' ? formatDriveImageUrl(rawPhoto) : rawPhoto) : getStudentFallbackAvatar(section);
+                        const congratsFr = st.congratsMessageFr || st.congratulations || `Toutes nos chaleureuses félicitations à ${st.name} pour ses ${starsCount} étoiles ⭐ et son excellence cette semaine !`;
+                        const congratsAr = st.congratsMessageAr || st.congratulationsAr || "ألف مبروك للطالب المتميز على تفوقه واجتهاده المستمر وحصوله على نجوم التميز هذا الأسبوع !";
+                        const rankBadge = medals[idx] || `#${idx + 1}`;
+                        const rankColor = medalColors[idx] || '#F59E0B';
+
+                        return `
+                            <div class="sotw-card-wrapper" style="margin-bottom:${idx < topStudents.length - 1 ? '14px' : '0'}; border:1.5px solid ${idx === 0 ? '#FCD34D' : '#E2E8F0'}; border-radius:16px; padding:14px;">
+                                <div class="sotw-photo-frame">
+                                    <img src="${escapeHtml(photoSrc)}" alt="${escapeHtml(st.name)}" class="sotw-photo-img" onerror="this.src='${getStudentFallbackAvatar(section)}'" />
+                                    <div class="sotw-crown-badge" style="background:${rankColor};" title="${rankBadge}">
+                                        <i class="fas fa-crown"></i>
+                                    </div>
+                                </div>
+                                <div class="sotw-details">
+                                    <div class="sotw-tag-pill" style="display:inline-flex; align-items:center; gap:6px;">
+                                        <span style="background:${rankColor}; color:white; padding:2px 8px; border-radius:999px; font-weight:900; font-size:0.75rem;">${rankBadge}</span>
+                                        <i class="fas fa-award"></i> <span>Élève de la Semaine • نجم الأسبوع</span>
+                                    </div>
+                                    <h3 class="sotw-student-name">${escapeHtml(st.name)}</h3>
+                                    <div class="sotw-meta-row">
+                                        <span class="sotw-class-badge"><i class="fas fa-graduation-cap"></i> ${escapeHtml(st.class || '')}</span>
+                                        <div class="sotw-stars" title="${starsCount} étoiles gagnées (>70% faisabilité des devoirs)">${starsHtml} <span style="font-size:0.78rem; font-weight:800; color:#B45309;">(${starsCount} ⭐)</span></div>
+                                    </div>
+                                    <div class="sotw-congrats-box">
+                                        <p class="sotw-congrats-fr">
+                                            <i class="fas fa-quote-left" style="color:#F59E0B; margin-right:6px; opacity:0.8;"></i>
+                                            ${escapeHtml(congratsFr)}
+                                        </p>
+                                        <p class="sotw-congrats-ar" dir="rtl">
+                                            ${escapeHtml(congratsAr)}
+                                            <i class="fas fa-quote-right" style="color:#F59E0B; margin-right:6px; opacity:0.8;"></i>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
 
                     sotwEl.innerHTML = `
-                        <div class="sotw-card-wrapper">
-                            <div class="sotw-photo-frame">
-                                <img src="${escapeHtml(photoSrc)}" alt="${escapeHtml(st.name)}" class="sotw-photo-img" onerror="this.src='${getStudentFallbackAvatar(section)}'" />
-                                <div class="sotw-crown-badge" title="Étoile d'Excellence">
-                                    <i class="fas fa-crown"></i>
-                                </div>
-                            </div>
-                            <div class="sotw-details">
-                                <div class="sotw-tag-pill">
-                                    <i class="fas fa-award"></i> <span>Élève de la Semaine • نجم الأسبوع</span>
-                                </div>
-                                <h3 class="sotw-student-name">${escapeHtml(st.name)}</h3>
-                                <div class="sotw-meta-row">
-                                    <span class="sotw-class-badge"><i class="fas fa-graduation-cap"></i> ${escapeHtml(st.class || '')}</span>
-                                    <div class="sotw-stars" title="${starsCount} étoiles d'or">${starsHtml}</div>
-                                </div>
-                                <div class="sotw-congrats-box">
-                                    <p class="sotw-congrats-fr">
-                                        <i class="fas fa-quote-left" style="color:#F59E0B; margin-right:6px; opacity:0.8;"></i>
-                                        ${escapeHtml(congratsFr)}
-                                    </p>
-                                    <p class="sotw-congrats-ar" dir="rtl">
-                                        ${escapeHtml(congratsAr)}
-                                        <i class="fas fa-quote-right" style="color:#F59E0B; margin-right:6px; opacity:0.8;"></i>
-                                    </p>
-                                </div>
-                            </div>
+                        <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding:6px 10px; background:linear-gradient(135deg,#FFFBEB,#FEF3C7); border:1px solid #FDE68A; border-radius:10px;">
+                            <span style="font-weight:900; color:#92400E; font-size:0.88rem;"><i class="fas fa-trophy" style="color:#D97706;"></i> Top 3 Élèves de la Semaine (Sélection du Dimanche • Plus d'étoiles ⭐ &gt; 70% devoirs faits)</span>
+                            <span style="font-weight:800; color:#B45309; font-size:0.82rem;" dir="rtl">🏆 نجوم الأسبوع الثلاثة الأكثر تميزاً</span>
                         </div>
+                        ${cardsHtml}
                     `;
 
-                    // Synchroniser les champs d'administration dans l'onglet Admin (Tab 4)
+                    // Synchroniser les champs d'administration dans l'onglet Admin (Tab 4) avec le 1er élève
+                    const st = topStudents[0];
                     const syncInputs = [
                         ['adminSotwName', st.name || ''],
                         ['adminSotwClass', st.class || ''],
-                        ['adminSotwStars', String(starsCount)],
-                        ['adminSotwPhotoUrl', rawPhoto || ''],
-                        ['adminSotwCongratsFr', st.congratulations || ''],
-                        ['adminSotwCongratsAr', st.congratulationsAr || '']
+                        ['adminSotwStars', String(st.stars || 5)],
+                        ['adminSotwPhotoUrl', st.photoUrl || st.photo || ''],
+                        ['adminSotwCongratsFr', st.congratulations || st.congratsMessageFr || ''],
+                        ['adminSotwCongratsAr', st.congratulationsAr || st.congratsMessageAr || '']
                     ];
                     syncInputs.forEach(([aId, val]) => {
                         const aEl = document.getElementById(aId);
@@ -9303,7 +9322,7 @@ async function loadHomeworkShowcase() {
                     sotwEl.innerHTML = `
                         <div style="padding:25px; text-align:center; color:#6B7280;">
                             <i class="fas fa-crown" style="font-size:2.2rem; color:#FCD34D; margin-bottom:10px; display:block;"></i>
-                            <h4 style="margin:0 0 6px 0; color:#374151; font-size:1.15rem;">Élève de la Semaine</h4>
+                            <h4 style="margin:0 0 6px 0; color:#374151; font-size:1.15rem;">Les 3 Élèves de la Semaine</h4>
                             <p style="margin:0; font-size:0.92rem;">Aucun élève de la semaine sélectionné pour le moment.</p>
                         </div>
                     `;
@@ -10162,13 +10181,13 @@ async function loadGeneralEvaluations(studentName, className) {
 
             const maxCW = studentData.maxCW || studentData.maxPB || 20;
             const maxHW = studentData.maxHW || 20;
-            const cwScore = studentData.classworkScore != null ? Number(studentData.classworkScore).toFixed(1) : (studentData.participationBehaviorScore != null ? Number(studentData.participationBehaviorScore).toFixed(1) : Number(maxCW).toFixed(1));
-            const hwScore = studentData.homeworkScore != null ? Number(studentData.homeworkScore).toFixed(1) : Number(maxHW).toFixed(1);
-            const totalCumulScore = (parseFloat(cwScore) + parseFloat(hwScore)).toFixed(1);
+            const cwScore = studentData.classworkScore != null ? Math.round(Number(studentData.classworkScore)) : (studentData.participationBehaviorScore != null ? Math.round(Number(studentData.participationBehaviorScore)) : Math.round(Number(maxCW)));
+            const hwScore = studentData.homeworkScore != null ? Math.round(Number(studentData.homeworkScore)) : Math.round(Number(maxHW));
+            const totalCumulScore = Math.round(Number(cwScore) + Number(hwScore));
             const totalCumulMax = maxCW + maxHW;
 
-            const avgP = studentData.avgParticipation != null ? studentData.avgParticipation : '10.0';
-            const avgB = studentData.avgBehavior != null ? studentData.avgBehavior : '10.0';
+            const avgP = studentData.avgParticipation != null ? Math.round(Number(studentData.avgParticipation)) : 10;
+            const avgB = studentData.avgBehavior != null ? Math.round(Number(studentData.avgBehavior)) : 10;
             const totalHw = studentData.totalHomeworks || (studentData.doneCount || 0) + (studentData.partialCount || 0) + (studentData.nonFaitCount || 0);
             const doneCount = studentData.doneCount || 0;
             const partialCount = studentData.partialCount || 0;
@@ -10227,7 +10246,7 @@ async function loadGeneralEvaluations(studentName, className) {
                                         ${isAr ? 'المعدل التراكمي المستمر : أعمال القسم (Classwork) والواجبات (Homework)' : 'Cumul Continu des Notes : Classwork (CW) & Homework (HW)'}
                                     </div>
                                     <div style="font-size:0.8rem; color:#475569; font-weight:600;">
-                                        ${isAr ? 'تراكم مستمر يتحدث تلقائياً مع كل متابعة يومية وتقييم للمدرسين' : 'Cumulation continue mise à jour automatiquement à chaque suivi des devoirs et participation en classe'}
+                                        ${isAr ? 'تراكم مستمر يتحدث تلقائياً مع كل متابعة يومية وتقييم للمدرسين (مقرب إلى الوحدة)' : 'Cumulation continue mise à jour automatiquement à chaque suivi des devoirs et comportement (arrondi à l\'unité)'}
                                     </div>
                                 </div>
                             </div>
@@ -10283,9 +10302,9 @@ async function loadGeneralEvaluations(studentName, className) {
                             ${subjectEntries.map(([subj, sInfo]) => {
                                 const sProg = Math.min(100, Math.max(0, sInfo.overallProgress ?? 100));
                                 const sColor = sProg >= 75 ? '#10B981' : (sProg >= 50 ? '#F59E0B' : '#EF4444');
-                                const sCw = sInfo.classworkScore != null ? Number(sInfo.classworkScore).toFixed(1) : (sInfo.participationBehaviorScore != null ? Number(sInfo.participationBehaviorScore).toFixed(1) : Number(maxCW).toFixed(1));
-                                const sHw = sInfo.homeworkScore != null ? Number(sInfo.homeworkScore).toFixed(1) : Number(maxHW).toFixed(1);
-                                const sTot = (parseFloat(sCw) + parseFloat(sHw)).toFixed(1);
+                                const sCw = sInfo.classworkScore != null ? Math.round(Number(sInfo.classworkScore)) : (sInfo.participationBehaviorScore != null ? Math.round(Number(sInfo.participationBehaviorScore)) : Math.round(Number(maxCW)));
+                                const sHw = sInfo.homeworkScore != null ? Math.round(Number(sInfo.homeworkScore)) : Math.round(Number(maxHW));
+                                const sTot = Math.round(Number(sCw) + Number(sHw));
                                 return `
                                     <div style="background:white; border:1.5px solid #E2E8F0; border-radius:12px; padding:14px 16px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
                                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -14116,7 +14135,9 @@ function renderTeacherHomeworksDashboard() {
                 };
                 const secBadge = secBadgeMap[hw.section] || '';
 
-                const badgeEvaluatedText = (currentUserLanguage === 'en') ? 'Evaluated' : ((currentUserLanguage === 'ar') ? 'تم التقييم' : 'Évalué');
+                const badgeEvaluatedText = hw.isAutoValidated
+                    ? ((currentUserLanguage === 'en') ? 'Evaluated (Auto 2w • 10/10)' : ((currentUserLanguage === 'ar') ? 'مقيّم تلقائياً (أسبوعان • 10/10)' : 'Évalué (Auto 2 sem. • 10/10)'))
+                    : ((currentUserLanguage === 'en') ? 'Evaluated' : ((currentUserLanguage === 'ar') ? 'تم التقييم' : 'Évalué'));
                 const badgePendingText = (currentUserLanguage === 'en') ? 'To Evaluate' : ((currentUserLanguage === 'ar') ? 'قيد التقييم' : 'À Évaluer');
                 const periodText = (currentUserLanguage === 'en') ? 'Period' : ((currentUserLanguage === 'ar') ? 'الحصة' : 'Période');
                 const lessonText = (currentUserLanguage === 'en') ? 'Lesson :' : ((currentUserLanguage === 'ar') ? 'الدرس:' : 'Leçon :');
@@ -14286,9 +14307,9 @@ async function openTeacherEvalModal(hwIndex) {
 
         // Construire la table de saisie avec internationalisation complète
         const thStudentName = t('th_student_name') || "Nom de l'Élève";
-        const thHwStatus = t('th_hw_status') || "Statut du Devoir";
+        const thHwStatus = t('th_hw_status') || "Statut du Devoir (Fait / Non Fait / Partiel / Absent)";
+        const thBehavior = (currentUserLanguage === 'en') ? "Behavior & Participation (/10)" : ((currentUserLanguage === 'ar') ? "السلوك والمشاركة (/10)" : "Note de Comportement (/10)");
         const thParticipation = t('th_participation') || "Participation (/10)";
-        const thBehavior = t('th_behavior') || "Comportement (/10)";
         const thComment = t('th_comment') || "Remarque";
         const thParent = t('th_parent') || "Parent";
         const optDone = t('opt_done') || "✅ Fait";
@@ -14304,9 +14325,9 @@ async function openTeacherEvalModal(hwIndex) {
                     <tr style="background:#F1F5F9; color:#1E293B;">
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">#</th>
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">${thStudentName}</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; min-width:140px;">${thHwStatus}</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:100px;">${thParticipation}</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:100px;">${thBehavior}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; min-width:155px;">${thHwStatus}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:130px; background:#F0FDF4; color:#166534;">${thBehavior}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:110px;">${thParticipation}</th>
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">${thComment}</th>
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:90px;">${thParent}</th>
                     </tr>
@@ -14323,8 +14344,8 @@ async function openTeacherEvalModal(hwIndex) {
                 return isNameMatch && isSubjMatch;
             }) || {};
             const curStatus = ev.status || 'Fait';
-            const curPart = (ev.participation !== undefined && ev.participation !== null) ? ev.participation : 10;
             const curBeh = (ev.behavior !== undefined && ev.behavior !== null) ? ev.behavior : 10;
+            const curPart = (ev.participation !== undefined && ev.participation !== null) ? ev.participation : curBeh;
             const curComm = ev.comment || '';
 
             tableHtml += `
@@ -14341,11 +14362,11 @@ async function openTeacherEvalModal(hwIndex) {
                             <option value="Absent" ${curStatus === 'Absent' ? 'selected' : ''}>${optAbsent}</option>
                         </select>
                     </td>
-                    <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
-                        <input type="number" min="0" max="10" value="${curPart}" class="modal-eval-part" data-student="${escapeHtml(st.name)}" style="width:75px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                    <td style="padding:10px; border:1px solid #E2E8F0; text-align:center; background:#F0FDF4;">
+                        <input type="number" min="0" max="10" step="1" value="${curBeh}" class="modal-eval-beh" data-student="${escapeHtml(st.name)}" oninput="const pEl=this.closest('tr').querySelector('.modal-eval-part'); if(pEl) pEl.value=this.value;" style="width:78px; padding:6px; text-align:center; border-radius:6px; border:1.5px solid #86EFAC; font-weight:800; color:#15803D;">
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
-                        <input type="number" min="0" max="10" value="${curBeh}" class="modal-eval-beh" data-student="${escapeHtml(st.name)}" style="width:75px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                        <input type="number" min="0" max="10" step="1" value="${curPart}" class="modal-eval-part" data-student="${escapeHtml(st.name)}" style="width:75px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0;">
                         <input type="text" value="${escapeHtml(curComm)}" class="modal-eval-comm" data-student="${escapeHtml(st.name)}" placeholder="${commentPlaceholder}" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1;">
@@ -14419,6 +14440,9 @@ async function submitCurrentHomeworkEvaluation() {
             const behEl = document.querySelector(`.modal-eval-beh[data-student="${studentName}"]`);
             const commEl = document.querySelector(`.modal-eval-comm[data-student="${studentName}"]`);
 
+            const behNum = Math.min(10, Math.max(0, parseInt(behEl?.value ?? 10, 10) || 10));
+            const partNum = Math.min(10, Math.max(0, parseInt(partEl?.value ?? behNum, 10) || behNum));
+
             evaluations.push({
                 studentName,
                 class: canonicalClass || hw.classe,
@@ -14426,8 +14450,8 @@ async function submitCurrentHomeworkEvaluation() {
                 date: hw.date,
                 subject: hw.matiere,
                 status,
-                participation: parseInt(partEl?.value || 10),
-                behavior: parseInt(behEl?.value || 10),
+                participation: partNum,
+                behavior: behNum,
                 comment: commEl?.value || '',
                 section,
                 evaluatedBy: loggedInUser || 'Enseignant'
@@ -14451,6 +14475,7 @@ async function submitCurrentHomeworkEvaluation() {
 
         // Marquer le devoir comme évalué dans l'état local (Devient VERT immédiatement !)
         hw.isEvaluated = true;
+        hw.isAutoValidated = false;
 
         closeTeacherEvalSheetModal();
         renderTeacherHomeworksDashboard();
@@ -20890,11 +20915,13 @@ async function renderTeacherGradesTable() {
 
         students.forEach((st, idx) => {
             const stName = st.studentName || st.name || '';
-            const hwVal = (st.hw !== undefined) ? st.hw : st.autoHw;
-            const cwVal = (st.cw !== undefined) ? st.cw : st.autoCw;
+            const autoHwRounded = Math.round(Number(st.autoHw ?? maxHw));
+            const autoCwRounded = Math.round(Number(st.autoCw ?? maxCw));
+            const hwVal = (st.hw !== undefined) ? Math.round(Number(st.hw)) : autoHwRounded;
+            const cwVal = (st.cw !== undefined) ? Math.round(Number(st.cw)) : autoCwRounded;
             const evalVal = (st.evaluation !== undefined) ? st.evaluation : 0;
             const examVal = (st.examen !== undefined) ? st.examen : 0;
-            const totalVal = Math.round((Number(hwVal) + Number(cwVal) + Number(evalVal) + Number(examVal)) * 10) / 10;
+            const totalVal = Math.round(Number(hwVal) + Number(cwVal) + Number(evalVal) + Number(examVal));
 
             const totalBadgeColor = totalVal >= 80 ? '#10B981' : (totalVal >= 60 ? '#2563EB' : (totalVal >= 50 ? '#F59E0B' : '#EF4444'));
 
@@ -20908,15 +20935,15 @@ async function renderTeacherGradesTable() {
                         </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxHw}" step="0.5" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
-                        <div style="font-size:0.7rem; color:#059669; font-weight:700; margin-top:3px;" title="Calculé d'après les devoirs accomplis">
-                            <i class="fas fa-magic"></i> Auto: ${st.autoHw}/${maxHw}
+                        <input type="number" min="0" max="${maxHw}" step="1" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
+                        <div style="font-size:0.7rem; color:#059669; font-weight:700; margin-top:3px;" title="Calculé d'après la faisabilité des devoirs (arrondi à l'unité)">
+                            <i class="fas fa-magic"></i> Cumul: ${autoHwRounded}/${maxHw}
                         </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxCw}" step="0.5" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
-                        <div style="font-size:0.7rem; color:#2563EB; font-weight:700; margin-top:3px;" title="Calculé d'après la participation et le comportement">
-                            <i class="fas fa-magic"></i> Auto: ${st.autoCw}/${maxCw}
+                        <input type="number" min="0" max="${maxCw}" step="1" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
+                        <div style="font-size:0.7rem; color:#2563EB; font-weight:700; margin-top:3px;" title="Calculé d'après le comportement et la participation (arrondi à l'unité)">
+                            <i class="fas fa-magic"></i> Cumul: ${autoCwRounded}/${maxCw}
                         </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
@@ -20957,11 +20984,11 @@ async function renderTeacherGradesTable() {
 function recalcStudentRowTotal(inputEl, maxHw, maxCw, maxEval, maxExam) {
     const tr = inputEl.closest('tr');
     if (!tr) return;
-    const hw = parseFloat(tr.querySelector('.grade-input-hw')?.value) || 0;
-    const cw = parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0;
+    const hw = Math.round(parseFloat(tr.querySelector('.grade-input-hw')?.value) || 0);
+    const cw = Math.round(parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0);
     const evaluation = parseFloat(tr.querySelector('.grade-input-eval')?.value) || 0;
     const examen = parseFloat(tr.querySelector('.grade-input-exam')?.value) || 0;
-    const total = Math.min(100, Math.max(0, Math.round((hw + cw + evaluation + examen) * 10) / 10));
+    const total = Math.min(100, Math.max(0, Math.round(hw + cw + evaluation + examen)));
     const totalCell = tr.querySelector('.grade-cell-total');
     if (totalCell) {
         totalCell.textContent = `${total}/100`;
@@ -20988,11 +21015,11 @@ async function saveTeacherGradesData() {
 
     rows.forEach(tr => {
         const studentName = tr.getAttribute('data-student-row');
-        const hw = parseFloat(tr.querySelector('.grade-input-hw')?.value) || 0;
-        const cw = parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0;
+        const hw = Math.round(parseFloat(tr.querySelector('.grade-input-hw')?.value) || 0);
+        const cw = Math.round(parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0);
         const evaluation = parseFloat(tr.querySelector('.grade-input-eval')?.value) || 0;
         const examen = parseFloat(tr.querySelector('.grade-input-exam')?.value) || 0;
-        const total = Math.round((hw + cw + evaluation + examen) * 10) / 10;
+        const total = Math.round(hw + cw + evaluation + examen);
 
         studentGrades.push({ studentName, hw, cw, evaluation, examen, total });
     });
