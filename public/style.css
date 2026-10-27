@@ -5068,3 +5068,85 @@ tr.row-plan-error {
     animation: parentViewFadeSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ==========================================================================
+   7. POLICE ARABE AGRANDIE (16PX) DANS LE PLAN HEBDOMADAIRE PARENTS & DESIGN PRO ANIMÉ
+   ========================================================================== */
+#parentPlanDisplayContainer .arabic-content,
+#parentPlanDisplayContainer [dir="rtl"],
+#parent-plan-view .arabic-content {
+    font-family: 'Cairo', 'Tajawal', 'Amiri', 'Noto Sans Arabic', sans-serif !important;
+    font-size: 16px !important;
+    line-height: 1.75 !important;
+    letter-spacing: 0 !important;
+}
+
+#parentPlanDisplayContainer .arabic-content div,
+#parentPlanDisplayContainer .arabic-content span {
+    font-size: 16px !important;
+    line-height: 1.75 !important;
+}
+
+@keyframes parentRowSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.parent-plan-row-anim {
+    animation: parentRowSlideIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.parent-plan-row-anim:hover {
+    background-color: #EFF6FF !important;
+    transform: scale(1.002);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.07);
+}
+
+/* En-têtes et conteneurs de l'Espace Parent plus pro et sophistiqués */
+#parent-selection-view .hw-section-header,
+#student-dashboard-view .hw-section-header,
+#parent-plan-view .hw-section-header,
+#parent-contacts-view .hw-section-header,
+#homework-home-view .hw-section-header {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.96) 100%);
+    backdrop-filter: blur(12px);
+    border: 1.5px solid rgba(226, 232, 240, 0.9);
+    border-radius: 20px;
+    padding: 16px 22px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+    margin-bottom: 18px;
+}
+
+/* Boutons de classes dans l'Espace Parent */
+#parent-class-buttons .pro-button {
+    border-radius: 14px !important;
+    padding: 10px 20px !important;
+    font-weight: 800 !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+}
+
+#parent-class-buttons .pro-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+}
+
+/* Fiche d'identité de l'élève dans l'Espace Parent */
+.student-header-card {
+    background: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%) !important;
+    border: 1.5px solid #E2E8F0 !important;
+    border-radius: 24px !important;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.07) !important;
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.student-header-card:hover {
+    box-shadow: 0 16px 38px rgba(37, 99, 235, 0.11) !important;
+}
+
+

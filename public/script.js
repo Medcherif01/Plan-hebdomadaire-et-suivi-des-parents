@@ -7510,10 +7510,33 @@ function getStudentFallbackAvatar(section) {
     return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+function updateTopNavGradesButtonsVisibility(inParentSpaceView = false) {
+    const appNavBar = document.querySelector('.app-nav-bar');
+    const plansTabBtn = document.getElementById('tab-plans-btn');
+    const gradesTabBtn = document.getElementById('tab-grades-btn');
+    const bulletinsTabBtn = document.getElementById('tab-bulletins-btn');
+    const isTeacherOrAdmin = Boolean(!isParentMode && loggedInUser);
+
+    if (isParentMode || !loggedInUser) {
+        if (appNavBar) appNavBar.style.display = 'none';
+        if (plansTabBtn) plansTabBtn.style.display = 'none';
+        if (gradesTabBtn) gradesTabBtn.style.display = 'none';
+        if (bulletinsTabBtn) bulletinsTabBtn.style.display = 'none';
+    } else {
+        if (appNavBar) appNavBar.style.display = 'flex';
+        if (plansTabBtn) plansTabBtn.style.display = 'inline-block';
+        // Dans les vues de l'espace parent, masquer le bouton de saisie des notes pour garder l'espace parent épuré
+        if (gradesTabBtn) gradesTabBtn.style.display = inParentSpaceView ? 'none' : 'inline-block';
+        if (bulletinsTabBtn) bulletinsTabBtn.style.display = inParentSpaceView ? 'none' : 'inline-flex';
+    }
+}
+
 function applyParentUIMode(enabled) {
     isParentMode = enabled;
     
     const plansTabBtn = document.getElementById('tab-plans-btn');
+    const gradesTabBtn = document.getElementById('tab-grades-btn');
+    const bulletinsTabBtn = document.getElementById('tab-bulletins-btn');
     const goToTeacherBtn = document.getElementById('go-to-teacher');
     const goToParentBtn = document.getElementById('go-to-parent');
     const loggedInInfo = document.getElementById('loggedInUserInfo');
@@ -7522,7 +7545,7 @@ function applyParentUIMode(enabled) {
     const switchSecBtn = document.querySelector('.switch-section-btn');
     
     if (enabled) {
-        if (plansTabBtn) plansTabBtn.style.display = 'none'; // Masquer l'accès aux plans enseignants
+        updateTopNavGradesButtonsVisibility(true);
         if (goToTeacherBtn) goToTeacherBtn.style.display = 'none'; // Masquer l'accès à l'espace enseignants
         if (goToParentBtn) goToParentBtn.style.display = 'inline-flex';
         if (switchSecBtn) switchSecBtn.style.display = 'none';
@@ -7537,7 +7560,7 @@ function applyParentUIMode(enabled) {
         sessionStorage.removeItem('lockedParentSection');
         localStorage.removeItem('lockedParentSection');
         clearParentURL();
-        if (plansTabBtn) plansTabBtn.style.display = 'inline-block';
+        updateTopNavGradesButtonsVisibility(false);
         if (goToTeacherBtn) goToTeacherBtn.style.display = 'inline-flex';
         if (goToParentBtn) goToParentBtn.style.display = 'none'; // L'enseignant ne voit pas l'espace parent
         if (switchSecBtn) {
@@ -7560,7 +7583,10 @@ function applyParentUIMode(enabled) {
 }
 
 function switchMainTab(tab) {
-    if (isParentMode && !loggedInUser && tab === 'plans') {
+    if ((isParentMode || !loggedInUser) && (tab === 'plans' || tab === 'grades')) {
+        if (tab === 'grades') {
+            displayAlert("La saisie des notes est strictement réservée aux enseignants et à l'administrateur.", true);
+        }
         tab = 'devoirs';
     }
     const plansTab = document.getElementById('plans-tab-content');
@@ -7589,10 +7615,12 @@ function switchMainTab(tab) {
             showHomeworkView('homework-teacher');
         }
     } else if (tab === 'grades') {
+        updateTopNavGradesButtonsVisibility(false);
         if (gradesBtn) gradesBtn.classList.add('active');
         if (gradesTab) gradesTab.style.display = 'block';
         if (typeof initTeacherGradesInterface === 'function') initTeacherGradesInterface();
     } else {
+        updateTopNavGradesButtonsVisibility(false);
         if (plansTab) plansTab.style.display = 'block';
         if (plansBtn) plansBtn.classList.add('active');
     }
@@ -7610,6 +7638,9 @@ function showHomeworkView(viewName) {
             viewName = 'homework-teacher';
         }
     }
+    const parentSpaceViews = ['parent-selection', 'student-dashboard', 'parent-plan', 'parent-contacts', 'homework-home'];
+    updateTopNavGradesButtonsVisibility(parentSpaceViews.includes(viewName));
+
     const backToTeacherBtn = document.getElementById('btnBackToTeacherEvalFromStudents');
     if (backToTeacherBtn) {
         backToTeacherBtn.style.display = (!isParentMode && loggedInUser) ? 'inline-flex' : 'none';
@@ -8338,20 +8369,21 @@ function renderParentPlanCards(rows) {
             const isArDev = containsArabic(devoirs);
             const isArSup = containsArabic(support);
             
+            const arFontStyle = "font-family: 'Cairo', 'Tajawal', 'Amiri', sans-serif; font-size: 16px; line-height: 1.75; font-weight: 700;";
             tableHtml += `
-                <tr style="background:${bgRow}; border-bottom:1px solid #E2E8F0; vertical-align:middle; transition:background 0.2s ease;">
+                <tr class="parent-plan-row-anim" style="background:${bgRow}; border-bottom:1px solid #E2E8F0; vertical-align:middle; transition:all 0.22s ease; animation-delay:${idx * 0.04}s;">
                     <!-- Période -->
                     <td style="padding:16px 12px; border-bottom:1px solid #E2E8F0; text-align:center;">
-                        <span style="background:#EEF2FF; color:#4338CA; font-weight:800; padding:6px 12px; border-radius:10px; font-size:0.95rem; display:inline-block;">
+                        <span style="background:linear-gradient(135deg, #EEF2FF, #E0E7FF); color:#3730A3; font-weight:800; padding:7px 13px; border-radius:12px; font-size:0.96rem; display:inline-block; box-shadow:0 2px 6px rgba(67,56,202,0.08);">
                             ${period}
                         </span>
                     </td>
                     
                     <!-- Matière & Enseignant -->
                     <td class="${isArMat || isArEns ? 'arabic-content' : ''}" ${isArMat || isArEns ? 'dir="rtl"' : ''} style="padding:16px 14px; border-bottom:1px solid #E2E8F0; ${isArMat || isArEns ? 'text-align:center; direction:rtl;' : ''}">
-                        <div style="font-weight:800; color:#1E1B4B; font-size:1.05rem; margin-bottom:4px; ${isArMat ? 'text-align:center;' : ''}">${escapeHtml(matiere)}</div>
+                        <div style="font-weight:800; color:#1E1B4B; font-size:${isArMat ? '17px' : '1.05rem'}; line-height:${isArMat ? '1.65' : '1.35'}; ${isArMat ? "font-family: 'Cairo', 'Tajawal', 'Amiri', sans-serif;" : ''} margin-bottom:5px; ${isArMat ? 'text-align:center;' : ''}">${escapeHtml(matiere)}</div>
                         ${enseignant ? `
-                            <button type="button" onclick="openContactTeacherModal('${escapeHtml(enseignant).replace(/'/g, "\\'")}')" class="teacher-direct-msg-btn" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:4px 10px; border-radius:8px; font-size:0.82rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; margin-top:2px;">
+                            <button type="button" onclick="openContactTeacherModal('${escapeHtml(enseignant).replace(/'/g, "\\'")}')" class="teacher-direct-msg-btn" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; padding:4px 10px; border-radius:8px; font-size:${isArEns ? '14px' : '0.82rem'}; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; margin-top:2px;">
                                 <i class="fas fa-chalkboard-teacher"></i>
                                 <span>${escapeHtml(enseignant)}</span>
                                 <span style="background:#4338CA; color:white; padding:1px 5px; border-radius:4px; font-size:0.75rem;">✉️</span>
@@ -8360,26 +8392,26 @@ function renderParentPlanCards(rows) {
                     </td>
                     
                     <!-- Leçon / Sujet -->
-                    <td class="${isArLec ? 'arabic-content' : ''}" ${isArLec ? 'dir="rtl"' : ''} style="padding:16px 14px; border-bottom:1px solid #E2E8F0; font-size:0.98rem; line-height:1.5; color:${isLessonEmpty ? '#94A3B8' : '#1E293B'}; font-weight:${isLessonEmpty ? '400' : '600'}; ${isArLec ? 'text-align:center; direction:rtl;' : ''}">
+                    <td class="${isArLec ? 'arabic-content' : ''}" ${isArLec ? 'dir="rtl"' : ''} style="padding:16px 16px; border-bottom:1px solid #E2E8F0; font-size:${isArLec ? '16px' : '0.98rem'}; line-height:${isArLec ? '1.75' : '1.5'}; color:${isLessonEmpty ? '#94A3B8' : '#0F172A'}; font-weight:${isLessonEmpty ? '400' : (isArLec ? '700' : '600')}; ${isArLec ? `text-align:center; direction:rtl; ${arFontStyle}` : ''}">
                         ${isLessonEmpty ? `<i>${currentUserLanguage === 'ar' ? 'غير مسجل' : 'Non renseigné'}</i>` : escapeHtml(lecon)}
                     </td>
                     
                     <!-- Travaux de classe -->
-                    <td class="${isArTra ? 'arabic-content' : ''}" ${isArTra ? 'dir="rtl"' : ''} style="padding:16px 14px; border-bottom:1px solid #E2E8F0; font-size:0.95rem; line-height:1.5; color:#334155; ${isArTra ? 'text-align:center; direction:rtl;' : ''}">
+                    <td class="${isArTra ? 'arabic-content' : ''}" ${isArTra ? 'dir="rtl"' : ''} style="padding:16px 16px; border-bottom:1px solid #E2E8F0; font-size:${isArTra ? '16px' : '0.96rem'}; line-height:${isArTra ? '1.75' : '1.5'}; color:#1E293B; font-weight:${isArTra ? '600' : '500'}; ${isArTra ? `text-align:center; direction:rtl; ${arFontStyle}` : ''}">
                         ${travaux && String(travaux).trim() !== '' ? escapeHtml(travaux) : `<span style="color:#94A3B8;">-</span>`}
                     </td>
                     
                     <!-- Devoirs à la maison -->
-                    <td class="${isArDev ? 'arabic-content' : ''}" ${isArDev ? 'dir="rtl"' : ''} style="padding:16px 14px; border-bottom:1px solid #E2E8F0; background:${isHomeworkEmpty ? 'inherit' : '#F0FDF4'}; ${isArDev ? 'text-align:center; direction:rtl;' : ''}">
-                        <div style="font-size:0.98rem; font-weight:${isHomeworkEmpty ? '400' : '700'}; color:${isHomeworkEmpty ? '#94A3B8' : '#065F46'}; line-height:1.4;">
-                            ${isHomeworkEmpty ? `<span style="color:#94A3B8;">${t.noHomework}</span>` : `<div style="display:flex; align-items:center; ${isArDev ? 'justify-content:center;' : ''} gap:6px;"><i class="fas fa-check" style="color:#10B981; margin-top:2px;"></i> <span ${isArDev ? 'dir="rtl"' : ''}>${escapeHtml(devoirs)}</span></div>`}
+                    <td class="${isArDev ? 'arabic-content' : ''}" ${isArDev ? 'dir="rtl"' : ''} style="padding:16px 16px; border-bottom:1px solid #E2E8F0; background:${isHomeworkEmpty ? 'inherit' : '#F0FDF4'}; ${isArDev ? 'text-align:center; direction:rtl;' : ''}">
+                        <div style="font-size:${isArDev ? '16px' : '0.98rem'}; font-weight:${isHomeworkEmpty ? '400' : '700'}; color:${isHomeworkEmpty ? '#94A3B8' : '#065F46'}; line-height:${isArDev ? '1.75' : '1.45'}; ${isArDev ? arFontStyle : ''}">
+                            ${isHomeworkEmpty ? `<span style="color:#94A3B8;">${t.noHomework}</span>` : `<div style="display:flex; align-items:center; ${isArDev ? 'justify-content:center;' : ''} gap:7px;"><i class="fas fa-check-circle" style="color:#10B981; margin-top:2px; font-size:1rem;"></i> <span ${isArDev ? 'dir="rtl"' : ''} style="${isArDev ? 'font-size:16px; line-height:1.75;' : ''}">${escapeHtml(devoirs)}</span></div>`}
                         </div>
                     </td>
                     
                     <!-- Support / Liens -->
                     <td class="${isArSup ? 'arabic-content' : ''}" ${isArSup ? 'dir="rtl"' : ''} style="padding:16px 12px; border-bottom:1px solid #E2E8F0; text-align:center; ${isArSup ? 'direction:rtl;' : ''}">
                         ${support && String(support).trim() !== '' ? `
-                            <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; padding:6px 10px; border-radius:8px; font-size:0.85rem; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                            <a href="${support.startsWith('http') ? support : 'http://' + support}" target="_blank" style="background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; padding:6px 12px; border-radius:10px; font-size:0.85rem; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(37,99,235,0.08);">
                                 <i class="fas fa-external-link-alt"></i> <span>Ouvrir</span>
                             </a>
                         ` : `<span style="color:#CBD5E1;">-</span>`}
@@ -9654,7 +9686,11 @@ async function openStudentDashboard(studentName, className) {
                 .catch(() => {});
         }
 
-        // Mettre à jour l'icône de cadenas du Bulletin selon si le parent a déjà saisi la date de naissance de cet élève
+        // Verrouiller systématiquement le bulletin à l'ouverture de la fiche élève pour exiger la saisie de la date de naissance
+        const currentDobKey = getCurrentStudentDobKey();
+        if (currentDobKey && window.verifiedParentStudentDobMap) {
+            window.verifiedParentStudentDobMap.delete(currentDobKey);
+        }
         updateStudentBulletinLockIcon();
 
         // Récupérer étoiles
@@ -9782,8 +9818,7 @@ function verifyDobFormatAndMatch(enteredRaw, storedRaw) {
 
     const stored = String(storedRaw || '').trim();
     if (!stored) {
-        // Si aucune date n'est encore enregistrée pour cet élève, toute date valide au format jour/mois/année déverrouille
-        return { validFormat: true, matched: true };
+        return { validFormat: true, matched: false, missingStoredDob: true };
     }
 
     // Format enregistré : JJ/MM/AAAA ou J/M/AAAA
@@ -21108,7 +21143,10 @@ let activeGradeFilters = {
 };
 
 function switchMainTab(tabName) {
-    if (isParentMode && !loggedInUser && tabName === 'plans') {
+    if ((isParentMode || !loggedInUser) && (tabName === 'plans' || tabName === 'grades')) {
+        if (tabName === 'grades') {
+            displayAlert("La saisie des notes est strictement réservée aux enseignants et à l'administrateur.", true);
+        }
         tabName = 'devoirs';
     }
     const tabPlansBtn = document.getElementById('tab-plans-btn');
@@ -21137,10 +21175,12 @@ function switchMainTab(tabName) {
             showHomeworkView('homework-teacher');
         }
     } else if (tabName === 'grades') {
+        if (typeof updateTopNavGradesButtonsVisibility === 'function') updateTopNavGradesButtonsVisibility(false);
         if (tabGradesBtn) tabGradesBtn.classList.add('active');
         if (gradesContent) gradesContent.style.display = 'block';
         initTeacherGradesInterface();
     } else {
+        if (typeof updateTopNavGradesButtonsVisibility === 'function') updateTopNavGradesButtonsVisibility(false);
         if (tabPlansBtn) tabPlansBtn.classList.add('active');
         if (plansContent) plansContent.style.display = 'block';
     }
@@ -21148,6 +21188,10 @@ function switchMainTab(tabName) {
 window.switchMainTab = switchMainTab;
 
 function initTeacherGradesInterface() {
+    if (isParentMode || !loggedInUser) {
+        displayAlert("Accès réservé uniquement aux enseignants et à l'administrateur.", true);
+        return;
+    }
     const container = document.getElementById('grades-tab-content');
     if (!container) return;
 
@@ -21602,6 +21646,10 @@ let lastGeneratedBulletinsHTML = '';
 let lastGeneratedBulletinsFilename = 'Bulletins_Notes_Classe_A4.html';
 
 function openClassGradesPrintModal(presetClass, presetSemester, presetSubject) {
+    if (isParentMode || !loggedInUser) {
+        displayAlert("Accès réservé uniquement aux enseignants et à l'administrateur.", true);
+        return;
+    }
     const modal = document.getElementById('classBulletinsModal');
     if (!modal) return;
 
