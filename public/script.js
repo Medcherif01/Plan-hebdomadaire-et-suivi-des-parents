@@ -7355,7 +7355,7 @@ function displayPlanTable(data) {
             const savedUser = localStorage.getItem('loggedInUser');
             const savedAuthVersion = localStorage.getItem('authVersion');
 
-            const isParentDirectLink = (spaceParam === 'parent') || (!savedUser && (sectionParam === 'garcons' || sectionParam === 'filles' || sectionParam === 'primaire' || sectionParam === 'maternelle'));
+            const isParentDirectLink = !savedUser && ((spaceParam === 'parent') || (sectionParam === 'garcons' || sectionParam === 'filles' || sectionParam === 'primaire' || sectionParam === 'maternelle'));
 
             if (isParentDirectLink) {
                 const targetSec = ['garcons', 'filles', 'primaire', 'maternelle'].includes(sectionParam) ? sectionParam : 'garcons';
@@ -7366,6 +7366,9 @@ function displayPlanTable(data) {
                     setTimeout(() => showHomeworkView(viewParam), 150);
                 }
                 return;
+            }
+            if (savedUser && (spaceParam === 'parent' || viewParam)) {
+                clearParentURL();
             }
             
             // Vérifier la version d'authentification
@@ -7530,6 +7533,10 @@ function applyParentUIMode(enabled) {
         document.querySelectorAll('.btn-copy-parent-link').forEach(btn => btn.style.display = 'none');
         if (mainTitle) mainTitle.textContent = 'Espace Parents - Portail Suivi & Devoirs';
     } else {
+        lockedParentSection = null;
+        sessionStorage.removeItem('lockedParentSection');
+        localStorage.removeItem('lockedParentSection');
+        clearParentURL();
         if (plansTabBtn) plansTabBtn.style.display = 'inline-block';
         if (goToTeacherBtn) goToTeacherBtn.style.display = 'inline-flex';
         if (goToParentBtn) goToParentBtn.style.display = 'none'; // L'enseignant ne voit pas l'espace parent
@@ -7553,37 +7560,55 @@ function applyParentUIMode(enabled) {
 }
 
 function switchMainTab(tab) {
-    if (isParentMode && tab === 'plans') {
+    if (isParentMode && !loggedInUser && tab === 'plans') {
         tab = 'devoirs';
     }
     const plansTab = document.getElementById('plans-tab-content');
     const devoirsTab = document.getElementById('devoirs-tab-content');
+    const gradesTab = document.getElementById('grades-tab-content');
     const plansBtn = document.getElementById('tab-plans-btn');
     const devoirsBtn = document.getElementById('tab-devoirs-btn');
+    const gradesBtn = document.getElementById('tab-grades-btn');
+
+    if (plansBtn) plansBtn.classList.remove('active');
+    if (devoirsBtn) devoirsBtn.classList.remove('active');
+    if (gradesBtn) gradesBtn.classList.remove('active');
+
+    if (plansTab) plansTab.style.display = 'none';
+    if (devoirsTab) devoirsTab.style.display = 'none';
+    if (gradesTab) gradesTab.style.display = 'none';
 
     if (tab === 'devoirs') {
-        if (plansTab) plansTab.style.display = 'none';
         if (devoirsTab) devoirsTab.style.display = 'block';
-        if (plansBtn) plansBtn.classList.remove('active');
         if (devoirsBtn) devoirsBtn.classList.add('active');
-        if (isParentMode) {
+        if (isParentMode && !loggedInUser) {
             showHomeworkView('parent-selection');
         } else {
-            // L'enseignant accède DIRECTEMENT à son espace enseignant
+            isParentMode = false;
+            // L'enseignant accède DIRECTEMENT à son espace enseignant de suivi et d'évaluation des devoirs
             showHomeworkView('homework-teacher');
         }
+    } else if (tab === 'grades') {
+        if (gradesBtn) gradesBtn.classList.add('active');
+        if (gradesTab) gradesTab.style.display = 'block';
+        if (typeof initTeacherGradesInterface === 'function') initTeacherGradesInterface();
     } else {
         if (plansTab) plansTab.style.display = 'block';
-        if (devoirsTab) devoirsTab.style.display = 'none';
         if (plansBtn) plansBtn.classList.add('active');
-        if (devoirsBtn) devoirsBtn.classList.remove('active');
     }
 }
 
 function showHomeworkView(viewName) {
-    if (isParentMode && viewName === 'homework-teacher') {
+    if (isParentMode && !loggedInUser && viewName === 'homework-teacher') {
         displayAlert("Accès réservé uniquement aux enseignants.", true);
         viewName = 'parent-selection';
+    }
+    // Pour tout enseignant connecté : forcer l'affichage de son espace d'évaluation des devoirs (#homework-teacher-view)
+    if (!isParentMode && loggedInUser) {
+        const isAdmin = (typeof isUserAdminOrSupervisor === 'function') ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) : false;
+        if (!isAdmin) {
+            viewName = 'homework-teacher';
+        }
     }
     const backToTeacherBtn = document.getElementById('btnBackToTeacherEvalFromStudents');
     if (backToTeacherBtn) {
@@ -7595,7 +7620,7 @@ function showHomeworkView(viewName) {
         if (el) el.style.display = (v === viewName) ? 'block' : 'none';
     });
 
-    if (isParentMode) {
+    if (isParentMode && !loggedInUser) {
         updateParentURL(currentSection, viewName);
     }
 
@@ -14120,9 +14145,6 @@ function renderTeacherHomeworksDashboard() {
                             <span style="font-size:0.8rem; color:#4F46E5; background:#EEF2FF; padding:3px 9px; border-radius:999px; font-weight:700;">Cliquez sur un devoir pour évaluer les élèves</span>
                         </h4>
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                            <button type="button" class="pro-button" onclick="openClassStudentsTrackingFromTeacher('${escapeHtml(cKey)}', '${escapeHtml(firstHwSec)}')" style="font-size:0.78rem; font-weight:700; padding:5px 11px; background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                                <i class="fas fa-user-graduate"></i> ${isEn ? 'Student Tracking' : (isAr ? 'متابعة الطلاب' : 'Suivi des Élèves')}
-                            </button>
                             <span style="font-size:0.82rem; font-weight:700; color:#64748B; background:#F8FAFC; padding:4px 10px; border-radius:8px; border:1px solid #E2E8F0;">
                                 ${homeworksList.length} ${isEn ? 'Homework(s)' : (isAr ? 'واجب(ات)' : 'Devoir(s)')}
                             </span>
@@ -20632,6 +20654,9 @@ let activeGradeFilters = {
 };
 
 function switchMainTab(tabName) {
+    if (isParentMode && !loggedInUser && tabName === 'plans') {
+        tabName = 'devoirs';
+    }
     const tabPlansBtn = document.getElementById('tab-plans-btn');
     const tabDevoirsBtn = document.getElementById('tab-devoirs-btn');
     const tabGradesBtn = document.getElementById('tab-grades-btn');
@@ -20651,7 +20676,12 @@ function switchMainTab(tabName) {
     if (tabName === 'devoirs') {
         if (tabDevoirsBtn) tabDevoirsBtn.classList.add('active');
         if (devoirsContent) devoirsContent.style.display = 'block';
-        if (typeof loadTeacherHomeworksDashboard === 'function') loadTeacherHomeworksDashboard();
+        if (isParentMode && !loggedInUser) {
+            showHomeworkView('parent-selection');
+        } else {
+            isParentMode = false;
+            showHomeworkView('homework-teacher');
+        }
     } else if (tabName === 'grades') {
         if (tabGradesBtn) tabGradesBtn.classList.add('active');
         if (gradesContent) gradesContent.style.display = 'block';
