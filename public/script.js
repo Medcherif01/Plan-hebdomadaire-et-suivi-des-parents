@@ -9998,12 +9998,38 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             }
 
             grid.innerHTML = displayList.map((hw, idx) => {
-                const ev = evaluations.find(e => e.subject === hw.subject) || {};
-                const status = ev.status || 'Non Fait';
-                const statusClass = status.toLowerCase().replace(/\s+/g, '-');
-                const pVal = ev.participation !== undefined ? ev.participation : 10;
-                const bVal = ev.behavior !== undefined ? ev.behavior : 10;
+                const normSubj = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                const hwSubjNorm = normSubj(hw.subject);
+                const ev = evaluations.find(e => {
+                    const eSubjNorm = normSubj(e.subject);
+                    const subjMatch = (e.subject === hw.subject) || (eSubjNorm && eSubjNorm === hwSubjNorm) || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(e.subject, hw.subject));
+                    const dateMatch = (!hw.exactDate || !e.date || e.date === hw.exactDate);
+                    return subjMatch && dateMatch;
+                }) || evaluations.find(e => {
+                    const eSubjNorm = normSubj(e.subject);
+                    return (e.subject === hw.subject) || (eSubjNorm && eSubjNorm === hwSubjNorm) || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(e.subject, hw.subject));
+                }) || {};
+
+                const isEvaluatedByTeacher = Boolean(ev && ev.status);
+                const status = ev.status || (isAr ? 'قيد التقييم' : 'En attente d\'évaluation');
+                const statusClass = isEvaluatedByTeacher ? status.toLowerCase().replace(/\s+/g, '-') : 'pending-eval';
+                const pVal = (ev.participation !== undefined && ev.participation !== null) ? ev.participation : 10;
+                const bVal = (ev.behavior !== undefined && ev.behavior !== null) ? ev.behavior : 10;
                 const comment = ev.comment || '';
+
+                const statusBadgeStyle = !isEvaluatedByTeacher
+                    ? 'background:#FEF3C7; color:#92400E; border:1px solid #FDE68A;'
+                    : (status === 'Fait'
+                        ? 'background:#DCFCE7; color:#166534; border:1px solid #86EFAC;'
+                        : (status === 'Partiellement Fait'
+                            ? 'background:#FFEDD5; color:#9A3412; border:1px solid #FDBA74;'
+                            : (status === 'Absent'
+                                ? 'background:#F1F5F9; color:#475569; border:1px solid #CBD5E1;'
+                                : 'background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5;')));
+
+                const statusIcon = !isEvaluatedByTeacher
+                    ? '⏳'
+                    : (status === 'Fait' ? '✅' : (status === 'Partiellement Fait' ? '⚠️' : (status === 'Absent' ? '⚪' : '❌')));
 
                 const displayTeacher = (hw.teacher && String(hw.teacher).trim() !== '—') ? String(hw.teacher).trim() : '';
 
@@ -10013,7 +10039,7 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                 const teacherBadge = displayTeacher ? `<span style="font-size:0.82rem; color:#475569; font-weight:600; display:flex; align-items:center; gap:5px; margin-top:4px;"><i class="fas fa-chalkboard-teacher" style="color:#2563EB;"></i> ${escapeHtml(displayTeacher)}</span>` : '';
 
                 return `
-                    <div style="background:white; border-radius:16px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); border:1px solid #E2E8F0; position:relative; display:flex; flex-direction:column; justify-content:space-between;">
+                    <div style="background:white; border-radius:16px; padding:20px; box-shadow:0 4px 15px rgba(0,0,0,0.05); border:${isEvaluatedByTeacher ? '2px solid #10B981' : '1px solid #E2E8F0'}; position:relative; display:flex; flex-direction:column; justify-content:space-between;">
                         <div>
                             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; gap:8px;">
                                 <div>
@@ -10026,8 +10052,9 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                                     ${teacherBadge}
                                 </div>
                                 <div class="status-container">
-                                    <span class="status-text ${statusClass}">${status}</span>
-                                    <div class="status-lamp ${statusClass}"></div>
+                                    <span style="padding:5px 11px; border-radius:999px; font-size:0.8rem; font-weight:800; display:inline-flex; align-items:center; gap:5px; ${statusBadgeStyle}">
+                                        <span>${statusIcon}</span> <span>${escapeHtml(status)}</span>
+                                    </span>
                                 </div>
                             </div>
 
@@ -10047,22 +10074,36 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
                                 <div style="font-weight:700; color:#1D4ED8; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
                                     <i class="fas fa-pencil-alt"></i> Devoir à faire (Homework) :
                                 </div>
-                                <div style="white-space:pre-wrap; line-height:1.5;">${escapeHtml(hw.assignment || 'Aucun devoir')}</div>
+                                <div style="white-space:pre-wrap; line-height:1.5; font-weight:600;">${escapeHtml(hw.assignment || 'Aucun devoir')}</div>
                             </div>
 
-                            <div style="display:flex; gap:15px; font-size:0.85em; color:#4B5563; margin-top:8px; padding-top:8px; border-top:1px solid #F1F5F9; flex-wrap:wrap;">
-                                <span><i class="fas fa-hands" style="color:#10B981;"></i> Classwork (Participation): <strong>${pVal}/10</strong></span>
-                                <span><i class="fas fa-user-check" style="color:#8B5CF6;"></i> Comportement: <strong>${bVal}/10</strong></span>
-                            </div>
-
-                            ${comment ? `
-                                <div style="font-size:0.85em; color:#374151; background:#FFFBEB; padding:8px 10px; border-radius:6px; margin-top:8px; border-left:3px solid #F59E0B;" id="comm-box-${idx}">
-                                    <strong>Remarque Enseignant :</strong> <span id="comm-text-${idx}">${escapeHtml(comment)}</span>
-                                    <button type="button" onclick="translateHomeworkComment('comm-text-${idx}', '${comment.replace(/'/g, "\\'")}')" style="margin-left:8px; background:none; border:none; color:#0066CC; cursor:pointer; font-weight:bold;">
-                                        🌐 Traduire
-                                    </button>
+                            <!-- BLOC ÉVALUATION DE L'ENSEIGNANT (Visible par l'élève et le parent) -->
+                            <div style="background:${isEvaluatedByTeacher ? '#F0FDF4' : '#F8FAFC'}; border:1px solid ${isEvaluatedByTeacher ? '#BBF7D0' : '#E2E8F0'}; border-radius:12px; padding:12px 14px; margin-top:10px;">
+                                <div style="font-size:0.78rem; font-weight:800; text-transform:uppercase; color:${isEvaluatedByTeacher ? '#166534' : '#64748B'}; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                                    <span><i class="fas fa-user-check"></i> ${isAr ? 'تقييم المعلم لهذا الواجب :' : 'Évaluation de l\'enseignant :'}</span>
+                                    <span style="font-weight:800; color:${isEvaluatedByTeacher ? '#059669' : '#D97706'};">${statusIcon} ${escapeHtml(status)}</span>
                                 </div>
-                            ` : ''}
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:0.85rem;">
+                                    <div style="background:white; padding:7px 10px; border-radius:8px; border:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+                                        <span style="color:#475569; font-weight:600;"><i class="fas fa-smile" style="color:#8B5CF6;"></i> ${isAr ? 'السلوك :' : 'Comportement :'}</span>
+                                        <strong style="color:#1E1B4B; font-size:0.92rem;">${bVal} / 10</strong>
+                                    </div>
+                                    <div style="background:white; padding:7px 10px; border-radius:8px; border:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+                                        <span style="color:#475569; font-weight:600;"><i class="fas fa-hands-helping" style="color:#10B981;"></i> ${isAr ? 'المشاركة :' : 'Participation :'}</span>
+                                        <strong style="color:#1E1B4B; font-size:0.92rem;">${pVal} / 10</strong>
+                                    </div>
+                                </div>
+
+                                ${comment ? `
+                                    <div style="font-size:0.86rem; color:#1E293B; background:#FFFBEB; padding:9px 12px; border-radius:8px; margin-top:10px; border-left:4px solid #F59E0B;" id="comm-box-${idx}">
+                                        <strong style="color:#92400E;"><i class="fas fa-comment-alt"></i> ${isAr ? 'ملاحظة المعلم :' : 'Commentaire de l\'enseignant :'}</strong>
+                                        <span id="comm-text-${idx}" style="font-weight:600; margin-left:4px;">${escapeHtml(comment)}</span>
+                                        <button type="button" onclick="translateHomeworkComment('comm-text-${idx}', '${comment.replace(/'/g, "\\'")}')" style="margin-left:8px; background:none; border:none; color:#2563EB; cursor:pointer; font-weight:700; font-size:0.8rem;">
+                                            🌐 Traduire
+                                        </button>
+                                    </div>
+                                ` : ''}
+                            </div>
                         </div>
 
                         <div style="margin-top:14px; padding-top:10px; border-top:1px solid #F1F5F9; display:flex; justify-content:space-between; align-items:center;">
@@ -12974,14 +13015,16 @@ async function sendParentChatMessage() {
 
 let allTeacherHomeworks = [];
 let allSectionTeachersList = [];
+let allTeacherClassesList = [];
+let serverCurrentSchoolWeek = 1;
 let activeEvalHomework = null;
 let activeEvalStudents = [];
 
 let activeTeacherHwFilters = {
     teacher: '',
     section: 'all',
-    week: 'all',
-    classe: 'all',
+    week: '',
+    classe: '',
     jour: 'all',
     matiere: 'all',
     status: 'all',
@@ -13048,20 +13091,174 @@ function getDayIconAndDetails(dayNameOrStr) {
 
 // ==========================================
 // FILTRAGE DES DEVOIRS ENSEIGNANT PAR LISTES DÉROULANTES EN CASCADE
-// (Semaine -> Classe -> Jour -> Matière -> Statut)
+// (1. Classe -> 2. Semaine [actuelle par défaut] -> 3. Jour -> 4. Matière -> 5. Statut)
 // ==========================================
+
+function getDefaultTeacherWeek() {
+    const weekSelectorEl = document.getElementById('weekSelector');
+    const uiWeek = weekSelectorEl && weekSelectorEl.value && weekSelectorEl.value !== 'all' ? parseInt(weekSelectorEl.value, 10) : null;
+    if (uiWeek && !isNaN(uiWeek)) return String(uiWeek);
+    if (typeof currentWeek !== 'undefined' && currentWeek && currentWeek !== 'all' && !isNaN(parseInt(currentWeek, 10))) {
+        return String(parseInt(currentWeek, 10));
+    }
+    if (serverCurrentSchoolWeek && !isNaN(parseInt(serverCurrentSchoolWeek, 10))) {
+        return String(parseInt(serverCurrentSchoolWeek, 10));
+    }
+    return '1';
+}
 
 function populateTeacherDropdowns() {
     const isEn = (currentUserLanguage === 'en');
     const isAr = (currentUserLanguage === 'ar');
 
     let targetHws = allTeacherHomeworks || [];
+    const defaultWeekStr = getDefaultTeacherWeek();
 
-    // 1. Liste déroulante : SEMAINES
+    // Construire la liste complète des classes de l'enseignant (classes attribuées + classes avec devoirs)
+    const classTotalMap = new Map();
+    (allTeacherClassesList || []).forEach(c => {
+        if (c && !classTotalMap.has(c)) {
+            classTotalMap.set(c, { total: 0, evaluated: 0, inSelectedWeek: 0, evalInSelectedWeek: 0 });
+        }
+    });
+    targetHws.forEach(h => {
+        const c = h.classe || 'Général';
+        if (!classTotalMap.has(c)) {
+            classTotalMap.set(c, { total: 0, evaluated: 0, inSelectedWeek: 0, evalInSelectedWeek: 0 });
+        }
+        const item = classTotalMap.get(c);
+        item.total += 1;
+        if (h.isEvaluated) item.evaluated += 1;
+    });
+
+    const sortedAllClasses = Array.from(classTotalMap.keys()).sort(compareClasses);
+
+    // Initialiser la classe par défaut (1. Choisir la classe) si non définie
+    if (!activeTeacherHwFilters.classe) {
+        const filterClsEl = document.getElementById('filterClasse');
+        const mainFilterCls = (filterClsEl && filterClsEl.value && filterClsEl.value !== 'all' && filterClsEl.value !== '') ? filterClsEl.value : '';
+        if (mainFilterCls && classTotalMap.has(mainFilterCls)) {
+            activeTeacherHwFilters.classe = mainFilterCls;
+        } else {
+            // Prioriser la première classe qui a des devoirs dans la semaine actuelle, sinon la première classe avec des devoirs, sinon la première classe de l'enseignant
+            const clsWithDefaultWeekHw = sortedAllClasses.find(c => targetHws.some(h => h.classe === c && String(h.week) === String(defaultWeekStr)));
+            const clsWithAnyHw = sortedAllClasses.find(c => (classTotalMap.get(c)?.total || 0) > 0);
+            activeTeacherHwFilters.classe = clsWithDefaultWeekHw || clsWithAnyHw || sortedAllClasses[0] || 'all';
+        }
+    } else if (activeTeacherHwFilters.classe !== 'all' && !classTotalMap.has(activeTeacherHwFilters.classe)) {
+        const clsWithAnyHw = sortedAllClasses.find(c => (classTotalMap.get(c)?.total || 0) > 0);
+        activeTeacherHwFilters.classe = clsWithAnyHw || sortedAllClasses[0] || 'all';
+    }
+
+    // Initialiser la semaine par défaut (2. Semaine actuelle par défaut) si non définie
+    if (!activeTeacherHwFilters.week) {
+        activeTeacherHwFilters.week = defaultWeekStr;
+    }
+
+    // Calculer les compteurs de devoirs par classe pour la semaine sélectionnée
+    classTotalMap.forEach((val, cKey) => {
+        val.inSelectedWeek = 0;
+        val.evalInSelectedWeek = 0;
+    });
+    targetHws.forEach(h => {
+        const c = h.classe || 'Général';
+        if (activeTeacherHwFilters.week === 'all' || String(h.week) === String(activeTeacherHwFilters.week)) {
+            const item = classTotalMap.get(c);
+            if (item) {
+                item.inSelectedWeek += 1;
+                if (h.isEvaluated) item.evalInSelectedWeek += 1;
+            }
+        }
+    });
+
+    // 1A. Barre rapide de boutons de CLASSES (#teacherClassesQuickBar)
+    const quickBar = document.getElementById('teacherClassesQuickBar');
+    if (quickBar) {
+        const step1Title = isEn
+            ? '1. Choose a Class:'
+            : (isAr ? '1. اختر الفصل :' : '1. Choisissez la Classe :');
+        const allClsBtnTxt = isEn ? 'All My Classes' : (isAr ? 'جميع فصولي' : 'Toutes mes classes');
+
+        let qbHtml = `
+            <span style="font-size:0.82rem; font-weight:800; color:#312E81; text-transform:uppercase; letter-spacing:0.4px; margin-right:6px; display:inline-flex; align-items:center; gap:6px;">
+                <i class="fas fa-graduation-cap" style="color:#4F46E5;"></i> ${step1Title}
+            </span>
+        `;
+
+        sortedAllClasses.forEach(c => {
+            const item = classTotalMap.get(c) || { total: 0, evaluated: 0, inSelectedWeek: 0, evalInSelectedWeek: 0 };
+            const isActive = (activeTeacherHwFilters.classe === c);
+            const arCls = (typeof classTranslations !== 'undefined' && classTranslations[c]) ? classTranslations[c] : '';
+            const cLabel = arCls ? `${c} (${arCls})` : c;
+            const countDisplay = activeTeacherHwFilters.week !== 'all' ? `${item.evalInSelectedWeek}/${item.inSelectedWeek}` : `${item.evaluated}/${item.total}`;
+            const allDone = activeTeacherHwFilters.week !== 'all'
+                ? (item.inSelectedWeek > 0 && item.evalInSelectedWeek === item.inSelectedWeek)
+                : (item.total > 0 && item.evaluated === item.total);
+
+            qbHtml += `
+                <button type="button" onclick="onTeacherClassSelectChange('${escapeHtml(c)}')" style="padding:7px 14px; border-radius:10px; font-weight:800; font-size:0.86rem; cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:all 0.18s; border:${isActive ? '2px solid #4F46E5' : '1.5px solid #C7D2FE'}; background:${isActive ? 'linear-gradient(135deg, #4F46E5 0%, #3730A3 100%)' : '#FFFFFF'}; color:${isActive ? '#FFFFFF' : '#1E1B4B'}; box-shadow:${isActive ? '0 4px 12px rgba(79,70,229,0.28)' : '0 1px 3px rgba(0,0,0,0.04)'};">
+                    <i class="fas ${allDone ? 'fa-check-circle' : 'fa-users'}" style="color:${isActive ? '#A5B4FC' : (allDone ? '#10B981' : '#4F46E5')};"></i>
+                    <span>${escapeHtml(cLabel)}</span>
+                    <span style="padding:2px 7px; border-radius:999px; font-size:0.74rem; font-weight:800; background:${isActive ? 'rgba(255,255,255,0.22)' : (allDone ? '#DCFCE7' : '#EEF2FF')}; color:${isActive ? '#FFFFFF' : (allDone ? '#166534' : '#4338CA')};">${countDisplay}</span>
+                </button>
+            `;
+        });
+
+        if (sortedAllClasses.length > 1) {
+            const isAllActive = (activeTeacherHwFilters.classe === 'all');
+            qbHtml += `
+                <button type="button" onclick="onTeacherClassSelectChange('all')" style="padding:7px 12px; border-radius:10px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:6px; border:${isAllActive ? '2px solid #0284C7' : '1px dashed #94A3B8'}; background:${isAllActive ? '#0284C7' : '#F8FAFC'}; color:${isAllActive ? '#FFFFFF' : '#475569'};">
+                    <i class="fas fa-layer-group"></i>
+                    <span>${allClsBtnTxt} (${targetHws.length})</span>
+                </button>
+            `;
+        }
+
+        quickBar.innerHTML = qbHtml;
+    }
+
+    // 1B. Liste déroulante : 1. CLASSE (#teacherClassSelect)
+    const classSel = document.getElementById('teacherClassSelect');
+    if (classSel) {
+        const allClassesText = isEn ? '🎓 All Classes' : (isAr ? '🎓 جميع الفصول' : '🎓 Toutes les Classes');
+        let classOptions = '';
+        sortedAllClasses.forEach(c => {
+            const item = classTotalMap.get(c) || { total: 0, evaluated: 0, inSelectedWeek: 0, evalInSelectedWeek: 0 };
+            const arCls = (typeof classTranslations !== 'undefined' && classTranslations[c]) ? classTranslations[c] : '';
+            const cLabel = arCls ? `${c} (${arCls})` : c;
+            const semInfo = activeTeacherHwFilters.week !== 'all'
+                ? `${item.evalInSelectedWeek}/${item.inSelectedWeek} sem. ${activeTeacherHwFilters.week} • ${item.total} total`
+                : `${item.evaluated}/${item.total} devoirs`;
+            classOptions += `<option value="${escapeHtml(c)}">${escapeHtml(cLabel)} (${semInfo})</option>`;
+        });
+        classOptions += `<option value="all">${allClassesText} (${targetHws.length} devoirs)</option>`;
+        classSel.innerHTML = classOptions;
+        classSel.value = (activeTeacherHwFilters.classe && (activeTeacherHwFilters.classe === 'all' || classTotalMap.has(activeTeacherHwFilters.classe)))
+            ? activeTeacherHwFilters.classe
+            : (sortedAllClasses[0] || 'all');
+    }
+
+    // Filtrer les devoirs par la classe sélectionnée pour calculer les compteurs par semaine de cette classe
+    let classFilteredHwsForWeeks = targetHws;
+    if (activeTeacherHwFilters.classe && activeTeacherHwFilters.classe !== 'all') {
+        classFilteredHwsForWeeks = targetHws.filter(h => h.classe === activeTeacherHwFilters.classe);
+    }
+
+    // 2. Liste déroulante : 2. SEMAINE (Semaine actuelle par défaut) (#teacherWeekSelect)
     const weekSel = document.getElementById('teacherWeekSelect');
     if (weekSel) {
         const weekMap = new Map();
-        targetHws.forEach(h => {
+        // Inclure d'office la semaine actuelle + toutes les semaines ayant des devoirs
+        if (defaultWeekStr && defaultWeekStr !== 'all') {
+            const rangeObj = (typeof getWeekDateRange === 'function') ? getWeekDateRange(parseInt(defaultWeekStr, 10)) : null;
+            weekMap.set(String(defaultWeekStr), {
+                total: 0,
+                evaluated: 0,
+                rangeText: (rangeObj && rangeObj.rangeText) ? rangeObj.rangeText : ''
+            });
+        }
+
+        classFilteredHwsForWeeks.forEach(h => {
             const w = String(h.week || '1');
             if (!weekMap.has(w)) {
                 weekMap.set(w, { total: 0, evaluated: 0, rangeText: h.weekRangeText || '' });
@@ -13072,76 +13269,57 @@ function populateTeacherDropdowns() {
             if (!item.rangeText && h.weekRangeText) item.rangeText = h.weekRangeText;
         });
 
-        const sortedWeeks = Array.from(weekMap.keys()).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+        // S'assurer que les semaines avec devoirs dans d'autres classes ou semaines 1..maxWeek sont aussi accessibles
+        const maxWeekNum = Math.max(parseInt(defaultWeekStr, 10) || 1, 15);
+        for (let wNum = 1; wNum <= maxWeekNum; wNum++) {
+            const wStr = String(wNum);
+            if (!weekMap.has(wStr)) {
+                const rangeObj = (typeof getWeekDateRange === 'function') ? getWeekDateRange(wNum) : null;
+                weekMap.set(wStr, {
+                    total: 0,
+                    evaluated: 0,
+                    rangeText: (rangeObj && rangeObj.rangeText) ? rangeObj.rangeText : ''
+                });
+            }
+        }
+
+        const sortedWeeks = Array.from(weekMap.keys()).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
         const allWeeksText = isEn ? '📅 All Weeks' : (isAr ? '📅 جميع الأسابيع' : '📅 Toutes les Semaines');
         const weekPrefix = isEn ? 'Week ' : (isAr ? 'الأسبوع ' : 'Semaine ');
-        const evalSuffix = isEn ? 'evaluated' : (isAr ? 'تم تقييمها' : 'évalués');
+        const currentLabel = isEn ? 'Current week' : (isAr ? 'الأسبوع الحالي' : 'Semaine actuelle');
+        const evalSuffix = isEn ? 'evaluated' : (isAr ? 'مقيّم' : 'évalués');
 
-        let weekOptions = `<option value="all">${allWeeksText} (${targetHws.length})</option>`;
+        let weekOptions = '';
         sortedWeeks.forEach(w => {
             const item = weekMap.get(w);
+            const isCurrent = (String(w) === String(defaultWeekStr));
             const rangeInfo = item.rangeText ? ` - ${item.rangeText}` : '';
-            weekOptions += `<option value="${w}">${weekPrefix}${w}${rangeInfo} (${item.evaluated}/${item.total} ${evalSuffix})</option>`;
+            const curTag = isCurrent ? ` ⭐ (${currentLabel})` : '';
+            const countTag = item.total > 0 ? ` [${item.evaluated}/${item.total} ${evalSuffix}]` : ' (0 devoir)';
+            weekOptions += `<option value="${w}">${weekPrefix}${w}${curTag}${rangeInfo}${countTag}</option>`;
         });
+        weekOptions += `<option value="all">${allWeeksText} (${classFilteredHwsForWeeks.length} devoirs)</option>`;
+
         weekSel.innerHTML = weekOptions;
         if (activeTeacherHwFilters.week && (activeTeacherHwFilters.week === 'all' || weekMap.has(String(activeTeacherHwFilters.week)))) {
             weekSel.value = String(activeTeacherHwFilters.week);
         } else {
-            activeTeacherHwFilters.week = 'all';
-            weekSel.value = 'all';
+            activeTeacherHwFilters.week = String(defaultWeekStr);
+            weekSel.value = String(defaultWeekStr);
         }
     }
 
-    // Filtrer par semaine active pour la cascade des classes
-    let weekFilteredHws = targetHws;
+    // Filtrer par classe ET par semaine pour la cascade des jours et matières
+    let classAndWeekFilteredHws = classFilteredHwsForWeeks;
     if (activeTeacherHwFilters.week !== 'all') {
-        weekFilteredHws = weekFilteredHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
+        classAndWeekFilteredHws = classAndWeekFilteredHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
     }
 
-    // 2. Liste déroulante : CLASSES (liée à la semaine sélectionnée)
-    const classSel = document.getElementById('teacherClassSelect');
-    if (classSel) {
-        const classMap = new Map();
-        weekFilteredHws.forEach(h => {
-            const c = h.classe || 'Général';
-            if (!classMap.has(c)) {
-                classMap.set(c, { total: 0, evaluated: 0 });
-            }
-            const item = classMap.get(c);
-            item.total += 1;
-            if (h.isEvaluated) item.evaluated += 1;
-        });
-
-        const sortedClasses = Array.from(classMap.keys()).sort(compareClasses);
-        const allClassesText = isEn ? '🎓 All Classes' : (isAr ? '🎓 جميع الفصول' : '🎓 Toutes les Classes');
-
-        let classOptions = `<option value="all">${allClassesText} (${weekFilteredHws.length})</option>`;
-        sortedClasses.forEach(c => {
-            const item = classMap.get(c);
-            const arCls = (typeof classTranslations !== 'undefined' && classTranslations[c]) ? classTranslations[c] : '';
-            const cLabel = arCls ? `${c} (${arCls})` : c;
-            classOptions += `<option value="${c}">${cLabel} (${item.evaluated}/${item.total})</option>`;
-        });
-        classSel.innerHTML = classOptions;
-        if (activeTeacherHwFilters.classe && (activeTeacherHwFilters.classe === 'all' || classMap.has(activeTeacherHwFilters.classe))) {
-            classSel.value = activeTeacherHwFilters.classe;
-        } else {
-            activeTeacherHwFilters.classe = 'all';
-            classSel.value = 'all';
-        }
-    }
-
-    // Filtrer par classe active pour la cascade des jours
-    let classFilteredHws = weekFilteredHws;
-    if (activeTeacherHwFilters.classe !== 'all') {
-        classFilteredHws = classFilteredHws.filter(h => h.classe === activeTeacherHwFilters.classe);
-    }
-
-    // 3. Liste déroulante : JOURS (liée à la classe sélectionnée)
+    // 3. Liste déroulante : JOURS (liée à la classe et semaine sélectionnées)
     const daySel = document.getElementById('teacherDaySelect');
     if (daySel) {
         const dayMap = new Map();
-        classFilteredHws.forEach(h => {
+        classAndWeekFilteredHws.forEach(h => {
             const j = h.jour || 'Autre';
             if (!dayMap.has(j)) {
                 dayMap.set(j, { total: 0, evaluated: 0 });
@@ -13168,7 +13346,7 @@ function populateTeacherDropdowns() {
             'Jeudi': 'الخميس'
         };
 
-        let dayOptions = `<option value="all">${allDaysText} (${classFilteredHws.length})</option>`;
+        let dayOptions = `<option value="all">${allDaysText} (${classAndWeekFilteredHws.length})</option>`;
         sortedDays.forEach(j => {
             const item = dayMap.get(j);
             const jDisplay = isAr ? (daysAr[j] || j) : j;
@@ -13187,7 +13365,7 @@ function populateTeacherDropdowns() {
     const subjSel = document.getElementById('teacherSubjectSelect');
     if (subjSel) {
         const subjMap = new Map();
-        classFilteredHws.forEach(h => {
+        classAndWeekFilteredHws.forEach(h => {
             const m = h.matiere || 'Autre';
             if (!subjMap.has(m)) {
                 subjMap.set(m, { total: 0, evaluated: 0 });
@@ -13200,7 +13378,7 @@ function populateTeacherDropdowns() {
         const sortedSubjects = Array.from(subjMap.keys()).sort();
         const allSubjText = isEn ? '📚 All Subjects' : (isAr ? '📚 جميع المواد' : '📚 Toutes les Matières');
 
-        let subjOptions = `<option value="all">${allSubjText} (${classFilteredHws.length})</option>`;
+        let subjOptions = `<option value="all">${allSubjText} (${classAndWeekFilteredHws.length})</option>`;
         sortedSubjects.forEach(m => {
             const item = subjMap.get(m);
             subjOptions += `<option value="${m}">${m} (${item.evaluated}/${item.total})</option>`;
@@ -13220,7 +13398,7 @@ function populateTeacherDropdowns() {
         statusSel.value = activeTeacherHwFilters.status || 'all';
     }
 
-    // Sélecteur Enseignant (Admin / Superviseur uniquement, un enseignant à la fois pour un chargement rapide)
+    // Sélecteur Enseignant (Admin / Superviseur uniquement)
     const adminSel = document.getElementById('teacherAdminSelect');
     const adminField = document.getElementById('teacherAdminSwitcherField');
     const isAdmin = (typeof isUserAdminOrSupervisor === 'function') ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) : false;
@@ -13245,44 +13423,48 @@ window.populateTeacherDropdowns = populateTeacherDropdowns;
 
 function setTeacherHwTeacherFilter(teacherVal) {
     activeTeacherHwFilters.teacher = teacherVal || '';
-    activeTeacherHwFilters.week = 'all';
-    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.classe = '';
+    activeTeacherHwFilters.week = getDefaultTeacherWeek();
     activeTeacherHwFilters.jour = 'all';
     activeTeacherHwFilters.matiere = 'all';
     loadTeacherHomeworksDashboard();
 }
 window.setTeacherHwTeacherFilter = setTeacherHwTeacherFilter;
 
-// Gestionnaires des listes déroulantes
+// Gestionnaires des listes déroulantes (1. Classe -> 2. Semaine)
 function onTeacherSchoolSelectChange(school) {
     if (school && school !== 'all') {
         currentSection = school;
     }
     activeTeacherHwFilters.section = currentSection || 'garcons';
-    activeTeacherHwFilters.week = 'all';
-    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.classe = '';
+    activeTeacherHwFilters.week = getDefaultTeacherWeek();
     activeTeacherHwFilters.jour = 'all';
     activeTeacherHwFilters.matiere = 'all';
     loadTeacherHomeworksDashboard();
 }
 window.onTeacherSchoolSelectChange = onTeacherSchoolSelectChange;
 
+function onTeacherClassSelectChange(classe) {
+    activeTeacherHwFilters.classe = classe;
+    activeTeacherHwFilters.jour = 'all';
+    // Garder la semaine sélectionnée (semaine actuelle par défaut)
+    if (!activeTeacherHwFilters.week) {
+        activeTeacherHwFilters.week = getDefaultTeacherWeek();
+    }
+    populateTeacherDropdowns();
+    renderTeacherHomeworksDashboard();
+}
+window.onTeacherClassSelectChange = onTeacherClassSelectChange;
+
 function onTeacherWeekSelectChange(week) {
     activeTeacherHwFilters.week = week;
-    activeTeacherHwFilters.classe = 'all';
+    // IMPORTANT : Ne pas réinitialiser la classe choisie par l'enseignant !
     activeTeacherHwFilters.jour = 'all';
     populateTeacherDropdowns();
     renderTeacherHomeworksDashboard();
 }
 window.onTeacherWeekSelectChange = onTeacherWeekSelectChange;
-
-function onTeacherClassSelectChange(classe) {
-    activeTeacherHwFilters.classe = classe;
-    activeTeacherHwFilters.jour = 'all';
-    populateTeacherDropdowns();
-    renderTeacherHomeworksDashboard();
-}
-window.onTeacherClassSelectChange = onTeacherClassSelectChange;
 
 function onTeacherDaySelectChange(jour) {
     activeTeacherHwFilters.jour = jour;
@@ -13318,7 +13500,7 @@ async function loadTeacherHomeworksDashboard() {
             ? isUserAdminOrSupervisor(loggedInUser, currentUserRole) 
             : false;
 
-        // Utiliser directement la section active pour un chargement rapide sans parcourir toutes les sections
+        // Utiliser directement la section active pour garantir l'indépendance stricte des sections
         const section = (typeof currentSection !== 'undefined' && currentSection && currentSection !== 'all') ? currentSection : 'garcons';
         activeTeacherHwFilters.section = section;
         const teacherParamFromLogin = loggedInTeacherTable || (typeof loggedInUser !== 'undefined' ? loggedInUser : '');
@@ -13331,7 +13513,6 @@ async function loadTeacherHomeworksDashboard() {
             const adminField = document.getElementById('teacherAdminSwitcherField');
             if (adminField) adminField.style.display = 'none';
         } else {
-            // Pour un admin ou superviseur : sélecteur d'enseignant disponible (charge 1 enseignant à la fois pour éviter toute lenteur)
             const adminSwitcher = document.getElementById('teacherAdminSwitcherRow');
             if (adminSwitcher) adminSwitcher.style.display = 'block';
             const adminField = document.getElementById('teacherAdminSwitcherField');
@@ -13351,6 +13532,10 @@ async function loadTeacherHomeworksDashboard() {
         const data = await res.json();
         allTeacherHomeworks = data.homeworks || [];
         allSectionTeachersList = data.sectionTeachers || [];
+        allTeacherClassesList = data.teacherClasses || [];
+        if (data.currentWeek) {
+            serverCurrentSchoolWeek = data.currentWeek;
+        }
         if (data.currentTeacher && (!activeTeacherHwFilters.teacher || activeTeacherHwFilters.teacher === 'all')) {
             activeTeacherHwFilters.teacher = data.currentTeacher;
         }
@@ -13374,7 +13559,7 @@ async function loadTeacherHomeworksDashboard() {
                     : (section === 'maternelle' ? 'Section Maternelle (روضة)' : 'Section Primaire (ابتدائي)'));
         }
 
-        // Rendu des listes déroulantes en cascade (Semaine -> Classe -> Jour -> Matière -> Statut)
+        // Rendu des listes déroulantes en cascade (1. Classe -> 2. Semaine actuelle par défaut)
         if (typeof populateTeacherDropdowns === 'function') {
             populateTeacherDropdowns();
         }
@@ -13448,9 +13633,8 @@ function renderTeacherSchoolIcons() {
 
 function setTeacherHwSchoolFilter(school) {
     activeTeacherHwFilters.section = school;
-    // Drill down: réinitialiser semaine, classe, jour et matière pour un affichage net
-    activeTeacherHwFilters.week = 'all';
-    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.classe = '';
+    activeTeacherHwFilters.week = getDefaultTeacherWeek();
     activeTeacherHwFilters.jour = 'all';
     activeTeacherHwFilters.matiere = 'all';
     if (school !== 'all') {
@@ -13488,8 +13672,8 @@ function renderTeacherAdminSwitcher(teachersList) {
 
 function switchActiveTeacherForHomework(teacherName) {
     activeTeacherHwFilters.teacher = teacherName;
-    activeTeacherHwFilters.week = 'all';
-    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.classe = '';
+    activeTeacherHwFilters.week = getDefaultTeacherWeek();
     activeTeacherHwFilters.matiere = 'all';
     activeTeacherHwFilters.jour = 'all';
     activeTeacherHwFilters.status = 'all';
@@ -13499,25 +13683,15 @@ function switchActiveTeacherForHomework(teacherName) {
     loadTeacherHomeworksDashboard();
 }
 
-// 2. Barre d'icônes : SEMAINES (Hiérarchie Niveau 1 après l'École)
+// 2. Barre d'icônes : SEMAINES
 function renderTeacherWeeksIcons() {
     const container = document.getElementById('teacherWeeksIconsContainer');
     const countLabel = document.getElementById('teacherWeeksCountLabel');
     if (!container) return;
 
-    // Ne prendre en compte que les devoirs de l'école/section sélectionnée
     let targetHws = allTeacherHomeworks;
-    if (activeTeacherHwFilters.section !== 'all') {
-        targetHws = targetHws.filter(h => {
-            const sec = (h.section || '').toLowerCase();
-            const cls = (h.class || h.classe || '').toUpperCase();
-            if (activeTeacherHwFilters.section.toLowerCase() === 'maternelle') {
-                return sec === 'maternelle' || ['PS', 'MS', 'GS'].includes(cls);
-            } else if (activeTeacherHwFilters.section.toLowerCase() === 'primaire') {
-                return (sec === 'primaire' || sec.includes('prim')) && !['PS', 'MS', 'GS'].includes(cls);
-            }
-            return sec.includes(activeTeacherHwFilters.section.toLowerCase());
-        });
+    if (activeTeacherHwFilters.classe && activeTeacherHwFilters.classe !== 'all') {
+        targetHws = targetHws.filter(h => h.classe === activeTeacherHwFilters.classe);
     }
 
     const weekMap = new Map();
@@ -13578,245 +13752,42 @@ function renderTeacherWeeksIcons() {
 
 function setTeacherHwWeekFilter(week) {
     activeTeacherHwFilters.week = week;
-    // Drill-down : En cliquant sur une semaine, on affine les classes et jours disponibles
-    activeTeacherHwFilters.classe = 'all';
     activeTeacherHwFilters.jour = 'all';
-    renderTeacherWeeksIcons();
-    renderTeacherClassesIcons();
-    renderTeacherDaysIcons();
-    renderTeacherSubjectsIcons();
+    populateTeacherDropdowns();
     renderTeacherHomeworksDashboard();
 }
 
-// 3. Barre d'icônes : CLASSES (Hiérarchie Niveau 2 après la Semaine)
+// 3. Barre d'icônes : CLASSES
 function renderTeacherClassesIcons() {
-    const container = document.getElementById('teacherClassesIconsContainer');
-    const countLabel = document.getElementById('teacherClassesCountLabel');
-    if (!container) return;
-
-    // Ne filtrer que les classes de la semaine active et de l'école active
-    let targetHws = allTeacherHomeworks;
-    if (activeTeacherHwFilters.section !== 'all') {
-        targetHws = targetHws.filter(h => {
-            const sec = (h.section || '').toLowerCase();
-            return sec.includes(activeTeacherHwFilters.section.toLowerCase());
-        });
-    }
-    if (activeTeacherHwFilters.week !== 'all') {
-        targetHws = targetHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
-    }
-
-    const classMap = new Map();
-    targetHws.forEach(h => {
-        const c = h.classe || 'Général';
-        if (!classMap.has(c)) {
-            classMap.set(c, { total: 0, evaluated: 0 });
-        }
-        const item = classMap.get(c);
-        item.total += 1;
-        if (h.isEvaluated) item.evaluated += 1;
-    });
-
-    const classes = Array.from(classMap.keys()).sort(compareClasses);
-    if (countLabel) {
-        const weekPrefix = activeTeacherHwFilters.week !== 'all' ? `dans Semaine ${activeTeacherHwFilters.week}` : 'au total';
-        countLabel.textContent = `(${classes.length} classe${classes.length > 1 ? 's' : ''} ${weekPrefix})`;
-    }
-
-    if (classes.length === 0) {
-        container.innerHTML = `
-            <div style="color:#64748B; font-size:0.88rem; padding:6px 0; display:flex; align-items:center; gap:8px;">
-                <i class="fas fa-info-circle"></i> Aucune classe avec devoirs pour cette sélection.
-            </div>
-        `;
-        return;
-    }
-
-    // Réinitialiser la classe active si elle n'est pas dans la liste disponible
-    if (activeTeacherHwFilters.classe !== 'all' && !classMap.has(activeTeacherHwFilters.classe)) {
-        activeTeacherHwFilters.classe = 'all';
-    }
-
-    const allClassesLabel = (currentUserLanguage === 'en')
-        ? (activeTeacherHwFilters.week !== 'all' ? 'All Classes of the Week' : 'All Classes')
-        : ((currentUserLanguage === 'ar')
-            ? (activeTeacherHwFilters.week !== 'all' ? 'جميع فصول الأسبوع' : 'جميع الفصول')
-            : (activeTeacherHwFilters.week !== 'all' ? 'Toutes les Classes de la Semaine' : 'Toutes les Classes'));
-
-    let html = `
-        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.classe === 'all' ? 'active' : ''}" onclick="setTeacherHwClassFilter('all')">
-            <i class="fas fa-layer-group" style="color:#2563EB;"></i>
-            <span>${allClassesLabel}</span>
-            <span class="hw-badge">${targetHws.length}</span>
-        </button>
-    `;
-
-    classes.forEach(c => {
-        const item = classMap.get(c);
-        const isActive = (activeTeacherHwFilters.classe === c);
-        const ar = (typeof classTranslations !== 'undefined' && classTranslations[c]) ? classTranslations[c] : '';
-        const displayLabel = ar ? `${c} (${ar})` : c;
-        const allDone = item.evaluated === item.total && item.total > 0;
-
-        html += `
-            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwClassFilter('${escapeHtml(c)}')">
-                <i class="fas fa-graduation-cap" style="color:${isActive ? '#FFFFFF' : (allDone ? '#10B981' : '#4F46E5')};"></i>
-                <span>${escapeHtml(displayLabel)}</span>
-                <span class="hw-badge" style="${allDone ? 'background:#10B981; color:white;' : ''}">${item.evaluated}/${item.total}</span>
-            </button>
-        `;
-    });
-
-    container.innerHTML = html;
+    populateTeacherDropdowns();
 }
 
 function setTeacherHwClassFilter(classe) {
     activeTeacherHwFilters.classe = classe;
-    // Drill-down : En choisissant la classe, on affine les jours et matières
     activeTeacherHwFilters.jour = 'all';
-    renderTeacherClassesIcons();
-    renderTeacherDaysIcons();
-    renderTeacherSubjectsIcons();
+    populateTeacherDropdowns();
     renderTeacherHomeworksDashboard();
 }
 
-// 4. Barre d'icônes : JOURS DE LA SEMAINE (Hiérarchie Niveau 3 après la Classe)
+// 4. Barre d'icônes : JOURS DE LA SEMAINE
 function renderTeacherDaysIcons() {
-    const container = document.getElementById('teacherDaysIconsContainer');
-    const countLabel = document.getElementById('teacherDaysCountLabel');
-    if (!container) return;
-
-    // Filtrer par école, semaine et classe
-    let targetHws = allTeacherHomeworks;
-    if (activeTeacherHwFilters.section !== 'all') {
-        targetHws = targetHws.filter(h => {
-            const sec = (h.section || '').toLowerCase();
-            return sec.includes(activeTeacherHwFilters.section.toLowerCase());
-        });
-    }
-    if (activeTeacherHwFilters.week !== 'all') {
-        targetHws = targetHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
-    }
-    if (activeTeacherHwFilters.classe !== 'all') {
-        targetHws = targetHws.filter(h => h.classe === activeTeacherHwFilters.classe);
-    }
-
-    const dayCounts = {};
-    targetHws.forEach(h => {
-        const dInfo = getDayIconAndDetails(h.jour);
-        dayCounts[dInfo.key] = (dayCounts[dInfo.key] || 0) + 1;
-    });
-
-    const activeDaysCount = Object.keys(dayCounts).length;
-    if (countLabel) {
-        const clsPrefix = activeTeacherHwFilters.classe !== 'all' ? `pour classe ${activeTeacherHwFilters.classe}` : '';
-        countLabel.textContent = `(${activeDaysCount} jour${activeDaysCount > 1 ? 's' : ''} avec devoirs ${clsPrefix})`;
-    }
-
-    const allDaysLabel = (currentUserLanguage === 'en') ? 'All Days' : ((currentUserLanguage === 'ar') ? 'جميع الأيام' : 'Tous les Jours');
-
-    let html = `
-        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.jour === 'all' ? 'active' : ''}" onclick="setTeacherHwDayFilter('all')">
-            <i class="fas fa-calendar-alt" style="color:#10B981;"></i>
-            <span>${allDaysLabel}</span>
-            <span class="hw-badge">${targetHws.length}</span>
-        </button>
-    `;
-
-    const standardDays = [
-        { key: 'Dimanche', fr: 'Dimanche', en: 'Sunday', ar: 'الأحد', icon: 'fas fa-sun', color: '#F59E0B' },
-        { key: 'Lundi', fr: 'Lundi', en: 'Monday', ar: 'الإثنين', icon: 'fas fa-seedling', color: '#10B981' },
-        { key: 'Mardi', fr: 'Mardi', en: 'Tuesday', ar: 'الثلاثاء', icon: 'fas fa-bolt', color: '#6366F1' },
-        { key: 'Mercredi', fr: 'Mercredi', en: 'Wednesday', ar: 'الأربعاء', icon: 'fas fa-leaf', color: '#06B6D4' },
-        { key: 'Jeudi', fr: 'Jeudi', en: 'Thursday', ar: 'الخميس', icon: 'fas fa-star', color: '#EC4899' }
-    ];
-
-    standardDays.forEach(d => {
-        const count = dayCounts[d.key] || 0;
-        const isActive = (activeTeacherHwFilters.jour === d.key);
-        const dayDisplay = (currentUserLanguage === 'en') ? d.en : ((currentUserLanguage === 'ar') ? d.ar : `${d.fr} <small style="opacity:0.85;">(${d.ar})</small>`);
-
-        html += `
-            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwDayFilter('${d.key}')" style="${count === 0 ? 'opacity:0.55;' : 'font-weight:700;'}">
-                <i class="${d.icon}" style="color:${isActive ? '#FFFFFF' : d.color};"></i>
-                <span>${dayDisplay}</span>
-                <span class="hw-badge" style="${count > 0 ? 'background:#DBEAFE; color:#1D4ED8;' : ''}">${count}</span>
-            </button>
-        `;
-    });
-
-    container.innerHTML = html;
+    populateTeacherDropdowns();
 }
 
 function setTeacherHwDayFilter(jour) {
     activeTeacherHwFilters.jour = jour;
-    renderTeacherDaysIcons();
-    renderTeacherSubjectsIcons();
+    populateTeacherDropdowns();
     renderTeacherHomeworksDashboard();
 }
 
 // 5. Barre d'icônes : MATIÈRES
 function renderTeacherSubjectsIcons() {
-    const container = document.getElementById('teacherSubjectsIconsContainer');
-    const countLabel = document.getElementById('teacherSubjectsCountLabel');
-    if (!container) return;
-
-    let targetHws = allTeacherHomeworks;
-    if (activeTeacherHwFilters.section !== 'all') {
-        targetHws = targetHws.filter(h => {
-            const sec = (h.section || '').toLowerCase();
-            return sec.includes(activeTeacherHwFilters.section.toLowerCase());
-        });
-    }
-    if (activeTeacherHwFilters.week !== 'all') {
-        targetHws = targetHws.filter(h => String(h.week) === String(activeTeacherHwFilters.week));
-    }
-    if (activeTeacherHwFilters.classe !== 'all') {
-        targetHws = targetHws.filter(h => h.classe === activeTeacherHwFilters.classe);
-    }
-    if (activeTeacherHwFilters.jour !== 'all') {
-        targetHws = targetHws.filter(h => getDayIconAndDetails(h.jour).key === activeTeacherHwFilters.jour);
-    }
-
-    const subjectCounts = {};
-    targetHws.forEach(h => {
-        const m = h.matiere || 'Matière Générale';
-        subjectCounts[m] = (subjectCounts[m] || 0) + 1;
-    });
-
-    const subjects = Object.keys(subjectCounts).sort();
-    if (countLabel) countLabel.textContent = `(${subjects.length} matière${subjects.length > 1 ? 's' : ''})`;
-
-    const allSubjLabel = (currentUserLanguage === 'en') ? 'All Subjects' : ((currentUserLanguage === 'ar') ? 'جميع المواد' : 'Toutes les Matières');
-
-    let html = `
-        <button type="button" class="teacher-icon-btn ${activeTeacherHwFilters.matiere === 'all' ? 'active' : ''}" onclick="setTeacherHwSubjectFilter('all')">
-            <i class="fas fa-book" style="color:#8B5CF6;"></i>
-            <span>${allSubjLabel}</span>
-            <span class="hw-badge">${targetHws.length}</span>
-        </button>
-    `;
-
-    subjects.forEach(m => {
-        const isActive = (activeTeacherHwFilters.matiere === m);
-        const iconInfo = getSubjectIconAndColor(m);
-        const count = subjectCounts[m] || 0;
-
-        html += `
-            <button type="button" class="teacher-icon-btn ${isActive ? 'active' : ''}" onclick="setTeacherHwSubjectFilter('${escapeHtml(m)}')">
-                <i class="${iconInfo.icon}" style="color:${isActive ? '#FFFFFF' : iconInfo.color};"></i>
-                <span>${escapeHtml(m)}</span>
-                <span class="hw-badge">${count}</span>
-            </button>
-        `;
-    });
-
-    container.innerHTML = html;
+    populateTeacherDropdowns();
 }
 
 function setTeacherHwSubjectFilter(matiere) {
     activeTeacherHwFilters.matiere = matiere;
-    renderTeacherSubjectsIcons();
+    populateTeacherDropdowns();
     renderTeacherHomeworksDashboard();
 }
 
@@ -13835,10 +13806,10 @@ function setTeacherHwStatusFilter(status) {
     renderTeacherHomeworksDashboard();
 }
 
-// Réinitialiser tous les filtres
+// Réinitialiser aux valeurs par défaut (1re classe de l'enseignant + Semaine actuelle)
 function resetAllTeacherHwFilters() {
-    activeTeacherHwFilters.week = 'all';
-    activeTeacherHwFilters.classe = 'all';
+    activeTeacherHwFilters.classe = '';
+    activeTeacherHwFilters.week = getDefaultTeacherWeek();
     activeTeacherHwFilters.jour = 'all';
     activeTeacherHwFilters.matiere = 'all';
     activeTeacherHwFilters.status = 'all';
@@ -13869,7 +13840,7 @@ function openClassStudentsTrackingFromTeacher(className, sectionName) {
 }
 window.openClassStudentsTrackingFromTeacher = openClassStudentsTrackingFromTeacher;
 
-// Rendu principal des devoirs
+// Rendu principal des devoirs (1. Classe -> 2. Semaine -> Devoirs de la semaine)
 function renderTeacherHomeworksDashboard() {
     const container = document.getElementById('teacher-homeworks-tree-container');
     if (!container) return;
@@ -13896,15 +13867,15 @@ function renderTeacherHomeworksDashboard() {
     const bEval = document.getElementById('badgeStatusEvaluated');
     if (bEval) bEval.textContent = evaluatedCount;
 
-    // Badges des filtres actifs (Semaine, Classe, Jour, Matière, Statut)
+    // Badges des filtres actifs (1. Classe, 2. Semaine, Jour, Matière, Statut)
     const tagsContainer = document.getElementById('teacherActiveFiltersTags');
     if (tagsContainer) {
         let tagsHtml = '';
-        if (activeTeacherHwFilters.week !== 'all') {
-            tagsHtml += `<span style="background:#F0F9FF; color:#0284C7; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Semaine ${escapeHtml(activeTeacherHwFilters.week)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherWeekSelectChange('all')"></i></span>`;
+        if (activeTeacherHwFilters.classe && activeTeacherHwFilters.classe !== 'all') {
+            tagsHtml += `<span style="background:#EEF2FF; color:#4338CA; padding:3px 9px; border-radius:6px; font-size:0.78rem; font-weight:800; display:inline-flex; align-items:center; gap:5px; border:1px solid #C7D2FE;"><i class="fas fa-graduation-cap"></i> Classe: ${escapeHtml(activeTeacherHwFilters.classe)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherClassSelectChange('all')"></i></span>`;
         }
-        if (activeTeacherHwFilters.classe !== 'all') {
-            tagsHtml += `<span style="background:#EEF2FF; color:#4338CA; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Classe: ${escapeHtml(activeTeacherHwFilters.classe)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherClassSelectChange('all')"></i></span>`;
+        if (activeTeacherHwFilters.week && activeTeacherHwFilters.week !== 'all') {
+            tagsHtml += `<span style="background:#F0F9FF; color:#0284C7; padding:3px 9px; border-radius:6px; font-size:0.78rem; font-weight:800; display:inline-flex; align-items:center; gap:5px; border:1px solid #BAE6FD;"><i class="fas fa-calendar-week"></i> Semaine ${escapeHtml(activeTeacherHwFilters.week)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherWeekSelectChange('all')"></i></span>`;
         }
         if (activeTeacherHwFilters.jour !== 'all') {
             tagsHtml += `<span style="background:#ECFDF5; color:#059669; padding:3px 8px; border-radius:6px; font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:4px;">Jour: ${escapeHtml(activeTeacherHwFilters.jour)} <i class="fas fa-times" style="cursor:pointer;" onclick="onTeacherDaySelectChange('all'); populateTeacherDropdowns();"></i></span>`;
@@ -13922,10 +13893,10 @@ function renderTeacherHomeworksDashboard() {
         tagsContainer.innerHTML = tagsHtml;
     }
 
-    // Filtrer la liste des devoirs de l'enseignant (Semaine -> Classe -> Jour -> Matière -> Statut)
+    // Filtrer la liste des devoirs de l'enseignant (Classe -> Semaine -> Jour -> Matière -> Statut)
     const filtered = allTeacherHomeworks.filter(hw => {
-        if (activeTeacherHwFilters.week !== 'all' && String(hw.week) !== String(activeTeacherHwFilters.week)) return false;
-        if (activeTeacherHwFilters.classe !== 'all' && hw.classe !== activeTeacherHwFilters.classe) return false;
+        if (activeTeacherHwFilters.classe && activeTeacherHwFilters.classe !== 'all' && hw.classe !== activeTeacherHwFilters.classe) return false;
+        if (activeTeacherHwFilters.week && activeTeacherHwFilters.week !== 'all' && String(hw.week) !== String(activeTeacherHwFilters.week)) return false;
         if (activeTeacherHwFilters.matiere !== 'all' && hw.matiere !== activeTeacherHwFilters.matiere) return false;
         
         if (activeTeacherHwFilters.jour !== 'all') {
@@ -13951,27 +13922,72 @@ function renderTeacherHomeworksDashboard() {
         return true;
     });
 
+    const isEn = (currentUserLanguage === 'en');
+    const isAr = (currentUserLanguage === 'ar');
+
     if (filtered.length === 0) {
+        // Chercher les semaines où cette classe possède des devoirs saisis dans la colonne des devoirs
+        const otherWeeksForClass = [];
+        const seenW = new Set();
+        allTeacherHomeworks.forEach(hw => {
+            if (!activeTeacherHwFilters.classe || activeTeacherHwFilters.classe === 'all' || hw.classe === activeTeacherHwFilters.classe) {
+                const wStr = String(hw.week || '');
+                if (wStr && !seenW.has(wStr)) {
+                    seenW.add(wStr);
+                    otherWeeksForClass.push(wStr);
+                }
+            }
+        });
+        otherWeeksForClass.sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
+
+        let quickWeeksHtml = '';
+        if (otherWeeksForClass.length > 0) {
+            quickWeeksHtml = `
+                <div style="margin:16px 0; padding:14px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; display:inline-block; max-width:100%;">
+                    <div style="font-size:0.84rem; font-weight:700; color:#334155; margin-bottom:10px;">
+                        <i class="fas fa-calendar-check" style="color:#0284C7;"></i> Semaines contenant des devoirs saisis pour ${activeTeacherHwFilters.classe && activeTeacherHwFilters.classe !== 'all' ? 'la classe <strong>' + escapeHtml(activeTeacherHwFilters.classe) + '</strong>' : 'vos classes'} :
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px;">
+                        ${otherWeeksForClass.map(w => `
+                            <button type="button" onclick="onTeacherWeekSelectChange('${escapeHtml(w)}')" style="padding:7px 14px; border-radius:8px; background:#0284C7; color:white; border:none; font-weight:700; font-size:0.84rem; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 2px 6px rgba(2,132,199,0.25);">
+                                <i class="fas fa-calendar-week"></i> Semaine ${escapeHtml(w)}
+                            </button>
+                        `).join('')}
+                        <button type="button" onclick="onTeacherWeekSelectChange('all')" style="padding:7px 14px; border-radius:8px; background:#4F46E5; color:white; border:none; font-weight:700; font-size:0.84rem; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                            <i class="fas fa-layer-group"></i> Voir toutes les semaines
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
         container.innerHTML = `
-            <div style="background:white; border-radius:16px; padding:45px 20px; text-align:center; border:1px dashed #CBD5E1; color:#64748B;">
+            <div style="background:white; border-radius:16px; padding:40px 20px; text-align:center; border:1px dashed #CBD5E1; color:#64748B;">
                 <div style="width:60px; height:60px; background:#F1F5F9; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; margin-bottom:14px;">
                     <i class="fas fa-clipboard-check fa-2x" style="color:#94A3B8;"></i>
                 </div>
-                <h4 style="font-size:1.15rem; color:#1E293B; margin:0 0 6px 0; font-weight:700;">Aucun devoir ne correspond à cette sélection</h4>
-                <p style="font-size:0.92rem; margin:0 0 16px 0; color:#64748B;">Cliquez sur "Toutes les Semaines", "Toutes les Classes" ou réinitialisez les filtres.</p>
-                <button type="button" class="pro-button primary-button" onclick="resetAllTeacherHwFilters()">
-                    <i class="fas fa-undo"></i> Réinitialiser tous les filtres
-                </button>
+                <h4 style="font-size:1.15rem; color:#1E293B; margin:0 0 6px 0; font-weight:700;">
+                    Aucun devoir saisi dans la colonne des devoirs pour ${activeTeacherHwFilters.classe && activeTeacherHwFilters.classe !== 'all' ? 'la classe ' + escapeHtml(activeTeacherHwFilters.classe) : 'cette sélection'} ${activeTeacherHwFilters.week && activeTeacherHwFilters.week !== 'all' ? 'en Semaine ' + escapeHtml(activeTeacherHwFilters.week) : ''}
+                </h4>
+                <p style="font-size:0.9rem; margin:0 0 12px 0; color:#64748B;">
+                    Sélectionnez une autre semaine ci-dessous ou saisissez vos devoirs dans la colonne <strong>Devoirs</strong> du plan hebdomadaire.
+                </p>
+                ${quickWeeksHtml}
+                <div style="margin-top:12px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+                    <button type="button" class="pro-button primary-button" onclick="onTeacherWeekSelectChange('all')">
+                        <i class="fas fa-calendar-alt"></i> Afficher toutes les semaines de cette classe
+                    </button>
+                    <button type="button" class="pro-button outline-button" onclick="resetAllTeacherHwFilters()">
+                        <i class="fas fa-undo"></i> Réinitialiser
+                    </button>
+                </div>
             </div>
         `;
         return;
     }
 
-    const isEn = (currentUserLanguage === 'en');
-    const isAr = (currentUserLanguage === 'ar');
-
-    // Fil d'Ariane (Parcours Semaine -> Classe -> Jour -> Matière)
-    const pathTxt = isEn ? 'Path :' : (isAr ? 'المسار :' : 'Parcours :');
+    // Fil d'Ariane (Parcours 1. Classe -> 2. Semaine -> Jour -> Matière)
+    const pathTxt = isEn ? 'Selection :' : (isAr ? 'الاختيار :' : 'Sélection active :');
     const allWeeksTxt = isEn ? 'All Weeks' : (isAr ? 'جميع الأسابيع' : 'Toutes Semaines');
     const weekTxt = isEn ? 'Week ' : (isAr ? 'الأسبوع ' : 'Semaine ');
     const allClassesTxt = isEn ? 'All Classes' : (isAr ? 'جميع الفصول' : 'Toutes Classes');
@@ -13981,23 +13997,23 @@ function renderTeacherHomeworksDashboard() {
     const resetTxt = isEn ? 'Reset' : (isAr ? 'إعادة ضبط' : 'Réinitialiser');
     const hwCountTxt = isEn 
         ? `${filtered.length} homework${filtered.length > 1 ? 's' : ''} displayed` 
-        : (isAr ? `${filtered.length} واجب(ات) معروضة` : `${filtered.length} devoir${filtered.length > 1 ? 's' : ''} affiché${filtered.length > 1 ? 's' : ''}`);
+        : (isAr ? `${filtered.length} واجب(ات) معروضة` : `${filtered.length} devoir${filtered.length > 1 ? 's' : ''} de la semaine affiché${filtered.length > 1 ? 's' : ''}`);
 
     let breadcrumbsHtml = `
         <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:12px 18px; margin-bottom:22px; box-shadow:0 2px 6px rgba(0,0,0,0.02); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
             <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
                 <span style="font-weight:700; color:#64748B; font-size:0.85rem; display:inline-flex; align-items:center; gap:6px;">
-                    <i class="fas fa-sitemap" style="color:#2563EB;"></i> ${pathTxt}
+                    <i class="fas fa-sitemap" style="color:#4F46E5;"></i> ${pathTxt}
                 </span>
 
-                <button type="button" onclick="onTeacherWeekSelectChange('all')" title="Toutes les semaines" style="background:${activeTeacherHwFilters.week !== 'all' ? '#F0F9FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.week !== 'all' ? '#0284C7' : '#475569'}; border:1px solid ${activeTeacherHwFilters.week !== 'all' ? '#BAE6FD' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-calendar-week"></i> ${activeTeacherHwFilters.week !== 'all' ? weekTxt + escapeHtml(activeTeacherHwFilters.week) : allWeeksTxt}
+                <button type="button" onclick="onTeacherClassSelectChange('all')" title="Toutes les classes" style="background:${activeTeacherHwFilters.classe !== 'all' ? '#EEF2FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.classe !== 'all' ? '#4F46E5' : '#475569'}; border:1.5px solid ${activeTeacherHwFilters.classe !== 'all' ? '#C7D2FE' : '#E2E8F0'}; padding:5px 12px; border-radius:8px; font-weight:800; font-size:0.84rem; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-graduation-cap"></i> 1. ${activeTeacherHwFilters.classe !== 'all' ? classTxt + escapeHtml(activeTeacherHwFilters.classe) : allClassesTxt}
                 </button>
 
                 <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
 
-                <button type="button" onclick="onTeacherClassSelectChange('all')" title="Toutes les classes" style="background:${activeTeacherHwFilters.classe !== 'all' ? '#EEF2FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.classe !== 'all' ? '#4F46E5' : '#475569'}; border:1px solid ${activeTeacherHwFilters.classe !== 'all' ? '#C7D2FE' : '#E2E8F0'}; padding:4px 10px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-graduation-cap"></i> ${activeTeacherHwFilters.classe !== 'all' ? classTxt + escapeHtml(activeTeacherHwFilters.classe) : allClassesTxt}
+                <button type="button" onclick="onTeacherWeekSelectChange('all')" title="Toutes les semaines" style="background:${activeTeacherHwFilters.week !== 'all' ? '#F0F9FF' : '#F8FAFC'}; color:${activeTeacherHwFilters.week !== 'all' ? '#0284C7' : '#475569'}; border:1.5px solid ${activeTeacherHwFilters.week !== 'all' ? '#BAE6FD' : '#E2E8F0'}; padding:5px 12px; border-radius:8px; font-weight:800; font-size:0.84rem; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-calendar-week"></i> 2. ${activeTeacherHwFilters.week !== 'all' ? weekTxt + escapeHtml(activeTeacherHwFilters.week) : allWeeksTxt}
                 </button>
 
                 <i class="fas fa-chevron-right" style="color:#CBD5E1; font-size:0.75rem;"></i>
@@ -14101,6 +14117,7 @@ function renderTeacherHomeworksDashboard() {
                         <h4 style="margin:0; font-size:1.1rem; color:#1E1B4B; display:flex; align-items:center; gap:8px;">
                             <span style="display:inline-block; width:10px; height:10px; background:#4F46E5; border-radius:50%;"></span>
                             <i class="fas fa-users" style="color:#6366F1;"></i> ${isEn ? 'Class :' : (isAr ? 'الفصل :' : 'Classe :')} <strong>${classTitle}</strong>
+                            <span style="font-size:0.8rem; color:#4F46E5; background:#EEF2FF; padding:3px 9px; border-radius:999px; font-weight:700;">Cliquez sur un devoir pour évaluer les élèves</span>
                         </h4>
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                             <button type="button" class="pro-button" onclick="openClassStudentsTrackingFromTeacher('${escapeHtml(cKey)}', '${escapeHtml(firstHwSec)}')" style="font-size:0.78rem; font-weight:700; padding:5px 11px; background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">
@@ -14121,7 +14138,7 @@ function renderTeacherHomeworksDashboard() {
                 const isEvaluated = !!hw.isEvaluated;
 
                 const cardBg = isEvaluated ? '#F0FDF4' : '#FFFFFF';
-                const cardBorder = isEvaluated ? '2px solid #10B981' : '1px solid #CBD5E1';
+                const cardBorder = isEvaluated ? '2px solid #10B981' : '1.5px solid #CBD5E1';
                 const shadow = isEvaluated ? '0 4px 15px rgba(16, 185, 129, 0.12)' : '0 3px 10px rgba(0,0,0,0.04)';
 
                 const subjInfo = getSubjectIconAndColor(hw.matiere);
@@ -14141,15 +14158,15 @@ function renderTeacherHomeworksDashboard() {
                 const badgePendingText = (currentUserLanguage === 'en') ? 'To Evaluate' : ((currentUserLanguage === 'ar') ? 'قيد التقييم' : 'À Évaluer');
                 const periodText = (currentUserLanguage === 'en') ? 'Period' : ((currentUserLanguage === 'ar') ? 'الحصة' : 'Période');
                 const lessonText = (currentUserLanguage === 'en') ? 'Lesson :' : ((currentUserLanguage === 'ar') ? 'الدرس:' : 'Leçon :');
-                const hwStatementText = (currentUserLanguage === 'en') ? 'Homework Statement :' : ((currentUserLanguage === 'ar') ? 'نص الواجب:' : 'Énoncé du Devoir :');
+                const hwStatementText = (currentUserLanguage === 'en') ? 'Homework (Devoirs column) :' : ((currentUserLanguage === 'ar') ? 'نص الواجب:' : 'Devoir saisi (Colonne Devoirs) :');
                 const dateText = (currentUserLanguage === 'en') ? 'Date :' : ((currentUserLanguage === 'ar') ? 'التاريخ:' : 'Date :');
                 const noStatementText = (currentUserLanguage === 'en') ? 'No statement' : ((currentUserLanguage === 'ar') ? 'لا يوجد نص' : 'Aucun énoncé');
                 const btnEvalText = isEvaluated 
-                    ? ((currentUserLanguage === 'en') ? 'Edit / Review' : ((currentUserLanguage === 'ar') ? 'تعديل / مراجعة' : 'Modifier / Revoir'))
-                    : ((currentUserLanguage === 'en') ? 'Enter Evaluation' : ((currentUserLanguage === 'ar') ? 'تسجيل التقييم' : 'Saisir l\'Évaluation'));
+                    ? ((currentUserLanguage === 'en') ? 'Edit / Review Student Evaluations' : ((currentUserLanguage === 'ar') ? 'تعديل / مراجعة تقييم الطلاب' : 'Modifier / Revoir l\'évaluation des élèves'))
+                    : ((currentUserLanguage === 'en') ? 'Evaluate Students for this Homework' : ((currentUserLanguage === 'ar') ? 'تقييم الطلاب في هذا الواجب' : 'Évaluer les élèves pour ce devoir'));
 
                 html += `
-                    <div style="background:${cardBg}; border:${cardBorder}; border-radius:14px; padding:18px; box-shadow:${shadow}; display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.2s, box-shadow 0.2s; position:relative;">
+                    <div onclick="openTeacherEvalModal(${globalIndex})" style="background:${cardBg}; border:${cardBorder}; border-radius:14px; padding:18px; box-shadow:${shadow}; display:flex; flex-direction:column; justify-content:space-between; transition:transform 0.18s, box-shadow 0.18s; position:relative; cursor:pointer;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
                         
                         <!-- Ruban / Badge d'état -->
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; gap:8px;">
@@ -14198,11 +14215,11 @@ function renderTeacherHomeworksDashboard() {
                             </div>
 
                             <div style="display:flex; gap:8px; align-items:center;">
-                                <button type="button" class="pro-button ${isEvaluated ? 'success-button' : 'primary-button'}" onclick="openTeacherEvalModal(${globalIndex})" style="flex:1; padding:10px 14px; font-weight:700; font-size:0.88rem; justify-content:center; gap:8px;">
-                                    <i class="fas ${isEvaluated ? 'fa-check-double' : 'fa-edit'}"></i>
+                                <button type="button" class="pro-button ${isEvaluated ? 'success-button' : 'primary-button'}" onclick="event.stopPropagation(); openTeacherEvalModal(${globalIndex})" style="flex:1; padding:10px 14px; font-weight:700; font-size:0.86rem; justify-content:center; gap:8px;">
+                                    <i class="fas ${isEvaluated ? 'fa-check-double' : 'fa-user-check'}"></i>
                                     <span>${btnEvalText}</span>
                                 </button>
-                                <button type="button" class="pro-button" onclick="if(typeof openTeacherMessagesModal==='function'){ openTeacherMessagesModal(); } else if(typeof openParentMessengerModal==='function'){ openParentMessengerModal(); }" title="Messagerie avec les parents" style="padding:10px 13px; background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; border-radius:10px; cursor:pointer;" onmouseover="this.style.background='#DBEAFE'" onmouseout="this.style.background='#EFF6FF'">
+                                <button type="button" class="pro-button" onclick="event.stopPropagation(); if(typeof openTeacherMessagesModal==='function'){ openTeacherMessagesModal(); } else if(typeof openParentMessengerModal==='function'){ openParentMessengerModal(); }" title="Messagerie avec les parents" style="padding:10px 13px; background:#EFF6FF; color:#1D4ED8; border:1.5px solid #BFDBFE; border-radius:10px; cursor:pointer;" onmouseover="this.style.background='#DBEAFE'" onmouseout="this.style.background='#EFF6FF'">
                                     <i class="fas fa-comment-dots"></i>
                                 </button>
                             </div>
@@ -14305,19 +14322,23 @@ async function openTeacherEvalModal(hwIndex) {
             return;
         }
 
-        // Construire la table de saisie avec internationalisation complète
+        // Construire la table de saisie avec les 4 critères demandés :
+        // 1. Statut (Fait / Partiellement Fait / Non Fait / Absent)
+        // 2. Note de Comportement (/10)
+        // 3. Note de Participation en classe (/10)
+        // 4. Commentaire de l'enseignant (affiché dans l'Espace Parent)
         const thStudentName = t('th_student_name') || "Nom de l'Élève";
-        const thHwStatus = t('th_hw_status') || "Statut du Devoir (Fait / Non Fait / Partiel / Absent)";
-        const thBehavior = (currentUserLanguage === 'en') ? "Behavior & Participation (/10)" : ((currentUserLanguage === 'ar') ? "السلوك والمشاركة (/10)" : "Note de Comportement (/10)");
-        const thParticipation = t('th_participation') || "Participation (/10)";
-        const thComment = t('th_comment') || "Remarque";
+        const thHwStatus = (currentUserLanguage === 'en') ? "Homework Status (Done / Not Done / Partial / Absent)" : ((currentUserLanguage === 'ar') ? "حالة الواجب (أنجز / لم ينجز / جزئياً / غائب)" : "Statut du Devoir (Fait / Non Fait / Partiellement / Absent)");
+        const thBehavior = (currentUserLanguage === 'en') ? "Behavior (/10)" : ((currentUserLanguage === 'ar') ? "السلوك (/10)" : "Comportement (/10)");
+        const thParticipation = (currentUserLanguage === 'en') ? "Class Participation (/10)" : ((currentUserLanguage === 'ar') ? "المشاركة في الفصل (/10)" : "Participation en classe (/10)");
+        const thComment = (currentUserLanguage === 'en') ? "Teacher Comment (Visible to Parent/Student)" : ((currentUserLanguage === 'ar') ? "تعليق المعلم (يظهر لولي الأمر والطالب)" : "Commentaire de l'enseignant (Visible Espace Parent)");
         const thParent = t('th_parent') || "Parent";
         const optDone = t('opt_done') || "✅ Fait";
         const optPartial = t('opt_partial') || "⚠️ Partiellement Fait";
         const optNotDone = t('opt_not_done') || "❌ Non Fait";
         const optAbsent = t('opt_absent') || "⚪ Absent";
         const btnMessage = t('btn_message') || "Message";
-        const commentPlaceholder = (currentUserLanguage === 'en') ? "Notes / Observation" : ((currentUserLanguage === 'ar') ? "ملاحظات" : "Observation / Remarque");
+        const commentPlaceholder = (currentUserLanguage === 'en') ? "Write a comment for the student/parent..." : ((currentUserLanguage === 'ar') ? "اكتب تعليقاً للطالب / ولي الأمر..." : "Écrire un commentaire pour l'élève / parent...");
 
         let tableHtml = `
             <table class="users-table" style="width:100%; border-collapse:collapse; background:white;">
@@ -14325,10 +14346,10 @@ async function openTeacherEvalModal(hwIndex) {
                     <tr style="background:#F1F5F9; color:#1E293B;">
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">#</th>
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">${thStudentName}</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; min-width:155px;">${thHwStatus}</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:130px; background:#F0FDF4; color:#166534;">${thBehavior}</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:110px;">${thParticipation}</th>
-                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left;">${thComment}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; min-width:170px;">${thHwStatus}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:135px; background:#F0FDF4; color:#166534;">${thBehavior}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:145px; background:#EFF6FF; color:#1E40AF;">${thParticipation}</th>
+                        <th style="padding:10px; border:1px solid #E2E8F0; text-align:left; min-width:210px;">${thComment}</th>
                         <th style="padding:10px; border:1px solid #E2E8F0; text-align:center; width:90px;">${thParent}</th>
                     </tr>
                 </thead>
@@ -14341,11 +14362,17 @@ async function openTeacherEvalModal(hwIndex) {
                 const eNorm = typeof normalizeClientName === 'function' ? normalizeClientName(e.studentName) : (e.studentName || '').toLowerCase();
                 const isNameMatch = (e.studentName === st.name) || (eNorm === stNorm) || (stNorm.length >= 3 && (eNorm.includes(stNorm) || stNorm.includes(eNorm)));
                 const isSubjMatch = (e.subject === hw.matiere || !e.subject || !hw.matiere);
+                const isDateMatch = (!e.date || !hw.date || String(e.date).slice(0, 10) === String(hw.date).slice(0, 10));
+                return isNameMatch && isSubjMatch && isDateMatch;
+            }) || existingEvaluations.find(e => {
+                const eNorm = typeof normalizeClientName === 'function' ? normalizeClientName(e.studentName) : (e.studentName || '').toLowerCase();
+                const isNameMatch = (e.studentName === st.name) || (eNorm === stNorm) || (stNorm.length >= 3 && (eNorm.includes(stNorm) || stNorm.includes(eNorm)));
+                const isSubjMatch = (e.subject === hw.matiere || !e.subject || !hw.matiere);
                 return isNameMatch && isSubjMatch;
             }) || {};
             const curStatus = ev.status || 'Fait';
             const curBeh = (ev.behavior !== undefined && ev.behavior !== null) ? ev.behavior : 10;
-            const curPart = (ev.participation !== undefined && ev.participation !== null) ? ev.participation : curBeh;
+            const curPart = (ev.participation !== undefined && ev.participation !== null) ? ev.participation : 10;
             const curComm = ev.comment || '';
 
             tableHtml += `
@@ -14355,7 +14382,7 @@ async function openTeacherEvalModal(hwIndex) {
                         <div style="font-weight:700; color:#0F172A; font-size:0.95rem;">${escapeHtml(st.name)}</div>
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
-                        <select class="modal-eval-status" data-student="${escapeHtml(st.name)}" style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                        <select class="modal-eval-status" data-student="${escapeHtml(st.name)}" style="width:100%; padding:7px 10px; border-radius:6px; border:1.5px solid #CBD5E1; font-weight:700;">
                             <option value="Fait" ${curStatus === 'Fait' ? 'selected' : ''}>${optDone}</option>
                             <option value="Partiellement Fait" ${curStatus === 'Partiellement Fait' ? 'selected' : ''}>${optPartial}</option>
                             <option value="Non Fait" ${curStatus === 'Non Fait' ? 'selected' : ''}>${optNotDone}</option>
@@ -14363,13 +14390,13 @@ async function openTeacherEvalModal(hwIndex) {
                         </select>
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center; background:#F0FDF4;">
-                        <input type="number" min="0" max="10" step="1" value="${curBeh}" class="modal-eval-beh" data-student="${escapeHtml(st.name)}" oninput="const pEl=this.closest('tr').querySelector('.modal-eval-part'); if(pEl) pEl.value=this.value;" style="width:78px; padding:6px; text-align:center; border-radius:6px; border:1.5px solid #86EFAC; font-weight:800; color:#15803D;">
+                        <input type="number" min="0" max="10" step="1" value="${curBeh}" class="modal-eval-beh" data-student="${escapeHtml(st.name)}" style="width:78px; padding:6px; text-align:center; border-radius:6px; border:1.5px solid #86EFAC; font-weight:800; color:#15803D;">
                     </td>
-                    <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
-                        <input type="number" min="0" max="10" step="1" value="${curPart}" class="modal-eval-part" data-student="${escapeHtml(st.name)}" style="width:75px; padding:6px; text-align:center; border-radius:6px; border:1px solid #CBD5E1; font-weight:700;">
+                    <td style="padding:10px; border:1px solid #E2E8F0; text-align:center; background:#EFF6FF;">
+                        <input type="number" min="0" max="10" step="1" value="${curPart}" class="modal-eval-part" data-student="${escapeHtml(st.name)}" style="width:78px; padding:6px; text-align:center; border-radius:6px; border:1.5px solid #93C5FD; font-weight:800; color:#1D4ED8;">
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0;">
-                        <input type="text" value="${escapeHtml(curComm)}" class="modal-eval-comm" data-student="${escapeHtml(st.name)}" placeholder="${commentPlaceholder}" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid #CBD5E1;">
+                        <input type="text" value="${escapeHtml(curComm)}" class="modal-eval-comm" data-student="${escapeHtml(st.name)}" placeholder="${commentPlaceholder}" style="width:100%; padding:7px 10px; border-radius:6px; border:1px solid #CBD5E1;">
                     </td>
                     <td style="padding:10px; border:1px solid #E2E8F0; text-align:center;">
                         <button type="button" onclick="contactParentFromEval('${escapeHtml(st.name).replace(/'/g, "\\'")}', '${escapeHtml(st.parentPhone || '').replace(/'/g, "\\'")}', '${escapeHtml(classDisplay).replace(/'/g, "\\'")}', '${escapeHtml(hw.matiere || '').replace(/'/g, "\\'")}', '${escapeHtml(hw.formattedDateFr || hw.date || '').replace(/'/g, "\\'")}')" class="pro-button" style="padding:5px 8px; font-size:0.75rem; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; border-radius:6px; font-weight:700; white-space:nowrap; cursor:pointer;" title="Envoyer un message au parent">
@@ -14440,8 +14467,10 @@ async function submitCurrentHomeworkEvaluation() {
             const behEl = document.querySelector(`.modal-eval-beh[data-student="${studentName}"]`);
             const commEl = document.querySelector(`.modal-eval-comm[data-student="${studentName}"]`);
 
-            const behNum = Math.min(10, Math.max(0, parseInt(behEl?.value ?? 10, 10) || 10));
-            const partNum = Math.min(10, Math.max(0, parseInt(partEl?.value ?? behNum, 10) || behNum));
+            const behRaw = behEl && behEl.value !== '' ? parseInt(behEl.value, 10) : 10;
+            const partRaw = partEl && partEl.value !== '' ? parseInt(partEl.value, 10) : 10;
+            const behNum = Math.min(10, Math.max(0, isNaN(behRaw) ? 10 : behRaw));
+            const partNum = Math.min(10, Math.max(0, isNaN(partRaw) ? 10 : partRaw));
 
             evaluations.push({
                 studentName,
@@ -14478,9 +14507,10 @@ async function submitCurrentHomeworkEvaluation() {
         hw.isAutoValidated = false;
 
         closeTeacherEvalSheetModal();
+        populateTeacherDropdowns();
         renderTeacherHomeworksDashboard();
 
-        displayAlert("Évaluation enregistrée avec succès ! Le devoir est désormais marqué comme Évalué (Vert).", false);
+        displayAlert("Évaluation enregistrée avec succès ! Le devoir est marqué en Vert et l'évaluation (Statut, Comportement /10, Participation /10, Commentaire) est visible dans l'Espace Parent.", false);
     } catch (e) {
         console.error('Erreur submitCurrentHomeworkEvaluation:', e);
         displayAlert(`Erreur : ${e.message}`, true);
