@@ -19,6 +19,7 @@
         let currentSortColumn = null;
         let currentSortOrder = 'asc';
         let showCrossSectionView = false;
+        let crossSectionPlanData = [];
 
         // Formateur d'URL Google Drive universel
         function formatDriveImageUrl(url) {
@@ -395,37 +396,51 @@
             return false;
         }
 
-        // Récupère les couples (Matière, Classe) enseignés par l'enseignant connecté
+        // Récupère les couples (Matière, Classe) enseignés par l'enseignant dans la section active uniquement
         function getTeacherTeachingAssignments(allData, user, teacherTable) {
             const ensK = findHKey('Enseignant');
             const matK = findHKey('Matière');
             const clsK = findHKey('Classe');
             const assignments = [];
-            if (!allData || !ensK || !matK || !clsK) return assignments;
-            
-            allData.forEach(row => {
-                if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], user, teacherTable)) {
-                    const s = row[matK] ? String(row[matK]).trim() : '';
-                    const c = row[clsK] ? String(row[clsK]).trim() : '';
-                    if (s && c) {
-                        const exists = assignments.some(a => isEquivalentSubject(a.subject, s) && isClassMatch(a.classe, c));
-                        if (!exists) {
-                            assignments.push({ subject: s, classe: c });
+            if (Array.isArray(allData) && ensK && matK && clsK) {
+                allData.forEach(row => {
+                    if (row && !row.isReadOnlyCrossSection && isRowForLoggedInTeacher(row[ensK], user, teacherTable)) {
+                        const s = row[matK] ? String(row[matK]).trim() : '';
+                        const c = row[clsK] ? String(row[clsK]).trim() : '';
+                        if (s && c && s !== '—' && s !== '-' && c !== '—' && c !== '-') {
+                            const exists = assignments.some(a => isEquivalentSubject(a.subject, s) && isClassMatch(a.classe, c));
+                            if (!exists) {
+                                assignments.push({ subject: s, classe: c });
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
+            // Fallback sur classSubjectTeachersMap de la section courante si aucune ligne n'est encore attribuée dans la semaine
+            if (assignments.length === 0 && window.classSubjectTeachersMap && typeof window.classSubjectTeachersMap === 'object') {
+                Object.entries(window.classSubjectTeachersMap).forEach(([clsName, subjMap]) => {
+                    if (!clsName || !isClassAllowedInSectionClient(clsName, currentSection) || !subjMap || typeof subjMap !== 'object') return;
+                    Object.entries(subjMap).forEach(([subjName, tName]) => {
+                        if (subjName && tName && isRowForLoggedInTeacher(tName, user, teacherTable)) {
+                            const exists = assignments.some(a => isEquivalentSubject(a.subject, subjName) && isClassMatch(a.classe, clsName));
+                            if (!exists) {
+                                assignments.push({ subject: subjName, classe: clsName });
+                            }
+                        }
+                    });
+                });
+            }
             return assignments;
         }
 
-        // Vérifie si une ligne de l'autre section correspond STRICTEMENT à l'un des couples (Matière, Classe) enseignés ensemble par l'enseignant
+        // Vérifie si une ligne de l'autre section correspond STRICTEMENT à l'un des couples (Matière ET Classe) enseignés par l'enseignant
         function isCrossSectionRowMatchingTeacherAssignments(row, assignments) {
-            if (!row || !assignments || assignments.length === 0) return true;
+            if (!row || !assignments || assignments.length === 0) return false;
             const matK = findHKey('Matière');
             const clsK = findHKey('Classe');
-            const rowMat = matK && row[matK] ? String(row[matK]).trim() : '';
-            const rowCls = clsK && row[clsK] ? String(row[clsK]).trim() : '';
-            if (!rowMat || !rowCls) return false;
+            const rowMat = (matK && row[matK] ? String(row[matK]).trim() : String(row['Matière'] || row.matiere || '')).trim();
+            const rowCls = (clsK && row[clsK] ? String(row[clsK]).trim() : String(row['Classe'] || row.classe || '')).trim();
+            if (!rowMat || !rowCls || rowMat === '—' || rowMat === '-' || rowCls === '—' || rowCls === '-') return false;
 
             return assignments.some(assign => {
                 const matchSubject = isEquivalentSubject(assign.subject, rowMat);
@@ -435,18 +450,82 @@
         }
 
         async function handleCrossSectionToggle(isChecked) {
+            if (currentSection !== 'garcons' && currentSection !== 'filles') {
+                showCrossSectionView = false;
+                crossSectionPlanData = [];
+                updateCrossSectionToggleUI();
+                return;
+            }
             showCrossSectionView = !!isChecked;
+            updateCrossSectionToggleUI();
             if (currentWeek) {
                 await fetchPlanData(currentWeek);
             }
         }
 
         function updateCrossSectionToggleUI() {
-            const toggleContainer = document.getElementById('crossSectionToggleWrapper') || document.getElementById('crossSectionToggleContainer');
+            const btn = document.getElementById('btnCrossSectionToggle');
+            const txt = document.getElementById('btnCrossSectionToggleTxt');
+            const icon = document.getElementById('btnCrossSectionToggleIcon');
+            const banner = document.getElementById('crossSectionReadOnlyBanner');
+            const bannerTxt = document.getElementById('crossSectionReadOnlyBannerTxt');
             const toggleCheckbox = document.getElementById('toggleCrossSectionView') || document.getElementById('crossSectionToggle');
-            if (toggleContainer) toggleContainer.style.display = 'none';
-            if (toggleCheckbox) toggleCheckbox.checked = false;
-            showCrossSectionView = false;
+
+            const isSupportedSection = (currentSection === 'garcons' || currentSection === 'filles');
+            if (!isSupportedSection) {
+                showCrossSectionView = false;
+                crossSectionPlanData = [];
+                if (btn) btn.style.display = 'none';
+                if (banner) banner.style.display = 'none';
+                if (toggleCheckbox) toggleCheckbox.checked = false;
+                return;
+            }
+
+            if (btn) {
+                btn.style.display = 'inline-flex';
+            }
+            if (toggleCheckbox) {
+                toggleCheckbox.checked = showCrossSectionView;
+            }
+
+            const isAr = currentUserLanguage === 'ar';
+            const isEn = currentUserLanguage === 'en';
+            const oppSecLabel = (currentSection === 'garcons')
+                ? (isAr ? 'البنات 👧' : (isEn ? 'Girls 👧' : 'Filles 👧'))
+                : (isAr ? 'البنين 👦' : (isEn ? 'Boys 👦' : 'Garçons 👦'));
+
+            if (btn) {
+                if (showCrossSectionView) {
+                    btn.style.background = 'linear-gradient(135deg, #059669, #10B981)';
+                    btn.style.boxShadow = '0 3px 10px rgba(16, 185, 129, 0.35)';
+                    if (icon) icon.className = 'fas fa-eye-slash';
+                    if (txt) {
+                        txt.textContent = isAr
+                            ? `إخفاء إدخالات قسم ${oppSecLabel} (للاطلاع فقط)`
+                            : (isEn ? `Hide ${oppSecLabel} entries (Read-only)` : `Masquer saisie ${oppSecLabel} (Lecture seule)`);
+                    }
+                } else {
+                    btn.style.background = 'linear-gradient(135deg, #EC4899, #8B5CF6)';
+                    btn.style.boxShadow = '0 3px 10px rgba(236, 72, 153, 0.3)';
+                    if (icon) icon.className = 'fas fa-eye';
+                    if (txt) {
+                        txt.textContent = isAr
+                            ? `عرض إدخالات قسم ${oppSecLabel} (نفس المادة والفصل)`
+                            : (isEn ? `View ${oppSecLabel} entries (Same Subject & Class)` : `Voir saisie ${oppSecLabel} (Même matière & classe)`);
+                    }
+                }
+            }
+
+            if (banner) {
+                banner.style.display = showCrossSectionView ? 'flex' : 'none';
+                if (bannerTxt && showCrossSectionView) {
+                    bannerTxt.textContent = isAr
+                        ? `وضع الاطلاع فقط مفعّل: يتم عرض إدخالات قسم ${oppSecLabel} لنفس المادة ونفس الفصل فقط دون أي تأثير على بيانات القسمين (كل قسم مستقل تماماً).`
+                        : (isEn
+                            ? `Read-only peer view active: showing only ${oppSecLabel} entries for the exact same subject and class. Both sections remain strictly independent.`
+                            : `Consultation en lecture seule activée (${oppSecLabel}) : affichage uniquement des saisies de la même matière et de la même classe dans l'autre section. Les deux sections restent strictement indépendantes.`);
+                }
+            }
         }
 
         const teachersSectionMap = {
@@ -808,6 +887,8 @@
             
             console.log(`🔄 Enseignante Amal (${loggedInUser}) - Basculement de section: ${currentSection} ➔ ${newSection}`);
             currentSection = newSection;
+            showCrossSectionView = false;
+            crossSectionPlanData = [];
             localStorage.setItem('selectedSection', newSection);
             localStorage.setItem('currentSection', newSection);
             
@@ -832,6 +913,8 @@
             if (!newSection) return;
             
             currentSection = newSection;
+            showCrossSectionView = false;
+            crossSectionPlanData = [];
             localStorage.setItem('selectedSection', newSection);
             localStorage.setItem('currentSection', newSection);
             
@@ -3801,9 +3884,53 @@
                     return true;
                 });
 
-                // Séparation stricte entre les sections : ne jamais mélanger les lignes d'une autre section
-                showCrossSectionView = false;
+                // Séparation stricte entre les sections : planData ne contient QUE les lignes de la section active
                 planData = [...primaryRows];
+                crossSectionPlanData = [];
+
+                // Si la consultation en lecture seule de l'autre section (Garçons ↔ Filles) est activée,
+                // charger les lignes de l'autre section dans un tableau séparé crossSectionPlanData (strictement lecture seule)
+                if (showCrossSectionView && (currentSection === 'garcons' || currentSection === 'filles')) {
+                    const oppositeSection = currentSection === 'garcons' ? 'filles' : 'garcons';
+                    try {
+                        const oppRes = await fetch(`/api/plans/${week}?section=${oppositeSection}`);
+                        if (oppRes.ok) {
+                            const oppJson = await oppRes.json();
+                            const rawOppRows = (oppJson && Array.isArray(oppJson.planData)) ? oppJson.planData : [];
+                            crossSectionPlanData = rawOppRows.map(r => {
+                                if (!r || typeof r !== 'object') return null;
+                                const clone = { ...r };
+                                delete clone._id;
+                                delete clone.id;
+                                clone._section = oppositeSection;
+                                clone.isReadOnlyCrossSection = true;
+                                let clsVal = '';
+                                Object.keys(clone).forEach(k => {
+                                    const kl = k.trim().toLowerCase();
+                                    if (kl === 'classe' && clone[k]) {
+                                        clone[k] = cleanClassNameClient(clone[k]) || clone[k];
+                                        clsVal = clone[k];
+                                    } else if ((kl === 'enseignant' || kl === 'enseignante') && clone[k]) {
+                                        if (!isTeacherAllowedInSectionClient(clone[k], oppositeSection)) {
+                                            clone[k] = '';
+                                        }
+                                    }
+                                });
+                                if (!clsVal || !isClassAllowedInSectionClient(clsVal, oppositeSection)) {
+                                    return null;
+                                }
+                                return clone;
+                            }).filter(Boolean);
+                        }
+                    } catch (oppErr) {
+                        console.warn('Erreur chargement lecture seule section opposée:', oppErr);
+                        crossSectionPlanData = [];
+                    }
+                } else {
+                    showCrossSectionView = false;
+                    crossSectionPlanData = [];
+                }
+                updateCrossSectionToggleUI();
                 updateProgressBar(90); 
 
                 if (planData.length > 0) {
@@ -4124,28 +4251,21 @@
         }
         
         function populateFilterOptions() { 
-            const allData = planData || []; 
+            // Les listes déroulantes de filtres (Enseignant, Classe, Matière) utilisent EXCLUSIVEMENT planData (la section active)
+            // afin de ne jamais mélanger les noms des enseignants ou les classes entre Garçons et Filles.
+            const allData = (planData || []).filter(r => r && !r.isReadOnlyCrossSection); 
             const ensK = findHKey('Enseignant'); 
             const clsK = findHKey('Classe'); 
             const perK = findHKey('Période'); 
             const matK = findHKey('Matière'); 
             const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
 
-            // Déterminer les assignations (Matière + Classe) de l'enseignant connecté
-            const myAssignments = isTeacherOnly ? getTeacherTeachingAssignments(allData, loggedInUser, loggedInTeacherTable) : [];
-
             let filterScopeData = allData;
             if (isTeacherOnly && ensK) { 
                 filterScopeData = allData.filter(i => { 
-                    if (!i) return false;
+                    if (!i || i.isReadOnlyCrossSection) return false;
                     const iE = i[ensK] ? String(i[ensK]) : ''; 
-                    if (!i.isReadOnlyCrossSection) {
-                        return isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable);
-                    } else if (showCrossSectionView) {
-                        if (myAssignments.length === 0) return true;
-                        return isCrossSectionRowMatchingTeacherAssignments(i, myAssignments);
-                    }
-                    return false;
+                    return isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable);
                 }); 
             } 
 
@@ -4206,26 +4326,21 @@
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
                 if (isTeacherOnly) { 
-                    if (showCrossSectionView) {
-                        // Lorsque la consultation inter-section est activée, l'enseignant peut choisir "Tous" (pour voir son travail et celui de son homologue) ou filtrer
-                        filterEnsSelect.disabled = false;
+                    const matchingOption = Array.from(filterEnsSelect.options).find(o => 
+                        (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
+                    );
+                    if (matchingOption) {
+                        filterEnsSelect.value = matchingOption.value;
+                    } else if (filterEnsSelect.options.length > 1) {
+                        filterEnsSelect.selectedIndex = 1;
                     } else {
-                        const matchingOption = Array.from(filterEnsSelect.options).find(o => 
-                            (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
-                        );
-                        if (matchingOption) {
-                            filterEnsSelect.value = matchingOption.value;
-                        } else if (filterEnsSelect.options.length > 1) {
-                            filterEnsSelect.selectedIndex = 1;
-                        } else {
-                            const opt = document.createElement('option');
-                            opt.value = loggedInTeacherTable || loggedInUser;
-                            opt.textContent = loggedInTeacherTable || loggedInUser;
-                            filterEnsSelect.appendChild(opt);
-                            filterEnsSelect.value = opt.value;
-                        }
-                        filterEnsSelect.disabled = true; 
+                        const opt = document.createElement('option');
+                        opt.value = loggedInTeacherTable || loggedInUser;
+                        opt.textContent = loggedInTeacherTable || loggedInUser;
+                        filterEnsSelect.appendChild(opt);
+                        filterEnsSelect.value = opt.value;
                     }
+                    filterEnsSelect.disabled = true; 
                 } else { 
                     filterEnsSelect.disabled = false; 
                 } 
@@ -4236,7 +4351,7 @@
             const isTeacherOnly = loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole);
             const filterEnsSelect = document.getElementById('filterEnseignant'); 
             if (filterEnsSelect) {
-                if (isTeacherOnly && !showCrossSectionView) { 
+                if (isTeacherOnly) { 
                     const matchingOption = Array.from(filterEnsSelect.options).find(o => 
                         (o.value && isRowForLoggedInTeacher(o.value, loggedInUser, loggedInTeacherTable))
                     );
@@ -4264,10 +4379,32 @@
             const perK = findHKey('Période'); 
             const jK = findHKey('Jour'); 
 
-            // Identifier les assignations (Matière + Classe) de l'enseignant connecté
-            const myAssignments = isTeacherOnly ? getTeacherTeachingAssignments(planData, loggedInUser, loggedInTeacherTable) : [];
+            // Identifier les couples (Matière + Classe) enseignés par l'enseignant actif dans sa propre section
+            const myAssignments = isTeacherOnly
+                ? getTeacherTeachingAssignments(planData, loggedInUser, loggedInTeacherTable)
+                : (ensF ? getTeacherTeachingAssignments(planData, ensF, ensF) : []);
+
+            // Couples (Matière + Classe) présents dans la section active (lorsque Admin consulte sans filtre enseignant)
+            const activeSectionPairs = [];
+            if (!isTeacherOnly && !ensF && showCrossSectionView) {
+                (planData || []).forEach(r => {
+                    if (!r || r.isReadOnlyCrossSection) return;
+                    const s = matK && r[matK] ? String(r[matK]).trim() : '';
+                    const c = clsK && r[clsK] ? String(r[clsK]).trim() : '';
+                    if (s && c && s !== '—' && s !== '-' && c !== '—' && c !== '-') {
+                        if (!activeSectionPairs.some(p => isEquivalentSubject(p.subject, s) && isClassMatch(p.classe, c))) {
+                            activeSectionPairs.push({ subject: s, classe: c });
+                        }
+                    }
+                });
+            }
+
+            // Source d'affichage : planData (section active) + éventuellement crossSectionPlanData (lecture seule stricte, sans jamais toucher à planData)
+            const combinedRows = (showCrossSectionView && (currentSection === 'garcons' || currentSection === 'filles') && Array.isArray(crossSectionPlanData) && crossSectionPlanData.length > 0)
+                ? [...(planData || []), ...crossSectionPlanData]
+                : (planData || []);
             
-            filteredAndSortedData = planData.filter(i => { 
+            filteredAndSortedData = combinedRows.filter(i => { 
                 if (!i) return false; 
                 const iE = ensK && i.hasOwnProperty(ensK) ? String(i[ensK]).trim() : ''; 
                 const iC = clsK && i.hasOwnProperty(clsK) ? String(i[clsK]).trim() : ''; 
@@ -4278,32 +4415,38 @@
                 const isCrossSectionRow = !!(i.isReadOnlyCrossSection || (i._section && i._section !== currentSection));
 
                 if (isCrossSectionRow) {
-                    if (!showCrossSectionView) return false;
+                    if (!showCrossSectionView || (currentSection !== 'garcons' && currentSection !== 'filles')) return false;
 
-                    // Si enseignant connecté (non admin) : n'afficher QUE les lignes de l'autre section pour les matières qu'il enseigne
-                    if (isTeacherOnly) {
+                    // RÈGLE STRICTE : L'enseignant (ou le filtre enseignant sélectionné) ne peut lire QUE les saisies
+                    // de l'homologue qui enseigne LA MÊME MATIÈRE ET LA MÊME CLASSE dans l'autre section (Garçons ↔ Filles)
+                    if (isTeacherOnly || ensF) {
                         if (!myAssignments || myAssignments.length === 0) return false;
-                        const matchesMyMatiere = myAssignments.some(assign => isEquivalentSubject(iM, assign.matiere) || isEquivalentSubject(iM, assign.subject));
-                        if (!matchesMyMatiere) return false;
+                        if (!isCrossSectionRowMatchingTeacherAssignments(i, myAssignments)) {
+                            return false;
+                        }
+                    } else {
+                        if (activeSectionPairs.length > 0 && !isCrossSectionRowMatchingTeacherAssignments(i, activeSectionPairs)) {
+                            return false;
+                        }
                     }
                 } else {
-                    // Si enseignant connecté (non admin)
+                    // Ligne de la section active
                     if (isTeacherOnly) {
                         if (!isRowForLoggedInTeacher(iE, loggedInUser, loggedInTeacherTable)) {
                             return false;
                         }
                     }
+                    // Filtre Enseignant (uniquement appliqué aux lignes de la section active, car l'homologue de l'autre section a un nom différent)
+                    const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF);
+                    if (!pE) return false;
                 }
-                
-                // Filtre Enseignant :
-                const pE = !ensF || (iE === ensF) || isTeacherMatch(iE, ensF);
 
                 const pC = !clsF || (iC === clsF) || isClassMatch(iC, clsF); 
                 const pM = !matF || (iM === matF) || (iM.toLowerCase() === matF.toLowerCase()) || isEquivalentSubject(iM, matF); 
                 const pP = !perF || (iP === perF) || (String(iP).trim() === String(perF).trim()); 
                 const dayNameFromData = iJ ? extractDayName(iJ) : null; 
                 const pJ = !jF || dayNameFromData === jF || (iJ && iJ.includes(jF)); 
-                return pE && pC && pM && pP && pJ; 
+                return pC && pM && pP && pJ; 
             }); 
             
             const dayValuesFr = { "Dimanche": 1, "Lundi": 2, "Mardi": 3, "Mercredi": 4, "Jeudi": 5 }; 
@@ -4334,7 +4477,7 @@
                     }
                 }
 
-                // 2. Tri hiérarchique standard : Classe -> Jour -> Période -> Matière -> Enseignant
+                // 2. Tri hiérarchique standard : Classe -> Jour -> Période -> Section active d'abord -> Matière -> Enseignant
                 const classA = (clsK && a.hasOwnProperty(clsK)) ? a[clsK] : null; 
                 const classB = (clsK && b.hasOwnProperty(clsK)) ? b[clsK] : null; 
                 const classComp = compareClasses(classA, classB); 
@@ -4360,6 +4503,11 @@
                     if (pComp !== 0) return pComp;
                 }
 
+                // Toujours afficher la ligne de la section active avant la ligne en lecture seule de l'autre section
+                const crossA = a && a.isReadOnlyCrossSection ? 1 : 0;
+                const crossB = b && b.isReadOnlyCrossSection ? 1 : 0;
+                if (crossA !== crossB) return crossA - crossB;
+
                 const matA = (matK && a.hasOwnProperty(matK)) ? String(a[matK] || '') : '';
                 const matB = (matK && b.hasOwnProperty(matK)) ? String(b[matK] || '') : '';
                 const matComp = matA.localeCompare(matB, 'fr', { sensitivity: 'base' });
@@ -4371,7 +4519,7 @@
             }); 
 
             displayPlanTable(filteredAndSortedData); 
-            updateActionButtonsState(filteredAndSortedData.length > 0); 
+            updateActionButtonsState(filteredAndSortedData.some(r => r && !r.isReadOnlyCrossSection)); 
         }
         
         
@@ -20381,38 +20529,22 @@ async function quickDeleteSelectedScheduleClass() {
     if (typeof populateAdminScheduleClasses === 'function') await populateAdminScheduleClasses();
 }
 
-function toggleCrossSectionViewMode() {
+async function toggleCrossSectionViewMode() {
+    if (currentSection !== 'garcons' && currentSection !== 'filles') {
+        showCrossSectionView = false;
+        crossSectionPlanData = [];
+        updateCrossSectionToggleUI();
+        return;
+    }
+    if (!currentWeek) {
+        displayAlert(currentUserLanguage === 'ar' ? 'يرجى اختيار الأسبوع أولاً' : 'Veuillez d\'abord sélectionner une semaine.', true);
+        return;
+    }
     showCrossSectionView = !showCrossSectionView;
     const checkbox = document.getElementById('toggleCrossSectionView');
     if (checkbox) checkbox.checked = showCrossSectionView;
     updateCrossSectionToggleUI();
-    if (currentWeek) {
-        fetchPlanData(currentWeek);
-    }
-}
-
-function handleCrossSectionToggle(checked) {
-    showCrossSectionView = !!checked;
-    updateCrossSectionToggleUI();
-    if (currentWeek) {
-        fetchPlanData(currentWeek);
-    }
-}
-
-function updateCrossSectionToggleUI() {
-    const btn = document.getElementById('btnCrossSectionToggle');
-    const txt = document.getElementById('btnCrossSectionToggleTxt');
-    const oppSecLabel = (currentSection === 'garcons') ? 'Filles 👧' : (currentSection === 'filles' ? 'Garçons 👦' : (currentSection === 'primaire' ? 'Maternelle 🧸' : 'Primaire 🎒'));
-    
-    if (btn) {
-        if (showCrossSectionView) {
-            btn.style.background = 'linear-gradient(135deg, #059669, #10B981)';
-            if (txt) txt.textContent = `👁️ Masquer saisie ${oppSecLabel}`;
-        } else {
-            btn.style.background = 'linear-gradient(135deg, #EC4899, #8B5CF6)';
-            if (txt) txt.textContent = `👁️ Voir saisie ${oppSecLabel}`;
-        }
-    }
+    await fetchPlanData(currentWeek);
 }
 
 // Exposer globalement

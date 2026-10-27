@@ -1963,14 +1963,23 @@
                       <option value="">-- Sélectionnez une semaine --</option>
                  </select>
              </div>
-             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                 <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px;">
+             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:relative; z-index:2;">
+                 <button type="button" id="btnCrossSectionToggle" onclick="toggleCrossSectionViewMode()" class="pro-button" style="position:relative !important; margin:0; padding:9px 15px; font-size:0.86rem; border-radius:10px; background: linear-gradient(135deg, #EC4899, #8B5CF6); color: white; border: none; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; box-shadow: 0 3px 10px rgba(236,72,153,0.3); white-space: nowrap;" title="Consulter en lecture seule uniquement la saisie de votre homologue de l'autre section (Filles ↔ Garçons) enseignant la même matière et la même classe">
+                     <i class="fas fa-eye" id="btnCrossSectionToggleIcon"></i> <span id="btnCrossSectionToggleTxt">Voir saisie autre section (Même matière &amp; classe)</span>
+                 </button>
+                 <button id="toggleIncompleteBtn" onclick="toggleIncompleteList()" class="pro-button toggle-incomplete-btn" style="position:relative !important; top:auto !important; right:auto !important; margin:0; padding:9px 14px; font-size:0.85rem; border-radius:10px; white-space: nowrap;">
                      <i class="fas fa-list-check"></i> <span class="btn-text">Afficher Incomplets</span>
                  </button>
-                 <button type="button" id="btnCrossSectionToggle" onclick="toggleCrossSectionViewMode()" class="pro-button" style="margin:0; padding:8px 14px; font-size:0.85rem; border-radius:10px; background: linear-gradient(135deg, #EC4899, #8B5CF6); color: white; border: none; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(236,72,153,0.3);" title="Consulter la saisie de l'autre section (Filles / Garçons) pour votre matière en lecture seule">
-                     <i class="fas fa-eye"></i> <span id="btnCrossSectionToggleTxt">Voir saisie autre section</span>
-                 </button>
              </div>
+         </div>
+         <div id="crossSectionReadOnlyBanner" style="display: none; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: linear-gradient(135deg, #FDF2F8, #F5F3FF); border: 1.5px solid #F472B6; border-radius: 12px; padding: 10px 16px; margin-bottom: 14px; color: #831843; font-size: 0.85rem; font-weight: 700;">
+             <div style="display: flex; align-items: center; gap: 8px;">
+                 <i class="fas fa-lock" style="color: #DB2777; font-size: 1rem;"></i>
+                 <span id="crossSectionReadOnlyBannerTxt">Consultation en lecture seule activée : affichage uniquement des saisies de la même matière et de la même classe dans l'autre section. Les deux sections restent strictement indépendantes.</span>
+             </div>
+             <button type="button" onclick="toggleCrossSectionViewMode()" style="background: #BE185D; color: white; border: none; border-radius: 8px; padding: 5px 12px; font-size: 0.78rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                 <i class="fas fa-eye-slash"></i> Masquer
+             </button>
          </div>
          <div id="incompleteTeachersDisplay" style="display: none; margin-bottom:14px;">
              <h4>Enseignants Incomplets</h4>

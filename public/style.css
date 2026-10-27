@@ -940,21 +940,12 @@ input[dir="rtl"] {
 }
 
 .toggle-incomplete-btn {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 1000;
-    box-shadow: 0 8px 20px rgba(0, 102, 204, 0.4);
-    animation: floatButton 3s ease-in-out infinite;
-}
-
-@keyframes floatButton {
-    0%, 100% {
-        transform: translateY(0);
-    }
-    50% {
-        transform: translateY(-10px);
-    }
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
+    z-index: 1;
+    box-shadow: 0 2px 8px rgba(0, 102, 204, 0.25);
+    animation: none !important;
 }
 
 /* Styles pour la liste des enseignants incomplets */

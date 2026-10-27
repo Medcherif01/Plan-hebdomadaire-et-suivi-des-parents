@@ -7304,10 +7304,22 @@ app.post('/api/save-row', async (req, res) => {
   const originalData = req.body.originalData;
   const rawSec = String(req.body.section || rowData._section || 'garcons').toLowerCase().trim();
   const section = ['garcons', 'filles', 'primaire', 'maternelle'].includes(rawSec) ? rawSec : 'garcons';
-  rowData._section = section;
   if (isNaN(weekNumber) || typeof rowData !== 'object') {
     return res.status(400).json({ message: 'Données invalides.' });
   }
+  if (rowData.isReadOnlyCrossSection || (rowData._section && String(rowData._section).toLowerCase().trim() !== section)) {
+    return res.status(403).json({ message: 'Action refusée : les données de l\'autre section sont en lecture seule stricte.' });
+  }
+  const clsK = findKey(rowData, 'Classe') || 'Classe';
+  const ensK = findKey(rowData, 'Enseignant') || 'Enseignant';
+  if (rowData[clsK] && !isClassAllowedInSection(rowData[clsK], section)) {
+    return res.status(403).json({ message: 'Classe non autorisée dans cette section.' });
+  }
+  if (rowData[ensK] && !isTeacherAllowedInSection(rowData[ensK], section)) {
+    return res.status(403).json({ message: 'Enseignant(e) d\'une autre section non autorisé(e) dans cette section.' });
+  }
+  delete rowData.isReadOnlyCrossSection;
+  rowData._section = section;
 
   try {
     const db = await connectToDatabase();
@@ -7398,6 +7410,16 @@ app.post('/api/save-rows-batch', async (req, res) => {
 
       rows.forEach(item => {
         const rowData = item.data || item;
+        if (!rowData || typeof rowData !== 'object') return;
+        if (rowData.isReadOnlyCrossSection || (rowData._section && String(rowData._section).toLowerCase().trim() !== section)) {
+          return;
+        }
+        const clsK = findKey(rowData, 'Classe') || 'Classe';
+        const ensK = findKey(rowData, 'Enseignant') || 'Enseignant';
+        if (rowData[clsK] && !isClassAllowedInSection(rowData[clsK], section)) return;
+        if (rowData[ensK] && !isTeacherAllowedInSection(rowData[ensK], section)) return;
+
+        delete rowData.isReadOnlyCrossSection;
         const originalData = item.originalData || null;
         rowData._section = section;
 
