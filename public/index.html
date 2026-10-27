@@ -2328,7 +2328,7 @@
                 <div id="student-dashboard-view" class="homework-view" style="display:none; max-width:1200px; margin:0 auto;">
                     
                     <!-- BARRE D'ACTIONS SUPÉRIEURE UNIFIÉE POUR L'ÉLÈVE -->
-                    <div style="background:white; border:1.5px solid #E2E8F0; border-radius:16px; padding:12px 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; box-shadow:0 4px 16px rgba(15,23,42,0.04);">
+                    <div class="parent-glass-ActionBar" style="background:white; border:1.5px solid #E2E8F0; border-radius:16px; padding:12px 18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; box-shadow:0 4px 16px rgba(15,23,42,0.04);">
                         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                             <button class="pro-button" onclick="showHomeworkView('parent-selection')" style="background:#F8FAFC; color:#1E293B; border:1.5px solid #CBD5E1; padding:9px 16px; border-radius:11px; font-weight:700; font-size:0.9rem; box-shadow:none;">
                                 <i class="fas fa-arrow-left" style="color:#2563EB;"></i> <span id="btnBackToStudentsList">Retour à la classe</span>
@@ -2347,19 +2347,19 @@
                         </div>
                     </div>
 
-                    <!-- CARTE D'IDENTITÉ DE L'ÉLÈVE AVEC RÉSUMÉ RAPIDE DE PROGRESSION -->
-                    <div style="background:linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-radius:20px; padding:22px 26px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px; box-shadow:0 6px 22px rgba(15,23,42,0.06); border:1.5px solid #E2E8F0; margin-bottom:20px;">
+                    <!-- CARTE D'IDENTITÉ DE L'ÉLÈVE AVEC NAVIGATION PRO (DEVOIRS | PROGRESSION | BULLETIN PROTÉGÉ) -->
+                    <div class="parent-student-hero-card" style="background:linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%); border-radius:22px; padding:22px 26px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:20px; box-shadow:0 10px 28px rgba(15,23,42,0.06); border:1.5px solid #E2E8F0; margin-bottom:20px;">
                         <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
-                            <div style="position:relative; width:94px; height:94px; flex-shrink:0;">
-                                <img id="student-profile-photo" src="" alt="Élève" style="width:94px; height:94px; border-radius:50%; object-fit:cover; border:4px solid #3B82F6; box-shadow:0 4px 12px rgba(37,99,235,0.2); background:#EFF6FF;">
-                                <button type="button" id="btnQuickEditStudentPhoto" onclick="openEditCurrentStudentModal()" title="Modifier la photo ou le nom de l'élève (sans perdre son suivi)" style="position:absolute; bottom:0; right:0; width:32px; height:32px; border-radius:50%; background:#2563EB; color:white; border:2px solid white; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(37,99,235,0.4); font-size:0.82rem; transition:transform 0.2s;">
+                            <div style="position:relative; width:92px; height:92px; flex-shrink:0;">
+                                <img id="student-profile-photo" src="" alt="Élève" style="width:92px; height:92px; border-radius:50%; object-fit:cover; border:3.5px solid #3B82F6; box-shadow:0 6px 16px rgba(37,99,235,0.22); background:#EFF6FF;">
+                                <button type="button" id="btnQuickEditStudentPhoto" onclick="openEditCurrentStudentModal()" title="Réservé à l'administrateur : Modifier la photo ou le nom de l'élève" style="display:none; position:absolute; bottom:0; right:0; width:32px; height:32px; border-radius:50%; background:#2563EB; color:white; border:2px solid white; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(37,99,235,0.4); font-size:0.82rem; transition:transform 0.2s;">
                                     <i class="fas fa-camera"></i>
                                 </button>
                             </div>
                             <div>
                                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                                     <h2 id="student-profile-name" style="margin:0; color:#0F172A; font-size:1.45rem; font-weight:800; letter-spacing:-0.3px;"></h2>
-                                    <button type="button" id="btnEditStudentIdentity" onclick="openEditCurrentStudentModal()" class="pro-button" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:none;" title="Modifier le nom ou la photo de l'élève sans perdre son suivi">
+                                    <button type="button" id="btnEditStudentIdentity" onclick="openEditCurrentStudentModal()" class="pro-button" style="display:none; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:700; cursor:pointer; align-items:center; gap:5px; box-shadow:none;" title="Réservé à l'administrateur : Modifier le nom ou la photo de l'élève">
                                         <i class="fas fa-user-edit"></i> <span id="lblEditStudentBtn">Modifier nom / photo</span>
                                     </button>
                                 </div>
@@ -2373,29 +2373,31 @@
                             </div>
                         </div>
 
-                        <!-- BOUTONS D'ORGANISATION CLAIRE : 1. DEVOIRS DU JOUR  |  2. PROGRESSION & BILAN -->
-                        <div class="student-workspace-tabs" style="margin-bottom:0; background:#F1F5F9; padding:6px; border-radius:14px;">
+                        <!-- BOUTONS D'ORGANISATION CLAIRE : 1. DEVOIRS DU JOUR  |  2. PROGRESSION & CUMUL  |  3. BULLETIN & NOTES -->
+                        <div class="student-workspace-tabs" style="margin-bottom:0; background:#F1F5F9; padding:6px; border-radius:16px; display:flex; gap:6px; flex-wrap:wrap;">
                             <button type="button" id="studentTabBtn_homeworks" class="student-tab-pill active" onclick="switchStudentDashboardSection('homeworks')">
-                                <i class="fas fa-book-open" style="font-size:1.05rem;"></i>
+                                <i class="fas fa-book-open" style="font-size:1rem;"></i>
                                 <span id="lblStudentTabHomeworks">1. Devoirs du Jour</span>
                                 <span id="badgeStudentTodayHwCount" class="pill-count-badge">0</span>
                             </button>
                             <button type="button" id="studentTabBtn_progress" class="student-tab-pill" onclick="switchStudentDashboardSection('progress')">
-                                <i class="fas fa-chart-line" style="font-size:1.05rem;"></i>
-                                <span id="lblStudentTabProgress">2. Progression &amp; Évaluations</span>
+                                <i class="fas fa-chart-line" style="font-size:1rem;"></i>
+                                <span id="lblStudentTabProgress">2. Progression &amp; Cumul</span>
+                            </button>
+                            <button type="button" id="studentTabBtn_bulletin" class="student-tab-pill" onclick="switchStudentDashboardSection('bulletin')">
+                                <i class="fas fa-file-invoice" style="font-size:1rem; color:#F59E0B;"></i>
+                                <span id="lblStudentTabBulletin">3. Bulletin &amp; Notes</span>
+                                <i class="fas fa-lock" id="studentBulletinLockIcon" style="font-size:0.75rem; opacity:0.75; margin-left:2px;"></i>
                             </button>
                         </div>
                     </div>
 
-                    <!-- BANDEAU CUMUL CONTINU DES NOTES : CLASSWORK (CW) & HOMEWORK (HW) -->
-                    <div id="student-cumulative-cw-hw-banner" style="margin-bottom:20px;"></div>
-
                     <!-- ========================================================================= -->
                     <!-- SECTION 1 (AFFICHÉE EN PREMIER) : DEVOIRS DE L'ÉLÈVE CE JOUR (COLONNE DEVOIRS) -->
                     <!-- ========================================================================= -->
-                    <div id="student-section-homeworks" style="display:block;">
+                    <div id="student-section-homeworks" class="parent-animated-section" style="display:block;">
                         
-                        <!-- BARRE DE NAVIGATION DES JOURS ET SÉLECTEUR DE SEMAINE UNIFIÉS -->
+                        <!-- BARRE DE NAVIGATION DES JOURS ET SÉLECTEUR DE SEMAINE ÉPURÉE -->
                         <div style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:18px; padding:16px 20px; margin-bottom:18px; box-shadow:0 4px 16px rgba(15,23,42,0.04);">
                             <div id="student-days-nav-toolbar" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding-bottom:14px; border-bottom:1px solid #F1F5F9; margin-bottom:14px;">
                                 <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -2412,7 +2414,7 @@
                                     </div>
                                 </div>
 
-                                <!-- Sélecteur de Semaine + Bouton Tous les devoirs de la semaine + Navigation journalière -->
+                                <!-- Sélecteur de Semaine + Vue Semaine + Navigation rapide épurée -->
                                 <div style="display:inline-flex; align-items:center; gap:6px; background:#F8FAFC; padding:5px; border-radius:12px; border:1px solid #E2E8F0; flex-wrap:wrap;">
                                     <select id="studentHomeworkWeekSelect" onchange="onStudentHomeworkWeekChange(this.value)" title="Choisir la semaine du plan hebdomadaire" style="padding:7px 11px; border-radius:9px; border:1.5px solid #2563EB; background:#EFF6FF; color:#1E3A8A; font-weight:800; font-size:0.85rem; cursor:pointer; outline:none;">
                                         <option value="">📅 Semaine active</option>
@@ -2420,17 +2422,17 @@
                                     <button type="button" class="pro-button" id="btnToggleAllWeekHomeworks" onclick="toggleWeeklyHomeworksView()" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; font-weight:800; border-radius:9px; padding:7px 12px; font-size:0.84rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:none;">
                                         <i class="fas fa-list-ul"></i> <span id="txtToggleAllWeekHw">Toute la semaine</span>
                                     </button>
-                                    <button type="button" class="pro-button" onclick="navigateStudentHomeworkDay(-1)" id="btnPrevSchoolDay" style="background:white; color:#1E293B; font-weight:700; border:1px solid #CBD5E1; border-radius:9px; padding:7px 13px; display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:0.85rem; box-shadow:none;">
-                                        <i class="fas fa-chevron-left" style="color:#2563EB;"></i> <span id="txtPrevDay">Jour précédent</span>
+                                    <button type="button" class="pro-button" onclick="navigateStudentHomeworkDay(-1)" id="btnPrevSchoolDay" title="Jour précédent" style="background:white; color:#1E293B; font-weight:700; border:1px solid #CBD5E1; border-radius:9px; padding:7px 10px; display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:0.85rem; box-shadow:none;">
+                                        <i class="fas fa-chevron-left" style="color:#2563EB;"></i> <span id="txtPrevDay" style="display:none;">Jour précédent</span>
                                     </button>
-                                    <span id="studentCurrentNavDayBadge" style="font-weight:800; color:#1E3A8A; font-size:0.88rem; padding:7px 14px; background:#EFF6FF; border-radius:9px; border:1px solid #BFDBFE; display:inline-flex; align-items:center; gap:6px;">
+                                    <span id="studentCurrentNavDayBadge" style="font-weight:800; color:#1E3A8A; font-size:0.86rem; padding:6px 12px; background:#EFF6FF; border-radius:9px; border:1px solid #BFDBFE; display:inline-flex; align-items:center; gap:6px;">
                                         <i class="fas fa-calendar-day" style="color:#2563EB;"></i> <span id="studentCurrentNavDayText">Chargement...</span>
                                     </span>
-                                    <button type="button" class="pro-button" onclick="resetStudentHomeworkToToday()" id="btnResetToToday" style="background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0; font-weight:700; border-radius:9px; padding:7px 12px; font-size:0.84rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:none;">
+                                    <button type="button" class="pro-button" onclick="resetStudentHomeworkToToday()" id="btnResetToToday" style="background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0; font-weight:700; border-radius:9px; padding:7px 11px; font-size:0.83rem; cursor:pointer; display:inline-flex; align-items:center; gap:5px; box-shadow:none;">
                                         <i class="fas fa-calendar-check" style="color:#10B981;"></i> <span id="txtTodayBtn">Aujourd'hui</span>
                                     </button>
-                                    <button type="button" class="pro-button" onclick="navigateStudentHomeworkDay(1)" id="btnNextSchoolDay" style="background:white; color:#1E293B; font-weight:700; border:1px solid #CBD5E1; border-radius:9px; padding:7px 13px; display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:0.85rem; box-shadow:none;">
-                                        <span id="txtNextDay">Jour suivant</span> <i class="fas fa-chevron-right" style="color:#2563EB;"></i>
+                                    <button type="button" class="pro-button" onclick="navigateStudentHomeworkDay(1)" id="btnNextSchoolDay" title="Jour suivant" style="background:white; color:#1E293B; font-weight:700; border:1px solid #CBD5E1; border-radius:9px; padding:7px 10px; display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:0.85rem; box-shadow:none;">
+                                        <span id="txtNextDay" style="display:none;">Jour suivant</span> <i class="fas fa-chevron-right" style="color:#2563EB;"></i>
                                     </button>
                                 </div>
                             </div>
@@ -2448,10 +2450,19 @@
                     </div>
 
                     <!-- ========================================================================= -->
-                    <!-- SECTION 2 : PROGRESSION GÉNÉRALE & BILAN PAR MATIÈRE -->
+                    <!-- SECTION 2 : PROGRESSION GÉNÉRALE & CUMUL PAR MATIÈRE -->
                     <!-- ========================================================================= -->
-                    <div id="student-section-progress" style="display:none;">
+                    <div id="student-section-progress" class="parent-animated-section" style="display:none;">
+                        <!-- BANDEAU CUMUL CONTINU DES NOTES : CLASSWORK (CW) & HOMEWORK (HW) -->
+                        <div id="student-cumulative-cw-hw-banner" style="margin-bottom:20px;"></div>
                         <div id="general-evaluations-container"></div>
+                    </div>
+
+                    <!-- ========================================================================= -->
+                    <!-- SECTION 3 : BULLETIN SCOLAIRE & NOTES (PROTÉGÉ PAR DATE DE NAISSANCE JJ/MM/AAAA) -->
+                    <!-- ========================================================================= -->
+                    <div id="student-section-bulletin" class="parent-animated-section" style="display:none;">
+                        <div id="student-bulletin-gate-and-content"></div>
                     </div>
                 </div>
 
@@ -2717,12 +2728,12 @@
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
                         <div style="display:flex; align-items:center; gap:12px;">
                             <h2 style="color:#1E1B4B; margin:0; font-size:1.4rem; font-weight:700;">
-                                <i class="fas fa-calendar-week" style="color:#10B981;"></i> <span id="parentPlanViewHeader">Plan Hebdomadaire</span>
+                                <i class="fas fa-calendar-week" style="color:#10B981;"></i> <span id="parentPlanViewHeader">Espace Parents - Plan Hebdomadaire</span>
                             </h2>
                         </div>
                         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                            <!-- Bouton Afficher & Imprimer le Plan pour le Parent -->
-                            <button type="button" class="pro-button print-parent-plan-btn" id="btnParentPrintPlanTop" onclick="printParentWeeklyPlan()" style="padding:8px 16px; font-weight:700; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; box-shadow:0 3px 10px rgba(16,185,129,0.25);">
+                            <!-- Bouton Afficher & Imprimer le Plan masqué en haut car déjà présent dans la barre de filtres juste en dessous -->
+                            <button type="button" class="pro-button print-parent-plan-btn" id="btnParentPrintPlanTop" onclick="printParentWeeklyPlan()" style="display:none; padding:8px 16px; font-weight:700; background:linear-gradient(135deg, #10B981, #059669); color:white; border:none; border-radius:10px; cursor:pointer; align-items:center; gap:8px; box-shadow:0 3px 10px rgba(16,185,129,0.25);">
                                 <i class="fas fa-print"></i> <span class="parentPrintBtnText">Afficher &amp; Imprimer le Plan</span>
                             </button>
                             <!-- Bouton Sélecteur de Langue FR / AR -->
@@ -2733,7 +2744,7 @@
                             <span id="parentSectionBadgeDisplay" class="section-badge badge-garcons" style="padding:8px 16px; font-weight:700; font-size:0.95rem; border-radius:10px; display:inline-flex; align-items:center; gap:6px;">
                                 <i class="fas fa-venus-mars"></i> <span id="parentSectionToggleText">Section Garçons 👦</span>
                             </span>
-                            <button type="button" class="pro-button primary-button" onclick="showHomeworkView('parent-selection')" style="padding:8px 16px;">
+                            <button type="button" class="pro-button primary-button" onclick="showHomeworkView('parent-selection')" style="display:none; padding:8px 16px;">
                                 <i class="fas fa-user-graduate"></i> <span id="btnHeaderStudentFollow">Suivi Élèves &amp; Devoirs</span>
                             </button>
                         </div>

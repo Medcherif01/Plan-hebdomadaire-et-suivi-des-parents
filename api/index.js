@@ -13427,15 +13427,26 @@ app.get('/api/student-grades-data', async (req, res) => {
       // Vérifier si une note a déjà été saisie manuellement par l'enseignant
       const saved = existingGrades.find(g => normalizeStudentName(g.studentName || '') === normStName);
 
-      const hw = saved && saved.hw !== undefined ? Math.round(Number(saved.hw)) : autoHw;
-      const cw = saved && saved.cw !== undefined ? Math.round(Number(saved.cw)) : autoCw;
-      const evaluation = saved && saved.evaluation !== undefined ? Number(saved.evaluation) : 0;
-      const examen = saved && saved.examen !== undefined ? Number(saved.examen) : 0;
-      const total = saved && saved.total !== undefined ? Math.round(Number(saved.total)) : Math.round(hw + cw + evaluation + examen);
+      const hasEvalActivity = effectiveEvals.length > 0;
+      const hw = (saved && saved.hw !== undefined && saved.hw !== null && saved.hw !== '' && Number(saved.hw) > 0)
+        ? Math.round(Number(saved.hw))
+        : (hasEvalActivity && autoHw > 0 ? autoHw : '');
+      const cw = (saved && saved.cw !== undefined && saved.cw !== null && saved.cw !== '' && Number(saved.cw) > 0)
+        ? Math.round(Number(saved.cw))
+        : (hasEvalActivity && autoCw > 0 ? autoCw : '');
+      const evaluation = (saved && saved.evaluation !== undefined && saved.evaluation !== null && saved.evaluation !== '' && Number(saved.evaluation) > 0)
+        ? Number(saved.evaluation)
+        : '';
+      const examen = (saved && saved.examen !== undefined && saved.examen !== null && saved.examen !== '' && Number(saved.examen) > 0)
+        ? Number(saved.examen)
+        : '';
+      const rawSum = Math.round((Number(hw) || 0) + (Number(cw) || 0) + (Number(evaluation) || 0) + (Number(examen) || 0));
+      const total = rawSum > 0 ? rawSum : '';
 
       return {
         studentName: stName,
         photo: st.photo || '',
+        birthday: st.birthday || '',
         autoHw,
         autoCw,
         hw,
@@ -13843,7 +13854,7 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       return resolveSectionTeacher(section, classe, subj, '', subTeacherDocs);
     };
 
-    // Fonction de calcul strict (arrondi à l'unité pour CW et HW) pour un élève et une matière
+    // Fonction de calcul strict (arrondi à l'unité pour CW et HW, case vide si note non saisie) pour un élève et une matière
     const computeStudentSubjectGrade = (stName, subj) => {
       const normStName = normalizeStudentName(stName);
       const saved = savedGrades.find(g => 
@@ -13851,62 +13862,72 @@ app.get('/api/class-bulletins-data', async (req, res) => {
         isEquivalentSubjectServer(g.subject, subj)
       );
 
-      let hw = 20;
-      let cw = maxCw;
-      let evaluation = 0;
-      let examen = 0;
+      const stEvals = allEvaluations.filter(ev => {
+        const evNorm = normalizeStudentName(ev.studentName || '');
+        return (evNorm === normStName || evNorm.includes(normStName)) && isEquivalentSubjectServer(ev.subject, subj);
+      });
 
-      if (saved) {
-        hw = saved.hw !== undefined ? Math.round(Number(saved.hw)) : hw;
-        cw = saved.cw !== undefined ? Math.round(Number(saved.cw)) : cw;
-        evaluation = saved.evaluation !== undefined ? Number(saved.evaluation) : 0;
-        examen = saved.examen !== undefined ? Number(saved.examen) : 0;
-      } else {
-        const stEvals = allEvaluations.filter(ev => {
-          const evNorm = normalizeStudentName(ev.studentName || '');
-          return (evNorm === normStName || evNorm.includes(normStName)) && isEquivalentSubjectServer(ev.subject, subj);
+      let computedHw = '';
+      let computedCw = '';
+
+      if (stEvals.length > 0) {
+        const participations = [];
+        const behaviors = [];
+        const statuses = [];
+        stEvals.forEach(ev => {
+          const p = parseFloat(ev.participation);
+          const b = parseFloat(ev.behavior);
+          if (!isNaN(p)) participations.push(p);
+          if (!isNaN(b)) behaviors.push(b);
+          if (ev.status) statuses.push(ev.status);
         });
 
-        if (stEvals.length > 0) {
-          const participations = [];
-          const behaviors = [];
-          const statuses = [];
-          stEvals.forEach(ev => {
-            const p = parseFloat(ev.participation);
-            const b = parseFloat(ev.behavior);
-            if (!isNaN(p)) participations.push(p);
-            if (!isNaN(b)) behaviors.push(b);
-            if (ev.status) statuses.push(ev.status);
-          });
+        // Calcul cumulé de CW sur /20 (ou /30 pour PEI1) ARRONDI À L'UNITÉ
+        if (participations.length > 0 || behaviors.length > 0) {
+          const avgB = behaviors.length > 0 ? (behaviors.reduce((a, b) => a + b, 0) / behaviors.length) : (participations.length > 0 ? (participations.reduce((a, b) => a + b, 0) / participations.length) : 10);
+          const avgP = participations.length > 0 ? (participations.reduce((a, b) => a + b, 0) / participations.length) : avgB;
+          const score10 = Math.min(10, Math.max(0, (avgB + avgP) / 2));
+          const cwVal = Math.min(maxCw, Math.max(0, Math.round((score10 / 10) * maxCw)));
+          if (cwVal > 0) computedCw = cwVal;
+        }
 
-          // Calcul cumulé de CW sur /20 (ou /30 pour PEI1) ARRONDI À L'UNITÉ
-          if (participations.length > 0 || behaviors.length > 0) {
-            const avgB = behaviors.length > 0 ? (behaviors.reduce((a, b) => a + b, 0) / behaviors.length) : (participations.length > 0 ? (participations.reduce((a, b) => a + b, 0) / participations.length) : 10);
-            const avgP = participations.length > 0 ? (participations.reduce((a, b) => a + b, 0) / participations.length) : avgB;
-            const score10 = Math.min(10, Math.max(0, (avgB + avgP) / 2));
-            cw = Math.min(maxCw, Math.max(0, Math.round((score10 / 10) * maxCw)));
-          }
-
-          // Calcul cumulé de HW sur /20 (Fait = 100%, Partiellement Fait = 50%, Non Fait = 0%) ARRONDI À L'UNITÉ
-          const activeStatuses = statuses.filter(s => s !== 'Absent');
-          if (activeStatuses.length > 0) {
-            const done = activeStatuses.filter(s => s === 'Fait').length;
-            const partial = activeStatuses.filter(s => s === 'Partiellement Fait').length;
-            const hwPts = (done * 20.0) + (partial * 10.0);
-            hw = Math.min(20, Math.max(0, Math.round(hwPts / activeStatuses.length)));
-          }
+        // Calcul cumulé de HW sur /20 (Fait = 100%, Partiellement Fait = 50%, Non Fait = 0%) ARRONDI À L'UNITÉ
+        const activeStatuses = statuses.filter(s => s !== 'Absent');
+        if (activeStatuses.length > 0) {
+          const done = activeStatuses.filter(s => s === 'Fait').length;
+          const partial = activeStatuses.filter(s => s === 'Partiellement Fait').length;
+          const hwPts = (done * 20.0) + (partial * 10.0);
+          const hwVal = Math.min(20, Math.max(0, Math.round(hwPts / activeStatuses.length)));
+          if (hwVal > 0) computedHw = hwVal;
         }
       }
 
-      const totalSubj = Math.round(hw + cw + evaluation + examen);
-      let appreciation = 'Bon travail dans l\'ensemble.';
-      let mention = 'Passable';
-      if (totalSubj >= 90) { appreciation = 'Excellent travail, élève brillant et régulier.'; mention = 'Excellent'; }
-      else if (totalSubj >= 80) { appreciation = 'Très bon travail, résultats très satisfaisants.'; mention = 'Très Bien'; }
-      else if (totalSubj >= 70) { appreciation = 'Bon travail, implication constante.'; mention = 'Bien'; }
-      else if (totalSubj >= 60) { appreciation = 'Ensemble satisfaisant, poursuivez vos efforts.'; mention = 'Assez Bien'; }
-      else if (totalSubj >= 50) { appreciation = 'Résultats passables, intensifiez les révisions.'; mention = 'Passable'; }
-      else { appreciation = 'Insuffisant, un travail plus soutenu est requis.'; mention = 'Insuffisant'; }
+      const hw = (saved && saved.hw !== undefined && saved.hw !== null && saved.hw !== '' && Number(saved.hw) > 0)
+        ? Math.round(Number(saved.hw))
+        : computedHw;
+      const cw = (saved && saved.cw !== undefined && saved.cw !== null && saved.cw !== '' && Number(saved.cw) > 0)
+        ? Math.round(Number(saved.cw))
+        : computedCw;
+      const evaluation = (saved && saved.evaluation !== undefined && saved.evaluation !== null && saved.evaluation !== '' && Number(saved.evaluation) > 0)
+        ? Number(saved.evaluation)
+        : '';
+      const examen = (saved && saved.examen !== undefined && saved.examen !== null && saved.examen !== '' && Number(saved.examen) > 0)
+        ? Number(saved.examen)
+        : '';
+
+      const rawTotal = Math.round((Number(hw) || 0) + (Number(cw) || 0) + (Number(evaluation) || 0) + (Number(examen) || 0));
+      const totalSubj = rawTotal > 0 ? rawTotal : '';
+
+      let appreciation = '';
+      let mention = '';
+      if (totalSubj !== '') {
+        if (totalSubj >= 90) { appreciation = 'Excellent travail, élève brillant et régulier.'; mention = 'Excellent'; }
+        else if (totalSubj >= 80) { appreciation = 'Très bon travail, résultats très satisfaisants.'; mention = 'Très Bien'; }
+        else if (totalSubj >= 70) { appreciation = 'Bon travail, implication constante.'; mention = 'Bien'; }
+        else if (totalSubj >= 60) { appreciation = 'Ensemble satisfaisant, poursuivez vos efforts.'; mention = 'Assez Bien'; }
+        else if (totalSubj >= 50) { appreciation = 'Résultats passables, intensifiez les révisions.'; mention = 'Passable'; }
+        else { appreciation = 'En cours d\'acquisition, poursuivez les efforts.'; mention = 'En cours'; }
+      }
 
       const teacherName = getTeacherForSubject(subj, saved);
 
@@ -13933,6 +13954,7 @@ app.get('/api/class-bulletins-data', async (req, res) => {
         return {
           studentName: stName,
           photo: st.photo || '',
+          birthday: st.birthday || '',
           hw: res.hw,
           cw: res.cw,
           evaluation: res.evaluation,
@@ -13944,17 +13966,17 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       });
 
       // Tri par note décroissante pour le rang
-      subjStudents.sort((a, b) => b.total - a.total);
+      subjStudents.sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0));
       subjStudents.forEach((s, idx) => {
         s.rank = idx + 1;
       });
 
-      const totals = subjStudents.map(s => s.total);
-      const subjAvg = totals.length > 0 ? Math.round((totals.reduce((a, b) => a + b, 0) / totals.length) * 10) / 10 : 0;
-      const subjMax = totals.length > 0 ? Math.max(...totals) : 0;
-      const subjMin = totals.length > 0 ? Math.min(...totals) : 0;
-      const passCount = subjStudents.filter(s => s.total >= 50).length;
-      const successRate = totals.length > 0 ? Math.round((passCount / totals.length) * 100) : 0;
+      const totals = subjStudents.map(s => Number(s.total) || 0).filter(t => t > 0);
+      const subjAvg = totals.length > 0 ? Math.round((totals.reduce((a, b) => a + b, 0) / totals.length) * 10) / 10 : '';
+      const subjMax = totals.length > 0 ? Math.max(...totals) : '';
+      const subjMin = totals.length > 0 ? Math.min(...totals) : '';
+      const passCount = totals.filter(t => t >= 50).length;
+      const successRate = totals.length > 0 ? Math.round((passCount / totals.length) * 100) : '';
 
       return {
         subject: subj,
@@ -13983,41 +14005,46 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       const stName = (st.name || '').trim();
       const subjectResults = [];
       let totalPoints = 0;
-      let totalMaxPoints = 0;
+      let gradedSubjectsCount = 0;
 
       subjectsToBuild.forEach(subj => {
         const res = computeStudentSubjectGrade(stName, subj);
-        totalPoints += res.total;
-        totalMaxPoints += 100;
+        if (res.total !== '' && Number(res.total) > 0) {
+          totalPoints += Number(res.total);
+          gradedSubjectsCount++;
+        }
         subjectResults.push(res);
       });
 
-      const generalAverage = subjectsToBuild.length > 0 ? Math.round((totalPoints / subjectsToBuild.length) * 10) / 10 : 0;
-      let mention = 'Passable';
-      if (generalAverage >= 85) mention = 'Très Bien (Félicitations)';
-      else if (generalAverage >= 75) mention = 'Bien (Compliments)';
-      else if (generalAverage >= 65) mention = 'Assez Bien (Encouragements)';
-      else if (generalAverage >= 50) mention = 'Passable / Satisfaisant';
-      else mention = 'Doit fournir des efforts';
+      const generalAverage = gradedSubjectsCount > 0 ? Math.round((totalPoints / gradedSubjectsCount) * 10) / 10 : '';
+      let mention = '';
+      if (generalAverage !== '') {
+        if (generalAverage >= 85) mention = 'Très Bien (Félicitations)';
+        else if (generalAverage >= 75) mention = 'Bien (Compliments)';
+        else if (generalAverage >= 65) mention = 'Assez Bien (Encouragements)';
+        else if (generalAverage >= 50) mention = 'Passable / Satisfaisant';
+        else mention = 'En cours d\'acquisition';
+      }
 
       return {
         studentName: stName,
         photo: st.photo || '',
+        birthday: st.birthday || '',
         subjects: subjectResults,
         generalAverage,
         mention
       };
     });
 
-    studentsBulletins.sort((a, b) => b.generalAverage - a.generalAverage);
+    studentsBulletins.sort((a, b) => (Number(b.generalAverage) || 0) - (Number(a.generalAverage) || 0));
     studentsBulletins.forEach((st, idx) => {
       st.rank = idx + 1;
     });
 
-    const averagesList = studentsBulletins.map(s => s.generalAverage).filter(a => a > 0);
-    const classAvg = averagesList.length > 0 ? Math.round((averagesList.reduce((a, b) => a + b, 0) / averagesList.length) * 10) / 10 : 0;
-    const maxAvg = averagesList.length > 0 ? Math.max(...averagesList) : 0;
-    const minAvg = averagesList.length > 0 ? Math.min(...averagesList) : 0;
+    const averagesList = studentsBulletins.map(s => Number(s.generalAverage) || 0).filter(a => a > 0);
+    const classAvg = averagesList.length > 0 ? Math.round((averagesList.reduce((a, b) => a + b, 0) / averagesList.length) * 10) / 10 : '';
+    const maxAvg = averagesList.length > 0 ? Math.max(...averagesList) : '';
+    const minAvg = averagesList.length > 0 ? Math.min(...averagesList) : '';
 
     res.json({
       success: true,
@@ -14078,10 +14105,24 @@ app.post('/api/student-grades', async (req, res) => {
     const col = db.collection('studentGrades');
     const now = new Date();
 
+    const parseGradeOrNull = (val) => {
+      if (val === '' || val === null || val === undefined) return null;
+      const num = Number(val);
+      if (isNaN(num) || num === 0) return null;
+      return num;
+    };
+
     for (const sg of studentGrades) {
       const studentName = sg.studentName;
       if (!studentName) continue;
       const filter = { section, classe, subject, semester, studentName };
+      const hwParsed = parseGradeOrNull(sg.hw);
+      const cwParsed = parseGradeOrNull(sg.cw);
+      const evalParsed = parseGradeOrNull(sg.evaluation);
+      const examParsed = parseGradeOrNull(sg.examen);
+      const sumVal = Math.round((hwParsed || 0) + (cwParsed || 0) + (evalParsed || 0) + (examParsed || 0));
+      const totalParsed = sumVal > 0 ? sumVal : null;
+
       const update = {
         $set: {
           section,
@@ -14090,11 +14131,11 @@ app.post('/api/student-grades', async (req, res) => {
           semester,
           studentName,
           teacher: teacher || '',
-          hw: Number(sg.hw) || 0,
-          cw: Number(sg.cw) || 0,
-          evaluation: Number(sg.evaluation) || 0,
-          examen: Number(sg.examen) || 0,
-          total: Number(sg.total) || 0,
+          hw: hwParsed,
+          cw: cwParsed,
+          evaluation: evalParsed,
+          examen: examParsed,
+          total: totalParsed,
           updatedAt: now.toISOString()
         }
       };

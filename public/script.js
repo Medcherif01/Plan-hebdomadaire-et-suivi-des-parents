@@ -9166,23 +9166,29 @@ function renderStudentsGrid(students, className, section) {
     });
 
     const fallbackAvatar = getStudentFallbackAvatar(section);
-    grid.innerHTML = sortedStudents.map(s => {
+    const canAdminEditStudent = Boolean(!isParentMode && loggedInUser && typeof isUserAdmin === 'function' && isUserAdmin(loggedInUser, currentUserRole));
+    grid.innerHTML = sortedStudents.map((s, idx) => {
         const safeName = (s.name || '').trim();
         const photoSrc = (s.photo && s.photo.trim() !== '') ? s.photo : fallbackAvatar;
         const escapedName = escapeHtml(safeName).replace(/'/g, "\\'");
         const escapedId = escapeHtml(s._id || '').replace(/'/g, "\\'");
         const escapedPhoto = escapeHtml(s.photo || '').replace(/'/g, "\\'");
         const escapedBirthday = escapeHtml(s.birthday || '').replace(/'/g, "\\'");
+        const animDelay = Math.min(idx * 0.03, 0.45).toFixed(2);
+        const adminEditBtnHtml = canAdminEditStudent ? `
+            <button type="button" onclick="event.stopPropagation(); openEditStudentProfileModal('${escapedId}', '${escapedName}', '${className}', '${section}', '${escapedPhoto}', '${escapedBirthday}')" title="${currentUserLanguage === 'ar' ? 'تعديل الاسم أو الصورة (للإدارة فقط)' : 'Modifier le nom ou la photo (Admin uniquement)'}" style="position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.78rem; transition:all 0.2s; z-index:2;" onmouseover="this.style.background='#2563EB'; this.style.color='white';" onmouseout="this.style.background='#EFF6FF'; this.style.color='#2563EB';">
+                <i class="fas fa-pen"></i>
+            </button>
+        ` : '';
+        const subtitleBadgeText = (canAdminEditStudent && s.birthday) ? `🎂 ${escapeHtml(s.birthday)}` : `<i class="fas fa-graduation-cap" style="color:#3B82F6; margin-right:4px;"></i> ${escapeHtml(className)}`;
         return `
-            <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapedName}', '${className}')" style="position:relative; background:white; border-radius:18px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:2px solid #F1F5F9; transition:all 0.25s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
-                <button type="button" onclick="event.stopPropagation(); openEditStudentProfileModal('${escapedId}', '${escapedName}', '${className}', '${section}', '${escapedPhoto}', '${escapedBirthday}')" title="${currentUserLanguage === 'ar' ? 'تعديل الاسم أو الصورة (مع حفظ المتابعة)' : 'Modifier le nom ou la photo (sans perdre le suivi)'}" style="position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.78rem; transition:all 0.2s; z-index:2;" onmouseover="this.style.background='#2563EB'; this.style.color='white';" onmouseout="this.style.background='#EFF6FF'; this.style.color='#2563EB';">
-                    <i class="fas fa-pen"></i>
-                </button>
+            <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapedName}', '${className}')" style="animation-delay:${animDelay}s; position:relative; background:white; border-radius:20px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1.5px solid #E2E8F0; transition:all 0.28s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
+                ${adminEditBtnHtml}
                 <div style="position:relative; width:96px; height:96px; margin:0 auto 12px auto; overflow:hidden; border-radius:50%;">
                     <img src="${photoSrc}" loading="lazy" decoding="async" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(safeName)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${borderColor}; background:#F8FAFC; display:block; margin:0 auto;">
                 </div>
-                <h4 style="margin:6px 0 4px 0; color:#1E1B4B; font-size:1.05rem; font-weight:700; line-height:1.3; text-align:center;">${escapeHtml(safeName)}</h4>
-                <span style="font-size:0.85rem; font-weight:600; color:#6B7280; background:#F1F5F9; padding:3px 10px; border-radius:12px; margin-top:4px;">${s.birthday ? '🎂 ' + s.birthday : className}</span>
+                <h4 style="margin:6px 0 6px 0; color:#1E1B4B; font-size:1.04rem; font-weight:800; line-height:1.3; text-align:center;">${escapeHtml(safeName)}</h4>
+                <span style="font-size:0.8rem; font-weight:700; color:#475569; background:#F1F5F9; padding:4px 12px; border-radius:999px; margin-top:2px; display:inline-flex; align-items:center;">${subtitleBadgeText}</span>
             </div>
         `;
     }).join('');
@@ -9597,6 +9603,13 @@ async function openStudentDashboard(studentName, className) {
         const detailsEl = document.getElementById('student-profile-details');
         const photoEl = document.getElementById('student-profile-photo');
 
+        // Seul l'administrateur peut modifier la photo, le nom ou les données de l'élève
+        const canAdminEditStudent = Boolean(!isParentMode && loggedInUser && typeof isUserAdmin === 'function' && isUserAdmin(loggedInUser, currentUserRole));
+        const quickPhotoBtn = document.getElementById('btnQuickEditStudentPhoto');
+        const editIdentityBtn = document.getElementById('btnEditStudentIdentity');
+        if (quickPhotoBtn) quickPhotoBtn.style.display = canAdminEditStudent ? 'flex' : 'none';
+        if (editIdentityBtn) editIdentityBtn.style.display = canAdminEditStudent ? 'inline-flex' : 'none';
+
         if (nameEl) nameEl.innerText = cleanName;
         if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : (section === 'filles' ? 'Filles 👧' : (section === 'maternelle' ? 'Maternelle 🧸🎨' : 'Primaire 🎒📚'))}`;
         
@@ -9612,24 +9625,37 @@ async function openStudentDashboard(studentName, className) {
             }
         }
 
+        if (preloadedStudent && preloadedStudent.birthday) {
+            selectedStudentObj.birthday = preloadedStudent.birthday;
+        }
+
         const initialPhoto = (preloadedStudent && preloadedStudent.photo && preloadedStudent.photo.trim() !== '') ? preloadedStudent.photo : fallbackAvatar;
         if (photoEl) {
             photoEl.src = initialPhoto;
             photoEl.onerror = function() { this.src = fallbackAvatar; };
         }
 
-        // Si pas de photo préchargée valide, tenter la récupération réseau fraîche
-        if (!preloadedStudent || !preloadedStudent.photo) {
+        // Si pas de photo ou date de naissance préchargée, tenter la récupération réseau fraîche
+        if (!preloadedStudent || !preloadedStudent.photo || !preloadedStudent.birthday) {
             fetch(`/api/admin/students?class=${encodeURIComponent(className)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`, { cache: 'no-store' })
                 .then(r => r.ok ? r.json() : [])
                 .then(stList => {
                     const matched = stList.find(s => (s.name || '').trim().toLowerCase() === normKey);
-                    if (matched && matched.photo && matched.photo.trim() !== '' && photoEl) {
-                        photoEl.src = matched.photo;
+                    if (matched) {
+                        if (window.currentLoadedStudentsMap) window.currentLoadedStudentsMap.set(normKey, matched);
+                        if (selectedStudentObj && selectedStudentObj.name.toLowerCase() === normKey) {
+                            selectedStudentObj.birthday = matched.birthday || '';
+                        }
+                        if (matched.photo && matched.photo.trim() !== '' && photoEl) {
+                            photoEl.src = matched.photo;
+                        }
                     }
                 })
                 .catch(() => {});
         }
+
+        // Mettre à jour l'icône de cadenas du Bulletin selon si le parent a déjà saisi la date de naissance de cet élève
+        updateStudentBulletinLockIcon();
 
         // Récupérer étoiles
         const starRes = await fetch(`/api/daily-stars?studentName=${encodeURIComponent(cleanName)}&className=${encodeURIComponent(className)}&section=${encodeURIComponent(section)}&week=true&_t=${Date.now()}`);
@@ -9660,22 +9686,426 @@ async function openStudentDashboard(studentName, className) {
 function switchStudentDashboardSection(sectionKey) {
     const hwSection = document.getElementById('student-section-homeworks');
     const progSection = document.getElementById('student-section-progress');
+    const bulSection = document.getElementById('student-section-bulletin');
     const btnHw = document.getElementById('studentTabBtn_homeworks');
     const btnProg = document.getElementById('studentTabBtn_progress');
+    const btnBul = document.getElementById('studentTabBtn_bulletin');
 
     if (sectionKey === 'progress') {
         if (hwSection) hwSection.style.display = 'none';
         if (progSection) progSection.style.display = 'block';
+        if (bulSection) bulSection.style.display = 'none';
         if (btnHw) btnHw.classList.remove('active');
         if (btnProg) btnProg.classList.add('active');
+        if (btnBul) btnBul.classList.remove('active');
+    } else if (sectionKey === 'bulletin') {
+        if (hwSection) hwSection.style.display = 'none';
+        if (progSection) progSection.style.display = 'none';
+        if (bulSection) bulSection.style.display = 'block';
+        if (btnHw) btnHw.classList.remove('active');
+        if (btnProg) btnProg.classList.remove('active');
+        if (btnBul) btnBul.classList.add('active');
+        renderStudentBulletinSection();
     } else {
         if (hwSection) hwSection.style.display = 'block';
         if (progSection) progSection.style.display = 'none';
+        if (bulSection) bulSection.style.display = 'none';
         if (btnHw) btnHw.classList.add('active');
         if (btnProg) btnProg.classList.remove('active');
+        if (btnBul) btnBul.classList.remove('active');
     }
 }
 window.switchStudentDashboardSection = switchStudentDashboardSection;
+
+// ============================================================================
+// PORTAIL BULLETIN & NOTES PROTÉGÉ PAR DATE DE NAISSANCE (FORMAT JOUR/MOIS/ANNÉE)
+// ============================================================================
+window.verifiedParentStudentDobMap = window.verifiedParentStudentDobMap || new Map();
+window.currentParentBulletinSemester = 'S1';
+
+function getCurrentStudentDobKey() {
+    if (!selectedStudentObj || !selectedStudentObj.name) return '';
+    const section = currentSection || 'garcons';
+    const cls = (selectedStudentObj.class || '').trim().toLowerCase();
+    const name = (selectedStudentObj.name || '').trim().toLowerCase();
+    return `${section}__${cls}__${name}`;
+}
+
+function isCurrentStudentBulletinUnlocked() {
+    const key = getCurrentStudentDobKey();
+    if (!key) return false;
+    return Boolean(window.verifiedParentStudentDobMap.get(key));
+}
+
+function updateStudentBulletinLockIcon() {
+    const icon = document.getElementById('studentBulletinLockIcon');
+    if (!icon) return;
+    if (isCurrentStudentBulletinUnlocked()) {
+        icon.className = 'fas fa-unlock-alt';
+        icon.style.color = '#10B981';
+    } else {
+        icon.className = 'fas fa-lock';
+        icon.style.color = '';
+    }
+}
+
+function formatParentDobInput(inputEl) {
+    if (!inputEl) return;
+    let v = inputEl.value.replace(/[^\d\/]/g, '');
+    const digitsOnly = v.replace(/\D/g, '');
+    if (!v.includes('/') && digitsOnly.length > 2) {
+        if (digitsOnly.length <= 4) {
+            v = digitsOnly.slice(0, 2) + '/' + digitsOnly.slice(2);
+        } else {
+            v = digitsOnly.slice(0, 2) + '/' + digitsOnly.slice(2, 4) + '/' + digitsOnly.slice(4, 8);
+        }
+    }
+    inputEl.value = v;
+}
+window.formatParentDobInput = formatParentDobInput;
+
+function verifyDobFormatAndMatch(enteredRaw, storedRaw) {
+    const entered = String(enteredRaw || '').trim();
+    // Doit obligatoirement être sous la forme jour/mois/année (ex: 15/05/2014 ou 5/4/2014)
+    const dobRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+    const match = entered.match(dobRegex);
+    if (!match) {
+        return { validFormat: false, matched: false };
+    }
+    const eDay = parseInt(match[1], 10);
+    const eMonth = parseInt(match[2], 10);
+    const eYear = parseInt(match[3], 10);
+
+    if (eDay < 1 || eDay > 31 || eMonth < 1 || eMonth > 12 || eYear < 1990 || eYear > 2030) {
+        return { validFormat: false, matched: false };
+    }
+
+    const stored = String(storedRaw || '').trim();
+    if (!stored) {
+        // Si aucune date n'est encore enregistrée pour cet élève, toute date valide au format jour/mois/année déverrouille
+        return { validFormat: true, matched: true };
+    }
+
+    // Format enregistré : JJ/MM/AAAA ou J/M/AAAA
+    const storedFullMatch = stored.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (storedFullMatch) {
+        const sDay = parseInt(storedFullMatch[1], 10);
+        const sMonth = parseInt(storedFullMatch[2], 10);
+        const sYear = parseInt(storedFullMatch[3], 10);
+        return {
+            validFormat: true,
+            matched: (eDay === sDay && eMonth === sMonth && eYear === sYear)
+        };
+    }
+
+    // Format enregistré ISO : AAAA-MM-JJ
+    const storedIsoMatch = stored.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (storedIsoMatch) {
+        const sYear = parseInt(storedIsoMatch[1], 10);
+        const sMonth = parseInt(storedIsoMatch[2], 10);
+        const sDay = parseInt(storedIsoMatch[3], 10);
+        return {
+            validFormat: true,
+            matched: (eDay === sDay && eMonth === sMonth && eYear === sYear)
+        };
+    }
+
+    // Format historique court : M/AAAA ou MM/AAAA
+    const storedShortMatch = stored.match(/^(\d{1,2})[\/\-](\d{4})$/);
+    if (storedShortMatch) {
+        const sMonth = parseInt(storedShortMatch[1], 10);
+        const sYear = parseInt(storedShortMatch[2], 10);
+        return {
+            validFormat: true,
+            matched: (eMonth === sMonth && eYear === sYear)
+        };
+    }
+
+    return {
+        validFormat: true,
+        matched: stored.toLowerCase() === entered.toLowerCase()
+    };
+}
+
+async function verifyParentStudentDobAndShowBulletin(event) {
+    if (event && typeof event.preventDefault === 'function') event.preventDefault();
+    if (!selectedStudentObj || !selectedStudentObj.name) return;
+
+    const inputEl = document.getElementById('parentStudentDobGateInput');
+    const errEl = document.getElementById('parentStudentDobGateError');
+    const isAr = (currentUserLanguage === 'ar');
+    const enteredVal = inputEl ? inputEl.value.trim() : '';
+
+    // Récupérer la date de naissance de l'élève en mémoire ou depuis le serveur
+    const normName = selectedStudentObj.name.trim().toLowerCase();
+    let stObj = window.currentLoadedStudentsMap?.get(normName);
+    if (!stObj || stObj.birthday === undefined) {
+        try {
+            const section = currentSection || 'garcons';
+            const res = await fetch(`/api/admin/students?class=${encodeURIComponent(selectedStudentObj.class)}&section=${encodeURIComponent(section)}&_t=${Date.now()}`);
+            if (res.ok) {
+                const list = await res.json();
+                stObj = list.find(s => (s.name || '').trim().toLowerCase() === normName);
+                if (stObj && window.currentLoadedStudentsMap) {
+                    window.currentLoadedStudentsMap.set(normName, stObj);
+                }
+            }
+        } catch (e) {}
+    }
+
+    const storedBirthday = (stObj && stObj.birthday) ? stObj.birthday : (selectedStudentObj.birthday || '');
+    const check = verifyDobFormatAndMatch(enteredVal, storedBirthday);
+
+    if (!check.validFormat) {
+        if (errEl) {
+            errEl.style.display = 'block';
+            errEl.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${isAr ? 'يرجى كتابة تاريخ الميلاد بالصيغة الصحيحة : يوم/شهر/سنة (مثال: 15/05/2014)' : 'Veuillez saisir la date de naissance sous la forme exacte <strong>jour/mois/année</strong> (exemple : <strong>15/05/2014</strong>).'}`;
+        }
+        return;
+    }
+
+    if (!check.matched) {
+        if (errEl) {
+            errEl.style.display = 'block';
+            errEl.innerHTML = `<i class="fas fa-times-circle"></i> ${isAr ? 'تاريخ الميلاد غير مطابق لبيانات التلميذ المسجلة لدى الإدارة.' : 'La date de naissance saisie ne correspond pas aux données enregistrées pour cet élève.'}`;
+        }
+        return;
+    }
+
+    const key = getCurrentStudentDobKey();
+    if (key) {
+        window.verifiedParentStudentDobMap.set(key, enteredVal);
+    }
+    updateStudentBulletinLockIcon();
+    await renderStudentBulletinSection(window.currentParentBulletinSemester || 'S1');
+}
+window.verifyParentStudentDobAndShowBulletin = verifyParentStudentDobAndShowBulletin;
+
+function lockCurrentStudentBulletin() {
+    const key = getCurrentStudentDobKey();
+    if (key) window.verifiedParentStudentDobMap.delete(key);
+    updateStudentBulletinLockIcon();
+    renderStudentBulletinSection();
+}
+window.lockCurrentStudentBulletin = lockCurrentStudentBulletin;
+
+async function renderStudentBulletinSection(semesterOverride) {
+    const container = document.getElementById('student-bulletin-gate-and-content');
+    if (!container || !selectedStudentObj || !selectedStudentObj.name) return;
+
+    if (semesterOverride) {
+        window.currentParentBulletinSemester = semesterOverride;
+    }
+    const chosenSemester = window.currentParentBulletinSemester || 'S1';
+    const isAr = (currentUserLanguage === 'ar');
+    const studentName = selectedStudentObj.name;
+    const className = selectedStudentObj.class || currentActiveClassName || 'PEI1';
+    const section = currentSection || 'garcons';
+
+    // 1. Si le parent n'a pas encore saisi la date de naissance sous la forme jour/mois/année, afficher le portail de vérification
+    if (!isCurrentStudentBulletinUnlocked()) {
+        container.innerHTML = `
+            <div class="parent-dob-gate-card">
+                <div style="width:68px; height:68px; border-radius:20px; background:linear-gradient(135deg, #EFF6FF, #DBEAFE); color:#2563EB; display:flex; align-items:center; justify-content:center; font-size:1.85rem; margin:0 auto 16px auto; box-shadow:0 8px 20px rgba(37,99,235,0.15); border:1.5px solid #BFDBFE;">
+                    <i class="fas fa-user-shield"></i>
+                </div>
+                <h3 style="margin:0 0 8px 0; color:#0F172A; font-size:1.3rem; font-weight:800;">
+                    ${isAr ? 'الولوج المحمي إلى كشف النقاط (Bulletin)' : 'Accès Protégé au Bulletin & Notes'}
+                </h3>
+                <p style="margin:0 auto 20px auto; color:#475569; font-size:0.94rem; max-width:440px; line-height:1.55;">
+                    ${isAr
+                        ? `لعرض كشف النقاط الخاص بالتلميذ(ة) <strong>${escapeHtml(studentName)}</strong>، يرجى إدخال تاريخ ميلاده(ها) بالصيغة : <strong>يوم/شهر/سنة</strong>`
+                        : `Pour afficher directement le bulletin et les notes déjà saisies pour <strong>${escapeHtml(studentName)}</strong>, veuillez saisir sa date de naissance sous la forme <strong>jour/mois/année</strong> :`}
+                </p>
+
+                <form onsubmit="verifyParentStudentDobAndShowBulletin(event)" style="display:flex; flex-direction:column; align-items:center; gap:14px;">
+                    <div>
+                        <label for="parentStudentDobGateInput" style="display:block; font-size:0.8rem; font-weight:800; color:#1E40AF; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:6px;">
+                            <i class="fas fa-calendar-alt"></i> ${isAr ? 'تاريخ الميلاد (يوم/شهر/سنة)' : 'Date de naissance (jour/mois/année)'}
+                        </label>
+                        <input
+                            type="text"
+                            id="parentStudentDobGateInput"
+                            class="parent-dob-input-field"
+                            placeholder="Ex: 15/05/2014"
+                            maxlength="10"
+                            autocomplete="off"
+                            oninput="formatParentDobInput(this)"
+                        />
+                        <div style="font-size:0.78rem; color:#64748B; margin-top:6px; font-weight:600;">
+                            ${isAr ? 'مثال : 15/05/2014' : 'Format obligatoire : <strong>jour/mois/année</strong> (ex : 15/05/2014)'}
+                        </div>
+                    </div>
+
+                    <div id="parentStudentDobGateError" style="display:none; background:#FEF2F2; color:#DC2626; border:1px solid #FECACA; border-radius:12px; padding:10px 14px; font-size:0.86rem; font-weight:600; max-width:420px;"></div>
+
+                    <button type="submit" class="pro-button primary-button" style="padding:12px 28px; border-radius:14px; font-size:0.98rem; font-weight:800; background:linear-gradient(135deg, #2563EB, #1D4ED8); color:white; border:none; box-shadow:0 8px 20px rgba(37,99,235,0.28); cursor:pointer; display:inline-flex; align-items:center; gap:10px;">
+                        <i class="fas fa-unlock-alt"></i>
+                        <span>${isAr ? 'عرض كشف النقاط الآن' : 'Afficher le Bulletin & les Notes'}</span>
+                    </button>
+                </form>
+            </div>
+        `;
+        setTimeout(() => {
+            const inp = document.getElementById('parentStudentDobGateInput');
+            if (inp) inp.focus();
+        }, 60);
+        return;
+    }
+
+    // 2. Une fois la date de naissance vérifiée, charger et afficher immédiatement le Bulletin & les Notes de l'élève
+    container.innerHTML = `
+        <div class="parent-bulletin-sheet" style="text-align:center; padding:40px 20px;">
+            <i class="fas fa-circle-notch fa-spin fa-2x" style="color:#2563EB; margin-bottom:12px; display:block;"></i>
+            <div style="font-weight:700; color:#334155; font-size:1rem;">
+                ${isAr ? 'جاري تحميل كشف النقاط...' : 'Chargement du bulletin et des notes déjà saisies...'}
+            </div>
+        </div>
+    `;
+
+    try {
+        const res = await fetch(`/api/class-bulletins-data?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(className)}&semester=${encodeURIComponent(chosenSemester)}&_t=${Date.now()}`);
+        if (!res.ok) throw new Error(`Erreur ${res.status}`);
+        const data = await res.json();
+
+        const isPei1 = Boolean(data.isPei1 || String(className).toUpperCase().includes('PEI1'));
+        const maxCw = data.maxCw || (isPei1 ? 30 : 20);
+        const maxEval = data.maxEval || (isPei1 ? 20 : 30);
+        const maxHw = 20;
+        const maxExam = 30;
+
+        const norm = (s) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const targetNorm = norm(studentName);
+        const studentsList = Array.isArray(data.students) ? data.students : [];
+        const studentBulletin = studentsList.find(st => {
+            const sNorm = norm(st.studentName || st.name);
+            return sNorm === targetNorm || sNorm.includes(targetNorm) || targetNorm.includes(sNorm);
+        });
+
+        const subjectsRows = (studentBulletin && Array.isArray(studentBulletin.subjects)) ? studentBulletin.subjects : [];
+        const fmtGradeCell = (val) => {
+            if (val === '' || val === null || val === undefined) return '';
+            const n = Number(val);
+            if (!Number.isFinite(n) || n <= 0) return '';
+            return String(n);
+        };
+
+        const verifiedDob = window.verifiedParentStudentDobMap.get(getCurrentStudentDobKey()) || (studentBulletin?.birthday || '');
+        const avgDisplay = fmtGradeCell(studentBulletin?.generalAverage);
+
+        container.innerHTML = `
+            <div class="parent-bulletin-sheet">
+                <!-- Barre supérieure du Bulletin : Sélecteur Semestre 1 / Semestre 2 + Verrouiller -->
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding-bottom:18px; margin-bottom:20px; border-bottom:2px solid #E2E8F0;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:46px; height:46px; border-radius:14px; background:linear-gradient(135deg, #1E3A8A, #2563EB); color:white; display:flex; align-items:center; justify-content:center; font-size:1.3rem; box-shadow:0 4px 12px rgba(30,58,138,0.25);">
+                            <i class="fas fa-award"></i>
+                        </div>
+                        <div>
+                            <h3 style="margin:0; font-size:1.22rem; font-weight:800; color:#0F172A;">
+                                ${isAr ? `كشف النقاط المدرسي — ${escapeHtml(studentName)}` : `Bulletin Scolaire & Notes — ${escapeHtml(studentName)}`}
+                            </h3>
+                            <div style="font-size:0.84rem; color:#64748B; font-weight:600; margin-top:2px;">
+                                ${isAr ? 'القسم :' : 'Classe :'} <strong style="color:#1E3A8A;">${escapeHtml(className)}</strong>
+                                ${verifiedDob ? ` &bull; <i class="fas fa-birthday-cake" style="color:#10B981;"></i> ${escapeHtml(verifiedDob)}` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <div style="display:inline-flex; background:#F1F5F9; padding:4px; border-radius:12px; border:1px solid #CBD5E1;">
+                            <button type="button" onclick="renderStudentBulletinSection('S1')" style="padding:7px 14px; border-radius:9px; border:none; font-weight:800; font-size:0.85rem; cursor:pointer; background:${chosenSemester === 'S1' ? '#2563EB' : 'transparent'}; color:${chosenSemester === 'S1' ? '#FFFFFF' : '#475569'}; transition:all 0.2s;">
+                                ${isAr ? 'الفصل الأول (Semestre 1)' : 'Semestre 1'}
+                            </button>
+                            <button type="button" onclick="renderStudentBulletinSection('S2')" style="padding:7px 14px; border-radius:9px; border:none; font-weight:800; font-size:0.85rem; cursor:pointer; background:${chosenSemester === 'S2' ? '#2563EB' : 'transparent'}; color:${chosenSemester === 'S2' ? '#FFFFFF' : '#475569'}; transition:all 0.2s;">
+                                ${isAr ? 'الفصل الثاني (Semestre 2)' : 'Semestre 2'}
+                            </button>
+                        </div>
+                        <button type="button" onclick="lockCurrentStudentBulletin()" class="pro-button" style="background:#F8FAFC; color:#475569; border:1px solid #CBD5E1; padding:8px 14px; border-radius:10px; font-size:0.82rem; font-weight:700; cursor:pointer; box-shadow:none;">
+                            <i class="fas fa-lock"></i> ${isAr ? 'إغلاق الكشف' : 'Verrouiller'}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tableau des Notes de l'élève (Cases vides si la note n'est pas encore saisie, aucun 0 affiché) -->
+                <div style="overflow-x:auto; border-radius:14px; border:1.5px solid #CBD5E1;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.92rem; background:white;">
+                        <thead>
+                            <tr style="background:linear-gradient(135deg, #1E3A8A, #1D4ED8); color:white;">
+                                <th style="padding:12px 14px; text-align:left; font-weight:800;">${isAr ? 'المادة' : 'Matière'}</th>
+                                <th style="padding:12px 12px; text-align:left; font-weight:700;">${isAr ? 'المدرس(ة)' : 'Enseignant'}</th>
+                                <th style="padding:12px 10px; text-align:center; font-weight:800;">HW (/${maxHw})</th>
+                                <th style="padding:12px 10px; text-align:center; font-weight:800;">CW (/${maxCw})</th>
+                                <th style="padding:12px 10px; text-align:center; font-weight:800;">${isAr ? `تقييم (/${maxEval})` : `Évaluation (/${maxEval})`}</th>
+                                <th style="padding:12px 10px; text-align:center; font-weight:800;">${isAr ? `اختبار (/${maxExam})` : `Examen (/${maxExam})`}</th>
+                                <th style="padding:12px 12px; text-align:center; font-weight:900; background:#0C2158;">Total (/100)</th>
+                                <th style="padding:12px 14px; text-align:left; font-weight:700;">${isAr ? 'الملاحظة' : 'Appréciation'}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${subjectsRows.length > 0 ? subjectsRows.map((sub, i) => {
+                                const hwCell = fmtGradeCell(sub.hw);
+                                const cwCell = fmtGradeCell(sub.cw);
+                                const evalCell = fmtGradeCell(sub.evaluation);
+                                const examCell = fmtGradeCell(sub.examen);
+                                const totalCell = fmtGradeCell(sub.total);
+                                const apprecCell = totalCell ? (sub.appreciation || '') : '';
+                                return `
+                                    <tr style="border-bottom:1px solid #E2E8F0; background:${i % 2 === 0 ? '#FFFFFF' : '#F8FAFC'};">
+                                        <td style="padding:11px 14px; font-weight:800; color:#0F172A;">${escapeHtml(sub.subject || '')}</td>
+                                        <td style="padding:11px 12px; color:#475569; font-size:0.86rem; font-weight:600;">${escapeHtml(sub.teacher && sub.teacher !== '—' ? sub.teacher : '')}</td>
+                                        <td style="padding:11px 10px; text-align:center; font-weight:700; color:#1E293B;">${hwCell}</td>
+                                        <td style="padding:11px 10px; text-align:center; font-weight:700; color:#1E293B;">${cwCell}</td>
+                                        <td style="padding:11px 10px; text-align:center; font-weight:800; color:#1D4ED8;">${evalCell}</td>
+                                        <td style="padding:11px 10px; text-align:center; font-weight:800; color:#4C1D95;">${examCell}</td>
+                                        <td style="padding:11px 12px; text-align:center; font-weight:900; font-size:0.98rem; color:#1E3A8A; background:#EFF6FF;">${totalCell}</td>
+                                        <td style="padding:11px 14px; color:#475569; font-size:0.84rem; font-style:italic;">${escapeHtml(apprecCell)}</td>
+                                    </tr>
+                                `;
+                            }).join('') : `
+                                <tr>
+                                    <td colspan="8" style="padding:24px; text-align:center; color:#64748B;">
+                                        ${isAr ? 'لا توجد مواد مسجلة بعد لهذا الفصل.' : 'Aucune matière enregistrée pour ce semestre.'}
+                                    </td>
+                                </tr>
+                            `}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Résumé de Moyenne Générale (Affiché uniquement si des notes sont saisies) -->
+                <div style="margin-top:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:14px; padding:14px 18px;">
+                    <div style="font-size:0.85rem; color:#64748B; font-weight:600;">
+                        <i class="fas fa-info-circle" style="color:#2563EB;"></i>
+                        ${isAr ? 'ملاحظة : الخانات الفارغة تعني أن النقطة لم يتم رصدها بعد من طرف المدرس.' : 'Les cases vides indiquent que la note n\'a pas encore été saisie par l\'enseignant.'}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                        <div style="font-size:0.95rem; font-weight:800; color:#1E293B;">
+                            ${isAr ? 'المعدل العام :' : 'Moyenne Générale :'}
+                            <span style="font-size:1.2rem; font-weight:900; color:#1D4ED8; margin-left:6px;">
+                                ${avgDisplay ? `${avgDisplay} / 100` : ''}
+                            </span>
+                        </div>
+                        ${avgDisplay && studentBulletin?.mention ? `
+                            <span style="background:#DBEAFE; color:#1E40AF; font-weight:800; font-size:0.85rem; padding:5px 12px; border-radius:999px;">
+                                ${escapeHtml(studentBulletin.mention)}
+                            </span>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (err) {
+        console.error('Erreur renderStudentBulletinSection:', err);
+        container.innerHTML = `
+            <div class="parent-bulletin-sheet" style="text-align:center; padding:30px; color:#DC2626;">
+                <i class="fas fa-exclamation-triangle fa-2x" style="margin-bottom:10px; display:block;"></i>
+                <div style="font-weight:700;">Impossible de charger le bulletin pour le moment.</div>
+            </div>
+        `;
+    }
+}
+window.renderStudentBulletinSection = renderStudentBulletinSection;
 
 let lastEvaluationsData = null;
 let isShowingWeeklyHomeworks = false;
@@ -10848,6 +11278,13 @@ async function adminAddOrUpdateStudent() {
 // ============================================================================
 
 function openEditStudentProfileModal(id, name, className, section, photo, birthday) {
+    const canAdminEditStudent = Boolean(!isParentMode && loggedInUser && typeof isUserAdmin === 'function' && isUserAdmin(loggedInUser, currentUserRole));
+    if (!canAdminEditStudent) {
+        if (typeof displayAlert === 'function') {
+            displayAlert("Seul l'administrateur est autorisé à modifier la photo, le nom ou les données d'un élève.", true);
+        }
+        return;
+    }
     const modal = document.getElementById('editStudentProfileModal');
     if (!modal) return;
 
@@ -10985,6 +11422,13 @@ function handleStudentPhotoFileUpload(event) {
 window.handleStudentPhotoFileUpload = handleStudentPhotoFileUpload;
 
 async function saveEditedStudentProfile() {
+    const canAdminEditStudent = Boolean(!isParentMode && loggedInUser && typeof isUserAdmin === 'function' && isUserAdmin(loggedInUser, currentUserRole));
+    if (!canAdminEditStudent) {
+        if (typeof displayAlert === 'function') {
+            displayAlert("Action réservée exclusivement à l'administrateur.", true);
+        }
+        return;
+    }
     const id = document.getElementById('editStudentModalId')?.value || '';
     const originalName = document.getElementById('editStudentModalOriginalName')?.value?.trim() || '';
     const section = document.getElementById('editStudentModalSection')?.value || currentSection || 'garcons';
@@ -11322,6 +11766,16 @@ function applyParentLanguageUI() {
     document.querySelectorAll('.tab-txt-teachers').forEach(el => el.textContent = t.tabTeachers);
     document.querySelectorAll('.tab-txt-photos').forEach(el => el.textContent = t.tabPhotos);
     document.querySelectorAll('.parentCopyLinkTxt').forEach(el => el.textContent = t.copyDirectLink);
+
+    setTxt('lblStudentTabHomeworks', lang === 'ar' ? '١. واجبات اليوم' : '1. Devoirs du Jour');
+    setTxt('lblStudentTabProgress', lang === 'ar' ? '٢. التقدم التراكمي' : '2. Progression & Cumul');
+    setTxt('lblStudentTabBulletin', lang === 'ar' ? '٣. كشف النقاط (Bulletin)' : '3. Bulletin & Notes');
+
+    const bulSec = document.getElementById('student-section-bulletin');
+    if (bulSec && bulSec.style.display !== 'none' && typeof renderStudentBulletinSection === 'function') {
+        renderStudentBulletinSection();
+    }
+
     updateSectionBadges();
 }
 
@@ -20977,13 +21431,21 @@ async function renderTeacherGradesTable() {
             const stName = st.studentName || st.name || '';
             const autoHwRounded = Math.round(Number(st.autoHw ?? maxHw));
             const autoCwRounded = Math.round(Number(st.autoCw ?? maxCw));
-            const hwVal = (st.hw !== undefined) ? Math.round(Number(st.hw)) : autoHwRounded;
-            const cwVal = (st.cw !== undefined) ? Math.round(Number(st.cw)) : autoCwRounded;
-            const evalVal = (st.evaluation !== undefined) ? st.evaluation : 0;
-            const examVal = (st.examen !== undefined) ? st.examen : 0;
-            const totalVal = Math.round(Number(hwVal) + Number(cwVal) + Number(evalVal) + Number(examVal));
+            const fmtInputVal = (v) => {
+                if (v === '' || v === null || v === undefined) return '';
+                const n = Number(v);
+                if (!Number.isFinite(n) || n <= 0) return '';
+                return String(n);
+            };
+            const hwVal = fmtInputVal(st.hw);
+            const cwVal = fmtInputVal(st.cw);
+            const evalVal = fmtInputVal(st.evaluation);
+            const examVal = fmtInputVal(st.examen);
+            const rawSum = Math.round((Number(hwVal) || 0) + (Number(cwVal) || 0) + (Number(evalVal) || 0) + (Number(examVal) || 0));
+            const hasAnyGrade = Boolean(hwVal !== '' || cwVal !== '' || evalVal !== '' || examVal !== '');
+            const totalVal = (hasAnyGrade && rawSum > 0) ? rawSum : '';
 
-            const totalBadgeColor = totalVal >= 80 ? '#10B981' : (totalVal >= 60 ? '#2563EB' : (totalVal >= 50 ? '#F59E0B' : '#EF4444'));
+            const totalBadgeColor = totalVal === '' ? '#94A3B8' : (totalVal >= 80 ? '#10B981' : (totalVal >= 60 ? '#2563EB' : (totalVal >= 50 ? '#F59E0B' : '#EF4444')));
 
             tableHtml += `
                 <tr style="border-bottom:1px solid #F1F5F9;" data-student-row="${escapeHtml(stName)}">
@@ -20995,26 +21457,26 @@ async function renderTeacherGradesTable() {
                         </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxHw}" step="1" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
+                        <input type="number" min="0" max="${maxHw}" step="1" placeholder="" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
                         <div style="font-size:0.7rem; color:#059669; font-weight:700; margin-top:3px;" title="Calculé d'après la faisabilité des devoirs (arrondi à l'unité)">
                             <i class="fas fa-magic"></i> Cumul: ${autoHwRounded}/${maxHw}
                         </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxCw}" step="1" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
+                        <input type="number" min="0" max="${maxCw}" step="1" placeholder="" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
                         <div style="font-size:0.7rem; color:#2563EB; font-weight:700; margin-top:3px;" title="Calculé d'après le comportement et la participation (arrondi à l'unité)">
                             <i class="fas fa-magic"></i> Cumul: ${autoCwRounded}/${maxCw}
                         </div>
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxEval}" step="0.5" class="grade-input-eval" value="${evalVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1.5px solid #93C5FD; border-radius:6px; font-weight:800; color:#1E3A8A; background:white;">
+                        <input type="number" min="0" max="${maxEval}" step="0.5" placeholder="" class="grade-input-eval" value="${evalVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1.5px solid #93C5FD; border-radius:6px; font-weight:800; color:#1E3A8A; background:white;">
                     </td>
                     <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxExam}" step="0.5" class="grade-input-exam" value="${examVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1.5px solid #C4B5FD; border-radius:6px; font-weight:800; color:#4C1D95; background:white;">
+                        <input type="number" min="0" max="${maxExam}" step="0.5" placeholder="" class="grade-input-exam" value="${examVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1.5px solid #C4B5FD; border-radius:6px; font-weight:800; color:#4C1D95; background:white;">
                     </td>
                     <td style="padding:12px 16px; text-align:center; background:#F8FAFC;">
-                        <span class="grade-cell-total" style="display:inline-block; padding:4px 10px; border-radius:6px; font-weight:900; font-size:0.95rem; color:white; background:${totalBadgeColor};">
-                            ${totalVal}/100
+                        <span class="grade-cell-total" style="display:${totalVal === '' ? 'none' : 'inline-block'}; padding:4px 10px; border-radius:6px; font-weight:900; font-size:0.95rem; color:white; background:${totalBadgeColor};">
+                            ${totalVal === '' ? '' : `${totalVal}/100`}
                         </span>
                     </td>
                 </tr>
@@ -21044,16 +21506,26 @@ async function renderTeacherGradesTable() {
 function recalcStudentRowTotal(inputEl, maxHw, maxCw, maxEval, maxExam) {
     const tr = inputEl.closest('tr');
     if (!tr) return;
-    const hw = Math.round(parseFloat(tr.querySelector('.grade-input-hw')?.value) || 0);
-    const cw = Math.round(parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0);
-    const evaluation = parseFloat(tr.querySelector('.grade-input-eval')?.value) || 0;
-    const examen = parseFloat(tr.querySelector('.grade-input-exam')?.value) || 0;
+    const hwStr = (tr.querySelector('.grade-input-hw')?.value || '').trim();
+    const cwStr = (tr.querySelector('.grade-input-cw')?.value || '').trim();
+    const evalStr = (tr.querySelector('.grade-input-eval')?.value || '').trim();
+    const examStr = (tr.querySelector('.grade-input-exam')?.value || '').trim();
+    const hw = Math.round(parseFloat(hwStr) || 0);
+    const cw = Math.round(parseFloat(cwStr) || 0);
+    const evaluation = parseFloat(evalStr) || 0;
+    const examen = parseFloat(examStr) || 0;
     const total = Math.min(100, Math.max(0, Math.round(hw + cw + evaluation + examen)));
     const totalCell = tr.querySelector('.grade-cell-total');
     if (totalCell) {
-        totalCell.textContent = `${total}/100`;
-        const totalBadgeColor = total >= 80 ? '#10B981' : (total >= 60 ? '#2563EB' : (total >= 50 ? '#F59E0B' : '#EF4444'));
-        totalCell.style.background = totalBadgeColor;
+        if (total <= 0) {
+            totalCell.textContent = '';
+            totalCell.style.display = 'none';
+        } else {
+            totalCell.style.display = 'inline-block';
+            totalCell.textContent = `${total}/100`;
+            const totalBadgeColor = total >= 80 ? '#10B981' : (total >= 60 ? '#2563EB' : (total >= 50 ? '#F59E0B' : '#EF4444'));
+            totalCell.style.background = totalBadgeColor;
+        }
     }
 }
 
@@ -21075,13 +21547,25 @@ async function saveTeacherGradesData() {
 
     rows.forEach(tr => {
         const studentName = tr.getAttribute('data-student-row');
-        const hw = Math.round(parseFloat(tr.querySelector('.grade-input-hw')?.value) || 0);
-        const cw = Math.round(parseFloat(tr.querySelector('.grade-input-cw')?.value) || 0);
-        const evaluation = parseFloat(tr.querySelector('.grade-input-eval')?.value) || 0;
-        const examen = parseFloat(tr.querySelector('.grade-input-exam')?.value) || 0;
-        const total = Math.round(hw + cw + evaluation + examen);
+        const hwRaw = (tr.querySelector('.grade-input-hw')?.value || '').trim();
+        const cwRaw = (tr.querySelector('.grade-input-cw')?.value || '').trim();
+        const evalRaw = (tr.querySelector('.grade-input-eval')?.value || '').trim();
+        const examRaw = (tr.querySelector('.grade-input-exam')?.value || '').trim();
 
-        studentGrades.push({ studentName, hw, cw, evaluation, examen, total });
+        const hwNum = Math.round(parseFloat(hwRaw) || 0);
+        const cwNum = Math.round(parseFloat(cwRaw) || 0);
+        const evalNum = parseFloat(evalRaw) || 0;
+        const examNum = parseFloat(examRaw) || 0;
+        const totalNum = Math.round(hwNum + cwNum + evalNum + examNum);
+
+        studentGrades.push({
+            studentName,
+            hw: hwNum > 0 ? hwNum : '',
+            cw: cwNum > 0 ? cwNum : '',
+            evaluation: evalNum > 0 ? evalNum : '',
+            examen: examNum > 0 ? examNum : '',
+            total: totalNum > 0 ? totalNum : ''
+        });
     });
 
     if (statusEl) statusEl.innerHTML = '<span style="color:#2563EB;"><i class="fas fa-spinner fa-spin"></i> Enregistrement en cours...</span>';
@@ -21783,20 +22267,20 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
                             <td class="td-student">${escapeHtml(st.studentName)}</td>
                             ${subjects.map(subj => {
                                 const entry = (st.subjects || []).find(s => s.subject === subj || (typeof isEquivalentSubject === 'function' && isEquivalentSubject(s.subject, subj)));
-                                const val = (entry && typeof entry.total === 'number') ? entry.total : '—';
+                                const numVal = (entry && entry.total !== '' && entry.total !== null && entry.total !== undefined) ? Number(entry.total) : 0;
+                                const hasVal = Number.isFinite(numVal) && numVal > 0;
+                                if (!hasVal) return `<td></td>`;
                                 let pillCls = 'grade-pass';
-                                if (val !== '—') {
-                                    if (val >= 80) pillCls = 'grade-high';
-                                    else if (val >= 65) pillCls = 'grade-good';
-                                    else if (val >= 50) pillCls = 'grade-pass';
-                                    else pillCls = 'grade-low';
-                                }
-                                return `<td><span class="grade-pill ${pillCls}">${val}</span></td>`;
+                                if (numVal >= 80) pillCls = 'grade-high';
+                                else if (numVal >= 65) pillCls = 'grade-good';
+                                else if (numVal >= 50) pillCls = 'grade-pass';
+                                else pillCls = 'grade-low';
+                                return `<td><span class="grade-pill ${pillCls}">${numVal}</span></td>`;
                             }).join('')}
-                            <td class="total-col">${st._calculatedTotal}</td>
-                            <td class="avg-col">${st._calculatedAverage}</td>
-                            <td class="rank-col">${st._calculatedRank}<sup>${st._calculatedRank === 1 ? 'er' : 'e'}</sup></td>
-                            <td class="mention-col">${escapeHtml(st.mention || 'Passable')}</td>
+                            <td class="total-col">${st._calculatedTotal > 0 ? st._calculatedTotal : ''}</td>
+                            <td class="avg-col">${st._calculatedAverage > 0 ? st._calculatedAverage : ''}</td>
+                            <td class="rank-col">${st._calculatedAverage > 0 ? `${st._calculatedRank}<sup>${st._calculatedRank === 1 ? 'er' : 'e'}</sup>` : ''}</td>
+                            <td class="mention-col">${st._calculatedAverage > 0 ? escapeHtml(st.mention || '') : ''}</td>
                         </tr>
                         `;
                     }).join('')}
@@ -22254,21 +22738,25 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
                     </tr>
                 </thead>
                 <tbody>
-                    ${stList.map((st, idx) => `
+                    ${stList.map((st, idx) => {
+                        const fmtC = (v) => (v !== '' && v !== null && v !== undefined && Number(v) > 0) ? v : '';
+                        const totC = fmtC(st.total);
+                        return `
                     <tr>
                         <td style="font-weight:700; color:#64748B;">${idx + 1}</td>
                         <td class="col-name">${escapeHtml(st.studentName)}</td>
-                        <td>${st.hw}</td>
-                        <td>${st.cw}</td>
-                        <td>${st.evaluation}</td>
-                        <td>${st.examen}</td>
-                        <td class="col-total">${st.total}</td>
-                        <td class="col-rank"><span>${st.rank}e</span></td>
+                        <td>${fmtC(st.hw)}</td>
+                        <td>${fmtC(st.cw)}</td>
+                        <td>${fmtC(st.evaluation)}</td>
+                        <td>${fmtC(st.examen)}</td>
+                        <td class="col-total">${totC}</td>
+                        <td class="col-rank">${totC && st.rank ? `<span>${st.rank}e</span>` : ''}</td>
                         <td class="col-apprec">
-                            <strong>${escapeHtml(st.mention)}</strong> — ${escapeHtml(st.appreciation)}
+                            ${totC ? `<strong>${escapeHtml(st.mention || '')}</strong>${st.appreciation ? ' — ' + escapeHtml(st.appreciation) : ''}` : ''}
                         </td>
                     </tr>
-                    `).join('')}
+                    `;
+                    }).join('')}
                 </tbody>
             </table>
         </div>
@@ -22635,20 +23123,23 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
         `;
 
         (st.subjects || []).forEach(sub => {
+            const fmtC = (v) => (v !== '' && v !== null && v !== undefined && Number(v) > 0) ? v : '';
+            const totC = fmtC(sub.total);
             html += `
                 <tr>
                     <td>${escapeHtml(sub.subject)}</td>
                     <td>${escapeHtml(sub.teacher || '—')}</td>
-                    <td>${sub.hw}</td>
-                    <td>${sub.cw}</td>
-                    <td>${sub.evaluation}</td>
-                    <td>${sub.examen}</td>
-                    <td class="total-col">${sub.total}</td>
-                    <td class="apprec-col">${escapeHtml(sub.appreciation)}</td>
+                    <td>${fmtC(sub.hw)}</td>
+                    <td>${fmtC(sub.cw)}</td>
+                    <td>${fmtC(sub.evaluation)}</td>
+                    <td>${fmtC(sub.examen)}</td>
+                    <td class="total-col">${totC}</td>
+                    <td class="apprec-col">${totC ? escapeHtml(sub.appreciation || '') : ''}</td>
                 </tr>
             `;
         });
 
+        const avgC = (st.generalAverage !== '' && st.generalAverage !== null && st.generalAverage !== undefined && Number(st.generalAverage) > 0) ? `${st.generalAverage} / 100` : '';
         html += `
                     </tbody>
                 </table>
@@ -22658,7 +23149,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
                 <div class="summary-grid">
                     <div class="summary-card">
                         <div class="summary-card-label">Moyenne de l'Élève</div>
-                        <div class="summary-card-value" style="color:#1D4ED8; font-size:15px;">${st.generalAverage} / 100</div>
+                        <div class="summary-card-value" style="color:#1D4ED8; font-size:15px;">${avgC}</div>
                     </div>
                     <div class="summary-card">
                         <div class="summary-card-label">Moyenne de la Classe</div>
