@@ -2352,15 +2352,15 @@
                         <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
                             <div style="position:relative; width:92px; height:92px; flex-shrink:0;">
                                 <img id="student-profile-photo" src="" alt="Élève" style="width:92px; height:92px; border-radius:50%; object-fit:cover; border:3.5px solid #3B82F6; box-shadow:0 6px 16px rgba(37,99,235,0.22); background:#EFF6FF;">
-                                <button type="button" id="btnQuickEditStudentPhoto" onclick="openEditCurrentStudentModal()" title="Réservé à l'administrateur : Modifier la photo ou le nom de l'élève" style="display:none; position:absolute; bottom:0; right:0; width:32px; height:32px; border-radius:50%; background:#2563EB; color:white; border:2px solid white; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(37,99,235,0.4); font-size:0.82rem; transition:transform 0.2s;">
+                                <button type="button" id="btnQuickEditStudentPhoto" onclick="openEditCurrentStudentModal()" title="Modifier le nom, la date de naissance ou la photo de l'élève" style="display:flex; position:absolute; bottom:0; right:0; width:32px; height:32px; border-radius:50%; background:#2563EB; color:white; border:2px solid white; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 8px rgba(37,99,235,0.4); font-size:0.82rem; transition:transform 0.2s;">
                                     <i class="fas fa-camera"></i>
                                 </button>
                             </div>
                             <div>
                                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                                     <h2 id="student-profile-name" style="margin:0; color:#0F172A; font-size:1.45rem; font-weight:800; letter-spacing:-0.3px;"></h2>
-                                    <button type="button" id="btnEditStudentIdentity" onclick="openEditCurrentStudentModal()" class="pro-button" style="display:none; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:4px 10px; border-radius:8px; font-size:0.78rem; font-weight:700; cursor:pointer; align-items:center; gap:5px; box-shadow:none;" title="Réservé à l'administrateur : Modifier le nom ou la photo de l'élève">
-                                        <i class="fas fa-user-edit"></i> <span id="lblEditStudentBtn">Modifier nom / photo</span>
+                                    <button type="button" id="btnEditStudentIdentity" onclick="openEditCurrentStudentModal()" class="pro-button" style="display:inline-flex; background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; padding:5px 12px; border-radius:8px; font-size:0.8rem; font-weight:700; cursor:pointer; align-items:center; gap:6px; box-shadow:none;" title="Modifier le nom, la date de naissance ou la photo de l'élève">
+                                        <i class="fas fa-user-edit"></i> <span id="lblEditStudentBtn">Modifier nom / date de naissance / photo</span>
                                     </button>
                                 </div>
                                 <p id="student-profile-details" style="color:#64748B; margin:5px 0 8px 0; font-weight:600; font-size:0.95rem;"></p>
@@ -4130,9 +4130,9 @@
 
             <div style="margin-bottom:18px;">
                 <label for="editStudentModalBirthdayInput" id="lblEditStudentBirthday" style="display:block; font-weight:700; color:#334155; margin-bottom:6px; font-size:0.88rem;">
-                    <i class="fas fa-birthday-cake" style="color:#EC4899;"></i> Date d'anniversaire (optionnel) :
+                    <i class="fas fa-birthday-cake" style="color:#EC4899;"></i> Date de naissance (format jour/mois/année) :
                 </label>
-                <input type="text" id="editStudentModalBirthdayInput" placeholder="Ex: 04/2014 ou 15/05/2015" style="width:100%; padding:10px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.9rem; box-sizing:border-box;">
+                <input type="text" id="editStudentModalBirthdayInput" oninput="if(typeof formatParentDobInput==='function') formatParentDobInput(this);" placeholder="Ex: 15/05/2014" style="width:100%; padding:10px 14px; border-radius:10px; border:1.5px solid #CBD5E1; font-size:0.95rem; font-weight:700; box-sizing:border-box;">
             </div>
 
             <div id="editStudentModalStatus" style="margin-bottom:12px; font-size:0.88rem; font-weight:700;"></div>

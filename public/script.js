@@ -9198,7 +9198,6 @@ function renderStudentsGrid(students, className, section) {
     });
 
     const fallbackAvatar = getStudentFallbackAvatar(section);
-    const canAdminEditStudent = Boolean(!isParentMode && loggedInUser && typeof isUserAdmin === 'function' && isUserAdmin(loggedInUser, currentUserRole));
     grid.innerHTML = sortedStudents.map((s, idx) => {
         const safeName = (s.name || '').trim();
         const photoSrc = (s.photo && s.photo.trim() !== '') ? s.photo : fallbackAvatar;
@@ -9207,15 +9206,15 @@ function renderStudentsGrid(students, className, section) {
         const escapedPhoto = escapeHtml(s.photo || '').replace(/'/g, "\\'");
         const escapedBirthday = escapeHtml(s.birthday || '').replace(/'/g, "\\'");
         const animDelay = Math.min(idx * 0.03, 0.45).toFixed(2);
-        const adminEditBtnHtml = canAdminEditStudent ? `
-            <button type="button" onclick="event.stopPropagation(); openEditStudentProfileModal('${escapedId}', '${escapedName}', '${className}', '${section}', '${escapedPhoto}', '${escapedBirthday}')" title="${currentUserLanguage === 'ar' ? 'تعديل الاسم أو الصورة (للإدارة فقط)' : 'Modifier le nom ou la photo (Admin uniquement)'}" style="position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.78rem; transition:all 0.2s; z-index:2;" onmouseover="this.style.background='#2563EB'; this.style.color='white';" onmouseout="this.style.background='#EFF6FF'; this.style.color='#2563EB';">
+        const editBtnHtml = `
+            <button type="button" onclick="event.stopPropagation(); openEditStudentProfileModal('${escapedId}', '${escapedName}', '${className}', '${section}', '${escapedPhoto}', '${escapedBirthday}')" title="${currentUserLanguage === 'ar' ? 'تعديل الاسم أو تاريخ الميلاد أو الصورة' : 'Modifier le nom, la date de naissance ou la photo'}" style="position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.78rem; transition:all 0.2s; z-index:2;" onmouseover="this.style.background='#2563EB'; this.style.color='white';" onmouseout="this.style.background='#EFF6FF'; this.style.color='#2563EB';">
                 <i class="fas fa-pen"></i>
             </button>
-        ` : '';
-        const subtitleBadgeText = (canAdminEditStudent && s.birthday) ? `🎂 ${escapeHtml(s.birthday)}` : `<i class="fas fa-graduation-cap" style="color:#3B82F6; margin-right:4px;"></i> ${escapeHtml(className)}`;
+        `;
+        const subtitleBadgeText = `<i class="fas fa-graduation-cap" style="color:#3B82F6; margin-right:4px;"></i> ${escapeHtml(className)}`;
         return `
             <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapedName}', '${className}')" style="animation-delay:${animDelay}s; position:relative; background:white; border-radius:20px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1.5px solid #E2E8F0; transition:all 0.28s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
-                ${adminEditBtnHtml}
+                ${editBtnHtml}
                 <div style="position:relative; width:96px; height:96px; margin:0 auto 12px auto; overflow:hidden; border-radius:50%;">
                     <img src="${photoSrc}" loading="lazy" decoding="async" class="student-profile-avatar teacher-contact-photo" alt="${escapeHtml(safeName)}" onerror="this.onerror=null; this.src='${fallbackAvatar}';" style="width:96px; height:96px; border-radius:50%; object-fit:cover; border:3px solid ${borderColor}; background:#F8FAFC; display:block; margin:0 auto;">
                 </div>
@@ -9635,12 +9634,11 @@ async function openStudentDashboard(studentName, className) {
         const detailsEl = document.getElementById('student-profile-details');
         const photoEl = document.getElementById('student-profile-photo');
 
-        // Seul l'administrateur peut modifier la photo, le nom ou les données de l'élève
-        const canAdminEditStudent = Boolean(!isParentMode && loggedInUser && typeof isUserAdmin === 'function' && isUserAdmin(loggedInUser, currentUserRole));
+        // Afficher l'option pour modifier le nom, la date de naissance ou la photo de l'élève
         const quickPhotoBtn = document.getElementById('btnQuickEditStudentPhoto');
         const editIdentityBtn = document.getElementById('btnEditStudentIdentity');
-        if (quickPhotoBtn) quickPhotoBtn.style.display = canAdminEditStudent ? 'flex' : 'none';
-        if (editIdentityBtn) editIdentityBtn.style.display = canAdminEditStudent ? 'inline-flex' : 'none';
+        if (quickPhotoBtn) quickPhotoBtn.style.display = 'flex';
+        if (editIdentityBtn) editIdentityBtn.style.display = 'inline-flex';
 
         if (nameEl) nameEl.innerText = cleanName;
         if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : (section === 'filles' ? 'Filles 👧' : (section === 'maternelle' ? 'Maternelle 🧸🎨' : 'Primaire 🎒📚'))}`;
@@ -11313,13 +11311,6 @@ async function adminAddOrUpdateStudent() {
 // ============================================================================
 
 function openEditStudentProfileModal(id, name, className, section, photo, birthday) {
-    const canAdminEditStudent = Boolean(!isParentMode && loggedInUser && typeof isUserAdmin === 'function' && isUserAdmin(loggedInUser, currentUserRole));
-    if (!canAdminEditStudent) {
-        if (typeof displayAlert === 'function') {
-            displayAlert("Seul l'administrateur est autorisé à modifier la photo, le nom ou les données d'un élève.", true);
-        }
-        return;
-    }
     const modal = document.getElementById('editStudentProfileModal');
     if (!modal) return;
 
@@ -11371,14 +11362,14 @@ function openEditCurrentStudentModal() {
     const cleanName = selectedStudentObj.name;
     const className = selectedStudentObj.class || currentActiveClassName || 'PEI1';
     let photo = '';
-    let birthday = '';
+    let birthday = selectedStudentObj.birthday || '';
     let id = '';
 
     if (window.currentLoadedStudentsMap) {
         const st = window.currentLoadedStudentsMap.get(cleanName.toLowerCase());
         if (st) {
             photo = st.photo || '';
-            birthday = st.birthday || '';
+            if (st.birthday) birthday = st.birthday;
             id = st._id || '';
         }
     }
@@ -11457,13 +11448,6 @@ function handleStudentPhotoFileUpload(event) {
 window.handleStudentPhotoFileUpload = handleStudentPhotoFileUpload;
 
 async function saveEditedStudentProfile() {
-    const canAdminEditStudent = Boolean(!isParentMode && loggedInUser && typeof isUserAdmin === 'function' && isUserAdmin(loggedInUser, currentUserRole));
-    if (!canAdminEditStudent) {
-        if (typeof displayAlert === 'function') {
-            displayAlert("Action réservée exclusivement à l'administrateur.", true);
-        }
-        return;
-    }
     const id = document.getElementById('editStudentModalId')?.value || '';
     const originalName = document.getElementById('editStudentModalOriginalName')?.value?.trim() || '';
     const section = document.getElementById('editStudentModalSection')?.value || currentSection || 'garcons';
@@ -11521,6 +11505,7 @@ async function saveEditedStudentProfile() {
         if (selectedStudentObj && (!originalName || selectedStudentObj.name.toLowerCase() === originalName.toLowerCase())) {
             selectedStudentObj.name = newName;
             selectedStudentObj.class = className;
+            selectedStudentObj.birthday = savedStudent.birthday || birthday || '';
             const nameEl = document.getElementById('student-profile-name');
             const photoEl = document.getElementById('student-profile-photo');
             if (nameEl) nameEl.innerText = newName;
