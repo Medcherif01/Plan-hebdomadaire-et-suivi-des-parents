@@ -21387,7 +21387,9 @@ async function renderTeacherGradesTable() {
         if (!res.ok) throw new Error("Erreur serveur lors de la récupération des notes");
         const data = await res.json();
 
-        const students = Array.isArray(data.students) ? data.students : [];
+        const students = Array.isArray(data.students)
+            ? [...data.students].sort((a, b) => String(a.studentName || a.name || '').trim().localeCompare(String(b.studentName || b.name || '').trim(), 'fr', { sensitivity: 'base', numeric: true }))
+            : [];
         const isPei1 = Boolean(data.isPei1);
         const maxHw = data.maxHw || 20;
         const maxCw = data.maxCw || (isPei1 ? 30 : 20);
@@ -21935,11 +21937,13 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
       st._calculatedAverage = countNotes > 0 ? Math.round((sumNotes / countNotes) * 10) / 10 : (st.generalAverage || 0);
     });
 
-    // Tri par moyenne générale décroissante
-    students.sort((a, b) => b._calculatedAverage - a._calculatedAverage);
-    students.forEach((st, idx) => {
-      st._calculatedRank = idx + 1;
+    // Calcul du rang par moyenne générale décroissante sans altérer l'ordre alphabétique
+    const rankedStudents = [...students].sort((a, b) => (Number(b._calculatedAverage) || 0) - (Number(a._calculatedAverage) || 0));
+    rankedStudents.forEach((st, idx) => {
+      st._calculatedRank = (Number(st._calculatedAverage) || 0) > 0 ? (idx + 1) : '';
     });
+    // Toujours classer les noms des élèves par ordre alphabétique strict (A -> Z)
+    students.sort((a, b) => String(a.studentName || '').trim().localeCompare(String(b.studentName || '').trim(), 'fr', { sensitivity: 'base', numeric: true }));
 
     // Statistiques par matière (moyenne de classe, min, max, taux de réussite)
     const subjectStats = {};
@@ -21980,7 +21984,7 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
     <style>
         @page {
             size: A4 landscape;
-            margin: 5mm 6mm;
+            margin: 3mm 4mm;
         }
         * { box-sizing: border-box; }
         body {
@@ -21988,8 +21992,8 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
             color: #0F172A;
             background: #F1F5F9;
             margin: 0;
-            padding: 12px;
-            font-size: 8.5px;
+            padding: 8px;
+            font-size: 8px;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
         }
@@ -22004,7 +22008,7 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 14px;
+            margin-bottom: 10px;
             border: 1px solid #CBD5E1;
         }
         .btn-action-print {
@@ -22038,12 +22042,11 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
         .master-page-a4 {
             background: white;
             border: 1.5px solid #CBD5E1;
-            border-radius: 8px;
-            padding: 6mm 8mm;
+            border-radius: 6px;
+            padding: 3mm 4mm;
             margin: 0 auto;
             width: 100%;
-            max-width: 287mm;
-            min-height: 198mm;
+            max-width: 291mm;
             box-shadow: 0 4px 15px rgba(0,0,0,0.06);
             display: flex;
             flex-direction: column;
@@ -22056,33 +22059,33 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 2px solid #1E3A8A;
-            padding-bottom: 5px;
-            margin-bottom: 6px;
+            border-bottom: 1.5px solid #1E3A8A;
+            padding-bottom: 3px;
+            margin-bottom: 4px;
         }
         .school-title-fr {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             color: #1E3A8A;
             margin: 0;
-            letter-spacing: 0.4px;
+            letter-spacing: 0.3px;
         }
         .school-title-ar {
             font-family: 'Amiri', serif;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
             color: #1E3A8A;
             direction: rtl;
         }
         .doc-title-badge {
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: 800;
             color: #1E40AF;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.4px;
             text-transform: uppercase;
         }
         .doc-sub {
-            font-size: 8.5px;
+            font-size: 8px;
             font-weight: 700;
             color: #475569;
             margin-top: 1px;
@@ -22090,27 +22093,27 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
         .master-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 8px;
-            margin-bottom: 6px;
+            font-size: 7.8px;
+            margin-bottom: 4px;
         }
         .master-table th {
             background: #1E3A8A;
             color: white;
             font-weight: 700;
-            padding: 3.5px 3px;
+            padding: 2.5px 2px;
             border: 1px solid #1E3A8A;
             text-align: center;
             vertical-align: middle;
-            line-height: 1.15;
+            line-height: 1.1;
         }
         .master-table th.th-student {
             text-align: left;
-            padding-left: 6px;
+            padding-left: 5px;
             width: 135px;
         }
         .master-table th .th-teacher {
             display: block;
-            font-size: 6.5px;
+            font-size: 6px;
             font-weight: 500;
             color: #BFDBFE;
             margin-top: 1px;
@@ -22121,13 +22124,14 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
         }
         .master-table td {
             border: 1px solid #CBD5E1;
-            padding: 3px 3px;
+            padding: 2px 2px;
             text-align: center;
             vertical-align: middle;
+            line-height: 1.15;
         }
         .master-table td.td-student {
             text-align: left;
-            padding-left: 6px;
+            padding-left: 5px;
             font-weight: 700;
             color: #1E293B;
             white-space: nowrap;
@@ -22137,10 +22141,10 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
         }
         .grade-pill {
             display: inline-block;
-            padding: 1.5px 4px;
-            border-radius: 4px;
+            padding: 1px 3.5px;
+            border-radius: 3px;
             font-weight: 700;
-            font-size: 8px;
+            font-size: 7.5px;
         }
         .grade-high { background: #ECFDF5; color: #047857; }
         .grade-good { background: #EFF6FF; color: #1D4ED8; }
@@ -22155,7 +22159,7 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
             font-weight: 800;
             color: #1E3A8A;
             background: #EEF2FF;
-            font-size: 8.5px;
+            font-size: 8px;
         }
         .rank-col {
             font-weight: 800;
@@ -22163,7 +22167,7 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
             background: #EFF6FF;
         }
         .mention-col {
-            font-size: 7.5px;
+            font-size: 7px;
             font-weight: 700;
             color: #475569;
             text-align: left;
@@ -22173,40 +22177,40 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
         .stats-summary-row {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 6px;
-            margin-bottom: 6px;
+            gap: 5px;
+            margin-bottom: 4px;
         }
         .stat-card-mini {
             background: #F8FAFC;
             border: 1px solid #CBD5E1;
-            border-radius: 5px;
-            padding: 3px 6px;
+            border-radius: 4px;
+            padding: 2px 5px;
             text-align: center;
         }
         .stat-label-mini {
-            font-size: 7px;
+            font-size: 6.5px;
             font-weight: 700;
             color: #64748B;
             text-transform: uppercase;
         }
         .stat-val-mini {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 800;
             margin-top: 1px;
         }
         .signatures-row {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            padding-top: 4px;
-            border-top: 1.5px solid #CBD5E1;
+            gap: 6px;
+            padding-top: 3px;
+            border-top: 1px solid #CBD5E1;
         }
         .sig-box {
             border: 1px dashed #94A3B8;
-            border-radius: 5px;
-            padding: 4px 8px;
-            height: 44px;
-            font-size: 8px;
+            border-radius: 4px;
+            padding: 3px 6px;
+            height: 34px;
+            font-size: 7.5px;
             font-weight: 700;
             color: #475569;
             display: flex;
@@ -22224,7 +22228,7 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
                 box-shadow: none !important;
                 border: none !important;
                 margin: 0 !important;
-                padding: 4mm 6mm !important;
+                padding: 1.5mm 2mm !important;
                 width: 100% !important;
                 max-width: none !important;
                 page-break-inside: avoid !important;
@@ -22238,7 +22242,7 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
     <div class="no-print-bar">
         <div>
             <strong style="font-size:13px; color:#1E3A8A;">Procès-Verbal &amp; Relevé Général A4 — Classe : ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</strong>
-            <span style="color:#059669; font-weight:700; font-size:12px; margin-left:12px;">🌟 Toutes les matières réunies sur 1 seule page A4 (${students.length} élèves)</span>
+            <span style="color:#059669; font-weight:700; font-size:12px; margin-left:12px;">🌟 Ordre Alphabétique (A-Z) • Marges A4 minimales (${students.length} élèves)</span>
         </div>
         <div style="display:flex; gap:10px;">
             <button type="button" class="btn-action-download" onclick="downloadBulletinsStandalone()">
@@ -22256,23 +22260,23 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
             <div class="school-header">
                 <div>
                     <h1 class="school-title-fr">ÉCOLE BILINGUE AL-KAWTHAR</h1>
-                    <div style="font-size:8px; color:#64748B; font-style:italic;">Excellence &amp; Rigueur Pédagogique</div>
-                    <div style="font-size:8.5px; font-weight:800; color:#2563EB; margin-top:2px;">${escapeHtml(sectionTitle)}</div>
+                    <div style="font-size:7.5px; color:#64748B; font-style:italic;">Excellence &amp; Rigueur Pédagogique</div>
+                    <div style="font-size:8px; font-weight:800; color:#2563EB; margin-top:1px;">${escapeHtml(sectionTitle)}</div>
                 </div>
 
                 <div style="text-align:center;">
                     <div class="doc-title-badge">PROCÈS-VERBAL &amp; RELEVÉ GÉNÉRAL DES NOTES</div>
                     <div class="doc-sub">
-                        CLASSE : <strong style="color:#1E3A8A; font-size:9.5px;">${escapeHtml(chosenClass)}</strong> &bull;
-                        SEMESTRE : <strong style="color:#1E3A8A; font-size:9.5px;">${escapeHtml(semTitle)}</strong> &bull;
+                        CLASSE : <strong style="color:#1E3A8A; font-size:9px;">${escapeHtml(chosenClass)}</strong> &bull;
+                        SEMESTRE : <strong style="color:#1E3A8A; font-size:9px;">${escapeHtml(semTitle)}</strong> &bull;
                         ANNÉE SCOLAIRE : <strong>2025-2026</strong>
                     </div>
                 </div>
 
                 <div style="text-align:right;">
                     <div class="school-title-ar">مدرسة الكوثر ثنائية اللغة</div>
-                    <div style="font-size:8px; color:#475569; margin-top:2px;">Édition : <strong>${printDate}</strong></div>
-                    <div style="font-size:8px; color:#1E3A8A; font-weight:700;">Effectif : <strong>${students.length} Élève(s)</strong></div>
+                    <div style="font-size:7.5px; color:#475569; margin-top:1px;">Édition : <strong>${printDate}</strong></div>
+                    <div style="font-size:7.5px; color:#1E3A8A; font-weight:700;">Effectif : <strong>${students.length} Élève(s)</strong></div>
                 </div>
             </div>
 
@@ -22280,16 +22284,16 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
             <table class="master-table">
                 <thead>
                     <tr>
-                        <th style="width:24px;">N°</th>
-                        <th class="th-student">Nom &amp; Prénom de l'Élève</th>
+                        <th style="width:22px;">N°</th>
+                        <th class="th-student">Nom &amp; Prénom de l'Élève (A-Z)</th>
                         ${subjects.map(s => {
                             const t = subjectTeacherMap[s] || '';
                             return `<th>${escapeHtml(s)}${t ? `<span class="th-teacher">${escapeHtml(t)}</span>` : ''}</th>`;
                         }).join('')}
-                        <th style="width:42px; background:#1E40AF;">Total</th>
-                        <th style="width:44px; background:#1E3A8A;">Moyenne</th>
-                        <th style="width:30px; background:#0284C7;">Rang</th>
-                        <th style="width:75px; background:#334155; text-align:left; padding-left:4px;">Mention</th>
+                        <th style="width:40px; background:#1E40AF;">Total</th>
+                        <th style="width:42px; background:#1E3A8A;">Moyenne</th>
+                        <th style="width:28px; background:#0284C7;">Rang</th>
+                        <th style="width:72px; background:#334155; text-align:left; padding-left:4px;">Mention</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -22312,7 +22316,7 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
                             }).join('')}
                             <td class="total-col">${st._calculatedTotal > 0 ? st._calculatedTotal : ''}</td>
                             <td class="avg-col">${st._calculatedAverage > 0 ? st._calculatedAverage : ''}</td>
-                            <td class="rank-col">${st._calculatedAverage > 0 ? `${st._calculatedRank}<sup>${st._calculatedRank === 1 ? 'er' : 'e'}</sup>` : ''}</td>
+                            <td class="rank-col">${st._calculatedAverage > 0 && st._calculatedRank ? `${st._calculatedRank}<sup>${st._calculatedRank === 1 ? 'er' : 'e'}</sup>` : ''}</td>
                             <td class="mention-col">${st._calculatedAverage > 0 ? escapeHtml(st.mention || '') : ''}</td>
                         </tr>
                         `;
@@ -22327,7 +22331,7 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
                             return `<td style="font-weight:800; color:#1E3A8A; background:#EEF2FF;">${stat?.avg || '—'}</td>`;
                         }).join('')}
                         <td class="total-col">—</td>
-                        <td class="avg-col" style="font-size:9.5px; color:#1E40AF;">${classGeneralAvg}</td>
+                        <td class="avg-col" style="font-size:9px; color:#1E40AF;">${classGeneralAvg}</td>
                         <td class="rank-col">—</td>
                         <td class="mention-col" style="font-weight:800; color:#059669;">${classSuccessRate}% Réussite</td>
                     </tr>
@@ -22364,15 +22368,15 @@ function buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, secti
             <div class="signatures-row">
                 <div class="sig-box">
                     <span>Le Conseil des Professeurs :</span>
-                    <span style="font-size:7.5px; color:#64748B;">Émargement des enseignants</span>
+                    <span style="font-size:7px; color:#64748B;">Émargement des enseignants</span>
                 </div>
                 <div class="sig-box">
                     <span>Le Superviseur Pédagogique :</span>
-                    <span style="font-size:7.5px; color:#64748B;">Visa et validation de conformité</span>
+                    <span style="font-size:7px; color:#64748B;">Visa et validation de conformité</span>
                 </div>
                 <div class="sig-box">
                     <span>La Direction de l'Établissement :</span>
-                    <span style="font-size:7.5px; color:#64748B;">(Cachet officiel &amp; Signature)</span>
+                    <span style="font-size:7px; color:#64748B;">(Cachet officiel &amp; Signature)</span>
                 </div>
             </div>
         </div>
@@ -22403,13 +22407,14 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
     const maxExam = 30;
     const semTitle = chosenSemester === 'S1' ? 'PREMIER SEMESTRE' : 'DEUXIÈME SEMESTRE';
     const sectionBadge = section === 'garcons' ? 'GARÇONS' : (section === 'filles' ? 'FILLES' : (section === 'primaire' ? 'PRIMAIRE' : 'MATERNELLE'));
+    const sectionTitle = section === 'garcons' ? 'Section Garçons' : (section === 'filles' ? 'Section Filles' : (section === 'primaire' ? 'Section Primaire' : 'Section Maternelle'));
 
     // Si l'admin a choisi le Relevé Général sur 1 seule page A4 (toutes les matières cochées en colonnes)
     if (format === 'all_subjects_single_page') {
         return buildAllSubjectsSinglePageHTML(data, chosenClass, chosenSemester, section);
     }
 
-    // FORMAT PAR DÉFAUT & PRINCIPAL : Les matières sélectionnées se suivent les unes après les autres
+    // FORMAT PAR DÉFAUT & PRINCIPAL : Les matières sélectionnées se suivent en grille compacte A4 (marge minimale, max 2 pages par classe)
     if (format !== 'by_student') {
         const subjectSheets = Array.isArray(data.subjectSheets) ? data.subjectSheets : [];
         const sheetsToRender = (chosenSubject && chosenSubject !== 'all')
@@ -22417,9 +22422,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
           : subjectSheets;
 
         const effectiveSheets = sheetsToRender.length > 0 ? sheetsToRender : subjectSheets;
-        const totalStudentsCount = (Array.isArray(data.students) && data.students.length > 0) 
-            ? data.students.length 
-            : (effectiveSheets.length > 0 && Array.isArray(effectiveSheets[0].students) ? effectiveSheets[0].students.length : 0);
+        const useTwoCols = effectiveSheets.length > 1;
 
         let html = `<!DOCTYPE html>
 <html lang="fr" dir="ltr">
@@ -22432,7 +22435,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
     <style>
         @page {
             size: A4 portrait;
-            margin: 8mm 10mm;
+            margin: 3mm 4mm;
         }
         * { box-sizing: border-box; }
         body {
@@ -22440,8 +22443,8 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
             color: #0F172A;
             background: #F1F5F9;
             margin: 0;
-            padding: 16px;
-            font-size: 10px;
+            padding: 8px;
+            font-size: 8px;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
         }
@@ -22450,13 +22453,13 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
             top: 0;
             z-index: 1000;
             background: white;
-            padding: 12px 20px;
+            padding: 10px 16px;
             border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             border: 1px solid #CBD5E1;
             max-width: 210mm;
             margin-left: auto;
@@ -22466,172 +22469,183 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
             background: linear-gradient(135deg, #102A71, #1D4ED8);
             color: white;
             border: none;
-            padding: 9px 18px;
+            padding: 8px 16px;
             border-radius: 8px;
             font-weight: 700;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 12px;
+            font-size: 11.5px;
             box-shadow: 0 2px 8px rgba(16,42,113,0.3);
         }
         .btn-action-download {
             background: #059669;
             color: white;
             border: none;
-            padding: 9px 18px;
+            padding: 8px 16px;
             border-radius: 8px;
             font-weight: 700;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 12px;
+            font-size: 11.5px;
             box-shadow: 0 2px 8px rgba(5,150,105,0.3);
         }
         .master-doc-container {
             background: white;
-            border: 1.5px solid #CBD5E1;
-            border-radius: 8px;
-            padding: 10mm 12mm;
-            margin: 0 auto 20px auto;
+            border: 1px solid #CBD5E1;
+            border-radius: 6px;
+            padding: 3mm 4mm;
+            margin: 0 auto 10px auto;
             max-width: 210mm;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
         .school-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 2px solid #102A71;
-            padding-bottom: 10px;
-            margin-bottom: 16px;
+            border-bottom: 1.5px solid #102A71;
+            padding-bottom: 4px;
+            margin-bottom: 6px;
         }
         .school-logo-img {
-            width: 70px;
-            height: 70px;
+            width: 42px;
+            height: 42px;
             border-radius: 50%;
             object-fit: contain;
         }
         .school-header-center {
             text-align: center;
             flex: 1;
-            padding: 0 12px;
+            padding: 0 8px;
         }
         .school-title-fr {
-            font-size: 16px;
+            font-size: 12.5px;
             font-weight: 800;
             color: #102A71;
             margin: 0;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
+            line-height: 1.15;
         }
         .school-title-ar {
             font-family: 'Amiri', serif;
-            font-size: 17px;
+            font-size: 13px;
             font-weight: 700;
             color: #102A71;
             direction: rtl;
-            margin-top: 1px;
+            line-height: 1.1;
         }
         .doc-title-badge {
-            font-size: 11.5px;
+            font-size: 9.5px;
             font-weight: 800;
             color: #102A71;
-            margin-top: 4px;
-            letter-spacing: 0.4px;
+            margin-top: 1px;
+            letter-spacing: 0.3px;
             text-transform: uppercase;
         }
         .doc-sub {
-            font-size: 10px;
+            font-size: 8px;
             font-weight: 600;
-            color: #64748B;
-            margin-top: 2px;
+            color: #475569;
+            margin-top: 1px;
         }
         .badge-section-box {
-            border: 2px solid #102A71;
+            border: 1.5px solid #102A71;
             color: #102A71;
             font-weight: 800;
-            font-size: 12px;
-            padding: 6px 14px;
-            border-radius: 6px;
-            letter-spacing: 1px;
+            font-size: 9.5px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
             text-transform: uppercase;
             display: inline-block;
             background: #F8FAFC;
         }
+        .subjects-grid {
+            display: grid;
+            grid-template-columns: ${useTwoCols ? 'repeat(2, minmax(0, 1fr))' : '1fr'};
+            gap: 5px;
+            align-items: start;
+        }
         .subject-card {
             background: white;
-            border: 1.5px solid #CBD5E1;
-            border-radius: 8px;
-            padding: 12px 14px;
-            margin-bottom: 18px;
+            border: 1px solid #CBD5E1;
+            border-radius: 5px;
+            padding: 4px 5px;
+            margin-bottom: 0;
             page-break-inside: avoid;
             break-inside: avoid;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.03);
-        }
-        .subject-card:last-of-type {
-            margin-bottom: 14px;
         }
         .subject-card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-wrap: wrap;
-            gap: 10px;
-            font-size: 11px;
+            gap: 4px;
+            font-size: 7.8px;
             color: #1E293B;
-            margin-bottom: 8px;
-            padding-bottom: 6px;
+            margin-bottom: 3px;
+            padding-bottom: 2px;
             border-bottom: 1px solid #E2E8F0;
+            line-height: 1.15;
         }
         .subject-card-header strong {
             color: #0F172A;
         }
         .subject-card-header .subject-title {
             color: #1D4ED8;
-            font-size: 12.5px;
+            font-size: 8.8px;
             font-weight: 800;
         }
         .bareme-pill {
             background: #EFF6FF;
             border: 1px solid #BFDBFE;
-            border-radius: 5px;
-            padding: 4px 10px;
-            font-size: 9.5px;
+            border-radius: 3px;
+            padding: 1.5px 5px;
+            font-size: 6.8px;
             color: #1E40AF;
             font-weight: 600;
-            margin-bottom: 10px;
+            margin-bottom: 3px;
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 6px;
+            line-height: 1.1;
         }
         .grades-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 9.5px;
+            font-size: ${useTwoCols ? '7.2px' : '8.5px'};
         }
         .grades-table th {
             background: #102A71;
             color: white;
             font-weight: 700;
-            padding: 6px 4px;
+            padding: 2px 2px;
             border: 1px solid #102A71;
             text-align: center;
+            line-height: 1.1;
         }
         .grades-table th.col-name {
             text-align: left;
-            padding-left: 8px;
+            padding-left: 4px;
         }
         .grades-table td {
             border: 1px solid #CBD5E1;
-            padding: 5px 4px;
+            padding: 1.4px 2px;
             text-align: center;
+            line-height: 1.12;
         }
         .grades-table td.col-name {
             text-align: left;
-            padding-left: 8px;
+            padding-left: 4px;
             font-weight: 700;
             color: #0F172A;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: ${useTwoCols ? '112px' : '200px'};
         }
         .grades-table tr:nth-child(even) td:not(.col-total) {
             background: #F8FAFC;
@@ -22640,38 +22654,42 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
             font-weight: 800;
             color: #1D4ED8;
             background: #EFF6FF;
-            font-size: 11px;
+            font-size: ${useTwoCols ? '7.8px' : '9.5px'};
         }
         .grades-table td.col-rank span {
             background: #EEF2FF;
             color: #3730A3;
             font-weight: 800;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 9.5px;
+            padding: 0.5px 3px;
+            border-radius: 3px;
+            font-size: ${useTwoCols ? '6.8px' : '8.5px'};
         }
         .grades-table td.col-apprec {
             text-align: left;
-            padding-left: 8px;
-            font-size: 9px;
+            padding-left: 4px;
+            font-size: ${useTwoCols ? '6.6px' : '8px'};
             color: #475569;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: ${useTwoCols ? '68px' : '160px'};
         }
         .signatures-row {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin-top: 18px;
-            padding-top: 12px;
-            border-top: 1.5px solid #CBD5E1;
+            gap: 6px;
+            margin-top: 6px;
+            padding-top: 4px;
+            border-top: 1px solid #CBD5E1;
             page-break-inside: avoid;
             break-inside: avoid;
         }
         .sig-box {
             border: 1px dashed #94A3B8;
-            border-radius: 6px;
-            padding: 8px 10px;
-            height: 60px;
-            font-size: 9px;
+            border-radius: 4px;
+            padding: 3px 6px;
+            height: 34px;
+            font-size: 7.5px;
             font-weight: 700;
             color: #475569;
             display: flex;
@@ -22689,7 +22707,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
                 box-shadow: none !important;
                 border: none !important;
                 margin: 0 !important;
-                padding: 4mm 6mm !important;
+                padding: 1mm 1.5mm !important;
                 width: 100% !important;
                 max-width: none !important;
             }
@@ -22697,7 +22715,6 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
                 box-shadow: none !important;
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
-                margin-bottom: 14px !important;
             }
         }
     </style>
@@ -22705,8 +22722,8 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
 <body>
     <div class="no-print-bar">
         <div>
-            <strong style="font-size:14px; color:#102A71;">Procès-Verbal des Notes — Classe : ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</strong>
-            <span style="color:#64748B; font-size:12px; margin-left:10px;">${effectiveSheets.length} Matière(s) | Toutes les matières se suivent les unes après les autres</span>
+            <strong style="font-size:13.5px; color:#102A71;">Procès-Verbal des Notes — Classe : ${escapeHtml(chosenClass)} (${escapeHtml(chosenSemester)})</strong>
+            <span style="color:#059669; font-weight:700; font-size:11.5px; margin-left:10px;">✓ Ordre Alphabétique (A-Z) • Format A4 Marge Minimale (Max 2 pages / classe) • ${effectiveSheets.length} Matière(s)</span>
         </div>
         <div style="display:flex; gap:10px;">
             <button type="button" class="btn-action-download" onclick="downloadBulletinsStandalone()">
@@ -22719,55 +22736,52 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
     </div>
 
     <div class="master-doc-container">
-        <!-- EN-TÊTE OFFICIEL CONFORME À L'EXEMPLAIRE DU CLIENT -->
+        <!-- EN-TÊTE OFFICIEL COMPACT -->
         <div class="school-header">
-            <div style="width:75px; text-align:left;">
+            <div style="width:48px; text-align:left;">
                 <img src="https://cdn.glitch.global/1c613b14-019c-488a-a856-d55d64d174d0/al-kawthar-international-schools-jeddah-saudi-arabia-modified.png?v=1739565146299" 
                      alt="Logo Al-Kawthar" class="school-logo-img" 
                      onerror="this.src='/logo-alkawthar.svg'; this.onerror=null;">
             </div>
             <div class="school-header-center">
-                <h1 class="school-title-fr">ÉCOLES INTERNATIONALES AL-KAWTHAR</h1>
-                <div class="school-title-ar">مدارس الكوثر العالمية</div>
-                <div class="doc-title-badge">PROCÈS-VERBAL &amp; BULLETIN DES NOTES PAR MATIÈRE</div>
-                <div class="doc-sub">Année Scolaire 2025 - 2026 — ${semTitle}</div>
+                <h1 class="school-title-fr">ÉCOLES INTERNATIONALES AL-KAWTHAR — مدارس الكوثر العالمية</h1>
+                <div class="doc-title-badge">PROCÈS-VERBAL &amp; BULLETIN DES NOTES PAR MATIÈRE — CLASSE : ${escapeHtml(chosenClass)}</div>
+                <div class="doc-sub">Année Scolaire 2025 - 2026 — ${semTitle} — Barème : HW /${maxHw} + CW /${maxCw} + Éval /${maxEval} + Exam /${maxExam} = /100</div>
             </div>
-            <div style="width:95px; text-align:right;">
+            <div style="width:80px; text-align:right;">
                 <span class="badge-section-box">
                     ${escapeHtml(sectionBadge)}
                 </span>
             </div>
         </div>
 
-        <!-- LISTE CONTINUE DES MATIÈRES SE SUIVANT LES UNES APRÈS LES AUTRES -->
+        <!-- GRILLE COMPACTE DES MATIÈRES (2 COLONNES POUR TENIR SUR 2 PAGES A4 MAXIMUM) -->
+        <div class="subjects-grid">
         ${effectiveSheets.map(sheet => {
-            const stList = Array.isArray(sheet.students) ? sheet.students : [];
+            const rawStList = Array.isArray(sheet.students) ? sheet.students : [];
+            // Tri alphabétique strict (A -> Z) des noms des élèves
+            const stList = [...rawStList].sort((a, b) => String(a.studentName || '').trim().localeCompare(String(b.studentName || '').trim(), 'fr', { sensitivity: 'base', numeric: true }));
             const tName = sheet.teacher || '—';
             return `
         <div class="subject-card">
             <div class="subject-card-header">
-                <div><strong>Classe :</strong> <span>${escapeHtml(chosenClass)}</span></div>
-                <div><strong>Matière :</strong> <span class="subject-title">${escapeHtml(sheet.subject)}</span></div>
-                <div><strong>Enseignant :</strong> <strong>${escapeHtml(tName)}</strong></div>
-                <div><strong>Effectif :</strong> <strong>${stList.length} Élève(s)</strong></div>
-            </div>
-
-            <div class="bareme-pill">
-                Barème officiel : HW /${maxHw} + CW /${maxCw} + Éval /${maxEval} + Exam /${maxExam} = Total /100
+                <div><span class="subject-title">${escapeHtml(sheet.subject)}</span></div>
+                <div><strong>Prof :</strong> <strong>${escapeHtml(tName)}</strong></div>
+                <div><strong>Classe :</strong> <span>${escapeHtml(chosenClass)} (${stList.length} él.)</span></div>
             </div>
 
             <table class="grades-table">
                 <thead>
                     <tr>
-                        <th style="width:34px;">N°</th>
-                        <th class="col-name">Nom et Prénom de l'Élève</th>
-                        <th style="width:75px;">Devoirs (/${maxHw})</th>
-                        <th style="width:75px;">Classe (/${maxCw})</th>
-                        <th style="width:75px;">Évaluation (/${maxEval})</th>
-                        <th style="width:75px;">Examen (/${maxExam})</th>
-                        <th style="width:85px; background:#0C2158;">Total (/100)</th>
-                        <th style="width:48px;">Rang</th>
-                        <th class="col-name" style="width:170px;">Appréciation / Mention</th>
+                        <th style="width:18px;">N°</th>
+                        <th class="col-name">Nom &amp; Prénom (A-Z)</th>
+                        <th style="width:28px;">HW<br>/${maxHw}</th>
+                        <th style="width:28px;">CW<br>/${maxCw}</th>
+                        <th style="width:28px;">Éval<br>/${maxEval}</th>
+                        <th style="width:28px;">Exam<br>/${maxExam}</th>
+                        <th style="width:32px; background:#0C2158;">Total<br>/100</th>
+                        <th style="width:24px;">Rg</th>
+                        <th class="col-name" style="width:${useTwoCols ? '68px' : '150px'};">Mention</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -22785,7 +22799,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
                         <td class="col-total">${totC}</td>
                         <td class="col-rank">${totC && st.rank ? `<span>${st.rank}e</span>` : ''}</td>
                         <td class="col-apprec">
-                            ${totC ? `<strong>${escapeHtml(st.mention || '')}</strong>${st.appreciation ? ' — ' + escapeHtml(st.appreciation) : ''}` : ''}
+                            ${totC ? `<strong>${escapeHtml(st.mention || '')}</strong>${(!useTwoCols && st.appreciation) ? ' — ' + escapeHtml(st.appreciation) : ''}` : ''}
                         </td>
                     </tr>
                     `;
@@ -22795,20 +22809,21 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
         </div>
             `;
         }).join('')}
+        </div>
 
         <!-- SIGNATURES ET VALIDATION FINALE -->
         <div class="signatures-row">
             <div class="sig-box">
                 <span>Enseignants de la Classe :</span>
-                <span style="font-size:8.5px; color:#64748B;">Conformité des notes saisies</span>
+                <span style="font-size:7px; color:#64748B;">Conformité des notes saisies</span>
             </div>
             <div class="sig-box">
                 <span>Superviseur Pédagogique :</span>
-                <span style="font-size:8.5px; color:#64748B;">Visa et validation de conformité</span>
+                <span style="font-size:7px; color:#64748B;">Visa et validation de conformité</span>
             </div>
             <div class="sig-box">
                 <span>Direction des Études :</span>
-                <span style="font-size:8.5px; color:#64748B;">(Cachet officiel &amp; Signature)</span>
+                <span style="font-size:7px; color:#64748B;">(Cachet officiel &amp; Signature)</span>
             </div>
         </div>
     </div>
@@ -22829,8 +22844,10 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
         return html;
     }
 
-    // FORMAT SECONDAIRE : Bulletins individuels par élève (Toutes les matières de chaque élève)
-    const students = Array.isArray(data.students) ? data.students : [];
+    // FORMAT SECONDAIRE : Bulletins individuels par élève (Triés par ordre alphabétique A-Z, marges A4 minimales)
+    const students = Array.isArray(data.students)
+        ? [...data.students].sort((a, b) => String(a.studentName || '').trim().localeCompare(String(b.studentName || '').trim(), 'fr', { sensitivity: 'base', numeric: true }))
+        : [];
     const stats = data.classStats || {};
 
     let html = `<!DOCTYPE html>
@@ -22844,7 +22861,7 @@ function buildClassBulletinsHTML(data, chosenClass, chosenSemester, section, cho
     <style>
         @page {
             size: A4 portrait;
-            margin: 8mm 10mm;
+            margin: 3mm 4mm;
         }
         * { box-sizing: border-box; }
         body {

@@ -13349,6 +13349,9 @@ app.get('/api/student-grades-data', async (req, res) => {
       }));
     }
 
+    // Toujours trier les élèves par ordre alphabétique (A -> Z)
+    classStudents.sort((a, b) => String(a.name || '').trim().localeCompare(String(b.name || '').trim(), 'fr', { sensitivity: 'base', numeric: true }));
+
     // 2. Récupérer les notes déjà enregistrées pour cette classe, matière et semestre
     const semClean = String(semester || '1').trim();
     const semNum = semClean.replace(/^s/i, '');
@@ -13458,6 +13461,8 @@ app.get('/api/student-grades-data', async (req, res) => {
         evalCount: effectiveEvals.length
       };
     });
+
+    enrichedStudents.sort((a, b) => String(a.studentName || '').trim().localeCompare(String(b.studentName || '').trim(), 'fr', { sensitivity: 'base', numeric: true }));
 
     res.json({
       success: true,
@@ -13779,6 +13784,9 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       }));
     }
 
+    // Toujours trier les élèves par ordre alphabétique strict (A -> Z)
+    classStudents.sort((a, b) => String(a.name || '').trim().localeCompare(String(b.name || '').trim(), 'fr', { sensitivity: 'base', numeric: true }));
+
     // 2. Déterminer la liste des matières de la classe directement depuis le Plan Hebdomadaire (Tableau de saisie)
     const planExtracted = await extractClassSubjectsAndTeachersFromPlan(db, section, classe);
     const fallbackSubjects = (section === 'garcons' || section === 'filles')
@@ -13965,11 +13973,13 @@ app.get('/api/class-bulletins-data', async (req, res) => {
         };
       });
 
-      // Tri par note décroissante pour le rang
-      subjStudents.sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0));
-      subjStudents.forEach((s, idx) => {
-        s.rank = idx + 1;
+      // Calcul du rang selon la note décroissante sans altérer l'ordre alphabétique des élèves
+      const rankedByGrade = [...subjStudents].sort((a, b) => (Number(b.total) || 0) - (Number(a.total) || 0));
+      rankedByGrade.forEach((s, idx) => {
+        s.rank = (Number(s.total) || 0) > 0 ? (idx + 1) : '';
       });
+      // Maintenir impérativement l'ordre alphabétique (A -> Z) des noms d'élèves
+      subjStudents.sort((a, b) => String(a.studentName || '').trim().localeCompare(String(b.studentName || '').trim(), 'fr', { sensitivity: 'base', numeric: true }));
 
       const totals = subjStudents.map(s => Number(s.total) || 0).filter(t => t > 0);
       const subjAvg = totals.length > 0 ? Math.round((totals.reduce((a, b) => a + b, 0) / totals.length) * 10) / 10 : '';
@@ -14036,10 +14046,13 @@ app.get('/api/class-bulletins-data', async (req, res) => {
       };
     });
 
-    studentsBulletins.sort((a, b) => (Number(b.generalAverage) || 0) - (Number(a.generalAverage) || 0));
-    studentsBulletins.forEach((st, idx) => {
-      st.rank = idx + 1;
+    // Calcul du rang selon la moyenne générale décroissante sans altérer l'ordre alphabétique des élèves
+    const rankedBulletins = [...studentsBulletins].sort((a, b) => (Number(b.generalAverage) || 0) - (Number(a.generalAverage) || 0));
+    rankedBulletins.forEach((st, idx) => {
+      st.rank = (Number(st.generalAverage) || 0) > 0 ? (idx + 1) : '';
     });
+    // Maintenir impérativement l'ordre alphabétique (A -> Z) des noms d'élèves
+    studentsBulletins.sort((a, b) => String(a.studentName || '').trim().localeCompare(String(b.studentName || '').trim(), 'fr', { sensitivity: 'base', numeric: true }));
 
     const averagesList = studentsBulletins.map(s => Number(s.generalAverage) || 0).filter(a => a > 0);
     const classAvg = averagesList.length > 0 ? Math.round((averagesList.reduce((a, b) => a + b, 0) / averagesList.length) * 10) / 10 : '';
