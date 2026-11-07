@@ -1,5 +1,13 @@
 // api/index.js — v1, sélection dynamique du modèle, sortie JSON via prompt (sans generationConfig)
 
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ [Process Guard] Uncaught Exception:', err && err.stack ? err.stack : err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ [Process Guard] Unhandled Rejection:', reason);
+});
+
 // Protection contre les chargements multiples du module (Railway/Serverless)
 if (global.appInstance) {
   console.log('⚠️ Module api/index.js déjà chargé, réutilisation de l\'instance existante');
@@ -316,18 +324,32 @@ const USE_GROQ = GROQ_API_KEY ? true : false;
 const AI_API_KEY = USE_GROQ ? GROQ_API_KEY : GEMINI_API_KEY;
 
 // Configuration Web Push (VAPID)
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BDuAoL4lagqZmYl4BPdCFYBwRhoqGMrcWUFAbF1pMBWq2e0JOV6fL_WitURlXXhXTROGB2vYpnvgSDZfAoZq0Jo';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'TVK1zF6o5s-SK3OQnGCMgu4KZCNxg3py4YA4sMqtItg';
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@plan-hebdomadaire.com';
+const DEFAULT_VAPID_PUBLIC_KEY = 'BDuAoL4lagqZmYl4BPdCFYBwRhoqGMrcWUFAbF1pMBWq2e0JOV6fL_WitURlXXhXTROGB2vYpnvgSDZfAoZq0Jo';
+const DEFAULT_VAPID_PRIVATE_KEY = 'TVK1zF6o5s-SK3OQnGCMgu4KZCNxg3py4YA4sMqtItg';
+const DEFAULT_VAPID_SUBJECT = 'mailto:admin@plan-hebdomadaire.com';
+
+const VAPID_PUBLIC_KEY = (process.env.VAPID_PUBLIC_KEY || '').trim() || DEFAULT_VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = (process.env.VAPID_PRIVATE_KEY || '').trim() || DEFAULT_VAPID_PRIVATE_KEY;
+const rawVapidSubject = (process.env.VAPID_SUBJECT || '').trim();
+const VAPID_SUBJECT = (rawVapidSubject.startsWith('mailto:') || rawVapidSubject.startsWith('https://'))
+  ? rawVapidSubject
+  : DEFAULT_VAPID_SUBJECT;
 
 // Configuration de web-push avec les clés VAPID
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(
-    VAPID_SUBJECT,
-    VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY
-  );
-  console.log('✅ Web Push VAPID configuré');
+  try {
+    webpush.setVapidDetails(
+      VAPID_SUBJECT,
+      VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY
+    );
+    console.log('✅ Web Push VAPID configuré');
+  } catch (vapidErr) {
+    console.warn('⚠️ Clés VAPID personnalisées invalides, utilisation des clés par défaut:', vapidErr.message);
+    try {
+      webpush.setVapidDetails(DEFAULT_VAPID_SUBJECT, DEFAULT_VAPID_PUBLIC_KEY, DEFAULT_VAPID_PRIVATE_KEY);
+    } catch (e) {}
+  }
 } else {
   console.warn('⚠️ Clés VAPID manquantes - notifications push désactivées');
 }
@@ -1464,37 +1486,51 @@ async function sanitizeDatabaseClassesAndSections(db) {
   }
 }
 
+let dbInitPromise = null;
+
 async function connectToDatabase() {
-  if (cachedDb) return cachedDb;
-  const mongoUrl = (process.env.MONGO_URL || MONGO_URL || '').trim();
-  if (!mongoUrl || (!mongoUrl.startsWith('mongodb://') && !mongoUrl.startsWith('mongodb+srv://'))) {
-    cachedDb = new InMemoryDb();
-    if (!hasCleanedInitialPlans) {
-      hasCleanedInitialPlans = true;
-      clearAllStoredLessonPlans(cachedDb);
-      await sanitizeDatabaseClassesAndSections(cachedDb);
+  if (cachedDb && hasCleanedInitialPlans) return cachedDb;
+  if (dbInitPromise) return dbInitPromise;
+
+  dbInitPromise = (async () => {
+    const mongoUrl = (process.env.MONGO_URL || MONGO_URL || '').trim();
+    if (!mongoUrl || (!mongoUrl.startsWith('mongodb://') && !mongoUrl.startsWith('mongodb+srv://'))) {
+      const db = cachedDb || new InMemoryDb();
+      if (!hasCleanedInitialPlans) {
+        hasCleanedInitialPlans = true;
+        await clearAllStoredLessonPlans(db);
+        await sanitizeDatabaseClassesAndSections(db);
+      }
+      cachedDb = db;
+      return cachedDb;
     }
-    return cachedDb;
-  }
+    try {
+      const client = new MongoClient(mongoUrl, { connectTimeoutMS: 5000, serverSelectionTimeoutMS: 5000 });
+      await client.connect();
+      const db = client.db();
+      if (!hasCleanedInitialPlans) {
+        hasCleanedInitialPlans = true;
+        await clearAllStoredLessonPlans(db);
+        await sanitizeDatabaseClassesAndSections(db);
+      }
+      cachedDb = db;
+      return db;
+    } catch (err) {
+      const db = cachedDb || new InMemoryDb();
+      if (!hasCleanedInitialPlans) {
+        hasCleanedInitialPlans = true;
+        await clearAllStoredLessonPlans(db);
+        await sanitizeDatabaseClassesAndSections(db);
+      }
+      cachedDb = db;
+      return cachedDb;
+    }
+  })();
+
   try {
-    const client = new MongoClient(mongoUrl, { connectTimeoutMS: 5000, serverSelectionTimeoutMS: 5000 });
-    await client.connect();
-    const db = client.db();
-    cachedDb = db;
-    if (!hasCleanedInitialPlans) {
-      hasCleanedInitialPlans = true;
-      clearAllStoredLessonPlans(cachedDb);
-      await sanitizeDatabaseClassesAndSections(cachedDb);
-    }
-    return db;
-  } catch (err) {
-    cachedDb = new InMemoryDb();
-    if (!hasCleanedInitialPlans) {
-      hasCleanedInitialPlans = true;
-      clearAllStoredLessonPlans(cachedDb);
-      await sanitizeDatabaseClassesAndSections(cachedDb);
-    }
-    return cachedDb;
+    return await dbInitPromise;
+  } finally {
+    dbInitPromise = null;
   }
 }
 
@@ -14177,17 +14213,22 @@ app.use((err, req, res, next) => {
 });
 
 // Configuration Port et Host — Port 3000 requis pour l'environnement AI Studio
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 
 // Ne démarrer le serveur d'écoute HTTP que si on n'est pas sur une fonction Serverless Vercel
 if (!process.env.VERCEL) {
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log(`✅ Server is running and listening on http://${HOST}:${PORT}`);
     console.log(`🚀 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔑 IA Provider: ${USE_GROQ ? 'GROQ (llama-3.3-70b)' : 'GEMINI'}`);
     console.log(`📊 MongoDB: ${MONGO_URL ? '✅ Configured' : '❌ Missing'}`);
     console.log(`📄 Templates: ${LESSON_TEMPLATE_URL && WORD_TEMPLATE_URL ? '✅ Configured' : '❌ Missing'}`);
+  });
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+  server.on('error', (err) => {
+    console.error('⚠️ HTTP Server error:', err.message);
   });
 }
 

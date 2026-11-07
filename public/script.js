@@ -7531,6 +7531,15 @@ function updateTopNavGradesButtonsVisibility(inParentSpaceView = false) {
     }
 }
 
+function canCurrentUserModifyStudentData() {
+    if (isParentMode) return false;
+    if (!loggedInUser) return false;
+    if (typeof isUserAdminOrSupervisor === 'function') {
+        return Boolean(isUserAdminOrSupervisor(loggedInUser, currentUserRole));
+    }
+    return loggedInUser === 'Med01' || currentUserRole === 'admin' || currentUserRole === 'supervisor';
+}
+
 function applyParentUIMode(enabled) {
     isParentMode = enabled;
     
@@ -7553,6 +7562,12 @@ function applyParentUIMode(enabled) {
         if (logoutBtn) {
             logoutBtn.style.display = 'none'; // Enlève le bouton "Retour Accueil" dans l'espace parent
         }
+        const quickPhotoBtn = document.getElementById('btnQuickEditStudentPhoto');
+        const editIdentityBtn = document.getElementById('btnEditStudentIdentity');
+        const editModal = document.getElementById('editStudentProfileModal');
+        if (quickPhotoBtn) quickPhotoBtn.style.display = 'none';
+        if (editIdentityBtn) editIdentityBtn.style.display = 'none';
+        if (editModal) editModal.style.display = 'none';
         document.querySelectorAll('.btn-copy-parent-link').forEach(btn => btn.style.display = 'none');
         if (mainTitle) mainTitle.textContent = 'Espace Parents - Portail Suivi & Devoirs';
     } else {
@@ -8195,7 +8210,7 @@ function renderParentPlanCards(rows) {
     });
 
     let tableHtml = '';
-    const isAdminUser = (loggedInUser === 'Med01' || currentUserRole === 'admin');
+    const isAdminUser = canCurrentUserModifyStudentData();
 
     if (activeSpecialDay) {
         // AFFICHAGE DU JOUR FUSIONNÉ (PAS DE COURS / PHOTOS / ÉVÉNEMENT)
@@ -8739,6 +8754,10 @@ async function saveAdminSpecialDay() {
 }
 
 async function deleteAdminSpecialDay(id) {
+    if (!canCurrentUserModifyStudentData()) {
+        displayAlert("Action non autorisée : les modifications sont réservées à l'administration.", true);
+        return;
+    }
     if (!confirm('Voulez-vous vraiment supprimer cette fusion de jour / journée spéciale ?')) return;
 
     try {
@@ -8755,6 +8774,10 @@ async function deleteAdminSpecialDay(id) {
 
 // Quick Modal de fusion depuis la vue des parents ou le bouton rapide
 function openSpecialDayQuickModal(day, classe) {
+    if (!canCurrentUserModifyStudentData()) {
+        displayAlert("Action non autorisée : les modifications sont réservées à l'administration.", true);
+        return;
+    }
     const modal = document.getElementById('specialDayQuickModal');
     if (!modal) return;
 
@@ -8945,6 +8968,10 @@ function renderQuickSpecialPhotosPreview() {
 }
 
 async function saveQuickSpecialDay() {
+    if (!canCurrentUserModifyStudentData()) {
+        displayAlert("Action non autorisée : les modifications sont réservées à l'administration.", true);
+        return;
+    }
     const section = document.getElementById('quickSpecialSection')?.value || currentSection || 'garcons';
     const week = document.getElementById('quickSpecialWeek')?.value;
     const day = document.getElementById('quickSpecialDay')?.value;
@@ -9206,11 +9233,12 @@ function renderStudentsGrid(students, className, section) {
         const escapedPhoto = escapeHtml(s.photo || '').replace(/'/g, "\\'");
         const escapedBirthday = escapeHtml(s.birthday || '').replace(/'/g, "\\'");
         const animDelay = Math.min(idx * 0.03, 0.45).toFixed(2);
-        const editBtnHtml = `
+        const canEditStudent = canCurrentUserModifyStudentData();
+        const editBtnHtml = canEditStudent ? `
             <button type="button" onclick="event.stopPropagation(); openEditStudentProfileModal('${escapedId}', '${escapedName}', '${className}', '${section}', '${escapedPhoto}', '${escapedBirthday}')" title="${currentUserLanguage === 'ar' ? 'تعديل الاسم أو تاريخ الميلاد أو الصورة' : 'Modifier le nom, la date de naissance ou la photo'}" style="position:absolute; top:10px; right:10px; width:30px; height:30px; border-radius:50%; background:#EFF6FF; color:#2563EB; border:1px solid #BFDBFE; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.78rem; transition:all 0.2s; z-index:2;" onmouseover="this.style.background='#2563EB'; this.style.color='white';" onmouseout="this.style.background='#EFF6FF'; this.style.color='#2563EB';">
                 <i class="fas fa-pen"></i>
             </button>
-        `;
+        ` : '';
         const subtitleBadgeText = `<i class="fas fa-graduation-cap" style="color:#3B82F6; margin-right:4px;"></i> ${escapeHtml(className)}`;
         return `
             <div class="student-card-item teacher-contact-card" onclick="openStudentDashboard('${escapedName}', '${className}')" style="animation-delay:${animDelay}s; position:relative; background:white; border-radius:20px; padding:22px 18px; text-align:center; cursor:pointer; box-shadow:0 4px 18px rgba(0,0,0,0.06); border:1.5px solid #E2E8F0; transition:all 0.28s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; max-width:220px; will-change:transform;">
@@ -9417,6 +9445,10 @@ async function loadHomeworkShowcase() {
 
 // ---------------- GESTION ÉLÈVE DE LA SEMAINE (ADMIN & MODAL) ----------------
 function openStudentOfWeekAdminModal() {
+    if (!canCurrentUserModifyStudentData()) {
+        displayAlert("Action non autorisée : les modifications sont réservées à l'administration.", true);
+        return;
+    }
     const modal = document.getElementById('studentOfWeekAdminModal');
     if (modal) {
         modal.style.display = 'flex';
@@ -9449,6 +9481,10 @@ function previewModalSotwPhoto() {
 window.previewModalSotwPhoto = previewModalSotwPhoto;
 
 async function saveStudentOfWeekFromModal() {
+    if (!canCurrentUserModifyStudentData()) {
+        displayAlert("Action non autorisée : les modifications sont réservées à l'administration.", true);
+        return;
+    }
     const name = document.getElementById('modalSotwName')?.value?.trim();
     const cls = document.getElementById('modalSotwClass')?.value?.trim();
     const stars = Number(document.getElementById('modalSotwStars')?.value) || 5;
@@ -9634,11 +9670,12 @@ async function openStudentDashboard(studentName, className) {
         const detailsEl = document.getElementById('student-profile-details');
         const photoEl = document.getElementById('student-profile-photo');
 
-        // Afficher l'option pour modifier le nom, la date de naissance ou la photo de l'élève
+        // Masquer les options de modification pour les parents (autorisé uniquement pour l'administration hors mode parent)
+        const canEditStudent = canCurrentUserModifyStudentData();
         const quickPhotoBtn = document.getElementById('btnQuickEditStudentPhoto');
         const editIdentityBtn = document.getElementById('btnEditStudentIdentity');
-        if (quickPhotoBtn) quickPhotoBtn.style.display = 'flex';
-        if (editIdentityBtn) editIdentityBtn.style.display = 'inline-flex';
+        if (quickPhotoBtn) quickPhotoBtn.style.display = canEditStudent ? 'flex' : 'none';
+        if (editIdentityBtn) editIdentityBtn.style.display = canEditStudent ? 'inline-flex' : 'none';
 
         if (nameEl) nameEl.innerText = cleanName;
         if (detailsEl) detailsEl.innerText = `Classe : ${className} | Section : ${section === 'garcons' ? 'Garçons 👦' : (section === 'filles' ? 'Filles 👧' : (section === 'maternelle' ? 'Maternelle 🧸🎨' : 'Primaire 🎒📚'))}`;
@@ -11311,6 +11348,12 @@ async function adminAddOrUpdateStudent() {
 // ============================================================================
 
 function openEditStudentProfileModal(id, name, className, section, photo, birthday) {
+    if (!canCurrentUserModifyStudentData()) {
+        displayAlert(currentUserLanguage === 'ar'
+            ? 'غير مسموح بالتعديل : تعديل الصور أو تاريخ الميلاد أو بيانات التلاميذ مخصص للإدارة فقط.'
+            : "Action non autorisée : la modification des photos, dates de naissance ou informations des élèves est réservée à l'administration.", true);
+        return;
+    }
     const modal = document.getElementById('editStudentProfileModal');
     if (!modal) return;
 
@@ -11357,6 +11400,12 @@ function openEditStudentProfileModal(id, name, className, section, photo, birthd
 window.openEditStudentProfileModal = openEditStudentProfileModal;
 
 function openEditCurrentStudentModal() {
+    if (!canCurrentUserModifyStudentData()) {
+        displayAlert(currentUserLanguage === 'ar'
+            ? 'غير مسموح بالتعديل : تعديل الصور أو تاريخ الميلاد أو بيانات التلاميذ مخصص للإدارة فقط.'
+            : "Action non autorisée : la modification des photos, dates de naissance ou informations des élèves est réservée à l'administration.", true);
+        return;
+    }
     if (!selectedStudentObj || !selectedStudentObj.name) return;
     const section = currentSection || 'garcons';
     const cleanName = selectedStudentObj.name;
@@ -11413,6 +11462,7 @@ function updateEditStudentModalPhotoPreview(urlVal, sectionOverride) {
 window.updateEditStudentModalPhotoPreview = updateEditStudentModalPhotoPreview;
 
 function handleStudentPhotoFileUpload(event) {
+    if (!canCurrentUserModifyStudentData()) return;
     const file = event?.target?.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -11448,6 +11498,13 @@ function handleStudentPhotoFileUpload(event) {
 window.handleStudentPhotoFileUpload = handleStudentPhotoFileUpload;
 
 async function saveEditedStudentProfile() {
+    if (!canCurrentUserModifyStudentData()) {
+        closeEditStudentProfileModal();
+        displayAlert(currentUserLanguage === 'ar'
+            ? 'غير مسموح بالتعديل : تعديل الصور أو تاريخ الميلاد أو بيانات التلاميذ مخصص للإدارة فقط.'
+            : "Action non autorisée : la modification des photos, dates de naissance ou informations des élèves est réservée à l'administration.", true);
+        return;
+    }
     const id = document.getElementById('editStudentModalId')?.value || '';
     const originalName = document.getElementById('editStudentModalOriginalName')?.value?.trim() || '';
     const section = document.getElementById('editStudentModalSection')?.value || currentSection || 'garcons';
