@@ -29,6 +29,7 @@ const path = require('path');
 const fs = require('fs');
 const moment = require('moment');
 const crypto = require('crypto');
+const zlib = require('zlib');
 let GoogleGenAI;
 try {
   GoogleGenAI = require('@google/genai').GoogleGenAI;
@@ -86,6 +87,75 @@ const formatTextForWord = (text, options = {}) => {
 
 const app = express();
 app.use(cors());
+
+// Compression GZIP haute performance (réduit script.js de 1.3 Mo à ~240 Ko et accélère les réponses API JSON)
+const staticGzipCache = new Map();
+app.use((req, res, next) => {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (!acceptEncoding.includes('gzip')) return next();
+
+  // Cache GZIP en mémoire vive pour les gros fichiers statiques (script.js, style.css, index.html)
+  if (req.method === 'GET' && !req.path.startsWith('/api/')) {
+    const cleanRel = req.path === '/' ? 'index.html' : req.path.replace(/^\/+/, '');
+    if (/\.(js|css|html|svg)$/i.test(cleanRel) && !cleanRel.includes('..')) {
+      const fullPath = path.join(__dirname, '..', 'public', cleanRel);
+      try {
+        if (fs.existsSync(fullPath)) {
+          const stat = fs.statSync(fullPath);
+          if (stat.isFile()) {
+            const etag = `W/"${stat.size}-${stat.mtimeMs}"`;
+            if (req.headers['if-none-match'] === etag) {
+              res.statusCode = 304;
+              return res.end();
+            }
+            let cached = staticGzipCache.get(fullPath);
+            if (!cached || cached.mtimeMs !== stat.mtimeMs) {
+              const rawBuf = fs.readFileSync(fullPath);
+              cached = {
+                mtimeMs: stat.mtimeMs,
+                etag,
+                gzipped: zlib.gzipSync(rawBuf, { level: zlib.constants.Z_BEST_SPEED })
+              };
+              staticGzipCache.set(fullPath, cached);
+            }
+            const ext = path.extname(cleanRel).toLowerCase();
+            const mimeMap = {
+              '.js': 'application/javascript; charset=utf-8',
+              '.css': 'text/css; charset=utf-8',
+              '.html': 'text/html; charset=utf-8',
+              '.svg': 'image/svg+xml; charset=utf-8'
+            };
+            res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
+            res.setHeader('Content-Encoding', 'gzip');
+            res.setHeader('Vary', 'Accept-Encoding');
+            res.setHeader('ETag', cached.etag);
+            res.setHeader('Cache-Control', ext === '.html' ? 'no-cache' : 'public, max-age=60');
+            return res.send(cached.gzipped);
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  // Compression automatique des réponses JSON volumineuses (/api/*)
+  const origJson = res.json.bind(res);
+  res.json = function (body) {
+    try {
+      if (!res.headersSent) {
+        const jsonStr = JSON.stringify(body);
+        if (jsonStr && jsonStr.length > 1024) {
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Content-Encoding', 'gzip');
+          res.setHeader('Vary', 'Accept-Encoding');
+          return res.send(zlib.gzipSync(Buffer.from(jsonStr, 'utf8'), { level: zlib.constants.Z_BEST_SPEED }));
+        }
+      }
+    } catch (e) {}
+    return origJson(body);
+  };
+  next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(fileUpload());
@@ -94,7 +164,7 @@ app.use(fileUpload());
 const publicPath = path.join(__dirname, '..', 'public');
 
 // 1. On dit à Express de rendre accessibles les fichiers statiques (CSS, JS, Images)
-app.use(express.static(publicPath));
+app.use(express.static(publicPath, { maxAge: '5m', etag: true }));
 
 // 2. Route pour la page d'accueil (Health Check de Railway)
 app.get('/', (req, res) => {
@@ -1275,7 +1345,7 @@ class InMemoryDb {
 
   saveToDisk() {
     if (this._saveTimer) clearTimeout(this._saveTimer);
-    this._saveTimer = setTimeout(() => {
+    this._saveTimer = setTimeout(async () => {
       try {
         const dir = path.dirname(DB_LOCAL_FILE);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -1283,11 +1353,11 @@ class InMemoryDb {
         for (const [colName, col] of this.collections.entries()) {
           obj[colName] = col.items || [];
         }
-        fs.writeFileSync(DB_LOCAL_FILE, JSON.stringify(obj, null, 2), 'utf8');
+        await fs.promises.writeFile(DB_LOCAL_FILE, JSON.stringify(obj), 'utf8');
       } catch (e) {
         console.warn('Note: saveToDisk local_db.json:', e.message);
       }
-    }, 200);
+    }, 450);
   }
 
   collection(name) {
@@ -3894,6 +3964,16 @@ function buildTwoWeekAutoEvaluationsForSection(planDocs, existingEvaluations, au
   const curWeek = typeof getCurrentWeekNumber === 'function' ? (getCurrentWeekNumber(new Date(), section) || 1) : 1;
   const secWeeksCfg = (typeof sectionSpecificWeekDateRangesNode !== 'undefined' && sectionSpecificWeekDateRangesNode[section]) || specificWeekDateRangesNode || {};
 
+  // Pré-grouper les élèves par classe normalisée pour un accès O(1)
+  const studentsByNormClass = new Map();
+  authoritativeStudents.forEach(st => {
+    const stClsNorm = norm(typeof normalizeStudentClass === 'function' ? normalizeStudentClass(st.class) : st.class);
+    if (!studentsByNormClass.has(stClsNorm)) {
+      studentsByNormClass.set(stClsNorm, []);
+    }
+    studentsByNormClass.get(stClsNorm).push(st);
+  });
+
   // Indexer les évaluations existantes par (classe_norm, date, matiere_norm)
   const existingSlotSet = new Set();
   (existingEvaluations || []).forEach(ev => {
@@ -3923,13 +4003,13 @@ function buildTwoWeekAutoEvaluationsForSection(planDocs, existingEvaluations, au
 
     rows.forEach(row => {
       if (!row || typeof row !== 'object') return;
-      const rowDevoirs = String(row[findKey(row, 'Devoirs')] || '').trim();
+      const rowDevoirs = String(row['Devoirs'] ?? row.devoirs ?? row[findKey(row, 'Devoirs')] ?? '').trim();
       const hasExplicitDevoir = rowDevoirs !== '' && rowDevoirs !== '-' && rowDevoirs !== '—' && rowDevoirs.toLowerCase() !== 'aucun' && rowDevoirs.toLowerCase() !== 'sans';
       if (!hasExplicitDevoir) return;
 
-      const rowClasse = String(row[findKey(row, 'Classe')] || '').trim();
-      const rowMatiere = String(row[findKey(row, 'Matière')] || '').trim();
-      const rowJour = String(row[findKey(row, 'Jour')] || '').trim();
+      const rowClasse = String(row['Classe'] ?? row.classe ?? row[findKey(row, 'Classe')] ?? '').trim();
+      const rowMatiere = String(row['Matière'] ?? row.matiere ?? row[findKey(row, 'Matière')] ?? '').trim();
+      const rowJour = String(row['Jour'] ?? row.jour ?? row[findKey(row, 'Jour')] ?? '').trim();
       if (!rowClasse || !rowMatiere) return;
 
       const canonCls = typeof normalizeStudentClass === 'function' ? normalizeStudentClass(rowClasse) : rowClasse;
@@ -3959,8 +4039,7 @@ function buildTwoWeekAutoEvaluationsForSection(planDocs, existingEvaluations, au
         return; // Déjà évalué par l'enseignant
       }
 
-      // Ajouter l'évaluation automatique (Fait + 10/10 comportement & participation) pour tous les élèves de cette classe dans cette section
-      const classStudents = authoritativeStudents.filter(st => {
+      const classStudents = studentsByNormClass.get(cNorm) || authoritativeStudents.filter(st => {
         const stClsNorm = norm(typeof normalizeStudentClass === 'function' ? normalizeStudentClass(st.class) : st.class);
         return stClsNorm === cNorm || (typeof isClassMatchServer === 'function' && isClassMatchServer(st.class, rowClasse));
       });
@@ -4180,6 +4259,12 @@ function normalizeStudentName(str) {
 // Récupère la liste officielle des élèves enregistrés par l'administrateur pour une section
 async function getAuthoritativeStudents(db, section = 'garcons') {
   try {
+    const authCacheKey = `${section}___auth_list`;
+    if (studentsMemoryCache.has(authCacheKey)) {
+      const cached = studentsMemoryCache.get(authCacheKey);
+      if (Array.isArray(cached)) return cached;
+    }
+
     const deletedDocs = await db.collection('deleted_students').find({ section }).toArray();
     const deletedSet = new Set(deletedDocs.map(d => normalizeStudentName(d.name)));
 
@@ -4210,6 +4295,8 @@ async function getAuthoritativeStudents(db, section = 'garcons') {
 
     const list = Array.from(studentMap.values());
     list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base', numeric: true }));
+    studentsMemoryCache.set(authCacheKey, list);
+    setTimeout(() => studentsMemoryCache.delete(authCacheKey), 30 * 1000);
     return list;
   } catch (err) {
     console.warn('Note getAuthoritativeStudents:', err.message);
@@ -4364,7 +4451,7 @@ app.get('/api/admin/students', async (req, res) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
 
-    const bypassCache = !!req.query._t || req.headers['cache-control'] === 'no-cache';
+    const bypassCache = req.query.force === 'true';
     const cacheKey = `${section}_${canonicalClass || targetClass || 'all'}`;
 
     if (!bypassCache && studentsMemoryCache.has(cacheKey)) {
@@ -4456,11 +4543,9 @@ app.get('/api/admin/students', async (req, res) => {
     // Tri alphabétique parfait et stable par nom de l'élève (insensible à la casse et accents)
     finalStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base', numeric: true }));
 
-    // Mise en cache courte si pas de bypass
-    if (!bypassCache) {
-      studentsMemoryCache.set(cacheKey, finalStudents);
-      setTimeout(() => studentsMemoryCache.delete(cacheKey), 15 * 1000);
-    }
+    // Mise en cache mémoire (invalidée automatiquement à chaque ajout/modification/suppression d'élève)
+    studentsMemoryCache.set(cacheKey, finalStudents);
+    setTimeout(() => studentsMemoryCache.delete(cacheKey), 45 * 1000);
 
     res.status(200).json(finalStudents);
   } catch (error) {

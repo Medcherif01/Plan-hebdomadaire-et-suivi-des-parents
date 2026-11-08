@@ -4863,6 +4863,9 @@ function displayPlanTable(data) {
                 return;
             }
 
+            const tableFragment = document.createDocumentFragment();
+            const deferredSpellCells = [];
+
             data.forEach((rowObj, rIdx) => {
                 if (rowObj && !rowObj._originalCopy) {
                     rowObj._originalCopy = { ...rowObj };
@@ -5002,7 +5005,9 @@ function displayPlanTable(data) {
                         td.textContent = content;
                         td.spellcheck = true;
                         applyRTLToElement(td, content);
-                        highlightCellSpellingErrors(td, false);
+                        if (content && content.trim().length > 1) {
+                            deferredSpellCells.push(td);
+                        }
                         
                         let spellTimer = null;
                         td.addEventListener('paste', (e) => {
@@ -5193,10 +5198,18 @@ function displayPlanTable(data) {
                     updTd.textContent = formatUpdatedAt(updContent);
                     tr.appendChild(updTd);
                 }
-                tBody.appendChild(tr);
+                tableFragment.appendChild(tr);
             });
+            tBody.appendChild(tableFragment);
             makeTableColumnsResizable();
             updateTeacherCounters();
+            if (deferredSpellCells.length > 0) {
+                setTimeout(() => {
+                    deferredSpellCells.forEach(cell => {
+                        if (cell.isConnected) highlightCellSpellingErrors(cell, false);
+                    });
+                }, 40);
+            }
         }
 
         function findTableRowElement(rowData, fallbackIndex = null) {
@@ -21229,6 +21242,60 @@ function switchMainTab(tabName) {
 }
 window.switchMainTab = switchMainTab;
 
+function getGradeClassIconMeta(className) {
+    const c = String(className || '').toUpperCase();
+    if (c.includes('PS') || c.includes('MS') || c.includes('GS') || c.includes('MATERNELLE')) {
+        return { icon: 'fa-child', color: '#EC4899', bg: '#FDF2F8', border: '#FBCFE8' };
+    }
+    if (c.includes('PP')) {
+        return { icon: 'fa-school', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' };
+    }
+    if (c.includes('DP')) {
+        return { icon: 'fa-user-graduate', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' };
+    }
+    return { icon: 'fa-graduation-cap', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' };
+}
+
+function getGradeSubjectIconMeta(subjectName) {
+    const s = String(subjectName || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (s.includes('math') || s.includes('رياضيات')) {
+        return { icon: 'fa-calculator', color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' };
+    }
+    if (s.includes('franc') || s.includes('فرنسي')) {
+        return { icon: 'fa-book-open', color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' };
+    }
+    if (s.includes('angl') || s.includes('engl') || s.includes('انجليزي')) {
+        return { icon: 'fa-language', color: '#0284C7', bg: '#F0F9FF', border: '#BAE6FD' };
+    }
+    if (s.includes('islam') || s.includes('coran') || s.includes('quran') || s.includes('اسلام') || s.includes('قرآن') || s.includes('قران')) {
+        return { icon: 'fa-mosque', color: '#0D9488', bg: '#F0FDFA', border: '#99F6E4' };
+    }
+    if (s.includes('arab') || s.includes('عربي') || s.includes('لغتي')) {
+        return { icon: 'fa-pen-nib', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' };
+    }
+    if (s.includes('svt') || s.includes('biolog') || s.includes('eveil') || s.includes('scien') || s.includes('علوم')) {
+        return { icon: 'fa-seedling', color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' };
+    }
+    if (s.includes('physiq') || s.includes('chimi') || s.includes('فيزياء') || s.includes('كيمياء')) {
+        return { icon: 'fa-flask', color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' };
+    }
+    if (s.includes('hist') || s.includes('geo') || s.includes('اجتماعيات') || s.includes('تاريخ')) {
+        return { icon: 'fa-globe-africa', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' };
+    }
+    if (s.includes('info') || s.includes('numeriq') || s.includes('حاسب')) {
+        return { icon: 'fa-laptop-code', color: '#4F46E5', bg: '#EEF2FF', border: '#C7D2FE' };
+    }
+    if (s.includes('sport') || s.includes('eps') || s.includes('بدني')) {
+        return { icon: 'fa-running', color: '#E11D48', bg: '#FFF1F2', border: '#FECDD3' };
+    }
+    if (s.includes('art') || s.includes('dessin') || s.includes('musiq') || s.includes('فني')) {
+        return { icon: 'fa-palette', color: '#DB2777', bg: '#FDF2F8', border: '#FBCFE8' };
+    }
+    return { icon: 'fa-book', color: '#334155', bg: '#F8FAFC', border: '#CBD5E1' };
+}
+
+window._gradesDataCache = window._gradesDataCache || new Map();
+
 function initTeacherGradesInterface() {
     if (isParentMode || !loggedInUser) {
         displayAlert("Accès réservé uniquement aux enseignants et à l'administrateur.", true);
@@ -21239,58 +21306,240 @@ function initTeacherGradesInterface() {
 
     if (!document.getElementById('teacherGradesMainContainer')) {
         container.innerHTML = `
-            <div id="teacherGradesMainContainer" style="background:white; border-radius:16px; padding:25px; box-shadow:0 6px 20px rgba(0,0,0,0.06); border:1px solid #E2E8F0; margin-top:15px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; margin-bottom:20px; border-bottom:2px solid #F1F5F9; padding-bottom:15px;">
+            <style>
+                .grades-icons-section-label {
+                    font-size: 0.78rem;
+                    font-weight: 800;
+                    color: #475569;
+                    text-transform: uppercase;
+                    letter-spacing: 0.4px;
+                    margin-bottom: 8px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                }
+                .grades-icons-grid {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+                .grade-icon-card {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    padding: 7px 12px;
+                    border-radius: 10px;
+                    border: 1.5px solid #E2E8F0;
+                    background: #FFFFFF;
+                    color: #1E293B;
+                    font-weight: 700;
+                    font-size: 0.82rem;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                    user-select: none;
+                    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+                }
+                .grade-icon-card .icon-badge {
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 7px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 0.82rem;
+                    flex-shrink: 0;
+                    transition: all 0.15s ease;
+                }
+                .grade-icon-card:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.12);
+                }
+                .grade-icon-card.active {
+                    background: linear-gradient(135deg, #1E40AF, #2563EB) !important;
+                    color: #FFFFFF !important;
+                    border-color: #1D4ED8 !important;
+                    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28) !important;
+                }
+                .grade-icon-card.active .icon-badge {
+                    background: rgba(255, 255, 255, 0.22) !important;
+                    color: #FFFFFF !important;
+                }
+                .grade-icon-card.active-subject {
+                    background: linear-gradient(135deg, #6D28D9, #7C3AED) !important;
+                    color: #FFFFFF !important;
+                    border-color: #5B21B6 !important;
+                    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.28) !important;
+                }
+                .grade-icon-card.active-subject .icon-badge {
+                    background: rgba(255, 255, 255, 0.22) !important;
+                    color: #FFFFFF !important;
+                }
+                .grade-sem-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 6px 12px;
+                    border-radius: 9px;
+                    border: 1.5px solid #CBD5E1;
+                    background: #FFFFFF;
+                    color: #334155;
+                    font-weight: 800;
+                    font-size: 0.8rem;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                }
+                .grade-sem-btn.active {
+                    background: linear-gradient(135deg, #059669, #10B981);
+                    color: #FFFFFF;
+                    border-color: #047857;
+                    box-shadow: 0 3px 9px rgba(16, 185, 129, 0.25);
+                }
+                .grades-compact-container {
+                    max-width: 680px;
+                    margin: 0 auto;
+                    width: 100%;
+                }
+                .grades-portrait-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    table-layout: fixed;
+                    background: #FFFFFF;
+                }
+                .grades-portrait-table th,
+                .grades-portrait-table td {
+                    box-sizing: border-box;
+                }
+                .grades-portrait-table .col-num { width: 28px; text-align: center; }
+                .grades-portrait-table .col-name { width: auto; text-align: left; }
+                .grades-portrait-table .col-score { width: 72px; text-align: center; }
+                .grades-portrait-table .col-total { width: 62px; text-align: center; }
+                .grades-portrait-table input[type="number"] {
+                    width: 56px;
+                    padding: 5px 2px;
+                    text-align: center;
+                    font-weight: 800;
+                    font-size: 0.85rem;
+                    border-radius: 6px;
+                    -moz-appearance: textfield;
+                }
+                .grades-portrait-table input[type="number"]::-webkit-outer-spin-button,
+                .grades-portrait-table input[type="number"]::-webkit-inner-spin-button {
+                    -webkit-appearance: none;
+                    margin: 0;
+                }
+                @media (max-width: 640px) {
+                    #teacherGradesMainContainer {
+                        padding: 10px 8px !important;
+                        border-radius: 12px !important;
+                    }
+                    .grade-icon-card {
+                        padding: 5px 9px;
+                        font-size: 0.75rem;
+                        gap: 5px;
+                        border-radius: 8px;
+                    }
+                    .grade-icon-card .icon-badge {
+                        width: 22px;
+                        height: 22px;
+                        font-size: 0.72rem;
+                    }
+                    .grades-portrait-table .col-num { width: 22px; padding: 6px 2px !important; font-size: 0.72rem !important; }
+                    .grades-portrait-table .col-name { padding: 6px 4px !important; font-size: 0.76rem !important; }
+                    .grades-portrait-table .col-score { width: 46px; padding: 5px 2px !important; }
+                    .grades-portrait-table .col-total { width: 42px; padding: 5px 2px !important; }
+                    .grades-portrait-table th {
+                        font-size: 0.68rem !important;
+                        padding: 7px 2px !important;
+                        line-height: 1.15 !important;
+                    }
+                    .grades-portrait-table input[type="number"] {
+                        width: 40px !important;
+                        padding: 4px 1px !important;
+                        font-size: 0.78rem !important;
+                    }
+                    .grades-cumul-hint {
+                        font-size: 0.58rem !important;
+                        line-height: 1.1 !important;
+                    }
+                    .grade-cell-total {
+                        padding: 3px 4px !important;
+                        font-size: 0.72rem !important;
+                    }
+                }
+            </style>
+            <div id="teacherGradesMainContainer" style="background:white; border-radius:16px; padding:18px; box-shadow:0 6px 20px rgba(0,0,0,0.06); border:1px solid #E2E8F0; margin-top:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; border-bottom:2px solid #F1F5F9; padding-bottom:12px;">
                     <div>
-                        <h2 style="margin:0; color:#1E293B; font-size:1.35rem; display:flex; align-items:center; gap:10px;">
-                            <i class="fas fa-chart-bar" style="color:#2563EB;"></i> Saisie des Notes des Élèves (Semestre 1 & 2)
+                        <h2 style="margin:0; color:#1E293B; font-size:1.18rem; display:flex; align-items:center; gap:8px;">
+                            <i class="fas fa-chart-bar" style="color:#2563EB;"></i> Saisie des Notes (Semestre 1 &amp; 2)
                         </h2>
-                        <p style="margin:4px 0 0 0; color:#64748B; font-size:0.92rem;">
-                            Saisissez les notes de Classwork, Homework, Évaluation et Examen pour vos classes et matières assignées.
+                        <p style="margin:3px 0 0 0; color:#64748B; font-size:0.82rem;">
+                            Choisissez une classe et une matière par icône. Tableau alphabétique compact adapté au téléphone (portrait).
                         </p>
                     </div>
-                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                        <button type="button" class="pro-button" onclick="adminOpenClassGradesPrintA4()" style="background: linear-gradient(135deg, #1D4ED8, #2563EB); color: white; border: none; font-weight: 800; padding: 10px 18px; border-radius: 8px; box-shadow: 0 4px 12px rgba(37,99,235,0.25); display: inline-flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <i class="fas fa-print"></i> 🖨️ Bulletins &amp; Notes de la Classe (A4 PDF)
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <button type="button" class="pro-button" onclick="adminOpenClassGradesPrintA4()" style="background: linear-gradient(135deg, #1D4ED8, #2563EB); color: white; border: none; font-weight: 800; padding: 8px 13px; border-radius: 8px; box-shadow: 0 3px 10px rgba(37,99,235,0.22); display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
+                            <i class="fas fa-print"></i> Bulletins A4 PDF
                         </button>
-                        <button type="button" class="pro-button" onclick="loadTeacherGradesInterfaceData()" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; font-weight:700;">
+                        <button type="button" class="pro-button" onclick="window._gradesDataCache && window._gradesDataCache.clear(); loadTeacherGradesInterfaceData(true)" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; font-weight:700; padding: 8px 12px; font-size: 0.82rem;">
                             <i class="fas fa-sync-alt"></i> Actualiser
                         </button>
                     </div>
                 </div>
 
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px; background:#F8FAFC; padding:15px; border-radius:12px; border:1px solid #E2E8F0;">
-                    <div>
-                        <label style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:6px;">
-                            <i class="fas fa-graduation-cap" style="color:#2563EB;"></i> Classe :
-                        </label>
-                        <select id="gradeFilterClassSelect" onchange="onGradeClassChange()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;">
-                            <option value="">-- Sélectionnez une classe --</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:6px;">
-                            <i class="fas fa-book" style="color:#7C3AED;"></i> Matière :
-                        </label>
-                        <select id="gradeFilterSubjectSelect" onchange="renderTeacherGradesTable()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;">
-                            <option value="">-- Sélectionnez d'abord une classe --</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size:0.85rem; font-weight:700; color:#334155; display:block; margin-bottom:6px;">
+                <!-- Sélecteurs natifs synchronisés conservés pour compatibilité totale -->
+                <div style="display:none;">
+                    <select id="gradeFilterClassSelect" onchange="onGradeClassChange()">
+                        <option value="">-- Sélectionnez une classe --</option>
+                    </select>
+                    <select id="gradeFilterSubjectSelect" onchange="renderTeacherGradesTable()">
+                        <option value="">-- Sélectionnez d'abord une classe --</option>
+                    </select>
+                    <select id="gradeFilterSemesterSelect" onchange="renderTeacherGradesTable()">
+                        <option value="S1">Semestre 1 (S1)</option>
+                        <option value="S2">Semestre 2 (S2)</option>
+                    </select>
+                </div>
+
+                <!-- Panneau de sélection par icônes : Semestre, Classes, Matières -->
+                <div style="background:#F8FAFC; padding:12px 14px; border-radius:12px; border:1px solid #E2E8F0; margin-bottom:16px; display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                        <div class="grades-icons-section-label" style="margin-bottom:0;">
                             <i class="fas fa-calendar-alt" style="color:#059669;"></i> Semestre :
-                        </label>
-                        <select id="gradeFilterSemesterSelect" onchange="renderTeacherGradesTable()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid #CBD5E1; font-weight:700; background:white;">
-                            <option value="S1">Semestre 1 (S1)</option>
-                            <option value="S2">Semestre 2 (S2)</option>
-                        </select>
+                        </div>
+                        <div id="gradeSemesterIconsContainer" style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button type="button" class="grade-sem-btn active" data-sem="S1" onclick="selectGradeSemesterIcon('S1')">
+                                <i class="fas fa-calendar-check"></i> Semestre 1 (S1)
+                            </button>
+                            <button type="button" class="grade-sem-btn" data-sem="S2" onclick="selectGradeSemesterIcon('S2')">
+                                <i class="fas fa-calendar-plus"></i> Semestre 2 (S2)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="grades-icons-section-label">
+                            <i class="fas fa-graduation-cap" style="color:#2563EB;"></i> Classes :
+                        </div>
+                        <div id="gradeClassIconsContainer" class="grades-icons-grid">
+                            <span style="color:#64748B; font-size:0.82rem;">Chargement des classes...</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="grades-icons-section-label">
+                            <i class="fas fa-book-open" style="color:#7C3AED;"></i> Matières :
+                        </div>
+                        <div id="gradeSubjectIconsContainer" class="grades-icons-grid">
+                            <span style="color:#64748B; font-size:0.82rem;">Sélectionnez une classe...</span>
+                        </div>
                     </div>
                 </div>
 
-                <div id="teacherGradesTableWrapper">
-                    <div style="text-align:center; padding:40px; color:#64748B;">
+                <div id="teacherGradesTableWrapper" class="grades-compact-container">
+                    <div style="text-align:center; padding:30px; color:#64748B;">
                         <i class="fas fa-info-circle fa-2x" style="color:#3B82F6; margin-bottom:10px;"></i>
-                        <p style="font-weight:600;">Veuillez sélectionner une classe et une matière pour afficher les élèves et saisir leurs notes.</p>
+                        <p style="font-weight:600; font-size:0.9rem;">Veuillez toucher une icône de classe et une matière pour saisir les notes.</p>
                     </div>
                 </div>
             </div>
@@ -21300,9 +21549,44 @@ function initTeacherGradesInterface() {
     loadTeacherGradesInterfaceData();
 }
 
+function selectGradeSemesterIcon(semValue) {
+    const semSelect = document.getElementById('gradeFilterSemesterSelect');
+    if (semSelect) semSelect.value = semValue;
+    const btns = document.querySelectorAll('#gradeSemesterIconsContainer .grade-sem-btn');
+    btns.forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-sem') === semValue);
+    });
+    renderTeacherGradesTable();
+}
+window.selectGradeSemesterIcon = selectGradeSemesterIcon;
+
+function selectGradeClassIcon(className) {
+    const classSelect = document.getElementById('gradeFilterClassSelect');
+    if (!classSelect) return;
+    classSelect.value = className;
+    const cards = document.querySelectorAll('#gradeClassIconsContainer .grade-icon-card');
+    cards.forEach(card => {
+        card.classList.toggle('active', card.getAttribute('data-class') === className);
+    });
+    onGradeClassChange();
+}
+window.selectGradeClassIcon = selectGradeClassIcon;
+
+function selectGradeSubjectIcon(subjectName) {
+    const subjSelect = document.getElementById('gradeFilterSubjectSelect');
+    if (!subjSelect) return;
+    subjSelect.value = subjectName;
+    const cards = document.querySelectorAll('#gradeSubjectIconsContainer .grade-icon-card');
+    cards.forEach(card => {
+        card.classList.toggle('active-subject', card.getAttribute('data-subject') === subjectName);
+    });
+    renderTeacherGradesTable();
+}
+window.selectGradeSubjectIcon = selectGradeSubjectIcon;
+
 let teacherAssignedPairs = [];
 
-async function loadTeacherGradesInterfaceData() {
+async function loadTeacherGradesInterfaceData(forceRefresh = false) {
     try {
         const user = loggedInUser || '';
         const tableTeacher = loggedInTeacherTable || '';
@@ -21372,6 +21656,7 @@ async function loadTeacherGradesInterfaceData() {
         const classSelect = document.getElementById('gradeFilterClassSelect');
         if (!classSelect) return;
 
+        const prevSelectedClass = classSelect.value;
         const uniqueClasses = Array.from(new Set(teacherAssignedPairs.map(p => p.classe))).sort(compareClasses);
         
         let html = '<option value="">-- Sélectionnez une classe --</option>';
@@ -21380,21 +21665,52 @@ async function loadTeacherGradesInterfaceData() {
         });
         classSelect.innerHTML = html;
 
-        if (uniqueClasses.length > 0 && !classSelect.value) {
-            classSelect.value = uniqueClasses[0];
-            onGradeClassChange();
+        const activeClass = (prevSelectedClass && uniqueClasses.includes(prevSelectedClass))
+            ? prevSelectedClass
+            : (uniqueClasses[0] || '');
+        classSelect.value = activeClass;
+
+        const classIconsContainer = document.getElementById('gradeClassIconsContainer');
+        if (classIconsContainer) {
+            if (uniqueClasses.length === 0) {
+                classIconsContainer.innerHTML = '<span style="color:#94A3B8; font-size:0.82rem;">Aucune classe assignée</span>';
+            } else {
+                classIconsContainer.innerHTML = uniqueClasses.map(c => {
+                    const meta = getGradeClassIconMeta(c);
+                    const isActive = c === activeClass;
+                    return `
+                        <button type="button" class="grade-icon-card ${isActive ? 'active' : ''}" data-class="${escapeHtml(c)}" onclick="selectGradeClassIcon('${escapeHtml(c).replace(/'/g, "\\'")}')">
+                            <span class="icon-badge" style="background:${meta.bg}; color:${meta.color}; border:1px solid ${meta.border};">
+                                <i class="fas ${meta.icon}"></i>
+                            </span>
+                            <span>${escapeHtml(c)}</span>
+                        </button>
+                    `;
+                }).join('');
+            }
+        }
+
+        if (activeClass) {
+            onGradeClassChange(forceRefresh);
         }
     } catch (e) {
         console.error("Erreur loadTeacherGradesInterfaceData:", e);
     }
 }
 
-function onGradeClassChange() {
+function onGradeClassChange(forceRefresh = false) {
     const classSelect = document.getElementById('gradeFilterClassSelect');
     const subjSelect = document.getElementById('gradeFilterSubjectSelect');
     if (!classSelect || !subjSelect) return;
 
     const selectedClass = classSelect.value;
+    const prevSubject = subjSelect.value;
+
+    const classCards = document.querySelectorAll('#gradeClassIconsContainer .grade-icon-card');
+    classCards.forEach(card => {
+        card.classList.toggle('active', card.getAttribute('data-class') === selectedClass);
+    });
+
     const matchingSubjects = teacherAssignedPairs.filter(p => p.classe === selectedClass).map(p => p.subject);
     const uniqueSubjects = Array.from(new Set(matchingSubjects)).sort();
 
@@ -21404,13 +21720,35 @@ function onGradeClassChange() {
     });
     subjSelect.innerHTML = html;
 
-    if (uniqueSubjects.length > 0) {
-        subjSelect.value = uniqueSubjects[0];
+    const activeSubject = (prevSubject && uniqueSubjects.includes(prevSubject))
+        ? prevSubject
+        : (uniqueSubjects[0] || '');
+    subjSelect.value = activeSubject;
+
+    const subjIconsContainer = document.getElementById('gradeSubjectIconsContainer');
+    if (subjIconsContainer) {
+        if (uniqueSubjects.length === 0) {
+            subjIconsContainer.innerHTML = '<span style="color:#94A3B8; font-size:0.82rem;">Aucune matière pour cette classe</span>';
+        } else {
+            subjIconsContainer.innerHTML = uniqueSubjects.map(s => {
+                const meta = getGradeSubjectIconMeta(s);
+                const isActive = s === activeSubject;
+                return `
+                    <button type="button" class="grade-icon-card ${isActive ? 'active-subject' : ''}" data-subject="${escapeHtml(s)}" onclick="selectGradeSubjectIcon('${escapeHtml(s).replace(/'/g, "\\'")}')">
+                        <span class="icon-badge" style="background:${meta.bg}; color:${meta.color}; border:1px solid ${meta.border};">
+                            <i class="fas ${meta.icon}"></i>
+                        </span>
+                        <span>${escapeHtml(s)}</span>
+                    </button>
+                `;
+            }).join('');
+        }
     }
-    renderTeacherGradesTable();
+
+    renderTeacherGradesTable(forceRefresh);
 }
 
-async function renderTeacherGradesTable() {
+async function renderTeacherGradesTable(forceRefresh = false) {
     const classSelect = document.getElementById('gradeFilterClassSelect');
     const subjSelect = document.getElementById('gradeFilterSubjectSelect');
     const semSelect = document.getElementById('gradeFilterSemesterSelect');
@@ -21424,26 +21762,39 @@ async function renderTeacherGradesTable() {
 
     if (!classe || !subject) {
         wrapper.innerHTML = `
-            <div style="text-align:center; padding:40px; color:#64748B;">
+            <div style="text-align:center; padding:30px; color:#64748B;">
                 <i class="fas fa-info-circle fa-2x" style="color:#3B82F6; margin-bottom:10px;"></i>
-                <p style="font-weight:600;">Veuillez sélectionner une classe et une matière pour afficher la grille de notes.</p>
+                <p style="font-weight:600; font-size:0.9rem;">Veuillez sélectionner une icône de classe et de matière pour afficher les élèves.</p>
             </div>
         `;
         return;
     }
 
-    wrapper.innerHTML = `
-        <div style="text-align:center; padding:35px; color:#64748B;">
-            <i class="fas fa-spinner fa-spin fa-2x" style="color:#2563EB;"></i>
-            <p style="margin-top:10px; font-weight:700; color:#1E293B;">Chargement des données réelles et calcul automatique de HW & CW (${escapeHtml(classe)} - ${escapeHtml(subject)})...</p>
-        </div>
-    `;
+    const cacheKey = `${section}|||${classe}|||${subject}|||${semester}`;
+    let data = (!forceRefresh && window._gradesDataCache && window._gradesDataCache.has(cacheKey))
+        ? window._gradesDataCache.get(cacheKey)
+        : null;
+
+    if (!data) {
+        wrapper.innerHTML = `
+            <div style="text-align:center; padding:25px; color:#64748B;">
+                <i class="fas fa-spinner fa-spin fa-lg" style="color:#2563EB;"></i>
+                <p style="margin-top:8px; font-weight:700; font-size:0.86rem; color:#1E293B;">Chargement (${escapeHtml(classe)} • ${escapeHtml(subject)})...</p>
+            </div>
+        `;
+    }
 
     try {
-        const res = await fetch(`/api/student-grades-data?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(classe)}&subject=${encodeURIComponent(subject)}&semester=${encodeURIComponent(semester)}`);
-        if (!res.ok) throw new Error("Erreur serveur lors de la récupération des notes");
-        const data = await res.json();
+        if (!data) {
+            const res = await fetch(`/api/student-grades-data?section=${encodeURIComponent(section)}&classe=${encodeURIComponent(classe)}&subject=${encodeURIComponent(subject)}&semester=${encodeURIComponent(semester)}`);
+            if (!res.ok) throw new Error("Erreur serveur lors de la récupération des notes");
+            data = await res.json();
+            if (window._gradesDataCache) {
+                window._gradesDataCache.set(cacheKey, data);
+            }
+        }
 
+        // Tri alphabétique strict A -> Z
         const students = Array.isArray(data.students)
             ? [...data.students].sort((a, b) => String(a.studentName || a.name || '').trim().localeCompare(String(b.studentName || b.name || '').trim(), 'fr', { sensitivity: 'base', numeric: true }))
             : [];
@@ -21455,61 +21806,58 @@ async function renderTeacherGradesTable() {
 
         if (students.length === 0) {
             wrapper.innerHTML = `
-                <div style="text-align:center; padding:40px 20px; color:#64748B; background:#F8FAFC; border-radius:12px; border:1px dashed #CBD5E1;">
-                    <i class="fas fa-user-slash fa-2x" style="color:#94A3B8; margin-bottom:12px;"></i>
-                    <p style="font-weight:700; font-size:1.05rem; margin:0 0 6px 0; color:#334155;">Aucun élève trouvé dans la base pour la classe <strong>${escapeHtml(classe)}</strong></p>
-                    <p style="margin:0; font-size:0.9rem; color:#64748B;">Seuls les élèves réels enregistrés par l'administration apparaissent dans cette grille.</p>
+                <div style="text-align:center; padding:30px 16px; color:#64748B; background:#F8FAFC; border-radius:12px; border:1px dashed #CBD5E1;">
+                    <i class="fas fa-user-slash fa-2x" style="color:#94A3B8; margin-bottom:10px;"></i>
+                    <p style="font-weight:700; font-size:0.95rem; margin:0 0 4px 0; color:#334155;">Aucun élève trouvé pour <strong>${escapeHtml(classe)}</strong></p>
+                    <p style="margin:0; font-size:0.82rem; color:#64748B;">Seuls les élèves enregistrés par l'administration apparaissent ici.</p>
                 </div>
             `;
             return;
         }
 
+        const subjMeta = getGradeSubjectIconMeta(subject);
+
         let tableHtml = `
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
-                <div>
-                    <span style="font-weight:800; color:#1E293B; font-size:1.1rem;">
-                        Grille officielle : <span style="color:#2563EB;">${escapeHtml(classe)}</span> — <span style="color:#7C3AED;">${escapeHtml(subject)}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; background:#F8FAFC; padding:8px 12px; border-radius:10px; border:1px solid #E2E8F0;">
+                <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
+                    <span style="font-weight:800; color:#1E293B; font-size:0.92rem; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fas fa-graduation-cap" style="color:#2563EB;"></i>
+                        <span style="color:#2563EB;">${escapeHtml(classe)}</span>
+                        <span style="color:#94A3B8;">•</span>
+                        <i class="fas ${subjMeta.icon}" style="color:${subjMeta.color};"></i>
+                        <span style="color:#6D28D9;">${escapeHtml(subject)}</span>
                     </span>
-                    <span style="margin-left:8px; background:#EEF2FF; color:#4338CA; padding:3px 9px; border-radius:6px; font-weight:800; font-size:0.8rem;">${escapeHtml(semester)}</span>
+                    <span style="background:#EEF2FF; color:#4338CA; padding:2px 7px; border-radius:6px; font-weight:800; font-size:0.74rem;">${escapeHtml(semester)}</span>
+                    <span style="background:#F0FDF4; color:#166534; padding:2px 7px; border-radius:6px; border:1px solid #BBF7D0; font-weight:700; font-size:0.72rem;">
+                        ${students.length} élèves (A-Z)
+                    </span>
                 </div>
-                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" class="pro-button" onclick="adminOpenClassGradesPrintA4('${escapeHtml(classe)}', '${escapeHtml(semester)}', '${escapeHtml(subject)}')" style="background: linear-gradient(135deg, #1D4ED8, #2563EB); color: white; border: none; font-weight: 800; padding: 7px 15px; border-radius: 8px; box-shadow: 0 4px 10px rgba(37,99,235,0.2); font-size: 0.85rem; cursor: pointer;">
-                        <i class="fas fa-print"></i> Imprimer Feuille A4 (${escapeHtml(subject)})
-                    </button>
-                    <div style="font-size:0.85rem; background:#F0FDF4; color:#166534; padding:6px 14px; border-radius:8px; border:1px solid #BBF7D0; font-weight:700;">
-                        <i class="fas fa-calculator" style="margin-right:4px;"></i> Barème ${isPei1 ? 'PEI1' : 'Général'} : HW /${maxHw} | CW /${maxCw} | Éval /${maxEval} | Examen /${maxExam}
-                    </div>
-                </div>
+                <button type="button" class="pro-button" onclick="adminOpenClassGradesPrintA4('${escapeHtml(classe).replace(/'/g, "\\'")}', '${escapeHtml(semester)}', '${escapeHtml(subject).replace(/'/g, "\\'")}')" style="background: linear-gradient(135deg, #1D4ED8, #2563EB); color: white; border: none; font-weight: 800; padding: 5px 11px; border-radius: 7px; font-size: 0.76rem; cursor: pointer; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-print"></i> Feuille A4
+                </button>
             </div>
 
-            <div style="margin-bottom:12px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:10px 14px; font-size:0.85rem; color:#1E40AF; display:flex; align-items:center; gap:8px;">
-                <i class="fas fa-info-circle fa-lg" style="color:#3B82F6;"></i>
-                <span><strong>Calcul Bienveillant :</strong> Les notes de <em>Homework</em> et <em>Classwork</em> sont calculées automatiquement et équitablement d'après la participation, le comportement et la faisabilité des devoirs de l'élève. Vous pouvez les ajuster à tout moment.</span>
-            </div>
-
-            <div style="overflow-x:auto; border:1px solid #E2E8F0; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.03);">
-                <table style="width:100%; border-collapse:collapse; min-width:850px; text-align:left; background:white;">
+            <div style="border:1px solid #CBD5E1; border-radius:10px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+                <table class="grades-portrait-table">
                     <thead>
-                        <tr style="background:#F8FAFC; color:#334155; font-size:0.85rem; border-bottom:2px solid #E2E8F0;">
-                            <th style="padding:12px 14px; width:50px; text-align:center;">#</th>
-                            <th style="padding:12px 16px;">Nom de l'Élève</th>
-                            <th style="padding:12px 12px; width:140px; text-align:center;">
-                                Homework (/${maxHw})
-                                <div style="font-size:0.7rem; font-weight:600; color:#64748B;">Faisabilité devoirs</div>
+                        <tr style="background:#F1F5F9; color:#1E293B; font-size:0.76rem; border-bottom:2px solid #CBD5E1;">
+                            <th class="col-num" style="padding:8px 3px;">#</th>
+                            <th class="col-name" style="padding:8px 6px;">Élève (A-Z)</th>
+                            <th class="col-score" style="padding:8px 3px;">
+                                HW<div style="font-size:0.65rem; font-weight:700; color:#059669;">/${maxHw}</div>
                             </th>
-                            <th style="padding:12px 12px; width:140px; text-align:center;">
-                                Classwork (/${maxCw})
-                                <div style="font-size:0.7rem; font-weight:600; color:#64748B;">Participation &amp; Comportement</div>
+                            <th class="col-score" style="padding:8px 3px;">
+                                CW<div style="font-size:0.65rem; font-weight:700; color:#2563EB;">/${maxCw}</div>
                             </th>
-                            <th style="padding:12px 12px; width:140px; text-align:center;">
-                                Évaluation (/${maxEval})
-                                <div style="font-size:0.7rem; font-weight:600; color:#64748B;">Saisie Enseignant</div>
+                            <th class="col-score" style="padding:8px 3px;">
+                                Éval<div style="font-size:0.65rem; font-weight:700; color:#1E3A8A;">/${maxEval}</div>
                             </th>
-                            <th style="padding:12px 12px; width:140px; text-align:center;">
-                                Examen (/${maxExam})
-                                <div style="font-size:0.7rem; font-weight:600; color:#64748B;">Saisie Enseignant</div>
+                            <th class="col-score" style="padding:8px 3px;">
+                                Exam<div style="font-size:0.65rem; font-weight:700; color:#6D28D9;">/${maxExam}</div>
                             </th>
-                            <th style="padding:12px 16px; width:110px; text-align:center; background:#EFF6FF; color:#1E40AF; font-weight:800;">Total (/100)</th>
+                            <th class="col-total" style="padding:8px 3px; background:#EFF6FF; color:#1E40AF; font-weight:800;">
+                                Tot<div style="font-size:0.65rem; font-weight:700;">/100</div>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -21534,37 +21882,35 @@ async function renderTeacherGradesTable() {
             const totalVal = (hasAnyGrade && rawSum > 0) ? rawSum : '';
 
             const totalBadgeColor = totalVal === '' ? '#94A3B8' : (totalVal >= 80 ? '#10B981' : (totalVal >= 60 ? '#2563EB' : (totalVal >= 50 ? '#F59E0B' : '#EF4444')));
+            const rowBg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC';
 
             tableHtml += `
-                <tr style="border-bottom:1px solid #F1F5F9;" data-student-row="${escapeHtml(stName)}">
-                    <td style="padding:12px 14px; text-align:center; font-weight:700; color:#64748B;">${idx + 1}</td>
-                    <td style="padding:12px 16px; font-weight:700; color:#1E293B;">
-                        <div style="display:flex; align-items:center; gap:9px;">
-                            <span style="width:32px; height:32px; border-radius:50%; background:#EEF2FF; color:#4F46E5; display:inline-flex; align-items:center; justify-content:center; font-size:0.85rem; font-weight:800; flex-shrink:0;">${stName.charAt(0)}</span>
-                            <span>${escapeHtml(stName)}</span>
+                <tr style="border-bottom:1px solid #E2E8F0; background:${rowBg};" data-student-row="${escapeHtml(stName)}">
+                    <td class="col-num" style="padding:7px 3px; font-weight:700; color:#64748B; font-size:0.78rem;">${idx + 1}</td>
+                    <td class="col-name" style="padding:7px 6px; font-weight:700; color:#0F172A; font-size:0.84rem; word-break:break-word; line-height:1.2;">
+                        ${escapeHtml(stName)}
+                    </td>
+                    <td class="col-score" style="padding:5px 2px;">
+                        <input type="number" min="0" max="${maxHw}" step="1" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="border:1px solid #CBD5E1; color:#0F172A; background:#FAFAFA;">
+                        <div class="grades-cumul-hint" style="font-size:0.63rem; color:#059669; font-weight:700; margin-top:2px;" title="Cumul devoirs">
+                            ${autoHwRounded}/${maxHw}
                         </div>
                     </td>
-                    <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxHw}" step="1" placeholder="" class="grade-input-hw" value="${hwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
-                        <div style="font-size:0.7rem; color:#059669; font-weight:700; margin-top:3px;" title="Calculé d'après la faisabilité des devoirs (arrondi à l'unité)">
-                            <i class="fas fa-magic"></i> Cumul: ${autoHwRounded}/${maxHw}
+                    <td class="col-score" style="padding:5px 2px;">
+                        <input type="number" min="0" max="${maxCw}" step="1" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="border:1px solid #CBD5E1; color:#0F172A; background:#FAFAFA;">
+                        <div class="grades-cumul-hint" style="font-size:0.63rem; color:#2563EB; font-weight:700; margin-top:2px;" title="Cumul participation/comportement">
+                            ${autoCwRounded}/${maxCw}
                         </div>
                     </td>
-                    <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxCw}" step="1" placeholder="" class="grade-input-cw" value="${cwVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1px solid #CBD5E1; border-radius:6px; font-weight:800; color:#0F172A; background:#FAFAFA;">
-                        <div style="font-size:0.7rem; color:#2563EB; font-weight:700; margin-top:3px;" title="Calculé d'après le comportement et la participation (arrondi à l'unité)">
-                            <i class="fas fa-magic"></i> Cumul: ${autoCwRounded}/${maxCw}
-                        </div>
+                    <td class="col-score" style="padding:5px 2px;">
+                        <input type="number" min="0" max="${maxEval}" step="0.5" class="grade-input-eval" value="${evalVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="border:1.5px solid #93C5FD; color:#1E3A8A; background:white;">
                     </td>
-                    <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxEval}" step="0.5" placeholder="" class="grade-input-eval" value="${evalVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1.5px solid #93C5FD; border-radius:6px; font-weight:800; color:#1E3A8A; background:white;">
+                    <td class="col-score" style="padding:5px 2px;">
+                        <input type="number" min="0" max="${maxExam}" step="0.5" class="grade-input-exam" value="${examVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="border:1.5px solid #C4B5FD; color:#4C1D95; background:white;">
                     </td>
-                    <td style="padding:8px 12px; text-align:center;">
-                        <input type="number" min="0" max="${maxExam}" step="0.5" placeholder="" class="grade-input-exam" value="${examVal}" oninput="recalcStudentRowTotal(this, ${maxHw}, ${maxCw}, ${maxEval}, ${maxExam})" style="width:82px; padding:7px; text-align:center; border:1.5px solid #C4B5FD; border-radius:6px; font-weight:800; color:#4C1D95; background:white;">
-                    </td>
-                    <td style="padding:12px 16px; text-align:center; background:#F8FAFC;">
-                        <span class="grade-cell-total" style="display:${totalVal === '' ? 'none' : 'inline-block'}; padding:4px 10px; border-radius:6px; font-weight:900; font-size:0.95rem; color:white; background:${totalBadgeColor};">
-                            ${totalVal === '' ? '' : `${totalVal}/100`}
+                    <td class="col-total" style="padding:5px 2px; background:#F8FAFC;">
+                        <span class="grade-cell-total" style="display:${totalVal === '' ? 'none' : 'inline-block'}; padding:3px 6px; border-radius:6px; font-weight:900; font-size:0.8rem; color:white; background:${totalBadgeColor};">
+                            ${totalVal === '' ? '' : `${totalVal}`}
                         </span>
                     </td>
                 </tr>
@@ -21576,10 +21922,10 @@ async function renderTeacherGradesTable() {
                 </table>
             </div>
 
-            <div style="margin-top:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-                <span id="gradesSaveStatus" style="font-weight:700; font-size:0.9rem;"></span>
-                <button type="button" class="pro-button success-button" onclick="saveTeacherGradesData()" style="padding:11px 24px; font-weight:800; font-size:0.95rem; border-radius:10px; display:inline-flex; align-items:center; gap:8px;">
-                    <i class="fas fa-save"></i> Enregistrer les notes (${classe} - ${subject})
+            <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <span id="gradesSaveStatus" style="font-weight:700; font-size:0.85rem;"></span>
+                <button type="button" class="pro-button success-button" onclick="saveTeacherGradesData()" style="padding:10px 20px; font-weight:800; font-size:0.88rem; border-radius:10px; display:inline-flex; align-items:center; gap:7px; width:100%; justify-content:center; max-width:340px; margin-left:auto;">
+                    <i class="fas fa-save"></i> Enregistrer (${escapeHtml(classe)} • ${escapeHtml(subject)})
                 </button>
             </div>
         `;
@@ -21610,7 +21956,7 @@ function recalcStudentRowTotal(inputEl, maxHw, maxCw, maxEval, maxExam) {
             totalCell.style.display = 'none';
         } else {
             totalCell.style.display = 'inline-block';
-            totalCell.textContent = `${total}/100`;
+            totalCell.textContent = `${total}`;
             const totalBadgeColor = total >= 80 ? '#10B981' : (total >= 60 ? '#2563EB' : (total >= 50 ? '#F59E0B' : '#EF4444'));
             totalCell.style.background = totalBadgeColor;
         }
@@ -21673,6 +22019,9 @@ async function saveTeacherGradesData() {
         });
         const result = await res.json();
         if (res.ok && result.success) {
+            if (window._gradesDataCache) {
+                window._gradesDataCache.delete(`${section}|||${classe}|||${subject}|||${semester}`);
+            }
             if (statusEl) statusEl.innerHTML = '<span style="color:#10B981;"><i class="fas fa-check-circle"></i> Notes enregistrées avec succès !</span>';
             showToastNotification("Notes enregistrées avec succès !", "success");
             setTimeout(() => { if (statusEl) statusEl.innerHTML = ''; }, 4000);
