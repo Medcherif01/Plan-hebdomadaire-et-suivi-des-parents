@@ -57,7 +57,9 @@ async function requestNotificationPermission() {
     
     if (permission === 'denied') {
         console.warn('⚠️ Permission notifications refusée précédemment');
-        alert('Les notifications sont bloquées. Veuillez activer les notifications dans les paramètres de votre navigateur.');
+        if (typeof showToastNotification === 'function') {
+            showToastNotification('Les notifications sont bloquées dans les paramètres de votre navigateur.', 'warning');
+        }
         return false;
     }
     
@@ -259,11 +261,15 @@ async function testNotification(username) {
         
         const result = await response.json();
         console.log('✅ Notification de test envoyée:', result.message);
-        alert('Notification de test envoyée ! Vous devriez la recevoir dans quelques secondes.');
+        if (typeof showToastNotification === 'function') {
+            showToastNotification('Notification de test envoyée ! Vous devriez la recevoir dans quelques secondes.', 'success');
+        }
         
     } catch (error) {
         console.error('❌ Erreur test notification:', error);
-        alert('Erreur lors de l\'envoi de la notification de test: ' + error.message);
+        if (typeof showToastNotification === 'function') {
+            showToastNotification('Erreur lors de l\'envoi de la notification de test: ' + error.message, 'error');
+        }
     }
 }
 
@@ -286,7 +292,9 @@ function createNotificationToggleButton(username, container) {
                 const success = await unsubscribeFromPushNotifications(username);
                 if (success) {
                     updateButton(false);
-                    alert('Notifications désactivées');
+                    if (typeof showToastNotification === 'function') {
+                        showToastNotification('Notifications désactivées', 'info');
+                    }
                 }
             };
         } else {
@@ -297,7 +305,9 @@ function createNotificationToggleButton(username, container) {
                     const success = await subscribeToPushNotifications(username);
                     if (success) {
                         updateButton(true);
-                        alert('Notifications activées ! Vous recevrez des rappels chaque mardi pour compléter votre plan hebdomadaire.');
+                        if (typeof showToastNotification === 'function') {
+                            showToastNotification('Notifications activées ! Vous recevrez des rappels chaque mardi pour compléter votre plan hebdomadaire.', 'success');
+                        }
                     }
                 }
             };
@@ -311,40 +321,38 @@ function createNotificationToggleButton(username, container) {
     return button;
 }
 
-// Jouer un son de notification
+// Jouer un son de notification (réutilise un seul AudioContext pour éviter les fuites mémoire)
+let _sharedNotifAudioCtx = null;
 function playNotificationSound() {
     try {
-        // Créer un contexte audio
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Créer une série de bips
-        const playBeep = (frequency, duration, delay) => {
-            setTimeout(() => {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                
-                oscillator.frequency.value = frequency;
-                oscillator.type = 'sine';
-                
-                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-                
-                oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + duration);
-            }, delay);
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        if (!_sharedNotifAudioCtx || _sharedNotifAudioCtx.state === 'closed') {
+            _sharedNotifAudioCtx = new AudioCtx();
+        }
+        if (_sharedNotifAudioCtx.state === 'suspended') {
+            _sharedNotifAudioCtx.resume().catch(() => {});
+        }
+        const audioContext = _sharedNotifAudioCtx;
+        const startBase = audioContext.currentTime;
+        const scheduleBeep = (frequency, duration, offsetSec) => {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            const t0 = startBase + offsetSec;
+            gainNode.gain.setValueAtTime(0.3, t0);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, t0 + duration);
+            oscillator.start(t0);
+            oscillator.stop(t0 + duration);
         };
-        
-        // Triple bip pour attirer l'attention
-        playBeep(800, 0.2, 0);    // Premier bip
-        playBeep(800, 0.2, 300);  // Deuxième bip
-        playBeep(800, 0.2, 600);  // Troisième bip
-        
-        console.log('🔊 Son de notification joué');
+        scheduleBeep(800, 0.2, 0);
+        scheduleBeep(800, 0.2, 0.3);
+        scheduleBeep(800, 0.2, 0.6);
     } catch (error) {
-        console.error('❌ Erreur lecture son notification:', error);
+        console.warn('⚠️ Son notification indisponible:', error.message);
     }
 }
 

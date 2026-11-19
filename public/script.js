@@ -100,17 +100,32 @@
         }
         window.isHolidayRow = isHolidayRow;
 
-        async function fetchGlobalTeachersPhotos() {
-            try {
-                const res = await fetch('/api/teachers-photos');
-                if (res.ok) {
-                    const data = await res.json();
-                    window.globalTeachersPhotosMap = (data && data.photos) ? data.photos : {};
-                }
-            } catch (e) {
-                console.warn('Erreur chargement photos enseignants:', e);
+        let _teachersPhotosLastFetch = 0;
+        let _teachersPhotosInFlight = null;
+        async function fetchGlobalTeachersPhotos(forceRefresh = false) {
+            const now = Date.now();
+            if (!forceRefresh && window.globalTeachersPhotosMap && Object.keys(window.globalTeachersPhotosMap).length > 0 && (now - _teachersPhotosLastFetch) < 60000) {
+                return window.globalTeachersPhotosMap;
             }
-            return window.globalTeachersPhotosMap;
+            if (!forceRefresh && _teachersPhotosInFlight) {
+                return _teachersPhotosInFlight;
+            }
+            _teachersPhotosInFlight = (async () => {
+                try {
+                    const res = await fetch(forceRefresh ? '/api/teachers-photos?force=true' : '/api/teachers-photos');
+                    if (res.ok) {
+                        const data = await res.json();
+                        window.globalTeachersPhotosMap = (data && data.photos) ? data.photos : {};
+                        _teachersPhotosLastFetch = Date.now();
+                    }
+                } catch (e) {
+                    console.warn('Erreur chargement photos enseignants:', e);
+                } finally {
+                    _teachersPhotosInFlight = null;
+                }
+                return window.globalTeachersPhotosMap;
+            })();
+            return _teachersPhotosInFlight;
         }
 
         function getTeacherDirectPhotoUrl(teacherName) {
@@ -2617,42 +2632,59 @@
             const fields = document.querySelectorAll('textarea, input[type="text"], input:not([type])');
             fields.forEach(field => {
                 if (field.dataset.spellcheckAttached === 'true') return;
+                // Ignorer les champs de recherche, identifiants, dates, URLs ou téléphones pour éviter le travail CPU inutile
+                const idLower = (field.id || '').toLowerCase();
+                if (
+                    idLower.includes('search') || idLower.includes('filter') ||
+                    idLower.includes('username') || idLower.includes('password') ||
+                    idLower.includes('phone') || idLower.includes('url') ||
+                    idLower.includes('photo') || idLower.includes('dob') ||
+                    idLower.includes('date')
+                ) {
+                    field.dataset.spellcheckAttached = 'true';
+                    return;
+                }
                 field.dataset.spellcheckAttached = 'true';
                 field.setAttribute('spellcheck', 'true');
                 field.setAttribute('autocorrect', 'on');
                 if (!field.getAttribute('lang')) {
                     field.setAttribute('lang', 'fr');
                 }
+                let inputSpellTimer = null;
                 field.addEventListener('input', () => {
-                    const val = field.value || '';
-                    const issues = analyzeTextForSpellingErrors(val);
-                    let badge = field.parentElement ? field.parentElement.querySelector('.input-spell-warning') : null;
-                    if (issues.length > 0) {
-                        field.classList.add('input-has-spell-errors');
-                        if (!badge && field.parentElement) {
-                            badge = document.createElement('div');
-                            badge.className = 'input-spell-warning';
-                            field.insertAdjacentElement('afterend', badge);
-                        }
-                        if (badge) {
-                            const firstIssue = issues[0];
-                            badge.innerHTML = `<i class="fas fa-exclamation-circle"></i> <span>Faute détectée : <u class="spell-error-word-inline">${escapeHtml(firstIssue.word)}</u>${firstIssue.fix ? ` → <button type="button" class="inline-fix-chip" data-word="${escapeHtml(firstIssue.word)}" data-fix="${escapeHtml(firstIssue.fix)}">Corriger par « ${escapeHtml(firstIssue.fix)} »</button>` : ` (${escapeHtml(firstIssue.reason)})`}</span>`;
-                            const chip = badge.querySelector('.inline-fix-chip');
-                            if (chip) {
-                                chip.onclick = (ev) => {
-                                    ev.preventDefault();
-                                    const w = chip.dataset.word;
-                                    const f = chip.dataset.fix;
-                                    field.value = field.value.replace(new RegExp(`\\b${w}\\b`), f);
-                                    field.dispatchEvent(new Event('input', { bubbles: true }));
-                                    field.focus();
-                                };
+                    if (inputSpellTimer) clearTimeout(inputSpellTimer);
+                    inputSpellTimer = setTimeout(() => {
+                        const val = field.value || '';
+                        const issues = val.length > 2 ? analyzeTextForSpellingErrors(val) : [];
+                        let badge = field.parentElement ? field.parentElement.querySelector('.input-spell-warning') : null;
+                        if (issues.length > 0) {
+                            field.classList.add('input-has-spell-errors');
+                            if (!badge && field.parentElement) {
+                                badge = document.createElement('div');
+                                badge.className = 'input-spell-warning';
+                                field.insertAdjacentElement('afterend', badge);
                             }
+                            if (badge) {
+                                const firstIssue = issues[0];
+                                badge.innerHTML = `<i class="fas fa-exclamation-circle"></i> <span>Faute détectée : <u class="spell-error-word-inline">${escapeHtml(firstIssue.word)}</u>${firstIssue.fix ? ` → <button type="button" class="inline-fix-chip" data-word="${escapeHtml(firstIssue.word)}" data-fix="${escapeHtml(firstIssue.fix)}">Corriger par « ${escapeHtml(firstIssue.fix)} »</button>` : ` (${escapeHtml(firstIssue.reason)})`}</span>`;
+                                const chip = badge.querySelector('.inline-fix-chip');
+                                if (chip) {
+                                    chip.onclick = (ev) => {
+                                        ev.preventDefault();
+                                        const w = chip.dataset.word || '';
+                                        const f = chip.dataset.fix || '';
+                                        const escapedW = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                        field.value = field.value.replace(new RegExp(`\\b${escapedW}\\b`), f);
+                                        field.dispatchEvent(new Event('input', { bubbles: true }));
+                                        field.focus();
+                                    };
+                                }
+                            }
+                        } else {
+                            field.classList.remove('input-has-spell-errors');
+                            if (badge) badge.remove();
                         }
-                    } else {
-                        field.classList.remove('input-has-spell-errors');
-                        if (badge) badge.remove();
-                    }
+                    }, 300);
                 });
             });
         }
@@ -2672,22 +2704,44 @@
             'support': ['support', 'supports', 'ressources', 'الدعم', 'المرفقات', 'lien', 'liens']
         };
 
+        let _findHKeyCacheRef = null;
+        let _findHKeyCacheMap = new Map();
         const findHKey = (targetHeader) => {
             if (!targetHeader) return null;
-            const targetLower = targetHeader.trim().toLowerCase();
-            const targetNorm = targetLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             if (headers && headers.length > 0) {
-                const direct = headers.find(h => h && h.trim().toLowerCase() === targetLower);
-                if (direct) return direct;
-                const normH = headers.find(h => h && h.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === targetNorm);
-                if (normH) return normH;
-                const aliases = fieldKeyAliases[targetNorm] || [];
-                const aliasH = headers.find(h => {
-                    if (!h) return false;
-                    const hNorm = h.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    return aliases.includes(hNorm);
-                });
-                if (aliasH) return aliasH;
+                if (_findHKeyCacheRef !== headers) {
+                    _findHKeyCacheRef = headers;
+                    _findHKeyCacheMap = new Map();
+                }
+                const cached = _findHKeyCacheMap.get(targetHeader);
+                if (cached !== undefined) return cached;
+
+                let result = targetHeader;
+                if (headers.includes(targetHeader)) {
+                    result = targetHeader;
+                } else {
+                    const targetLower = targetHeader.trim().toLowerCase();
+                    const targetNorm = targetLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                    const direct = headers.find(h => h && h.trim().toLowerCase() === targetLower);
+                    if (direct) {
+                        result = direct;
+                    } else {
+                        const normH = headers.find(h => h && h.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === targetNorm);
+                        if (normH) {
+                            result = normH;
+                        } else {
+                            const aliases = fieldKeyAliases[targetNorm] || [];
+                            const aliasH = headers.find(h => {
+                                if (!h) return false;
+                                const hNorm = h.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                                return aliases.includes(hNorm);
+                            });
+                            if (aliasH) result = aliasH;
+                        }
+                    }
+                }
+                _findHKeyCacheMap.set(targetHeader, result);
+                return result;
             }
             return targetHeader;
         };
@@ -4049,14 +4103,19 @@
 
             if (!topScroll || !topInner || !bottomScroll || !table) return;
 
+            let _scrollSyncRaf = null;
             window.syncPlanTableScrollDimensions = function() {
-                const tableWidth = table.scrollWidth || table.offsetWidth;
-                topInner.style.width = tableWidth + 'px';
-                if (tableWidth <= bottomScroll.clientWidth + 5) {
-                    topScroll.style.display = 'none';
-                } else {
-                    topScroll.style.display = 'block';
-                }
+                if (_scrollSyncRaf) return;
+                _scrollSyncRaf = requestAnimationFrame(() => {
+                    _scrollSyncRaf = null;
+                    const tableWidth = table.scrollWidth || table.offsetWidth;
+                    topInner.style.width = tableWidth + 'px';
+                    const shouldHide = tableWidth <= bottomScroll.clientWidth + 5;
+                    const nextDisplay = shouldHide ? 'none' : 'block';
+                    if (topScroll.style.display !== nextDisplay) {
+                        topScroll.style.display = nextDisplay;
+                    }
+                });
             };
 
             let isSyncingTop = false;
@@ -4068,7 +4127,7 @@
                     bottomScroll.scrollLeft = topScroll.scrollLeft;
                 }
                 isSyncingTop = false;
-            });
+            }, { passive: true });
 
             bottomScroll.addEventListener('scroll', () => {
                 if (!isSyncingBottom) {
@@ -4076,11 +4135,11 @@
                     topScroll.scrollLeft = bottomScroll.scrollLeft;
                 }
                 isSyncingBottom = false;
-            });
+            }, { passive: true });
 
             window.addEventListener('resize', () => {
                 if (window.syncPlanTableScrollDimensions) window.syncPlanTableScrollDimensions();
-            });
+            }, { passive: true });
 
             if (window.ResizeObserver) {
                 const observer = new ResizeObserver(() => {
@@ -4816,7 +4875,18 @@ function handleCellTablePaste(e, targetTd) {
 }
 window.handleCellTablePaste = handleCellTablePaste;
 
+let _planTableRenderGen = 0;
+let _counterUpdateDebounceTimer = null;
+function scheduleTeacherCountersUpdate() {
+    if (_counterUpdateDebounceTimer) clearTimeout(_counterUpdateDebounceTimer);
+    _counterUpdateDebounceTimer = setTimeout(() => {
+        _counterUpdateDebounceTimer = null;
+        updateTeacherCounters();
+    }, 120);
+}
+
 function displayPlanTable(data) {
+            const renderGen = ++_planTableRenderGen;
             const tBody = document.querySelector('#planTable tbody');
             const tHead = document.querySelector('#planTable thead tr');
             if (!tBody) return;
@@ -4841,9 +4911,10 @@ function displayPlanTable(data) {
             if (isAdmin) {
                 allowedEditNames = ['Enseignant', 'Jour', 'Période', 'Classe', 'Matière', 'Leçon', 'Travaux de classe', 'Support', 'Devoirs'];
             }
-            const editHdrKeys = allowedEditNames.map(k => findHKey(k)).filter(Boolean);
+            const editHdrSet = new Set(allowedEditNames.map(k => findHKey(k)).filter(Boolean));
 
             const isAr = (currentUserLanguage === 'ar' || arabicTeachers.includes(loggedInUser));
+            const isArTeacher = isArabicTeacherActive();
             const supportKey = findHKey('Support');
             const leconKey = findHKey('Leçon');
             const taskKey = findHKey('Travaux de classe');
@@ -4863,6 +4934,33 @@ function displayPlanTable(data) {
                 return;
             }
 
+            // Précalculer une seule fois les colonnes visibles et compactes (évite de recalculer pour chaque cellule)
+            const visibleHeaders = isArTeacher
+                ? hDisp.filter(header => {
+                    const hNorm = String(header).trim().toLowerCase();
+                    return !(header === supportKey || header === leconKey || hNorm === 'support' || hNorm === 'leçon' || hNorm === 'lecon' || hNorm === 'درس');
+                })
+                : hDisp;
+
+            const metaColSet = new Set();
+            visibleHeaders.forEach(col => {
+                const c = String(col).trim().toLowerCase();
+                if (c.includes('trav') || c.includes('work') || c.includes('صفي') || c.includes('أعمال') || c.includes('اعمال')) return;
+                if (c.includes('leçon') || c.includes('lecon') || c.includes('درس') || c.includes('lesson')) return;
+                if (c.includes('support') || c.includes('سند') || c.includes('وسائل')) return;
+                if (c.includes('devoir') || c.includes('واجب') || c.includes('homework')) return;
+                if (
+                    c.includes('enseign') || c.includes('teacher') || c.includes('معلم') ||
+                    c === 'classe' || c === 'class' || c === 'classes' || c === 'صف' || c === 'فصل' || c === 'الفصل' || c === 'الصف' ||
+                    c.includes('mati') || c.includes('subject') || c.includes('مادة') ||
+                    c.includes('périod') || c.includes('period') || c.includes('حصة') ||
+                    c.includes('jour') || c.includes('day') || c.includes('يوم')
+                ) {
+                    metaColSet.add(col);
+                }
+            });
+
+            const hasUpdCol = Boolean(updK && tHead && tHead.querySelector('.updated-at-column'));
             const tableFragment = document.createDocumentFragment();
             const deferredSpellCells = [];
 
@@ -4890,35 +4988,14 @@ function displayPlanTable(data) {
                     }
                 }
 
-                const isArTeacher = isArabicTeacherActive();
-                hDisp.forEach(header => {
-                    if (isArTeacher) {
-                        const hNorm = String(header).trim().toLowerCase();
-                        if (header === supportKey || header === leconKey || hNorm === 'support' || hNorm === 'leçon' || hNorm === 'lecon' || hNorm === 'درس') {
-                            return;
-                        }
-                    }
-                    
+                visibleHeaders.forEach(header => {
                     const td = document.createElement('td');
                     let content = rowObj ? (rowObj[header] ?? '') : '';
                     td.setAttribute('dir', 'auto');
                     td.dataset.header = header;
-                    
-                    const isMetaColHeader = (col) => {
-                        const c = String(col).trim().toLowerCase();
-                        // Colonnes éditables de saisie (Travaux de classe, Leçon, Support, Devoirs) : JAMAIS compactes
-                        if (c.includes('trav') || c.includes('work') || c.includes('صفي') || c.includes('أعمال') || c.includes('اعمال')) return false;
-                        if (c.includes('leçon') || c.includes('lecon') || c.includes('درس') || c.includes('lesson')) return false;
-                        if (c.includes('support') || c.includes('سند') || c.includes('وسائل')) return false;
-                        if (c.includes('devoir') || c.includes('واجب') || c.includes('homework')) return false;
 
-                        return c.includes('enseign') || c.includes('teacher') || c.includes('معلم') ||
-                               c === 'classe' || c === 'class' || c === 'classes' || c === 'صف' || c === 'فصل' || c === 'الفصل' || c === 'الصف' ||
-                               c.includes('mati') || c.includes('subject') || c.includes('مادة') ||
-                               c.includes('périod') || c.includes('period') || c.includes('حصة') ||
-                               c.includes('jour') || c.includes('day') || c.includes('يوم');
-                    };
-                    if (isMetaColHeader(header)) {
+                    const isMetaCol = metaColSet.has(header);
+                    if (isMetaCol) {
                         td.classList.add('col-meta-compact');
                         td.style.padding = '5px 4px';
                         td.style.fontSize = '0.78rem';
@@ -4961,8 +5038,8 @@ function displayPlanTable(data) {
                     }
                     
                     // Une ligne d'une autre section est TOUJOURS en lecture seule (non éditable)
-                    const isEditable = !isCrossReadOnly && editHdrKeys.includes(header);
-                    if (isEditable && !isMetaColHeader(header)) {
+                    const isEditable = !isCrossReadOnly && editHdrSet.has(header);
+                    if (isEditable && !isMetaCol) {
                         td.classList.add('col-editable-content');
                         td.style.width = 'auto';
                         td.style.minWidth = '240px';
@@ -4993,12 +5070,17 @@ function displayPlanTable(data) {
                             badgeClass = 'badge-maternelle';
                         }
                         td.innerHTML = `<span class="cross-sec-badge ${badgeClass}">${secLabel}</span> ${escapeHtml(content)}`;
+                        applyRTLToElement(td, content);
                     } else if (header === jK && content && !isAdmin) {
                         const dt = parseDateFromJourColumn(content);
-                        td.textContent = dt ? formatDateForDisplay(dt) : content;
+                        const formatted = dt ? formatDateForDisplay(dt) : content;
+                        td.textContent = formatted;
+                        applyRTLToElement(td, formatted);
                     } else if (header === clsK && content && !isAdmin) {
                         const ar = classTranslations[content];
-                        td.textContent = ar ? `${ar} (${content})` : content;
+                        const formatted = ar ? `${ar} (${content})` : content;
+                        td.textContent = formatted;
+                        applyRTLToElement(td, formatted);
                     } else if (isEditable) {
                         td.contentEditable = true;
                         td.classList.add('editable');
@@ -5056,7 +5138,7 @@ function displayPlanTable(data) {
                                     parentTR.classList.add('modified');
                                     const indicator = parentTR.querySelector('.save-indicator');
                                     if (indicator) indicator.style.display = 'none';
-                                    updateTeacherCounters();
+                                    scheduleTeacherCountersUpdate();
                                 }
                             }
                         });
@@ -5088,16 +5170,18 @@ function displayPlanTable(data) {
                             }
                             const parentTR = td.closest('tr');
                             if (parentTR) {
-                                parentTR.classList.add('modified');
-                                const indicator = parentTR.querySelector('.save-indicator');
-                                if (indicator) indicator.style.display = 'none';
-                                updateTeacherCounters();
+                                if (!parentTR.classList.contains('modified')) {
+                                    parentTR.classList.add('modified');
+                                    const indicator = parentTR.querySelector('.save-indicator');
+                                    if (indicator) indicator.style.display = 'none';
+                                    scheduleTeacherCountersUpdate();
+                                }
                             }
 
-                            // Soulignement rouge en temps réel pendant la saisie
+                            // Soulignement rouge en temps réel pendant la saisie (debounced pour économiser le CPU)
                             if (spellTimer) clearTimeout(spellTimer);
                             const lastChar = currentText.slice(-1);
-                            const delay = /[\s.,;!?:\n]/.test(lastChar) ? 60 : 420;
+                            const delay = /[\s.,;!?:\n]/.test(lastChar) ? 160 : 480;
                             spellTimer = setTimeout(() => {
                                 highlightCellSpellingErrors(td, true);
                             }, delay);
@@ -5109,8 +5193,8 @@ function displayPlanTable(data) {
                         });
                     } else {
                         td.textContent = content;
+                        applyRTLToElement(td, content);
                     }
-                    applyRTLToElement(td, td.textContent || content);
                     tr.appendChild(td);
                 });
 
@@ -5139,13 +5223,12 @@ function displayPlanTable(data) {
                     actTd.appendChild(indicatorSpan);
                     
                     // Bouton disquette pour générer le plan de leçon IA pour cette ligne
-                    const teacherKey = findHKey('Enseignant');
-                    const rowTeacher = teacherKey ? rowObj[teacherKey] : null;
+                    const rowTeacher = ensK ? rowObj[ensK] : null;
                     const isRowTeacherMatch = !rowTeacher || 
                         isRowForLoggedInTeacher(rowTeacher, loggedInUser, loggedInTeacherTable) || 
                         String(rowTeacher).trim().toLowerCase() === String(loggedInUser || '').trim().toLowerCase() ||
                         (loggedInTeacherTable && String(rowTeacher).trim().toLowerCase() === String(loggedInTeacherTable).trim().toLowerCase());
-                    const canGenerate = !isArTeacher && !rowObj.isReadOnlyCrossSection && (isUserAdminOrSupervisor(loggedInUser, currentUserRole) || isRowTeacherMatch);
+                    const canGenerate = !isArTeacher && !rowObj.isReadOnlyCrossSection && (isAdmin || isRowTeacherMatch);
                     
                     if (canGenerate) {
                         const aiGenBtn = document.createElement('button');
@@ -5169,7 +5252,7 @@ function displayPlanTable(data) {
                         if (rowObj.lessonPlanDownloaded) {
                             tr.classList.add('row-plan-downloaded');
                         }
-                        const canDownload = isUserAdminOrSupervisor(loggedInUser, currentUserRole) || isRowTeacherMatch || !rowObj.isReadOnlyCrossSection;
+                        const canDownload = isAdmin || isRowTeacherMatch || !rowObj.isReadOnlyCrossSection;
                         if (canDownload) {
                             const lessonBtn = document.createElement('button');
                             lessonBtn.innerHTML = '<i class="fas fa-file-download"></i>';
@@ -5191,10 +5274,10 @@ function displayPlanTable(data) {
                 }
 
                 tr.appendChild(actTd);
-                if (updK && tHead && tHead.querySelector('.updated-at-column')) {
+                if (hasUpdCol) {
                     const updTd = document.createElement('td');
                     updTd.classList.add('updated-at-column');
-                    const updContent = rowObj && rowObj.hasOwnProperty(updK) ? (rowObj[updK] ?? '') : '';
+                    const updContent = rowObj && Object.prototype.hasOwnProperty.call(rowObj, updK) ? (rowObj[updK] ?? '') : '';
                     updTd.textContent = formatUpdatedAt(updContent);
                     tr.appendChild(updTd);
                 }
@@ -5203,12 +5286,26 @@ function displayPlanTable(data) {
             tBody.appendChild(tableFragment);
             makeTableColumnsResizable();
             updateTeacherCounters();
+
+            // Vérification orthographique découpée en petits lots asynchrones (zéro blocage CPU)
             if (deferredSpellCells.length > 0) {
-                setTimeout(() => {
-                    deferredSpellCells.forEach(cell => {
-                        if (cell.isConnected) highlightCellSpellingErrors(cell, false);
-                    });
-                }, 40);
+                let spellCursor = 0;
+                const BATCH_SIZE = 15;
+                const scheduleIdle = window.requestIdleCallback || ((cb) => setTimeout(cb, 25));
+                function processSpellBatch() {
+                    if (renderGen !== _planTableRenderGen) return;
+                    const end = Math.min(spellCursor + BATCH_SIZE, deferredSpellCells.length);
+                    for (; spellCursor < end; spellCursor++) {
+                        const cell = deferredSpellCells[spellCursor];
+                        if (cell && cell.isConnected) {
+                            highlightCellSpellingErrors(cell, false);
+                        }
+                    }
+                    if (spellCursor < deferredSpellCells.length) {
+                        scheduleIdle(processSpellBatch, { timeout: 250 });
+                    }
+                }
+                scheduleIdle(processSpellBatch, { timeout: 200 });
             }
         }
 
@@ -7610,49 +7707,24 @@ function applyParentUIMode(enabled) {
     }
 }
 
-function switchMainTab(tab) {
-    if ((isParentMode || !loggedInUser) && (tab === 'plans' || tab === 'grades')) {
-        if (tab === 'grades') {
-            displayAlert("La saisie des notes est strictement réservée aux enseignants et à l'administrateur.", true);
-        }
-        tab = 'devoirs';
+// Bascule d'affichage Mode PC / Mode Portable (Mobile) dans le Plan Hebdomadaire Parent
+function toggleParentViewMode() {
+    const view = document.getElementById('parent-plan-view');
+    const icon = document.getElementById('parentViewModeIcon');
+    const text = document.getElementById('parentViewModeText');
+    if (!view) return;
+    const isMobileNow = view.classList.toggle('parent-mobile-mode');
+    if (icon) {
+        icon.className = isMobileNow ? 'fas fa-desktop' : 'fas fa-mobile-alt';
     }
-    const plansTab = document.getElementById('plans-tab-content');
-    const devoirsTab = document.getElementById('devoirs-tab-content');
-    const gradesTab = document.getElementById('grades-tab-content');
-    const plansBtn = document.getElementById('tab-plans-btn');
-    const devoirsBtn = document.getElementById('tab-devoirs-btn');
-    const gradesBtn = document.getElementById('tab-grades-btn');
-
-    if (plansBtn) plansBtn.classList.remove('active');
-    if (devoirsBtn) devoirsBtn.classList.remove('active');
-    if (gradesBtn) gradesBtn.classList.remove('active');
-
-    if (plansTab) plansTab.style.display = 'none';
-    if (devoirsTab) devoirsTab.style.display = 'none';
-    if (gradesTab) gradesTab.style.display = 'none';
-
-    if (tab === 'devoirs') {
-        if (devoirsTab) devoirsTab.style.display = 'block';
-        if (devoirsBtn) devoirsBtn.classList.add('active');
-        if (isParentMode && !loggedInUser) {
-            showHomeworkView('parent-selection');
-        } else {
-            isParentMode = false;
-            // L'enseignant accède DIRECTEMENT à son espace enseignant de suivi et d'évaluation des devoirs
-            showHomeworkView('homework-teacher');
-        }
-    } else if (tab === 'grades') {
-        updateTopNavGradesButtonsVisibility(false);
-        if (gradesBtn) gradesBtn.classList.add('active');
-        if (gradesTab) gradesTab.style.display = 'block';
-        if (typeof initTeacherGradesInterface === 'function') initTeacherGradesInterface();
-    } else {
-        updateTopNavGradesButtonsVisibility(false);
-        if (plansTab) plansTab.style.display = 'block';
-        if (plansBtn) plansBtn.classList.add('active');
+    if (text) {
+        const isAr = (typeof currentUserLanguage !== 'undefined' && currentUserLanguage === 'ar');
+        text.textContent = isMobileNow
+            ? (isAr ? 'وضع الحاسوب (PC)' : 'Mode Ordinateur (PC)')
+            : (isAr ? 'وضع الجوال (Mobile)' : 'Mode Portable (Mobile)');
     }
 }
+window.toggleParentViewMode = toggleParentViewMode;
 
 function showHomeworkView(viewName) {
     if (isParentMode && !loggedInUser && viewName === 'homework-teacher') {
@@ -10432,11 +10504,12 @@ async function loadStudentHomeworksForDate(studentName, className, dateStr, isDi
             const hwWeekSel = document.getElementById('studentHomeworkWeekSelect');
             if (hwWeekSel) {
                 const weeksList = Array.from(new Set([...(availableWeeks || []), ...(targetWeek ? [Number(targetWeek)] : [])])).sort((a, b) => a - b);
-                hwWeekSel.innerHTML = `<option value="">${isAr ? 'الأسبوع النشط' : 'Semaine active'}${targetWeek ? ` (S${targetWeek})` : ''}</option>`;
+                const optsHtml = [`<option value="">${isAr ? 'الأسبوع النشط' : 'Semaine active'}${targetWeek ? ` (S${targetWeek})` : ''}</option>`];
                 weeksList.forEach(wNum => {
                     const sel = String(window.selectedStudentHomeworkWeek) === String(wNum) || (!window.selectedStudentHomeworkWeek && Number(targetWeek) === Number(wNum)) ? 'selected' : '';
-                    hwWeekSel.innerHTML += `<option value="${wNum}" ${sel}>Semaine ${wNum}</option>`;
+                    optsHtml.push(`<option value="${wNum}" ${sel}>Semaine ${wNum}</option>`);
                 });
+                hwWeekSel.innerHTML = optsHtml.join('');
             }
 
             // Mise à jour de la date active dans le badge de navigation
@@ -12133,6 +12206,23 @@ let currentTeacherMessages = [];
 let currentTeacherMsgFilter = 'all';
 let activeTeacherChatConvoKey = null;
 let teacherMessengerPollTimer = null;
+let _teacherMsgPollInFlight = false;
+let _lastTeacherMsgSignature = '';
+
+function computeMessagesSignature(list) {
+    if (!Array.isArray(list) || list.length === 0) return '0';
+    let parts = [String(list.length)];
+    for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        if (!m) continue;
+        const replies = Array.isArray(m.replies) ? m.replies : [];
+        const lastReply = replies.length > 0 ? replies[replies.length - 1] : null;
+        parts.push(
+            `${m._id || m.id || ''}:${m.status || ''}:${m.readByParent ? 1 : 0}:${m.readByTeacher ? 1 : 0}:${replies.length}:${lastReply ? (lastReply._id || lastReply.createdAt || lastReply.date || '') : ''}`
+        );
+    }
+    return parts.join('|');
+}
 
 async function openTeacherMessagesModal(preselectedConvoKey = null) {
     const modal = document.getElementById('teacherMessagesModal');
@@ -12145,9 +12235,10 @@ async function openTeacherMessagesModal(preselectedConvoKey = null) {
     }
 
     modal.style.display = 'block';
+    _lastTeacherMsgSignature = '';
     
     if (teacherMessengerPollTimer) clearInterval(teacherMessengerPollTimer);
-    teacherMessengerPollTimer = setInterval(refreshTeacherMessagesSilently, 5000);
+    teacherMessengerPollTimer = setInterval(refreshTeacherMessagesSilently, 8000);
 
     await loadTeacherMessages();
 
@@ -12166,21 +12257,29 @@ function closeTeacherMessagesModal() {
 }
 
 async function refreshTeacherMessagesSilently() {
+    if (document.hidden || _teacherMsgPollInFlight) return;
     const modal = document.getElementById('teacherMessagesModal');
     if (!modal || modal.style.display === 'none') return;
+    _teacherMsgPollInFlight = true;
     try {
         const teacherName = (typeof loggedInUser !== 'undefined' && loggedInUser && !isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? loggedInUser : 'all';
         const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
         const res = await fetch(`/api/get-messages?teacherName=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
         if (!res.ok) return;
-        currentTeacherMessages = await res.json();
-        updateTeacherCounters();
+        const freshMessages = await res.json();
+        const sig = computeMessagesSignature(freshMessages);
+        if (sig === _lastTeacherMsgSignature) return;
+        _lastTeacherMsgSignature = sig;
+        currentTeacherMessages = freshMessages;
+        updateTeacherMsgCounters();
         renderTeacherConversationsList(true);
         if (activeTeacherChatConvoKey) {
             renderActiveTeacherChatMessages(activeTeacherChatConvoKey, true);
         }
     } catch (e) {
         // silencieux
+    } finally {
+        _teacherMsgPollInFlight = false;
     }
 }
 
@@ -12202,8 +12301,9 @@ async function loadTeacherMessages() {
         
         if (!res.ok) throw new Error(`Erreur ${res.status}`);
         currentTeacherMessages = await res.json();
+        _lastTeacherMsgSignature = computeMessagesSignature(currentTeacherMessages);
 
-        updateTeacherCounters();
+        updateTeacherMsgCounters();
         renderTeacherConversationsList(false);
 
         // Sélectionner la première conversation par défaut si aucune sélectionnée
@@ -12226,7 +12326,7 @@ async function loadTeacherMessages() {
     }
 }
 
-function updateTeacherCounters() {
+function updateTeacherMsgCounters() {
     const convos = groupTeacherMessagesIntoConversations();
     const total = convos.length;
     const unread = convos.filter(c => c.unread).length;
@@ -12468,7 +12568,7 @@ async function selectTeacherConversation(convoKey) {
                 m.read = true;
             }
         });
-        updateTeacherCounters();
+        updateTeacherMsgCounters();
     } catch (e) {}
 }
 
@@ -12641,7 +12741,7 @@ async function sendTeacherActiveChatMessage() {
             latestMsg.status = 'replied';
 
             renderActiveTeacherChatMessages(activeTeacherChatConvoKey, false);
-            updateTeacherCounters();
+            updateTeacherMsgCounters();
             renderTeacherConversationsList(true);
         } else {
             const err = await res.json();
@@ -12722,7 +12822,8 @@ async function onTeacherNewMsgClassChanged(autoSelectStudent = null) {
     studentSelect.innerHTML = '<option value="">Chargement des élèves...</option>';
 
     try {
-        const res = await fetch(`/api/students?classe=${encodeURIComponent(classVal)}`);
+        const secParam = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
+        const res = await fetch(`/api/students?classe=${encodeURIComponent(classVal)}&section=${encodeURIComponent(secParam)}`);
         if (!res.ok) throw new Error('Erreur API élèves');
         const students = await res.json();
 
@@ -12831,25 +12932,29 @@ function contactParentFromEval(studentName, parentPhone, studentClass, subject, 
 // NOTIFICATIONS EN ROUGE ("1" ROUGE POUR LES ENSEIGNANTS ET POUR LES PARENTS)
 // ============================================================================
 
+let _teacherUnreadInFlight = false;
 async function checkTeacherUnreadMessagesNotification() {
+    if (_teacherUnreadInFlight) return;
     try {
         const isConnected = (typeof loggedInUser !== 'undefined' && loggedInUser);
         const headerBtn = document.getElementById('teacherHeaderMsgBtn');
         const headerBadge = document.getElementById('teacherHeaderMsgBadge');
         const teacherViewBadge = document.getElementById('teacher-unread-badge');
 
-        if (!isConnected) {
+        if (!isConnected || (typeof isParentMode !== 'undefined' && isParentMode)) {
             if (headerBtn) headerBtn.style.display = 'none';
             if (headerBadge) headerBadge.style.display = 'none';
             if (teacherViewBadge) teacherViewBadge.style.display = 'none';
             return;
         }
+        if (document.hidden) return;
 
         if (headerBtn) headerBtn.style.display = 'inline-flex';
 
         const teacherName = (typeof isUserAdminOrSupervisor === 'function' && isUserAdminOrSupervisor(loggedInUser, currentUserRole)) ? 'all' : loggedInUser;
         const section = (typeof currentSection !== 'undefined' && currentSection) ? currentSection : 'garcons';
         
+        _teacherUnreadInFlight = true;
         const res = await fetch(`/api/unread-count?teacherName=${encodeURIComponent(teacherName)}&section=${encodeURIComponent(section)}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -12870,10 +12975,14 @@ async function checkTeacherUnreadMessagesNotification() {
         }
     } catch (e) {
         console.warn('checkTeacherUnreadMessagesNotification:', e);
+    } finally {
+        _teacherUnreadInFlight = false;
     }
 }
 
+let _parentUnreadInFlight = false;
 async function checkParentUnreadMessagesNotification() {
+    if (_parentUnreadInFlight) return;
     try {
         const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
         const floatingBtn = document.getElementById('parentFloatingMessengerBtn');
@@ -12881,8 +12990,11 @@ async function checkParentUnreadMessagesNotification() {
         const modalBadge = document.getElementById('parentModalUnreadBadge');
         const uiBadges = document.querySelectorAll('.parent-unread-badge-ui');
 
-        if (typeof isParentMode !== 'undefined' && isParentMode) {
+        const inParent = (typeof isParentMode !== 'undefined' && isParentMode);
+        if (inParent) {
             if (floatingBtn) floatingBtn.style.display = 'flex';
+        } else {
+            return;
         }
 
         if (!phone) {
@@ -12891,7 +13003,9 @@ async function checkParentUnreadMessagesNotification() {
             uiBadges.forEach(b => b.style.display = 'none');
             return;
         }
+        if (document.hidden) return;
 
+        _parentUnreadInFlight = true;
         const res = await fetch(`/api/parent-unread-replies?phone=${encodeURIComponent(phone.trim())}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -12917,11 +13031,23 @@ async function checkParentUnreadMessagesNotification() {
         }
     } catch (e) {
         console.warn('checkParentUnreadMessagesNotification:', e);
+    } finally {
+        _parentUnreadInFlight = false;
     }
 }
 
-setInterval(checkTeacherUnreadMessagesNotification, 20000);
-setInterval(checkParentUnreadMessagesNotification, 20000);
+setInterval(() => {
+    if (!document.hidden) checkTeacherUnreadMessagesNotification();
+}, 30000);
+setInterval(() => {
+    if (!document.hidden) checkParentUnreadMessagesNotification();
+}, 30000);
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        checkTeacherUnreadMessagesNotification();
+        checkParentUnreadMessagesNotification();
+    }
+});
 
 // ============================================================================
 // BOÎTE DE RÉCEPTION & DISCUSSION MESSENGER POUR LES PARENTS
@@ -12930,17 +13056,20 @@ setInterval(checkParentUnreadMessagesNotification, 20000);
 let parentMessengerData = [];
 let activeParentChatTeacher = null;
 let parentMessengerPollTimer = null;
+let _parentMsgPollInFlight = false;
+let _lastParentMsgSignature = '';
 
 async function openParentMessengerModal(preselectedTeacher = null) {
     const modal = document.getElementById('parentMessengerModal');
     if (!modal) return;
     modal.style.display = 'flex';
+    _lastParentMsgSignature = '';
 
     if (parentMessengerPollTimer) {
         clearInterval(parentMessengerPollTimer);
     }
-    // Polling doux toutes les 4 secondes tant que le modal est ouvert
-    parentMessengerPollTimer = setInterval(refreshParentMessengerSilently, 4000);
+    // Polling doux toutes les 8 secondes tant que le modal est ouvert et l'onglet actif
+    parentMessengerPollTimer = setInterval(refreshParentMessengerSilently, 8000);
 
     const currentPhone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
     const phoneLabel = document.getElementById('parentCurrentPhoneLabel');
@@ -13064,10 +13193,14 @@ function refreshCurrentConversation() {
 }
 
 async function refreshParentMessengerSilently() {
+    if (document.hidden || _parentMsgPollInFlight) return;
+    const modal = document.getElementById('parentMessengerModal');
+    if (!modal || modal.style.display === 'none') return;
     const phone = localStorage.getItem('parentSenderPhone') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? activeParentAccount.phone : '');
     const parentName = localStorage.getItem('parentSenderName') || (typeof activeParentAccount !== 'undefined' && activeParentAccount ? `${activeParentAccount.firstName} ${activeParentAccount.lastName}` : '');
     if (!phone && !parentName) return;
 
+    _parentMsgPollInFlight = true;
     try {
         const queryParams = new URLSearchParams();
         if (phone) queryParams.append('phone', phone);
@@ -13078,8 +13211,9 @@ async function refreshParentMessengerSilently() {
         const raw = await res.json();
         const messages = Array.isArray(raw) ? raw : (Array.isArray(raw.messages) ? raw.messages : (Array.isArray(raw.data) ? raw.data : []));
 
-        // Vérifier s'il y a de nouveaux messages ou réponses
-        const prevCount = parentMessengerData.length;
+        const sig = computeMessagesSignature(messages);
+        if (sig === _lastParentMsgSignature) return;
+        _lastParentMsgSignature = sig;
         parentMessengerData = messages;
 
         // Regrouper par enseignant
@@ -13120,6 +13254,8 @@ async function refreshParentMessengerSilently() {
         }
     } catch (e) {
         // En mode silencieux, ignorer les erreurs réseau temporaires
+    } finally {
+        _parentMsgPollInFlight = false;
     }
 }
 

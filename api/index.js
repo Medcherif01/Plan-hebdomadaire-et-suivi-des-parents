@@ -88,8 +88,16 @@ const formatTextForWord = (text, options = {}) => {
 const app = express();
 app.use(cors());
 
-// Compression GZIP haute performance (réduit script.js de 1.3 Mo à ~240 Ko et accélère les réponses API JSON)
+// Compression GZIP haute performance asynchrone (évite de bloquer le thread CPU principal)
 const staticGzipCache = new Map();
+const STATIC_STAT_TTL_MS = 10000;
+const STATIC_MIME_MAP = {
+  '.js': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.svg': 'image/svg+xml; charset=utf-8'
+};
+
 app.use((req, res, next) => {
   const acceptEncoding = req.headers['accept-encoding'] || '';
   if (!acceptEncoding.includes('gzip')) return next();
@@ -100,55 +108,63 @@ app.use((req, res, next) => {
     if (/\.(js|css|html|svg)$/i.test(cleanRel) && !cleanRel.includes('..')) {
       const fullPath = path.join(__dirname, '..', 'public', cleanRel);
       try {
-        if (fs.existsSync(fullPath)) {
+        const now = Date.now();
+        let cached = staticGzipCache.get(fullPath);
+        if (!cached || (now - cached.checkedAt) > STATIC_STAT_TTL_MS) {
+          if (!fs.existsSync(fullPath)) {
+            staticGzipCache.delete(fullPath);
+            return next();
+          }
           const stat = fs.statSync(fullPath);
-          if (stat.isFile()) {
-            const etag = `W/"${stat.size}-${stat.mtimeMs}"`;
-            if (req.headers['if-none-match'] === etag) {
-              res.statusCode = 304;
-              return res.end();
-            }
-            let cached = staticGzipCache.get(fullPath);
-            if (!cached || cached.mtimeMs !== stat.mtimeMs) {
-              const rawBuf = fs.readFileSync(fullPath);
-              cached = {
-                mtimeMs: stat.mtimeMs,
-                etag,
-                gzipped: zlib.gzipSync(rawBuf, { level: zlib.constants.Z_BEST_SPEED })
-              };
-              staticGzipCache.set(fullPath, cached);
-            }
-            const ext = path.extname(cleanRel).toLowerCase();
-            const mimeMap = {
-              '.js': 'application/javascript; charset=utf-8',
-              '.css': 'text/css; charset=utf-8',
-              '.html': 'text/html; charset=utf-8',
-              '.svg': 'image/svg+xml; charset=utf-8'
+          if (!stat.isFile()) return next();
+          const etag = `W/"${stat.size}-${stat.mtimeMs}"`;
+          if (!cached || cached.mtimeMs !== stat.mtimeMs) {
+            const rawBuf = fs.readFileSync(fullPath);
+            cached = {
+              mtimeMs: stat.mtimeMs,
+              etag,
+              checkedAt: now,
+              ext: path.extname(cleanRel).toLowerCase(),
+              gzipped: zlib.gzipSync(rawBuf, { level: zlib.constants.Z_BEST_SPEED })
             };
-            res.setHeader('Content-Type', mimeMap[ext] || 'application/octet-stream');
-            res.setHeader('Content-Encoding', 'gzip');
-            res.setHeader('Vary', 'Accept-Encoding');
-            res.setHeader('ETag', cached.etag);
-            res.setHeader('Cache-Control', ext === '.html' ? 'no-cache' : 'public, max-age=60');
-            return res.send(cached.gzipped);
+            staticGzipCache.set(fullPath, cached);
+          } else {
+            cached.checkedAt = now;
           }
         }
+        if (req.headers['if-none-match'] === cached.etag) {
+          res.statusCode = 304;
+          return res.end();
+        }
+        res.setHeader('Content-Type', STATIC_MIME_MAP[cached.ext] || 'application/octet-stream');
+        res.setHeader('Content-Encoding', 'gzip');
+        res.setHeader('Vary', 'Accept-Encoding');
+        res.setHeader('ETag', cached.etag);
+        res.setHeader('Cache-Control', cached.ext === '.html' ? 'no-cache' : 'public, max-age=300');
+        return res.send(cached.gzipped);
       } catch (e) {}
     }
   }
 
-  // Compression automatique des réponses JSON volumineuses (/api/*)
+  // Compression asynchrone des réponses JSON volumineuses (/api/*) sur le threadpool libuv
   const origJson = res.json.bind(res);
   res.json = function (body) {
+    if (res.headersSent) return res;
     try {
-      if (!res.headersSent) {
-        const jsonStr = JSON.stringify(body);
-        if (jsonStr && jsonStr.length > 1024) {
+      const jsonStr = JSON.stringify(body);
+      if (jsonStr && jsonStr.length > 2048) {
+        const buf = Buffer.from(jsonStr, 'utf8');
+        zlib.gzip(buf, { level: zlib.constants.Z_BEST_SPEED }, (err, compressed) => {
+          if (res.headersSent) return;
+          if (err || !compressed) {
+            return origJson(body);
+          }
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.setHeader('Content-Encoding', 'gzip');
           res.setHeader('Vary', 'Accept-Encoding');
-          return res.send(zlib.gzipSync(Buffer.from(jsonStr, 'utf8'), { level: zlib.constants.Z_BEST_SPEED }));
-        }
+          res.end(compressed);
+        });
+        return res;
       }
     } catch (e) {}
     return origJson(body);
@@ -1008,6 +1024,7 @@ class InMemoryCollection {
   }
 
   _notifyChange() {
+    if (this._inBatch) return;
     if (this.db && typeof this.db.saveToDisk === 'function') {
       this.db.saveToDisk();
     }
@@ -1181,15 +1198,21 @@ class InMemoryCollection {
   }
 
   async bulkWrite(operations) {
-    if (!Array.isArray(operations)) return { ok: 1 };
-    for (const op of operations) {
-      if (op.updateOne) {
-        await this.updateOne(op.updateOne.filter, op.updateOne.update, { upsert: op.updateOne.upsert });
-      } else if (op.insertOne) {
-        await this.insertOne(op.insertOne.document);
-      } else if (op.deleteOne) {
-        await this.deleteOne(op.deleteOne.filter);
+    if (!Array.isArray(operations) || operations.length === 0) return { ok: 1 };
+    const prevBatch = this._inBatch;
+    this._inBatch = true;
+    try {
+      for (const op of operations) {
+        if (op.updateOne) {
+          await this.updateOne(op.updateOne.filter, op.updateOne.update, { upsert: op.updateOne.upsert });
+        } else if (op.insertOne) {
+          await this.insertOne(op.insertOne.document);
+        } else if (op.deleteOne) {
+          await this.deleteOne(op.deleteOne.filter);
+        }
       }
+    } finally {
+      this._inBatch = prevBatch;
     }
     this._notifyChange();
     return { ok: 1 };
@@ -1262,7 +1285,22 @@ class InMemoryCollection {
           if (exists !== Boolean(qVal.$exists)) return false;
         }
         if (qVal.$regex !== undefined) {
-          const reg = qVal.$regex instanceof RegExp ? qVal.$regex : new RegExp(qVal.$regex, qVal.$options || 'i');
+          let reg = qVal.$regex;
+          if (!(reg instanceof RegExp)) {
+            const opts = qVal.$options || 'i';
+            const cacheKey = `${reg}__${opts}`;
+            if (!this._regexCache) this._regexCache = new Map();
+            reg = this._regexCache.get(cacheKey);
+            if (!reg) {
+              if (this._regexCache.size > 200) this._regexCache.clear();
+              try {
+                reg = new RegExp(qVal.$regex, opts);
+              } catch (e) {
+                reg = new RegExp(String(qVal.$regex).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), opts);
+              }
+              this._regexCache.set(cacheKey, reg);
+            }
+          }
           if (!reg.test(String(iVal ?? ''))) return false;
         }
         if (qVal.$in && Array.isArray(qVal.$in)) {
@@ -1346,6 +1384,11 @@ class InMemoryDb {
   saveToDisk() {
     if (this._saveTimer) clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(async () => {
+      if (this._isWriting) {
+        this._pendingWrite = true;
+        return;
+      }
+      this._isWriting = true;
       try {
         const dir = path.dirname(DB_LOCAL_FILE);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -1356,8 +1399,14 @@ class InMemoryDb {
         await fs.promises.writeFile(DB_LOCAL_FILE, JSON.stringify(obj), 'utf8');
       } catch (e) {
         console.warn('Note: saveToDisk local_db.json:', e.message);
+      } finally {
+        this._isWriting = false;
+        if (this._pendingWrite) {
+          this._pendingWrite = false;
+          this.saveToDisk();
+        }
       }
-    }, 450);
+    }, 1500);
   }
 
   collection(name) {
@@ -1557,6 +1606,40 @@ async function sanitizeDatabaseClassesAndSections(db) {
 }
 
 let dbInitPromise = null;
+let hasEnsuredDbIndexes = false;
+
+async function ensureDatabaseIndexes(db) {
+  if (!db || hasEnsuredDbIndexes || db instanceof InMemoryDb) return;
+  hasEnsuredDbIndexes = true;
+  const indexSpecs = [
+    ['plans', { section: 1, week: 1 }],
+    ['students', { section: 1, class: 1 }],
+    ['deleted_students', { section: 1 }],
+    ['evaluations', { section: 1, classe: 1, date: 1 }],
+    ['evaluations', { studentName: 1, date: 1 }],
+    ['teacher_messages', { teacherName: 1, createdAt: -1 }],
+    ['teacher_messages', { parentPhone: 1, createdAt: -1 }],
+    ['teacher_messages', { read: 1, teacherName: 1 }],
+    ['teacher_replies', { messageId: 1, createdAt: 1 }],
+    ['teacher_replies', { parentPhone: 1, readByParent: 1 }],
+    ['parent_chat_replies', { messageId: 1, createdAt: 1 }],
+    ['studentGrades', { section: 1, classe: 1, subject: 1, semester: 1 }],
+    ['class_schedules', { section: 1, classe: 1 }],
+    ['class_subject_teachers', { section: 1, classe: 1, matiere: 1 }],
+    ['special_days', { section: 1, week: 1 }],
+    ['published_plans', { section: 1, week: 1 }],
+    ['lessonPlans', { section: 1, week: 1 }],
+    ['weeklyLessonPlans', { section: 1, week: 1 }],
+    ['annual_distributions', { section: 1, classe: 1, matiere: 1 }],
+    ['teachers_photos', { teacherName: 1 }]
+  ];
+  // Exécution non-bloquante en arrière-plan pour accélérer MongoDB sans retarder le démarrage
+  Promise.all(
+    indexSpecs.map(([col, spec]) =>
+      db.collection(col).createIndex(spec).catch(() => {})
+    )
+  ).catch(() => {});
+}
 
 async function connectToDatabase() {
   if (cachedDb && hasCleanedInitialPlans) return cachedDb;
@@ -1575,9 +1658,15 @@ async function connectToDatabase() {
       return cachedDb;
     }
     try {
-      const client = new MongoClient(mongoUrl, { connectTimeoutMS: 5000, serverSelectionTimeoutMS: 5000 });
+      const client = new MongoClient(mongoUrl, {
+        connectTimeoutMS: 5000,
+        serverSelectionTimeoutMS: 5000,
+        maxPoolSize: 20,
+        minPoolSize: 2
+      });
       await client.connect();
       const db = client.db();
+      ensureDatabaseIndexes(db);
       if (!hasCleanedInitialPlans) {
         hasCleanedInitialPlans = true;
         await clearAllStoredLessonPlans(db);
@@ -1658,25 +1747,41 @@ function getDateForDayNameNode(weekStartDate, dayName) {
   return specificDate;
 }
 
+const _normStringCacheServer = new Map();
+function normalizeKeyFastServer(str) {
+  let cached = _normStringCacheServer.get(str);
+  if (cached !== undefined) return cached;
+  cached = str.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (_normStringCacheServer.size > 1000) _normStringCacheServer.clear();
+  _normStringCacheServer.set(str, cached);
+  return cached;
+}
+
 const findKey = (obj, target) => {
   if (!obj || typeof obj !== 'object' || !target) return undefined;
+  // Fast path O(1) : correspondance exacte directe (95% des cas)
+  if (Object.prototype.hasOwnProperty.call(obj, target)) return target;
+
   const keys = Object.keys(obj);
   const targetLower = target.trim().toLowerCase();
-  const targetNorm = targetLower.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  
-  // 1. Direct match
-  const direct = keys.find(k => k.trim().toLowerCase() === targetLower);
-  if (direct) return direct;
-  
-  // 2. Normalized match
-  const normKey = keys.find(k => k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === targetNorm);
-  if (normKey) return normKey;
-  
+  const targetNorm = normalizeKeyFastServer(target);
+
+  // 1. Direct match insensible à la casse
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i].trim().toLowerCase() === targetLower) return keys[i];
+  }
+
+  // 2. Normalized match (avec cache)
+  for (let i = 0; i < keys.length; i++) {
+    if (normalizeKeyFastServer(keys[i]) === targetNorm) return keys[i];
+  }
+
   // 3. Aliases
-  const aliases = fieldKeyAliasesServer[targetNorm] || [];
-  for (const k of keys) {
-    const kNorm = k.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    if (aliases.includes(kNorm)) return k;
+  const aliases = fieldKeyAliasesServer[targetNorm];
+  if (aliases) {
+    for (let i = 0; i < keys.length; i++) {
+      if (aliases.includes(normalizeKeyFastServer(keys[i]))) return keys[i];
+    }
   }
   return undefined;
 };
@@ -3434,11 +3539,25 @@ function formatDriveImageUrl(url) {
 }
 
 // --- API GESTION DES PHOTOS DES ENSEIGNANTS (GOOGLE DRIVE / LIENS DIRECTS) ---
+let teachersPhotosCache = { data: null, expiresAt: 0 };
+function invalidateTeachersPhotosCache() {
+  teachersPhotosCache = { data: null, expiresAt: 0 };
+}
 
 app.get('/api/teachers-photos', async (req, res) => {
   try {
+    const now = Date.now();
+    if (req.query.force !== 'true' && teachersPhotosCache.data && now < teachersPhotosCache.expiresAt) {
+      res.setHeader('Cache-Control', 'public, max-age=60');
+      return res.status(200).json({ success: true, photos: teachersPhotosCache.data });
+    }
+
     const db = await connectToDatabase();
-    const photosDocs = await db.collection('teachers_photos').find({}).toArray();
+    const [photosDocs, usersWithPhotos] = await Promise.all([
+      db.collection('teachers_photos').find({}).toArray(),
+      db.collection('users').find({ photoUrl: { $exists: true, $ne: '' } }).toArray()
+    ]);
+
     const photosMap = {};
     photosDocs.forEach(doc => {
       if (doc.teacherName && doc.photoUrl) {
@@ -3446,7 +3565,6 @@ app.get('/api/teachers-photos', async (req, res) => {
       }
     });
 
-    const usersWithPhotos = await db.collection('users').find({ photoUrl: { $exists: true, $ne: '' } }).toArray();
     usersWithPhotos.forEach(u => {
       if (u.username && u.photoUrl && !photosMap[u.username]) {
         photosMap[u.username] = u.photoUrl;
@@ -3456,6 +3574,8 @@ app.get('/api/teachers-photos', async (req, res) => {
       }
     });
 
+    teachersPhotosCache = { data: photosMap, expiresAt: now + 60 * 1000 };
+    res.setHeader('Cache-Control', 'public, max-age=60');
     res.status(200).json({ success: true, photos: photosMap });
   } catch (error) {
     console.error('Erreur GET /api/teachers-photos:', error);
@@ -3469,19 +3589,25 @@ app.post('/api/teachers-photos', async (req, res) => {
     const { teacherName, photoUrl, section = 'garcons', photos } = req.body;
 
     if (photos && typeof photos === 'object') {
-      for (const [tName, pUrl] of Object.entries(photos)) {
-        if (!tName) continue;
-        const cleanUrl = formatDriveImageUrl(pUrl);
-        await db.collection('teachers_photos').updateOne(
-          { teacherName: tName.trim() },
-          { $set: { teacherName: tName.trim(), photoUrl: cleanUrl, updatedAt: new Date() } },
-          { upsert: true }
-        );
-        await db.collection('users').updateMany(
-          { $or: [{ username: tName.trim() }, { tableTeacherName: tName.trim() }] },
-          { $set: { photoUrl: cleanUrl } }
-        );
+      const entries = Object.entries(photos).filter(([tName]) => Boolean(tName));
+      if (entries.length > 0) {
+        const now = new Date();
+        const photoOps = entries.map(([tName, pUrl]) => ({
+          updateOne: {
+            filter: { teacherName: tName.trim() },
+            update: { $set: { teacherName: tName.trim(), photoUrl: formatDriveImageUrl(pUrl), updatedAt: now } },
+            upsert: true
+          }
+        }));
+        await db.collection('teachers_photos').bulkWrite(photoOps);
+        await Promise.all(entries.map(([tName, pUrl]) =>
+          db.collection('users').updateMany(
+            { $or: [{ username: tName.trim() }, { tableTeacherName: tName.trim() }] },
+            { $set: { photoUrl: formatDriveImageUrl(pUrl) } }
+          )
+        ));
       }
+      invalidateTeachersPhotosCache();
       return res.status(200).json({ success: true, message: 'Photos enregistrées avec succès.' });
     }
 
@@ -3490,16 +3616,19 @@ app.post('/api/teachers-photos', async (req, res) => {
     }
 
     const cleanUrl = formatDriveImageUrl(photoUrl || '');
-    await db.collection('teachers_photos').updateOne(
-      { teacherName: teacherName.trim() },
-      { $set: { teacherName: teacherName.trim(), photoUrl: cleanUrl, section, updatedAt: new Date() } },
-      { upsert: true }
-    );
-    await db.collection('users').updateMany(
-      { $or: [{ username: teacherName.trim() }, { tableTeacherName: teacherName.trim() }] },
-      { $set: { photoUrl: cleanUrl } }
-    );
+    await Promise.all([
+      db.collection('teachers_photos').updateOne(
+        { teacherName: teacherName.trim() },
+        { $set: { teacherName: teacherName.trim(), photoUrl: cleanUrl, section, updatedAt: new Date() } },
+        { upsert: true }
+      ),
+      db.collection('users').updateMany(
+        { $or: [{ username: teacherName.trim() }, { tableTeacherName: teacherName.trim() }] },
+        { $set: { photoUrl: cleanUrl } }
+      )
+    ]);
 
+    invalidateTeachersPhotosCache();
     res.status(200).json({ success: true, message: `Photo enregistrée pour ${teacherName}.`, photoUrl: cleanUrl });
   } catch (error) {
     console.error('Erreur POST /api/teachers-photos:', error);
@@ -3516,16 +3645,19 @@ app.post('/api/my-teacher-photo', async (req, res) => {
     const db = await connectToDatabase();
     const cleanUrl = formatDriveImageUrl(photoUrl || '');
     
-    await db.collection('teachers_photos').updateOne(
-      { teacherName: username.trim() },
-      { $set: { teacherName: username.trim(), photoUrl: cleanUrl, section, updatedAt: new Date() } },
-      { upsert: true }
-    );
-    await db.collection('users').updateMany(
-      { $or: [{ username: username.trim() }, { tableTeacherName: username.trim() }] },
-      { $set: { photoUrl: cleanUrl } }
-    );
+    await Promise.all([
+      db.collection('teachers_photos').updateOne(
+        { teacherName: username.trim() },
+        { $set: { teacherName: username.trim(), photoUrl: cleanUrl, section, updatedAt: new Date() } },
+        { upsert: true }
+      ),
+      db.collection('users').updateMany(
+        { $or: [{ username: username.trim() }, { tableTeacherName: username.trim() }] },
+        { $set: { photoUrl: cleanUrl } }
+      )
+    ]);
 
+    invalidateTeachersPhotosCache();
     res.status(200).json({ success: true, message: 'Votre photo a été mise à jour.', photoUrl: cleanUrl });
   } catch (error) {
     console.error('Erreur POST /api/my-teacher-photo:', error);
@@ -4427,10 +4559,10 @@ setTimeout(async () => {
   }
 }, 2000);
 
-app.get('/api/admin/students', async (req, res) => {
+async function handleGetStudentsList(req, res) {
   try {
     let section = req.query.section || 'garcons';
-    const targetClass = req.query.class;
+    const targetClass = req.query.class || req.query.classe;
     const canonicalClass = normalizeStudentClass(targetClass);
 
     // Auto-détection de la section si spécifiée dans la classe
@@ -4453,26 +4585,36 @@ app.get('/api/admin/students', async (req, res) => {
 
     const bypassCache = req.query.force === 'true';
     const cacheKey = `${section}_${canonicalClass || targetClass || 'all'}`;
+    const nowMs = Date.now();
 
     if (!bypassCache && studentsMemoryCache.has(cacheKey)) {
-      const cached = studentsMemoryCache.get(cacheKey);
-      if (Array.isArray(cached)) {
-        return res.status(200).json(cached);
+      const entry = studentsMemoryCache.get(cacheKey);
+      if (entry && Array.isArray(entry.data) && nowMs < entry.expiresAt) {
+        return res.status(200).json(entry.data);
       }
+      if (Array.isArray(entry)) {
+        return res.status(200).json(entry);
+      }
+      studentsMemoryCache.delete(cacheKey);
     }
 
     const db = await connectToDatabase();
 
-    // Récupérer la liste des élèves explicitement supprimés (tombstones) pour éviter toute réapparition
-    const deletedDocs = await db.collection('deleted_students').find({ section: section }).toArray();
+    // Requêtes indépendantes en parallèle pour réduire la latence
+    const [deletedDocs, initCheck, rawStudentsInitial] = await Promise.all([
+      db.collection('deleted_students').find({ section: section }).toArray(),
+      db.collection('settings').findOne({ _id: `students_init_${section}` }),
+      db.collection('students').find({ section: section }).toArray()
+    ]);
+
     const deletedNamesSet = new Set(deletedDocs.map(d => (d.name || '').trim().toLowerCase()));
+    let rawStudents = rawStudentsInitial;
 
     // Auto-seeding initial UNIQUEMENT si la section n'a jamais été initialisée
-    const initCheck = await db.collection('settings').findOne({ _id: `students_init_${section}` });
-    const totalExisting = await db.collection('students').countDocuments({ section: section });
-
-    if (!initCheck && totalExisting === 0) {
+    if (!initCheck && rawStudents.length === 0) {
       const seedDict = section === 'filles' ? defaultGirlsStudents : (section === 'maternelle' ? defaultMaternelleStudents : (section === 'primaire' ? defaultPrimaireStudents : defaultBoysStudents));
+      const seedOps = [];
+      const nowDate = new Date();
       for (const [cls, list] of Object.entries(seedDict)) {
         for (const s of list) {
           const cleanSName = (s.name || '').trim();
@@ -4484,26 +4626,28 @@ app.get('/api/admin/students', async (req, res) => {
             birthday: s.birthday || '',
             class: cls,
             section: section,
-            createdAt: new Date(),
-            updatedAt: new Date()
+            createdAt: nowDate,
+            updatedAt: nowDate
           };
-          await db.collection('students').updateOne(
-            { _id: studentObj._id },
-            { $set: studentObj },
-            { upsert: true }
-          );
+          seedOps.push({
+            updateOne: {
+              filter: { _id: studentObj._id },
+              update: { $set: studentObj },
+              upsert: true
+            }
+          });
         }
+      }
+      if (seedOps.length > 0) {
+        await db.collection('students').bulkWrite(seedOps);
       }
       await db.collection('settings').updateOne(
         { _id: `students_init_${section}` },
-        { $set: { _id: `students_init_${section}`, initializedAt: new Date() } },
+        { $set: { _id: `students_init_${section}`, initializedAt: nowDate } },
         { upsert: true }
       );
+      rawStudents = await db.collection('students').find({ section: section }).toArray();
     }
-
-    // Récupérer TOUS les élèves de la section pour une déduplication globale fiable
-    // (empêche qu'un élève déplacé continue d'apparaître dans son ancienne classe)
-    let rawStudents = await db.collection('students').find({ section: section }).toArray();
 
     // Filtrer les élèves supprimés et dédupliquer par nom propre à l'échelle de la section
     const studentMap = new Map();
@@ -4524,6 +4668,8 @@ app.get('/api/admin/students', async (req, res) => {
           birthday: st.birthday || '',
           class: st.class || '',
           section: st.section || section,
+          parentName: st.parentName || '',
+          parentPhone: st.parentPhone || '',
           createdAt: st.createdAt || new Date(),
           updatedAt: st.updatedAt || new Date()
         });
@@ -4543,16 +4689,18 @@ app.get('/api/admin/students', async (req, res) => {
     // Tri alphabétique parfait et stable par nom de l'élève (insensible à la casse et accents)
     finalStudents.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base', numeric: true }));
 
-    // Mise en cache mémoire (invalidée automatiquement à chaque ajout/modification/suppression d'élève)
-    studentsMemoryCache.set(cacheKey, finalStudents);
-    setTimeout(() => studentsMemoryCache.delete(cacheKey), 45 * 1000);
+    // Mise en cache mémoire avec expiration timestamp (sans fuite de setTimeout)
+    studentsMemoryCache.set(cacheKey, { data: finalStudents, expiresAt: nowMs + 45 * 1000 });
 
     res.status(200).json(finalStudents);
   } catch (error) {
     console.error('Erreur GET /api/admin/students:', error);
     res.status(500).json({ message: 'Erreur serveur.' });
   }
-});
+}
+
+app.get('/api/admin/students', handleGetStudentsList);
+app.get('/api/students', handleGetStudentsList);
 
 app.post('/api/admin/students', async (req, res) => {
   try {
@@ -6278,14 +6426,16 @@ app.get('/api/get-messages', async (req, res) => {
       query.$or = [{ section: section }, { section: { $exists: false } }];
     }
     const messages = await db.collection('teacher_messages').find(query).sort({ createdAt: -1 }).toArray();
+    if (messages.length === 0) {
+      return res.status(200).json([]);
+    }
     
-    // Récupérer toutes les réponses associées à ces messages
+    // Récupérer toutes les réponses associées en parallèle
     const msgIds = messages.map(m => String(m._id));
-    const replies = await db.collection('teacher_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
-    let parentReplies = [];
-    try {
-      parentReplies = await db.collection('parent_chat_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
-    } catch (eSub) {}
+    const [replies, parentReplies] = await Promise.all([
+      db.collection('teacher_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray(),
+      db.collection('parent_chat_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray().catch(() => [])
+    ]);
 
     const repliesMap = {};
     replies.forEach(r => {
@@ -6439,33 +6589,34 @@ app.get('/api/parent-messages', async (req, res) => {
     if (!phone && !name && !studentName) return res.status(200).json({ messages: [], data: [] });
     const db = await connectToDatabase();
     
+    const escapeRegExpSafe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     let queryConditions = [];
     if (phone && phone.trim()) {
       const cleanPhone = phone.trim();
       queryConditions.push({ parentPhone: cleanPhone });
       const digitsOnly = cleanPhone.replace(/[^0-9]/g, '');
       if (digitsOnly.length >= 7) {
-        queryConditions.push({ parentPhone: { $regex: new RegExp(digitsOnly.slice(-7)) } });
+        queryConditions.push({ parentPhone: { $regex: new RegExp(escapeRegExpSafe(digitsOnly.slice(-7))) } });
       }
     }
     if (name && name.trim()) {
-      queryConditions.push({ parentName: { $regex: new RegExp(name.trim(), 'i') } });
+      queryConditions.push({ parentName: { $regex: new RegExp(escapeRegExpSafe(name.trim()), 'i') } });
     }
     if (studentName && studentName.trim()) {
-      queryConditions.push({ studentName: { $regex: new RegExp(studentName.trim(), 'i') } });
+      queryConditions.push({ studentName: { $regex: new RegExp(escapeRegExpSafe(studentName.trim()), 'i') } });
     }
 
     const query = queryConditions.length > 1 ? { $or: queryConditions } : (queryConditions[0] || {});
     const messages = await db.collection('teacher_messages').find(query).sort({ createdAt: -1 }).toArray();
+    if (messages.length === 0) {
+      return res.status(200).json({ messages: [], data: [] });
+    }
 
     const msgIds = messages.map(m => String(m._id));
-    const replies = await db.collection('teacher_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
-    
-    // Récupérer également les sous-messages des parents s'il y en a
-    let parentReplies = [];
-    try {
-      parentReplies = await db.collection('parent_chat_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray();
-    } catch (eSub) {}
+    const [replies, parentReplies] = await Promise.all([
+      db.collection('teacher_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray(),
+      db.collection('parent_chat_replies').find({ messageId: { $in: msgIds } }).sort({ createdAt: 1 }).toArray().catch(() => [])
+    ]);
 
     const repliesMap = {};
     replies.forEach(r => {
@@ -7085,39 +7236,53 @@ app.get('/api/plans/:week', async (req, res) => {
     }
     
     if (planDocument) {
-      const lessonPlans = await db.collection('lessonPlans')
-        .find({ week: weekNumber, section: section }, { projection: { _id: 1 } })
-        .toArray();
-      
+      const [lessonPlans, weeklyPlans, existingSchedCount, subTeacherDocs, pubDoc, specialDays] = await Promise.all([
+        db.collection('lessonPlans').find({ week: weekNumber, section: section }, { projection: { _id: 1 } }).toArray(),
+        db.collection('weeklyLessonPlans').find({ week: weekNumber, section: section }, { projection: { classe: 1 } }).toArray(),
+        db.collection('class_schedules').countDocuments({ section }).catch(() => 1),
+        db.collection('class_subject_teachers').find({ section }).toArray(),
+        db.collection('published_plans').findOne({
+          $or: [
+            { _id: `${section}_${weekNumber}` },
+            { _id: `${section}_${String(weekNumber)}` },
+            { week: weekNumber, section: section },
+            { week: String(weekNumber), section: section },
+            { _id: `all_${weekNumber}` },
+            { week: weekNumber, section: 'all' }
+          ]
+        }),
+        db.collection('special_days').find({
+          $or: [{ section: section }, { section: 'all' }, { section: { $exists: false } }],
+          $and: [{ $or: [{ week: weekNumber }, { week: String(weekNumber) }] }]
+        }).toArray()
+      ]);
+
       const availableLessonPlanIds = new Set(lessonPlans.map(lp => lp._id));
-      
-      const weeklyPlans = await db.collection('weeklyLessonPlans')
-        .find({ week: weekNumber, section: section }, { projection: { classe: 1 } })
-        .toArray();
-      
       const availableWeeklyPlans = weeklyPlans.map(p => p.classe);
-      
-      console.log(`📋 Plans disponibles pour S${weekNumber} (${section}):`, Array.from(availableLessonPlanIds));
-      
+
       // Normalisation des classes de la section (sans jamais filtrer ni écraser le contenu du plan/Excel importé)
       let rawData = filterPlanDataBySection(planDocument.data || [], section);
 
       // Si des cours existent dans ce plan mais que class_schedules pour cette section est vide, synchroniser l'emploi du temps avec le plan
-      try {
-        const existingSchedCount = await db.collection('class_schedules').countDocuments({ section });
-        if (!existingSchedCount && rawData.length > 0) {
+      if (!existingSchedCount && rawData.length > 0) {
+        try {
           await syncScheduleAndTeachersFromPlanRows(db, rawData, section);
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
 
-      // Récupérer les liaisons Matière ➔ Enseignant configurées pour cette section uniquement
-      const subTeacherDocs = await db.collection('class_subject_teachers').find({ section }).toArray();
-      const subTeacherMap = new Map();
+      // Pré-indexation O(1) des liaisons Matière ➔ Enseignant pour éviter les scans linéaires par ligne
+      const subTeacherExactMap = new Map();
+      const subTeacherGlobalDocs = [];
+      const subTeacherClassDocs = [];
       subTeacherDocs.forEach(d => {
-        if (d.classe && d.matiere && d.enseignant) {
+        if (!d.enseignant || !d.enseignant.trim() || !d.matiere) return;
+        const tTrim = d.enseignant.trim();
+        if (d.classe && d.classe !== 'all') {
           const cleanC = cleanClassNameServer(d.classe) || d.classe.trim();
-          const k = `${cleanC.toLowerCase()}_${d.matiere.trim().toLowerCase()}`;
-          subTeacherMap.set(k, d.enseignant.trim());
+          subTeacherExactMap.set(`${cleanC.toLowerCase()}_${d.matiere.trim().toLowerCase()}`, tTrim);
+          subTeacherClassDocs.push({ ...d, _cleanClassLower: cleanC.toLowerCase(), _ensTrim: tTrim });
+        } else {
+          subTeacherGlobalDocs.push({ ...d, _ensTrim: tTrim });
         }
       });
 
@@ -7136,35 +7301,38 @@ app.get('/api/plans/:week', async (req, res) => {
         // Si l'enseignant est déjà défini dans l'Excel / le plan, on le conserve tel quel.
         // On n'utilise class_subject_teachers que si l'enseignant de la ligne est vide.
         if (!isPlaceholderSubj && (!enseignant || enseignant === '—' || enseignant === '-') && classe && matiere && subTeacherDocs.length > 0) {
-          const exactClassLinkedDoc = subTeacherDocs.find(d =>
-            d.enseignant && d.enseignant.trim() &&
-            d.classe && d.classe !== 'all' &&
-            (cleanClassNameServer(d.classe).toLowerCase() === classe.toLowerCase() || isClassMatchServer(d.classe, classe)) &&
-            isEquivalentSubjectServer(d.matiere, matiere)
-          );
-          if (exactClassLinkedDoc && exactClassLinkedDoc.enseignant && exactClassLinkedDoc.enseignant.trim()) {
-            enseignant = exactClassLinkedDoc.enseignant.trim();
+          const exactFast = subTeacherExactMap.get(`${classe.toLowerCase()}_${String(matiere).trim().toLowerCase()}`);
+          if (exactFast) {
+            enseignant = exactFast;
             row[ensKey] = enseignant;
           } else {
-            const globalLinkedDoc = subTeacherDocs.find(d =>
-              d.enseignant && d.enseignant.trim() &&
-              (d.classe === 'all' || !d.classe) &&
+            const clsLower = classe.toLowerCase();
+            const exactClassLinkedDoc = subTeacherClassDocs.find(d =>
+              (d._cleanClassLower === clsLower || isClassMatchServer(d.classe, classe)) &&
               isEquivalentSubjectServer(d.matiere, matiere)
             );
-            if (globalLinkedDoc && globalLinkedDoc.enseignant) {
-              enseignant = globalLinkedDoc.enseignant.trim();
+            if (exactClassLinkedDoc) {
+              enseignant = exactClassLinkedDoc._ensTrim;
               row[ensKey] = enseignant;
+            } else {
+              const globalLinkedDoc = subTeacherGlobalDocs.find(d => isEquivalentSubjectServer(d.matiere, matiere));
+              if (globalLinkedDoc) {
+                enseignant = globalLinkedDoc._ensTrim;
+                row[ensKey] = enseignant;
+              }
             }
           }
         }
         
-        const potentialLessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
-        const fallbackId = `${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
-        
-        if (availableLessonPlanIds.has(potentialLessonPlanId)) {
-          return { ...row, lessonPlanId: potentialLessonPlanId };
-        } else if (availableLessonPlanIds.has(fallbackId)) {
-          return { ...row, lessonPlanId: fallbackId };
+        if (availableLessonPlanIds.size > 0) {
+          const potentialLessonPlanId = `${section}_${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
+          if (availableLessonPlanIds.has(potentialLessonPlanId)) {
+            return { ...row, lessonPlanId: potentialLessonPlanId };
+          }
+          const fallbackId = `${weekNumber}_${enseignant}_${classe}_${matiere}_${periode}_${jour}`.replace(/\s+/g, '_');
+          if (availableLessonPlanIds.has(fallbackId)) {
+            return { ...row, lessonPlanId: fallbackId };
+          }
         }
         return row;
       });
@@ -7172,26 +7340,10 @@ app.get('/api/plans/:week', async (req, res) => {
       // Garantie absolue de toutes les périodes de 1 à 8 pour chaque jour et chaque classe (sans aucun doublon)
       const finalSectionData = ensureAllPeriods1To8ForPlan(enrichedData, section, weekNumber);
       
-      // Statut de publication aux parents
-      const pubDoc = await db.collection('published_plans').findOne({
-        $or: [
-          { _id: `${section}_${weekNumber}` },
-          { _id: `${section}_${String(weekNumber)}` },
-          { week: weekNumber, section: section },
-          { week: String(weekNumber), section: section },
-          { _id: `all_${weekNumber}` },
-          { week: weekNumber, section: 'all' }
-        ]
-      });
       const isPublishedToParents = (pubDoc && (pubDoc.published !== undefined || pubDoc.isPublishedToParents !== undefined))
         ? Boolean(pubDoc.published ?? pubDoc.isPublishedToParents)
         : (finalSectionData && finalSectionData.length > 0);
 
-      // Récupérer les journées spéciales / fusionnées pour cette semaine et section
-      const specialDays = await db.collection('special_days').find({ 
-        $or: [{ section: section }, { section: 'all' }, { section: { $exists: false } }],
-        $and: [{ $or: [{ week: weekNumber }, { week: String(weekNumber) }] }]
-      }).toArray();
       (specialDays || []).forEach(d => {
         if ((!d.photos || d.photos.length === 0) && /f[eê]te\s*nationale/i.test(d.title || '')) {
           d.photos = [{
@@ -7349,39 +7501,52 @@ async function syncScheduleAndTeachersFromPlanRows(db, rows, section) {
       classe: { $nin: uploadedClasses }
     });
 
+    const scheduleOps = [];
+    const cstOpsMap = new Map();
+
     for (const cls of uploadedClasses) {
       const slots = Array.from(classSlotsMap.get(cls).values());
-      await db.collection('class_schedules').updateOne(
-        { section, classe: cls },
-        {
-          $set: {
-            section,
-            classe: cls,
-            slots,
-            updatedAt: now
-          }
-        },
-        { upsert: true }
-      );
+      scheduleOps.push({
+        updateOne: {
+          filter: { section, classe: cls },
+          update: {
+            $set: {
+              section,
+              classe: cls,
+              slots,
+              updatedAt: now
+            }
+          },
+          upsert: true
+        }
+      });
 
       for (const s of slots) {
         if (s.matiere && s.enseignant && s.enseignant !== '—' && s.enseignant !== '-') {
-          await db.collection('class_subject_teachers').updateOne(
-            { section, classe: cls, matiere: s.matiere },
-            {
-              $set: {
-                section,
-                classe: cls,
-                matiere: s.matiere,
-                enseignant: s.enseignant,
-                updatedAt: now
-              }
-            },
-            { upsert: true }
-          );
+          const cstKey = `${cls}__${s.matiere}`;
+          cstOpsMap.set(cstKey, {
+            updateOne: {
+              filter: { section, classe: cls, matiere: s.matiere },
+              update: {
+                $set: {
+                  section,
+                  classe: cls,
+                  matiere: s.matiere,
+                  enseignant: s.enseignant,
+                  updatedAt: now
+                }
+              },
+              upsert: true
+            }
+          });
         }
       }
     }
+
+    const writeTasks = [];
+    if (scheduleOps.length > 0) writeTasks.push(db.collection('class_schedules').bulkWrite(scheduleOps));
+    if (cstOpsMap.size > 0) writeTasks.push(db.collection('class_subject_teachers').bulkWrite(Array.from(cstOpsMap.values())));
+    if (writeTasks.length > 0) await Promise.all(writeTasks);
 
     // Mettre à jour la visibilité des classes pour que l'Emploi du Temps et le Tableau de Saisie aient strictement les mêmes classes
     await db.collection('settings').updateOne(
@@ -11741,17 +11906,7 @@ async function callAiWithKeyRotation(prompt, contextLog = 'Lesson Plan') {
 }
 
 // --------------------- Helper Jour Férié & Cycle Maternelle ---------------------
-function isMaternelleClassServer(className) {
-  if (!className) return false;
-  const c = String(className).trim().toUpperCase();
-  const clean = c.replace(/[\s\-_]+/g, '');
-  return clean === 'PS' || clean === 'MS' || clean === 'GS' ||
-         clean === 'PETITESECTION' || clean === 'MOYENNESECTION' || clean === 'GRANDESECTION' ||
-         clean.includes('MATERNELLE') ||
-         clean.includes('روضة') || clean.includes('روضه') ||
-         clean === 'PS1' || clean === 'MS1' || clean === 'GS1' ||
-         clean === 'PS2' || clean === 'MS2' || clean === 'GS2';
-}
+// Note: isMaternelleClassServer est déjà définie en haut du fichier.
 
 function isHolidayRowServer(rowData, specialDaysList = [], week = null, section = null) {
   if (!rowData || typeof rowData !== 'object') return false;
@@ -14246,10 +14401,11 @@ app.post('/api/student-grades', async (req, res) => {
       return num;
     };
 
+    const gradeOps = [];
+    const nowIso = now.toISOString();
     for (const sg of studentGrades) {
       const studentName = sg.studentName;
       if (!studentName) continue;
-      const filter = { section, classe, subject, semester, studentName };
       const hwParsed = parseGradeOrNull(sg.hw);
       const cwParsed = parseGradeOrNull(sg.cw);
       const evalParsed = parseGradeOrNull(sg.evaluation);
@@ -14257,23 +14413,31 @@ app.post('/api/student-grades', async (req, res) => {
       const sumVal = Math.round((hwParsed || 0) + (cwParsed || 0) + (evalParsed || 0) + (examParsed || 0));
       const totalParsed = sumVal > 0 ? sumVal : null;
 
-      const update = {
-        $set: {
-          section,
-          classe,
-          subject,
-          semester,
-          studentName,
-          teacher: teacher || '',
-          hw: hwParsed,
-          cw: cwParsed,
-          evaluation: evalParsed,
-          examen: examParsed,
-          total: totalParsed,
-          updatedAt: now.toISOString()
+      gradeOps.push({
+        updateOne: {
+          filter: { section, classe, subject, semester, studentName },
+          update: {
+            $set: {
+              section,
+              classe,
+              subject,
+              semester,
+              studentName,
+              teacher: teacher || '',
+              hw: hwParsed,
+              cw: cwParsed,
+              evaluation: evalParsed,
+              examen: examParsed,
+              total: totalParsed,
+              updatedAt: nowIso
+            }
+          },
+          upsert: true
         }
-      };
-      await col.updateOne(filter, update, { upsert: true });
+      });
+    }
+    if (gradeOps.length > 0) {
+      await col.bulkWrite(gradeOps);
     }
     res.json({ success: true, message: 'Notes enregistrées avec succès.' });
   } catch (error) {
